@@ -47,6 +47,9 @@ importers:
       better-auth:
         specifier: 1.6.26
         version: 1.6.26(@sveltejs/kit@2.70.2(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.8(@typescript-eslint/types@8.66.0))(vite@8.2.1(@types/node@24.3.1)(esbuild@0.28.1)(tsx@4.20.5)))(svelte@5.56.8(@typescript-eslint/types@8.66.0))(typescript@6.0.3)(vite@8.2.1(@types/node@24.3.1)(esbuild@0.28.1)(tsx@4.20.5)))(pg@8.22.0)(svelte@5.56.8(@typescript-eslint/types@8.66.0))(vitest@4.1.10(@types/node@24.3.1)(vite@8.2.1(@types/node@24.3.1)(esbuild@0.28.1)(tsx@4.20.5)))
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
       ical-generator:
         specifier: 11.1.0
         version: 11.1.0(@types/node@24.3.1)

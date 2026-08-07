@@ -172,7 +172,27 @@
     </section>
     <div class="stack">
       <section class="card"><p class="eyebrow">Hogar</p><h2>{data.settings.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>{data.settings.preferences.locale}</dd></div><div><dt>Zona horaria</dt><dd>{data.settings.preferences.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>{data.settings.preferences.weekStarts}</dd></div></dl></section>
+      {#if data.handover}
+        <section class="card">
+          <p class="eyebrow">Traspaso</p>
+          <h2>Traspaso operativo de la casa</h2>
+          <p>Wiki publicada, rutinas, menú de la semana y contactos en un ZIP verificable. Nunca incluye el expediente laboral.</p>
+          <div class="handover-actions">
+            <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=helper`}>Descargar traspaso (apoyo)</a>
+            <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=family`}>Descargar traspaso (familia)</a>
+          </div>
+        </section>
+      {/if}
       <section class="card warning-card"><p class="eyebrow">Entorno de prueba</p><h2>Datos exclusivamente sintéticos</h2><p>Las sesiones viven en memoria y desaparecen al reiniciar el servidor. Esta interfaz no sustituye autenticación ni RLS de producción.</p></section>
     </div>
   </div>
 </div>
+
+<style>
+  .handover-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+</style>
