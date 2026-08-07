@@ -1,9 +1,11 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:access');
 
 export interface MembershipAccessView {
   id: string;
@@ -76,7 +78,7 @@ export async function loadAccessOverview(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('access overview unavailable', cause);
+      log.error('access overview unavailable', { code: errorCode(cause) });
     }
     return null;
   }

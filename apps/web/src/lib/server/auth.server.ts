@@ -3,7 +3,11 @@ import { getRequestEvent } from '$app/server';
 import { env } from '$env/dynamic/private';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 
+import { createLogger } from '@casa-clara/server';
+
 import { createAuthCore, type AuthInstance, type MagicLinkMessage } from './auth-core';
+
+const log = createLogger('web:auth');
 
 let instance: AuthInstance | null | undefined;
 
@@ -24,8 +28,10 @@ async function deliverMagicLink(message: MagicLinkMessage): Promise<void> {
     return;
   }
   if (dev) {
-    // Solo en desarrollo: el enlace contiene un secreto y no debe tocar logs reales.
-    console.info(`[auth] Enlace mágico para ${message.email}: ${message.url}`);
+    // Solo en desarrollo (rama guardada por `dev`, sin SMTP): el enlace se
+    // entrega por consola para poder entrar. El correo del usuario no se
+    // registra jamás; fuera de dev este camino no existe.
+    log.info(`[dev] enlace mágico emitido: ${message.url}`);
     return;
   }
   throw new Error('SMTP no configurado: no se puede entregar el enlace de acceso');

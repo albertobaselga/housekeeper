@@ -8,10 +8,11 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "pnpm --filter @casa-clara/server build && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1105.0",
+    "@casa-clara/server": "workspace:*",
     "fflate": "0.8.3",
     "nodemailer": "9.0.4",
     "pdf-lib": "1.17.1",

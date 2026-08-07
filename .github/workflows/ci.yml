@@ -40,6 +40,8 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Run a non-empty unit suite
         run: scripts/ci/run-tests-nonempty.sh pnpm test:unit
+      - name: Assert JUnit unit evidence is non-empty
+        run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/unit/*.xml'
       - name: Upload unit artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -92,6 +94,8 @@ jobs:
         run: scripts/ci/run-tests-nonempty.sh pnpm test:rls
       - name: Run server transaction and idempotency integration
         run: scripts/ci/run-tests-nonempty.sh pnpm --filter @casa-clara/server test
+      - name: Assert JUnit integration evidence is non-empty
+        run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/unit/*.xml'
       - name: Run wiki importer round-trip
         run: scripts/ci/run-tests-nonempty.sh pnpm --filter @casa-clara/db test:import
       - name: Reapply migrations to prove idempotent runner behavior

@@ -1,12 +1,14 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { dateLabel, formatCents, formatMinutes, parseCents, periodLabel } from '$lib/employment/model';
 import { addDays, mondayOf } from '$lib/food/dates';
 import type { MealSlot } from '$lib/food/commands';
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:today');
 
 /**
  * «Hoy» real (UX-P1-1): proyección ligera leída de Postgres bajo RLS con la
@@ -502,7 +504,7 @@ export async function loadTodayOverview(
     // Sin membresía viva no hay hogar que enseñar; cualquier otra avería
     // degrada a la fixture para no tumbar la pantalla de aterrizaje.
     if (!(cause instanceof AuthorizationError)) {
-      console.error('today overview unavailable', cause);
+      log.error('today overview unavailable', { code: errorCode(cause) });
     }
     return null;
   }

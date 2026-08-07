@@ -13,7 +13,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
-    "test:a11y": "playwright test --project=a11y",
+    "test:a11y": "PLAYWRIGHT_JUNIT_OUTPUT_NAME=../../artifacts/e2e/junit-a11y.xml playwright test --project=a11y",
     "test:e2e": "playwright test --project=e2e",
     "test:e2e:db": "E2E_DATABASE_URL=${E2E_DATABASE_URL:-postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u} playwright test --config=playwright.db.config.ts",
     "test:watch": "vitest"

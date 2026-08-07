@@ -114,6 +114,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: 3.1105.0
         version: 3.1105.0
+      '@casa-clara/server':
+        specifier: workspace:*
+        version: link:../../packages/server
       fflate:
         specifier: 0.8.3
         version: 0.8.3

@@ -111,6 +111,23 @@
   }
   .status-banner span { color: inherit; }
   .status-banner.danger { background: var(--danger-soft); color: var(--danger); }
+
+  /* Aviso persistente del entorno solo-sintético (ALLOW_SYNTHETIC_DATA_ONLY):
+     fijo al borde inferior, fuera del flujo (no desplaza el topbar ni la
+     navegación) y transparente a los clics. */
+  .synthetic-banner {
+    position: fixed;
+    z-index: 46;
+    inset: auto 0 0;
+    margin: 0;
+    padding: .22rem 1rem;
+    border-top: 1px solid var(--line);
+    background: var(--warning-soft);
+    color: var(--warning);
+    font-size: .75rem;
+    text-align: center;
+    pointer-events: none;
+  }
   .app-shell { min-height: 100dvh; }
   .app-shell.with-banner { padding-top: 2.65rem; }
   .app-shell.with-banner .sidebar { top: 2.65rem; }
@@ -709,6 +726,8 @@
       padding: .35rem .25rem calc(.3rem + env(safe-area-inset-bottom));
       backdrop-filter: blur(1rem);
     }
+    /* En móvil el aviso sintético se posa justo encima de la bottom-nav. */
+    .synthetic-banner { bottom: calc(4.25rem + env(safe-area-inset-bottom)); }
     .bottom-nav a, .bottom-nav .more-button { display: grid; flex: 1 1 0; min-width: 0; place-items: center; align-content: center; gap: .1rem; padding: 0; color: var(--ink-faint); font-size: .61rem; font-weight: 700; text-decoration: none; }
     .bottom-nav a.active, .bottom-nav .more-button.active { color: var(--primary); }
     .bottom-nav .nav-symbol { font-size: 1rem; }

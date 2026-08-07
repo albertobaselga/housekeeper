@@ -2,6 +2,8 @@ import { createServer } from "node:http";
 
 import { Pool } from "pg";
 
+import { createLogger, errorCode } from "@casa-clara/server/logging";
+
 import { loadWorkerConfig } from "./config.js";
 import { RENDER_RECEIPT_JOB, createRenderReceiptHandler } from "./handlers.js";
 import {
@@ -24,10 +26,40 @@ import {
 const config = loadWorkerConfig();
 const pool = new Pool({ connectionString: config.databaseUrl, max: 4 });
 const storageClient = objectStore(config.storage);
+const log = createLogger("worker");
 let stopping = false;
 let lastSuccessfulPollAt: string | null = null;
 let processedJobs = 0;
 let pollFailures = 0;
+
+/**
+ * Observabilidad de jobs sin PII (control 8): cada handler queda envuelto en
+ * el logger compartido con redacción — solo identificadores técnicos, duración
+ * y código de error. El fallo se relanza para que la cola aplique reintentos.
+ */
+function withJobLogging(jobType: string, handler: JobHandler): JobHandler {
+  return async (job) => {
+    const startedAt = Date.now();
+    try {
+      await handler(job);
+      log.info("job completed", {
+        jobId: job.id,
+        jobType,
+        householdId: job.householdId,
+        ms: Date.now() - startedAt,
+      });
+    } catch (error) {
+      log.error("job failed", {
+        jobId: job.id,
+        jobType,
+        householdId: job.householdId,
+        ms: Date.now() - startedAt,
+        code: errorCode(error),
+      });
+      throw error;
+    }
+  };
+}
 
 const handlers: Record<string, JobHandler> = Object.create(null) as Record<string, JobHandler>;
 handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler((key, body, contentType) =>
@@ -53,6 +85,9 @@ handlers[ICS_SYNC_JOB] = createIcsSyncHandler({
     await pool.query("select app_private.record_ics_sync($1, $2, '')", [householdId, sourceId]);
   },
 });
+for (const [type, handler] of Object.entries(handlers)) {
+  handlers[type] = withJobLogging(type, handler);
+}
 
 const healthServer = createServer(async (request, response) => {
   if (request.url === "/metrics") {
@@ -91,8 +126,9 @@ async function loop(): Promise<void> {
       lastSuccessfulPollAt = new Date().toISOString();
       if (worked) processedJobs += 1;
       else await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs));
-    } catch {
+    } catch (error) {
       pollFailures += 1;
+      log.error("queue poll failed", { code: errorCode(error) });
       await new Promise((resolve) => setTimeout(resolve, Math.min(30_000, config.pollIntervalMs * 5)));
     }
   }
@@ -109,8 +145,7 @@ process.once("SIGINT", () => void shutdown());
 process.once("SIGTERM", () => void shutdown());
 
 void loop().catch(async (error: unknown) => {
-  const message = error instanceof Error ? `${error.name}: ${error.message}` : "Worker failure";
-  process.stderr.write(`${message}\n`);
+  log.error("worker crashed", { code: errorCode(error) });
   await shutdown();
   process.exitCode = 1;
 });

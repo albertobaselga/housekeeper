@@ -5,6 +5,7 @@ import { ROLE_LABELS } from '$lib/auth/capabilities';
 import { getAuth } from '$lib/server/auth.server';
 import { getDemoUser, listDemoUsers } from '$lib/server/fixtures.server';
 import { createDemoSession } from '$lib/server/session.server';
+import { demoPasswordBlocked } from '$lib/server/synthetic.server';
 import type { Actions, PageServerLoad } from './$types';
 
 export type LoginMode = 'fixture-selector' | 'password-selector' | 'magic-link';
@@ -70,6 +71,14 @@ export const actions: Actions = {
     const auth = getAuth();
     if (auth) {
       if (!demoPasswordEnabled()) error(403, 'Las cuentas demo con contraseña están deshabilitadas');
+      // Control 9: fuera de localhost, las sesiones demo con contraseña solo
+      // arrancan en un entorno declarado solo-sintético (ALLOW_SYNTHETIC_DATA_ONLY=true).
+      if (demoPasswordBlocked(url.hostname)) {
+        error(
+          403,
+          'Acceso demo bloqueado: este entorno no está declarado solo-sintético (ALLOW_SYNTHETIC_DATA_ONLY) y el origen no es localhost'
+        );
+      }
       const credential = demoCredentialFor(accountId);
       if (!credential) return fail(400, { message: 'Elige una cuenta demo válida.' });
       try {

@@ -158,6 +158,15 @@
   </div>
 {/if}
 
+{#if context.synthetic}
+  <!-- Control 9 (ALLOW_SYNTHETIC_DATA_ONLY): aviso discreto y persistente.
+       Fijo al borde inferior y fuera del flujo: no desplaza ni tapa la
+       navegación existente. -->
+  <p class="synthetic-banner" role="note" data-testid="synthetic-banner">
+    Entorno sintético: no introduzcas datos reales
+  </p>
+{/if}
+
 <div class="app-shell" class:with-banner={$syncStatus.phase === 'offline' || $syncStatus.phase === 'conflict' || $syncStatus.phase === 'error'}>
   <aside class="sidebar" aria-label="Navegación principal">
     <a class="brand" href={pathFor('today')} aria-label="Casa Clara, ir a Hoy">

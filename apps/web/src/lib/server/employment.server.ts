@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 
-import { AuthorizationError, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
 import {
   buildAccrual,
@@ -26,6 +26,8 @@ import {
   type WeeklyReportRow
 } from '$lib/employment/model';
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:employment');
 
 function monthBounds(period: string): { first: string; last: string } {
   const [year, month] = period.split('-').map(Number);
@@ -309,7 +311,7 @@ export async function loadEmploymentOverview(
     // Sin membresía viva no hay expediente que enseñar; cualquier otra avería
     // degrada a la fixture para no tumbar la página de demo.
     if (!(cause instanceof AuthorizationError)) {
-      console.error('employment overview unavailable', cause);
+      log.error('employment overview unavailable', { code: errorCode(cause) });
     }
     return null;
   }

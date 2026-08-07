@@ -11,6 +11,7 @@ export * from "./commands/time-entry.js";
 export * from "./commands/wiki.js";
 export * from "./database.js";
 export * from "./idempotency.js";
+export * from "./logging.js";
 export * from "./menu-hash.js";
 export * from "./snapshot-signature.js";
 export * from "./sync.js";
