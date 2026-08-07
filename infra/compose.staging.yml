@@ -4,15 +4,15 @@ x-app-environment: &app-environment
   NODE_ENV: production
   APP_ENV: staging
   ALLOW_SYNTHETIC_DATA_ONLY: "true"
-  DATABASE_URL: postgresql://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
-  AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
   S3_ENDPOINT: http://minio:9000
   S3_REGION: ${S3_REGION:-eu-west-1}
-  S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
-  S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
-  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+  S3_PRIVATE_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
   S3_FORCE_PATH_STYLE: "true"
-  SMTP_URL: smtp://mailpit:1025
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM}
   CLAMAV_HOST: clamav
   CLAMAV_PORT: "3310"
   PUBLIC_ORIGIN: https://${STAGING_HOST:-staging.casaclara.test}:${CADDY_HTTPS_PORT:-8443}
@@ -70,6 +70,10 @@ services:
         WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
     environment:
       <<: *app-environment
+      DATABASE_URL: postgresql://casa_clara_app_login:${APP_DB_PASSWORD:?set APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
+      DATABASE_AUTH_URL: postgresql://casa_clara_auth_login:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: https://${STAGING_HOST:-staging.casaclara.test}:${CADDY_HTTPS_PORT:-8443}
       WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
       WEB_HEALTH_PATH: ${WEB_HEALTH_PATH:-/api/health}
       HOST: 0.0.0.0
@@ -103,9 +107,10 @@ services:
         WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
     environment:
       <<: *app-environment
+      DATABASE_URL: postgresql://casa_clara_worker_login:${WORKER_DB_PASSWORD:?set WORKER_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
       WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
       HOST: 0.0.0.0
-      PORT: "3001"
+      WORKER_HEALTH_PORT: "3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,8 +138,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
       POSTGRES_INITDB_ARGS: --data-checksums
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?set WORKER_DB_PASSWORD}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./postgres/00-create-roles.sh:/docker-entrypoint-initdb.d/00-create-roles.sh:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

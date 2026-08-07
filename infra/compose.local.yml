@@ -2,14 +2,15 @@ name: casaclara-local
 
 x-app-environment: &app-environment
   NODE_ENV: development
-  DATABASE_URL: postgresql://${POSTGRES_USER:-casaclara}:${POSTGRES_PASSWORD:-local-development-only}@postgres:5432/${POSTGRES_DB:-casaclara}
   S3_ENDPOINT: http://minio:9000
   S3_REGION: ${S3_REGION:-eu-west-1}
-  S3_BUCKET: ${S3_BUCKET:-casaclara-local}
-  S3_ACCESS_KEY: ${MINIO_ROOT_USER:-casaclara-local}
-  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-local-object-storage-only}
+  S3_PRIVATE_BUCKET: ${S3_BUCKET:-casaclara-local}
+  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-casaclara-local}
+  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-local-object-storage-only}
   S3_FORCE_PATH_STYLE: "true"
-  SMTP_URL: smtp://mailpit:1025
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_FROM: ${SMTP_FROM:-Casa Clara local <no-reply@casaclara.test>}
   CLAMAV_HOST: clamav
   CLAMAV_PORT: "3310"
   PUBLIC_ORIGIN: http://localhost:8080
@@ -64,6 +65,10 @@ services:
         WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
     environment:
       <<: *app-environment
+      DATABASE_URL: postgresql://casa_clara_app_login:${APP_DB_PASSWORD:-local-app-only}@postgres:5432/${POSTGRES_DB:-casaclara}
+      DATABASE_AUTH_URL: postgresql://casa_clara_auth_login:${AUTH_DB_PASSWORD:-local-auth-only}@postgres:5432/${POSTGRES_DB:-casaclara}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-better-auth-secret-change-before-use}
+      BETTER_AUTH_URL: http://localhost:8080
       WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
       WEB_HEALTH_PATH: ${WEB_HEALTH_PATH:-/api/health}
       HOST: 0.0.0.0
@@ -97,9 +102,10 @@ services:
         WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
     environment:
       <<: *app-environment
+      DATABASE_URL: postgresql://casa_clara_worker_login:${WORKER_DB_PASSWORD:-local-worker-only}@postgres:5432/${POSTGRES_DB:-casaclara}
       WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
       HOST: 0.0.0.0
-      PORT: "3001"
+      WORKER_HEALTH_PORT: "3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,10 +133,14 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
       POSTGRES_DB: ${POSTGRES_DB:-casaclara}
       POSTGRES_INITDB_ARGS: --data-checksums
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-local-app-only}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:-local-worker-only}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-local-auth-only}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+      - ./postgres/00-create-roles.sh:/docker-entrypoint-initdb.d/00-create-roles.sh:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

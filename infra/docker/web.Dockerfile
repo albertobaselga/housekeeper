@@ -3,7 +3,7 @@
 ARG NODE_IMAGE=node:24.18.0-alpine3.23
 
 FROM ${NODE_IMAGE} AS base
-ARG PNPM_VERSION=10.15.1
+ARG PNPM_VERSION=10.17.1
 RUN corepack enable \
   && corepack prepare "pnpm@${PNPM_VERSION}" --activate
 WORKDIR /workspace
