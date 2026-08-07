@@ -55,7 +55,9 @@
   });
   const selectedDate = $derived(week ? week.days[selectedDay]! : null);
 
-  async function dispatch(envelope: Parameters<typeof queueFoodCommand>[0]): Promise<'synced' | 'queued'> {
+  async function dispatch(
+    envelope: Parameters<typeof queueFoodCommand>[0]
+  ): Promise<Awaited<ReturnType<typeof queueFoodCommand>>> {
     busy = true;
     try {
       const outcome = await queueFoodCommand(envelope);

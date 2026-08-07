@@ -1,7 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { invalidateAll } from '$app/navigation';
-  import OutboxTriage from '$lib/components/OutboxTriage.svelte';
+  // El triaje arrastra los descriptores de todos los dominios: se carga como
+  // chunk aparte (mismo mecanismo que WikiEditor) para respetar el presupuesto
+  // de JavaScript inicial de Hoy.
+  const OutboxTriage = import('$lib/components/OutboxTriage.svelte').then((module) => module.default);
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { useAppContext } from '$lib/auth/context';
   import { completeRoutine, queueFoodCommand } from '$lib/food/commands';
@@ -56,7 +59,7 @@
       description="Lo importante de hoy, sin ruido."
     />
 
-    <OutboxTriage householdId={overview.householdId} />
+    {#await OutboxTriage then Triage}<Triage householdId={overview.householdId} />{/await}
 
     {#if queued}
       <p class="success-message" role="status">Cambio guardado en este dispositivo, pendiente de sincronizar.</p>
@@ -148,7 +151,7 @@
   {:else if data.today}
     <PageHeader eyebrow={data.today.dateLabel} title={`${data.today.greeting}, ${context.user.name}`} description="Lo importante de hoy, sin ruido." />
 
-    <OutboxTriage householdId={context.household.id} />
+    {#await OutboxTriage then Triage}<Triage householdId={context.household.id} />{/await}
 
     <section class="hero-grid" aria-label="Resumen del día">
       <article class="card task-card">
