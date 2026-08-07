@@ -225,7 +225,7 @@
         // Rechazo real del servidor (p. ej. week_overlap): además de la nota
         // unificada, el motivo queda junto al formulario que lo provocó.
         revert: () => {
-          duplicateError = 'No se pudo copiar: las semanas se solapan o el servidor lo rechazó.';
+          duplicateError = 'No se pudo guardar: las semanas se solapan o el servidor rechazó la copia.';
         }
       })
       .finally(() => {
