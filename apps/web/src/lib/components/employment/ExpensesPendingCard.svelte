@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
+  import { uploadAttachment, UploadAttachmentError } from '$lib/attachments/upload';
   import {
     parseEuroInput,
     queueEmploymentCommand,
@@ -7,6 +8,7 @@
     submitExpense
   } from '$lib/employment/commands';
   import type { PendingExpenseView } from '$lib/employment/model';
+  import { syncStatus } from '$lib/offline/sync';
 
   let {
     householdId,
@@ -35,6 +37,14 @@
   let expenseError = $state<string | null>(null);
   let expenseSent = $state(false);
 
+  // Justificante (AC-11): la subida de la foto es exclusivamente ONLINE; sin
+  // conexión el input se deshabilita y se explica con honestidad. El enlace
+  // offline foto→gasto (saveOfflineBlob + flushBlobs) es el siguiente paso.
+  const online = $derived($syncStatus.phase !== 'offline');
+  let receiptInput = $state<HTMLInputElement | null>(null);
+  let receiptNotice = $state<string | null>(null);
+  let receiptAttached = $state(false);
+
   async function run(envelope: Parameters<typeof queueEmploymentCommand>[0], entityId?: string): Promise<void> {
     busy = true;
     try {
@@ -61,17 +71,43 @@
     }
     if (!expenseDate || !expenseDescription.trim()) return;
     expenseError = null;
+    receiptNotice = null;
+    receiptAttached = false;
+
+    // La foto viaja PRIMERO: el comando del gasto referencia el objeto ya
+    // confirmado. Si la subida falla (tamaño, tipo, cuarentena o un 503 sin
+    // S3/ClamAV configurados) el alta del gasto NO se bloquea: se registra sin
+    // justificante y el mensaje explica qué pasó con la foto.
+    let receiptStorageObjectId: string | undefined;
+    const receiptFile = receiptInput?.files?.[0];
+    if (receiptFile && online) {
+      busy = true;
+      try {
+        receiptStorageObjectId = await uploadAttachment(householdId, receiptFile);
+      } catch (cause) {
+        receiptNotice =
+          cause instanceof UploadAttachmentError
+            ? `${cause.message} El gasto se registra sin justificante.`
+            : 'No se pudo subir la foto. El gasto se registra sin justificante.';
+      } finally {
+        busy = false;
+      }
+    }
+
     await run(
       submitExpense({
         householdId,
         agreementId,
         incurredOn: expenseDate,
         description: expenseDescription,
-        amountCents
+        amountCents,
+        ...(receiptStorageObjectId ? { receiptStorageObjectId } : {})
       })
     );
     expenseDescription = '';
     expenseAmount = '';
+    if (receiptInput) receiptInput.value = '';
+    receiptAttached = Boolean(receiptStorageObjectId);
     expenseSent = true;
   }
 
@@ -97,7 +133,9 @@
       <div id={`gasto-${expense.id}`}>
         <span>
           <strong>{expense.description}</strong>
-          <small>{expense.incurredOnLabel} · pendiente de aprobación</small>
+          <small>
+            {expense.incurredOnLabel} · pendiente de aprobación{#if expense.hasReceipt}&nbsp;· Justificante adjunto ✓{/if}
+          </small>
         </span>
         <span class="inline-actions">
           <strong>{expense.amountLabel}</strong>
@@ -149,10 +187,25 @@
       <label>Descripción
         <input type="text" bind:value={expenseDescription} maxlength="500" required placeholder="Farmacia, compra…" />
       </label>
+      <label>Foto del justificante (opcional)
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          capture="environment"
+          bind:this={receiptInput}
+          disabled={busy || !online}
+        />
+      </label>
+      {#if !online}
+        <p class="queued-note" role="status">La foto necesita conexión; el gasto puedes guardarlo ya y adjuntar el ticket cuando vuelva la red.</p>
+      {/if}
+      {#if receiptNotice}<p class="queued-note" role="status">{receiptNotice}</p>{/if}
       {#if expenseError}<p class="queued-note" role="alert">{expenseError}</p>{/if}
       <div class="action-row">
         <button class="button primary small-button" type="submit" disabled={busy}>Añadir gasto</button>
-        {#if expenseSent && !queued}<span class="status-chip success">Enviado</span>{/if}
+        {#if expenseSent && !queued}
+          <span class="status-chip success">{receiptAttached ? 'Enviado · Justificante adjunto ✓' : 'Enviado'}</span>
+        {/if}
       </div>
     </form>
   {/if}

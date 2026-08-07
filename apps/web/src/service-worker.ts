@@ -8,6 +8,14 @@ const STATIC_CACHE = `casa-clara-static-${version}`;
 const PAGE_CACHE = `casa-clara-pages-${version}`;
 const PRECACHE = [...build, ...files];
 
+/**
+ * Header de calentamiento: un `fetch` de página con este header se guarda en
+ * PAGE_CACHE bajo su URL limpia, como si hubiera sido una navegación completa.
+ * Lo usa el layout del hogar para dejar Emergencias disponible offline sin
+ * exigir una visita previa (UX-P1-5 / I-03).
+ */
+const WARM_HEADER = 'x-casa-clara-warm-page';
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const staticCache = await caches.open(STATIC_CACHE);
@@ -46,16 +54,53 @@ self.addEventListener('fetch', (event) => {
         if (response.ok) await pageCache.put(request, response.clone());
         return response;
       } catch {
-        return (await pageCache.match(request))
-          ?? (await pageCache.match('/offline'))
+        // ignoreVary: las páginas calentadas se guardan bajo su URL limpia y la
+        // petición de navegación real no debe fallar por un header `Vary`.
+        return (await pageCache.match(request, { ignoreVary: true }))
+          ?? (await pageCache.match('/offline', { ignoreVary: true }))
           ?? new Response('Sin conexión', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
       }
     })());
     return;
   }
 
+  if (request.headers.get(WARM_HEADER) === '1') {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          const pageCache = await caches.open(PAGE_CACHE);
+          // La clave es la URL sin headers: idéntica a la que buscará el
+          // fallback de navegación cuando no haya red.
+          await pageCache.put(new URL(request.url).pathname, response.clone());
+        }
+        return response;
+      } catch {
+        return new Response('Sin conexión', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      }
+    })());
+    return;
+  }
+
   const url = new URL(request.url);
-  if (url.origin === self.location.origin && PRECACHE.includes(url.pathname)) {
+  if (url.origin !== self.location.origin) return;
+
+  if (PRECACHE.includes(url.pathname)) {
     event.respondWith(caches.match(request).then((cached) => cached ?? fetch(request)));
+    return;
+  }
+
+  // El HTML de SvelteKit referencia sus assets con rutas RELATIVAS: cuando el
+  // fallback /offline se sirve bajo otra URL (p. ej. /h/<id>/contacts), el
+  // navegador pide /h/<id>/_app/… y los assets precacheados no coincidirían.
+  // Se normaliza al sufijo /_app/… para que la página offline hidrate sin red.
+  const appIndex = url.pathname.indexOf('/_app/');
+  if (appIndex > 0) {
+    const normalized = url.pathname.slice(appIndex);
+    if (PRECACHE.includes(normalized)) {
+      event.respondWith(
+        caches.match(normalized).then((cached) => cached ?? fetch(request))
+      );
+    }
   }
 });

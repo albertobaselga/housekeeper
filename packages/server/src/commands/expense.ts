@@ -14,6 +14,7 @@ type SubmitPayload = {
   incurredOn: string;
   description: string;
   amountCents: string;
+  receiptStorageObjectId?: UUID | undefined;
 };
 
 type ResolvePayload = {
@@ -22,17 +23,72 @@ type ResolvePayload = {
   reason: string;
 };
 
+/**
+ * Enlaza el justificante subido con el gasto: verifica bajo RLS que el
+ * storage_object existe en el hogar Y fue creado por la propia membresía (la
+ * política `storage_objects_read` ya limita la visibilidad, pero un admin ve
+ * objetos ajenos, así que el filtro por autora es explícito) y materializa la
+ * fila `app.documents` con visibilidad `employment` que el resto del expediente
+ * puede leer. Devuelve el id del documento para fijar `receipt_document_id`.
+ */
+async function createReceiptDocument(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  storageObjectId: UUID,
+  title: string,
+): Promise<UUID> {
+  const object = await client.query<{ id: string }>(
+    `select id
+       from app.storage_objects
+      where household_id = $1 and id = $2
+        and created_by_membership_id = $3
+        and deleted_at is null`,
+    [householdId, storageObjectId, membership.id],
+  );
+  if (!object.rows[0]) {
+    throw new CommandRejectedError(
+      "receipt_not_found",
+      "El justificante no existe en este hogar o no lo subiste tú",
+    );
+  }
+
+  const document = await client.query<{ id: string }>(
+    `insert into app.documents
+       (household_id, storage_object_id, owner_membership_id, visibility,
+        document_type, title, created_by_membership_id)
+     values ($1, $2, $3, 'employment', 'expense_receipt', $4, $3)
+     returning id`,
+    [householdId, storageObjectId, membership.id, title],
+  );
+  const row = document.rows[0];
+  if (!row) throw new Error("La inserción del documento no devolvió identificador");
+  return row.id;
+}
+
 async function submitExpense(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
   payload: SubmitPayload,
 ): Promise<{ resourceId: UUID }> {
+  // El documento se crea ANTES que el gasto: si el storage_object no es válido
+  // el comando se rechaza entero y no queda un gasto huérfano de justificante.
+  const receiptDocumentId = payload.receiptStorageObjectId
+    ? await createReceiptDocument(
+        client,
+        membership,
+        householdId,
+        payload.receiptStorageObjectId,
+        payload.description,
+      )
+    : null;
+
   const inserted = await client.query<{ id: string }>(
     `insert into app.expenses
        (household_id, agreement_id, employee_membership_id, incurred_on,
-        description, amount_cents, status, submitted_by_membership_id)
-     values ($1, $2, $3, $4, $5, $6, 'pending', $3)
+        description, amount_cents, status, submitted_by_membership_id, receipt_document_id)
+     values ($1, $2, $3, $4, $5, $6, 'pending', $3, $7)
      returning id`,
     [
       householdId,
@@ -41,6 +97,7 @@ async function submitExpense(
       payload.incurredOn,
       payload.description,
       payload.amountCents,
+      receiptDocumentId,
     ],
   );
   const row = inserted.rows[0];
