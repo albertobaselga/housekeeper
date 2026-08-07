@@ -25,6 +25,18 @@ export class CommandRejectedError extends Error {
   }
 }
 
+/**
+ * Conflicto que requiere resolución humana (p. ej. edición wiki sobre una
+ * revisión ya superada): el ACK es `conflict`, no `rejected`, para que el
+ * cliente ofrezca resolver en vez de descartar el comando.
+ */
+export class CommandConflictError extends Error {
+  override readonly name = "CommandConflictError";
+  constructor(readonly errorCode: string, message?: string) {
+    super(message ?? errorCode);
+  }
+}
+
 export type CommandHandler = (
   client: PoolClient,
   membership: ActiveMembership,
@@ -51,6 +63,9 @@ function ackForError(operationId: UUID, error: unknown): CommandAckV1 {
   }
   if (error instanceof IdempotencyConflictError) {
     return { operationId, status: "conflict", errorCode: "operation_conflict" };
+  }
+  if (error instanceof CommandConflictError) {
+    return { operationId, status: "conflict", errorCode: error.errorCode };
   }
   if (error instanceof CommandRejectedError) {
     return { operationId, status: "rejected", errorCode: error.errorCode };
