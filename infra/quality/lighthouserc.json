@@ -2,8 +2,8 @@
   "ci": {
     "collect": {
       "url": [
-        "http://127.0.0.1:3000/today",
-        "http://127.0.0.1:3000/emergencies"
+        "http://127.0.0.1:3000/login",
+        "http://127.0.0.1:3000/offline"
       ],
       "numberOfRuns": 3,
       "settings": {

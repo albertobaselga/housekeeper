@@ -12,10 +12,15 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     POSTGRES_USER=validation
     POSTGRES_PASSWORD=validation-only-password
     POSTGRES_DB=validation
-    AUTH_SECRET=validation-only-auth-secret-at-least-32-bytes
+    APP_DB_PASSWORD=validation-only-app-password
+    WORKER_DB_PASSWORD=validation-only-worker-password
+    AUTH_DB_PASSWORD=validation-only-auth-password
+    BETTER_AUTH_SECRET=validation-only-auth-secret-at-least-32-bytes
+    SNAPSHOT_SIGNING_KEY_B64=dmFsaWRhdGlvbi1vbmx5
     MINIO_ROOT_USER=validation-user
     MINIO_ROOT_PASSWORD=validation-only-object-password
     S3_BUCKET=validation
+    'SMTP_FROM=Casa Clara validation <no-reply@casaclara.test>'
     GRAFANA_ADMIN_USER=validation
     GRAFANA_ADMIN_PASSWORD=validation-only-grafana-password
   )

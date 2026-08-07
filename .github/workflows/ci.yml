@@ -28,6 +28,8 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm build
+      - name: Enforce Today bundle and fixture-leak budgets
+        run: pnpm --filter @casa-clara/web verify:bundle
 
   unit:
     name: Unit and domain tests
