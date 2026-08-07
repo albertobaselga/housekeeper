@@ -92,5 +92,7 @@ jobs:
         run: scripts/ci/run-tests-nonempty.sh pnpm test:rls
       - name: Run server transaction and idempotency integration
         run: scripts/ci/run-tests-nonempty.sh pnpm --filter @casa-clara/server test
+      - name: Run wiki importer round-trip
+        run: scripts/ci/run-tests-nonempty.sh pnpm --filter @casa-clara/db test:import
       - name: Reapply migrations to prove idempotent runner behavior
         run: pnpm db:migrate
