@@ -12,8 +12,7 @@ import {
   loadMenuWeek,
   loadRecipe,
   loadRoutines,
-  loadShoppingList,
-  menuSlotContentHash
+  loadShoppingList
 } from '../src/lib/server/food.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
@@ -229,31 +228,37 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
     expect(week!.recipeOptions.find((candidate) => candidate.pageId === PAGE_ARROZ)!.hasUnreviewedFood).toBe(false);
   });
 
-  it('el contentHash es estable entre cargas y reproduce la receta canónica', async () => {
+  it('el contentHash es estable entre cargas y cambia si cambia una restricción', async () => {
     const first = await loadMenuWeek(ADMIN_USER, FIXTURE_HOUSEHOLD, WEEK, appPool);
     const second = await loadMenuWeek(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, WEEK, appPool);
     const slotFirst = first!.slots.find((slot) => slot.id === SLOT_COMIDA)!;
     const slotSecond = second!.slots.find((slot) => slot.id === SLOT_COMIDA)!;
     expect(slotFirst.contentHash).toMatch(/^[0-9a-f]{64}$/);
+    // La web delega en computeMenuSlotHash de @casa-clara/server (la misma
+    // función contra la que compara el comando confirm): mismo hash para
+    // cualquier lector del mismo contenido.
     expect(slotFirst.contentHash).toBe(slotSecond.contentHash);
-
-    // Mismo formato documentado en food.server.ts: página + revisión vigente +
-    // ingredientes ordenados + comensales ordenados + flags ordenados.
-    const expected = menuSlotContentHash({
-      pageId: PAGE_CREMA,
-      revisionId: REV_CREMA,
-      freeText: '',
-      ingredients: [
-        { foodId: FOOD_NATA, quantity: '0.20', unit: 'l', scaling: 'linear' },
-        { foodId: FOOD_LECHE, quantity: '0.5', unit: 'l', scaling: 'linear' },
-        { foodId: FOOD_ACEITE, quantity: '0.10', unit: 'l', scaling: 'fixed' }
-      ],
-      dinerIds: [DINER_MARTA, DINER_LEO],
-      flags: [{ dinerId: DINER_LEO, allergenCode: 'lacteos', severity: 'high' }]
-    });
-    expect(slotFirst.contentHash).toBe(expected);
     // El hueco sin confirmar no arrastra confirmación.
     expect(slotFirst.confirmation).toBeNull();
+
+    // Cambiar un DietaryFlag del grupo invalida el hash (y con él cualquier
+    // confirmación previa).
+    await adminPool.query(
+      `insert into app.diner_flags (household_id, diner_id, allergen_code, severity)
+       values ($1, $2, 'huevos', 'medium')`,
+      [FIXTURE_HOUSEHOLD, DINER_MARTA]
+    );
+    try {
+      const third = await loadMenuWeek(ADMIN_USER, FIXTURE_HOUSEHOLD, WEEK, appPool);
+      const slotThird = third!.slots.find((slot) => slot.id === SLOT_COMIDA)!;
+      expect(slotThird.contentHash).not.toBe(slotFirst.contentHash);
+    } finally {
+      await adminPool.query(
+        `delete from app.diner_flags
+          where household_id = $1 and diner_id = $2 and allergen_code = 'huevos'`,
+        [FIXTURE_HOUSEHOLD, DINER_MARTA]
+      );
+    }
   });
 
   it('loadShoppingList agrega la leche de dos recetas y respeta la cantidad fija', async () => {

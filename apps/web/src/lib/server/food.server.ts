@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, canonicalSha256, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { addQuantities, fromHundredths, scaleQuantity, toHundredths } from '$lib/food/quantities';
 import { weekDays } from '$lib/food/dates';
@@ -13,60 +13,14 @@ const SHOPPING_WRITER_ROLES: readonly Role[] = ['family_admin', 'family_member',
 export type MealSlot = 'desayuno' | 'almuerzo' | 'comida' | 'merienda' | 'cena';
 export const MEAL_SLOTS: readonly MealSlot[] = ['desayuno', 'almuerzo', 'comida', 'merienda', 'cena'];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Hash canónico de un hueco de menú (menu_confirmations.content_hash).
-//
-// FORMATO (a reconciliar con packages/server/src/commands/menu-hash.ts del
-// agente de handlers; ambos lados DEBEN producir bytes idénticos):
-//   canonicalSha256({
-//     pageId:     uuid | null,          // menu_slots.recipe_page_id
-//     revisionId: uuid | null,          // wiki_pages.current_revision_id (revisión vigente)
-//     freeText:   string,               // menu_slots.free_text ('' con receta)
-//     ingredients: [{ foodId, quantity, unit, scaling }],
-//                                       // recipe_ingredients ordenados por foodId asc;
-//                                       // quantity normalizada sin ceros de cola ("1.50" → "1.5")
-//     dinerIds:   [uuid],               // comensales del grupo ordenados asc
-//     flags:      [{ dinerId, allergenCode, severity }]
-//                                       // diner_flags de esos comensales ordenados
-//                                       // por (dinerId, allergenCode) asc
-//   })
-// canonicalSha256 = sha-256 hex del JSON canónico de @casa-clara/contracts
-// (claves ordenadas, sin undefined). Cualquier cambio de receta, revisión,
-// ingredientes, comensales o restricciones altera el hash y caduca la
-// confirmación (el servidor responde conflict al confirmar con hash antiguo).
-// ─────────────────────────────────────────────────────────────────────────────
-export interface MenuSlotHashInput {
-  pageId: string | null;
-  revisionId: string | null;
-  freeText: string;
-  ingredients: Array<{ foodId: string; quantity: string; unit: string; scaling: string }>;
-  dinerIds: string[];
-  flags: Array<{ dinerId: string; allergenCode: string; severity: string }>;
-}
+// El hash de confirmación (menu_confirmations.content_hash) tiene UNA sola
+// implementación: computeMenuSlotHash de @casa-clara/server, la misma contra la
+// que el comando confirm compara. La web la invoca dentro de su transacción de
+// lectura; así es imposible que ambos lados divieran en el formato canónico.
 
 function normalizeQuantity(quantity: string): string {
   const hundredths = toHundredths(quantity);
   return hundredths === null ? quantity : fromHundredths(hundredths);
-}
-
-export function menuSlotContentHash(input: MenuSlotHashInput): string {
-  return canonicalSha256({
-    pageId: input.pageId,
-    revisionId: input.revisionId,
-    freeText: input.freeText,
-    ingredients: [...input.ingredients]
-      .sort((a, b) => a.foodId.localeCompare(b.foodId))
-      .map((ingredient) => ({
-        foodId: ingredient.foodId,
-        quantity: normalizeQuantity(ingredient.quantity),
-        unit: ingredient.unit,
-        scaling: ingredient.scaling
-      })),
-    dinerIds: [...input.dinerIds].sort(),
-    flags: [...input.flags]
-      .sort((a, b) => a.dinerId.localeCompare(b.dinerId) || a.allergenCode.localeCompare(b.allergenCode))
-      .map((flag) => ({ dinerId: flag.dinerId, allergenCode: flag.allergenCode, severity: flag.severity }))
-  });
 }
 
 export interface DinerFlagView {
@@ -389,33 +343,19 @@ export async function loadMenuWeek(
       const { recipes, ingredients } = await fetchRecipes(client, householdId, null);
       const groupById = new Map(groups.map((group) => [group.id, group]));
 
+      const slotHashes = new Map<string, string>();
+      for (const slot of slotResult.rows) {
+        const hash = await computeMenuSlotHash(client, householdId, slot.id);
+        if (hash) slotHashes.set(slot.id, hash);
+      }
+
       const slots: MenuSlotView[] = slotResult.rows.map((slot) => {
         const group = groupById.get(slot.groupId);
         const core = slot.recipePageId ? (recipes.get(slot.recipePageId) ?? null) : null;
         const ingredientRows = core ? (ingredients.get(core.pageId) ?? []) : [];
         const recipe = core ? toSlotRecipeView(core, ingredientRows, allergenNames) : null;
 
-        const dinerIds = (group?.diners ?? []).map((diner) => diner.id);
-        const flags = (group?.diners ?? []).flatMap((diner) =>
-          diner.flags.map((flag) => ({
-            dinerId: diner.id,
-            allergenCode: flag.allergenCode,
-            severity: flag.severity
-          }))
-        );
-        const contentHash = menuSlotContentHash({
-          pageId: core?.pageId ?? null,
-          revisionId: core?.revisionId ?? null,
-          freeText: slot.freeText,
-          ingredients: ingredientRows.map((row) => ({
-            foodId: row.foodId,
-            quantity: row.quantity,
-            unit: row.unit,
-            scaling: row.scaling
-          })),
-          dinerIds,
-          flags
-        });
+        const contentHash = slotHashes.get(slot.id) ?? '';
 
         const stored = confirmations.get(slot.id) ?? null;
         const recipeCodes = new Set(recipe?.allergens.map((entry) => entry.code) ?? []);
