@@ -43,7 +43,10 @@ describe('capability matrix', () => {
     expect(can('employee_live_in', 'content.write')).toBe(false);
     expect(can('helper', 'routine.toggle')).toBe(true);
     expect(can('helper', 'calendar.read')).toBe(false);
-    expect(capabilitiesFor('viewer')).toEqual(['contact.read', 'emergency.read', 'calendar.read']);
+    expect(capabilitiesFor('viewer')).toEqual(
+      expect.arrayContaining(['contact.read', 'emergency.read', 'calendar.read'])
+    );
+    expect(capabilitiesFor('viewer')).toHaveLength(3);
   });
 
   it('fails closed for unknown roles and capabilities', () => {

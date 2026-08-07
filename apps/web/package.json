@@ -8,12 +8,19 @@
     "build": "vite build",
     "verify:bundle": "node scripts/verify-today-bundle.mjs",
     "preview": "vite preview",
+    "start": "node build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "@casa-clara/contracts": "workspace:*",
+    "@casa-clara/domain": "workspace:*",
+    "@casa-clara/server": "workspace:*"
+  },
   "devDependencies": {
-    "@sveltejs/adapter-auto": "7.0.1",
+    "@sveltejs/adapter-node": "5.5.7",
     "@sveltejs/kit": "2.70.2",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
     "fake-indexeddb": "6.2.5",
