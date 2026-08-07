@@ -38,6 +38,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import process from 'node:process';
 
+import matter from 'gray-matter';
 import pg from 'pg';
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -64,87 +65,46 @@ export function contentHash({ title, body, tags, aliases }) {
     .digest('hex');
 }
 
-function stripQuotes(value) {
-  if (
-    (value.startsWith('"') && value.endsWith('"') && value.length >= 2) ||
-    (value.startsWith("'") && value.endsWith("'") && value.length >= 2)
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function parseInlineList(raw, key) {
-  const inner = raw.slice(1, -1).trim();
-  if (inner === '') return [];
-  return inner.split(',').map((item) => {
-    const value = stripQuotes(item.trim());
-    if (value === '') throw new Error(`elemento vacío en la lista «${key}»`);
-    return value;
-  });
-}
-
-// Front-matter YAML mínimo: bloque `---` inicial con escalares `clave: valor`,
-// listas en línea `clave: [a, b]` o listas en bloque con `- elemento`.
+// gray-matter (js-yaml) parsea YAML real — multilínea, comillas, anidamiento —
+// de cara al corpus representativo; aquí solo se conservan las validaciones del
+// contrato del importador: front-matter obligatorio y cerrado, claves conocidas
+// y valores escalares o listas de escalares.
 export function parseFrontMatter(raw, { allowedKeys }) {
   const lines = raw.split(/\r?\n/);
   if ((lines[0] ?? '').trim() !== '---') {
     throw new Error('falta el front-matter (la primera línea debe ser «---»)');
   }
+  if (!lines.slice(1).some((line) => line.trim() === '---')) {
+    throw new Error('front-matter sin cerrar (falta la línea «---» final)');
+  }
+  let parsed;
+  try {
+    parsed = matter(raw);
+  } catch (error) {
+    throw new Error(`front-matter YAML inválido: ${error.reason ?? error.message}`);
+  }
   const data = {};
-  let index = 1;
-  let closed = false;
-  while (index < lines.length) {
-    const line = lines[index];
-    if (line.trim() === '---') {
-      closed = true;
-      index += 1;
-      break;
-    }
-    if (line.trim() === '' || line.trim().startsWith('#')) {
-      index += 1;
-      continue;
-    }
-    const match = /^([A-Za-z][A-Za-z0-9_-]*):(.*)$/.exec(line);
-    if (!match) {
-      throw new Error(`línea de front-matter ilegible: «${line.trim()}»`);
-    }
-    const key = match[1];
+  for (const [key, value] of Object.entries(parsed.data)) {
     if (!allowedKeys.has(key)) {
       throw new Error(`clave de front-matter no soportada: «${key}»`);
     }
-    if (key in data) {
-      throw new Error(`clave de front-matter duplicada: «${key}»`);
-    }
-    const rest = match[2].trim();
-    if (rest === '') {
-      // Lista en bloque: líneas siguientes con «- elemento».
-      const items = [];
-      index += 1;
-      while (index < lines.length && /^\s+-\s+/.test(lines[index])) {
-        items.push(stripQuotes(lines[index].replace(/^\s+-\s+/, '').trim()));
-        index += 1;
-      }
-      if (items.length === 0) {
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
         throw new Error(`la clave «${key}» no tiene valor ni elementos de lista`);
       }
-      data[key] = items;
-      continue;
-    }
-    if (rest.startsWith('[')) {
-      if (!rest.endsWith(']')) {
-        throw new Error(`lista en línea sin cerrar en la clave «${key}»`);
-      }
-      data[key] = parseInlineList(rest, key);
+      data[key] = value.map((item) => {
+        if (typeof item !== 'string' && typeof item !== 'number') {
+          throw new Error(`la lista «${key}» solo admite valores simples`);
+        }
+        return String(item).trim();
+      });
+    } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      data[key] = String(value).trim();
     } else {
-      data[key] = stripQuotes(rest);
+      throw new Error(`la clave «${key}» tiene un valor no soportado`);
     }
-    index += 1;
   }
-  if (!closed) {
-    throw new Error('front-matter sin cerrar (falta la línea «---» final)');
-  }
-  return { data, body: lines.slice(index).join('\n').replace(/^\n+/, '') };
+  return { data, body: parsed.content.replace(/^\r?\n+/, '') };
 }
 
 function parsePageFile(raw, { fallbackSlug }) {

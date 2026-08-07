@@ -236,7 +236,7 @@ describe.runIf(Boolean(adminUrl))('importador por lotes de la wiki', () => {
     });
     expect(rehearsal.errors).toHaveLength(1);
     expect(rehearsal.errors[0].file).toContain('rota.md');
-    expect(rehearsal.errors[0].reason).toContain('lista en línea sin cerrar');
+    expect(rehearsal.errors[0].reason).toContain('front-matter sin cerrar');
     expect(await wikiCounts()).toEqual(before);
   });
 });
