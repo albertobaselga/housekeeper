@@ -4,6 +4,13 @@ Thumbs.db
 .lighthouseci/
 coverage/
 node_modules/
+.pnpm-store/
+.svelte-kit/
+build/
+dist/
+playwright-report/
+test-results/
+.vitest/
 .env
 .env.*
 !.env.example
