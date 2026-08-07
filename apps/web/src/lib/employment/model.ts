@@ -32,6 +32,15 @@ export function formatCents(value: string | bigint, options: { signed?: boolean 
   return options.signed && cents > 0n ? `+${magnitude}` : magnitude;
 }
 
+/**
+ * Céntimos → valor editable de un campo de importe es-ES, sin símbolo
+ * ("152175" → "1.521,75"). Es la inversa de `parseEuroInput` para poder
+ * prellenar formularios con importes que la app ya conoce.
+ */
+export function centsToEuroInput(value: string | bigint): string {
+  return formatCents(value).replace(/\s*€$/, '');
+}
+
 /** Formatea minutos como duración legible ("1440" → "1 día", 150 → "2 h 30 min"). */
 export function formatMinutes(value: string | number | bigint): string {
   const total = typeof value === 'number' ? BigInt(value) : parseCents(value);

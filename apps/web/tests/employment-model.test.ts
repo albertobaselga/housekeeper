@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+import { parseEuroInput } from '../src/lib/employment/commands';
 import {
   buildAccrual,
+  centsToEuroInput,
   buildAdvanceBalanceViews,
   buildAgreementVersionViews,
   buildCompensationBalanceViews,
@@ -51,6 +53,16 @@ describe('dinero como cadenas de céntimos', () => {
     expect(formatCents('3600', { signed: true })).toBe('+36,00 €');
     expect(formatCents('0')).toBe('0,00 €');
     expect(formatCents('900719925474099312')).toBe('9.007.199.254.740.993,12 €');
+  });
+
+  it('convierte céntimos en un importe editable que parseEuroInput acepta (prellenado de «Registrar pago»)', () => {
+    // Default del formulario de pago: el pendiente llega prellenado, sin reteclear.
+    expect(centsToEuroInput('152175')).toBe('1.521,75');
+    expect(centsToEuroInput('2175')).toBe('21,75');
+    expect(centsToEuroInput('100000')).toBe('1.000,00');
+    // Ida y vuelta exacta con el parser del formulario.
+    expect(parseEuroInput(centsToEuroInput('152175'))).toBe('152175');
+    expect(parseEuroInput(centsToEuroInput('2175'))).toBe('2175');
   });
 
   it('rechaza importes que no sean enteros en céntimos', () => {

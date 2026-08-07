@@ -36,6 +36,11 @@
   const canCloseSettlement = $derived(agreement !== null && can(context.role, 'settlement.close'));
   const canRecordPayment = $derived(agreement !== null && can(context.role, 'payment.register'));
 
+  // Jerarquía por rol: quien decide (la familia) ve las tarjetas con
+  // decisiones pendientes arriba del expediente; la empleada conserva su orden
+  // (parte semanal y proyección primero).
+  const pendingFirst = $derived(canConfirmWork || canCloseSettlement);
+
   function monthEnd(period: string): string {
     const [year, month] = period.split('-').map(Number);
     const lastDay = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
@@ -131,8 +136,33 @@
 
       <OutboxTriageCard householdId={overview.householdId} />
 
+      {#snippet pendingDecisionCards()}
+        {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra)}
+          <ExtraWorkPendingCard
+            householdId={overview.householdId}
+            agreementId={agreement.id}
+            extras={overview.pendingExtras}
+            ownMembershipId={context.user.membershipId}
+            canRegister={canRegisterExtra}
+            canConfirm={canConfirmWork}
+          />
+        {/if}
+
+        {#if agreement && (overview.pendingExpenses.length > 0 || canSubmitExpense)}
+          <ExpensesPendingCard
+            householdId={overview.householdId}
+            agreementId={agreement.id}
+            expenses={overview.pendingExpenses}
+            canSubmit={canSubmitExpense}
+            canResolve={canCloseSettlement}
+          />
+        {/if}
+      {/snippet}
+
       <div class="content-grid employment-grid">
         <div class="stack">
+          {#if pendingFirst}{@render pendingDecisionCards()}{/if}
+
           {#if agreement && canSubmitWeek}
             <WeeklyReportCard
               householdId={overview.householdId}
@@ -168,26 +198,7 @@
             <p class="audit-note">Cada línea conserva su origen y la regla vigente al cerrar el periodo.</p>
           </article>
 
-          {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra)}
-            <ExtraWorkPendingCard
-              householdId={overview.householdId}
-              agreementId={agreement.id}
-              extras={overview.pendingExtras}
-              ownMembershipId={context.user.membershipId}
-              canRegister={canRegisterExtra}
-              canConfirm={canConfirmWork}
-            />
-          {/if}
-
-          {#if agreement && (overview.pendingExpenses.length > 0 || canSubmitExpense)}
-            <ExpensesPendingCard
-              householdId={overview.householdId}
-              agreementId={agreement.id}
-              expenses={overview.pendingExpenses}
-              canSubmit={canSubmitExpense}
-              canResolve={canCloseSettlement}
-            />
-          {/if}
+          {#if !pendingFirst}{@render pendingDecisionCards()}{/if}
 
           <article class="card">
             <div class="section-heading">

@@ -2,7 +2,7 @@
   import { invalidateAll } from '$app/navigation';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { useAppContext } from '$lib/auth/context';
-  import { addDays, dayLabel, weekLabel } from '$lib/food/dates';
+  import { activeMenuDayIndex, addDays, dayLabel, weekLabel } from '$lib/food/dates';
   import { formatQuantityEs } from '$lib/food/quantities';
   import {
     addShoppingItem,
@@ -40,14 +40,28 @@
   let queued = $state(false);
   let busy = $state(false);
   let tab = $state<'menu' | 'compra'>('menu');
-  let selectedDay = $state(0);
 
-  async function dispatch(envelope: Parameters<typeof queueFoodCommand>[0]): Promise<void> {
+  // Día activo: por defecto hoy (si cae en la semana visible); la navegación
+  // de semanas arrastra el día seleccionado vía `?day=` y el click en una
+  // pestaña lo fija localmente para la semana en pantalla.
+  let dayOverride = $state<string | null>(null);
+  const selectedDay = $derived.by(() => {
+    if (!week) return 0;
+    if (dayOverride) {
+      const index = week.days.indexOf(dayOverride);
+      if (index >= 0) return index;
+    }
+    return activeMenuDayIndex(week.days, data.day, data.today);
+  });
+  const selectedDate = $derived(week ? week.days[selectedDay]! : null);
+
+  async function dispatch(envelope: Parameters<typeof queueFoodCommand>[0]): Promise<'synced' | 'queued'> {
     busy = true;
     try {
       const outcome = await queueFoodCommand(envelope);
       if (outcome === 'synced') await invalidateAll();
       else queued = true;
+      return outcome;
     } finally {
       busy = false;
     }
@@ -132,16 +146,27 @@
     void dispatch(clearMenuSlot({ householdId: week.householdId, slotId: slot.id }));
   }
 
+  // Confirmación visible del duplicado: qué semana se copió y adónde, con
+  // enlace directo para comprobarlo sin navegar a ciegas.
+  let duplicated = $state<{ from: string; to: string; day: string } | null>(null);
+
   function duplicateWeek(): void {
     if (!week) return;
+    const from = week.weekStartsOn;
+    const to = addDays(from, 7);
+    const day = addDays(selectedDate ?? from, 7);
+    duplicated = null;
     void dispatch(
-      duplicateMenuWeek({
-        householdId: week.householdId,
-        fromWeekStartsOn: week.weekStartsOn,
-        toWeekStartsOn: addDays(week.weekStartsOn, 7)
-      })
-    );
+      duplicateMenuWeek({ householdId: week.householdId, fromWeekStartsOn: from, toWeekStartsOn: to })
+    ).then((outcome) => {
+      if (outcome === 'synced') duplicated = { from, to, day };
+    });
   }
+
+  $effect(() => {
+    // El aviso de copia pertenece a la semana de origen: al navegar, fuera.
+    if (duplicated && week && week.weekStartsOn !== duplicated.from) duplicated = null;
+  });
 
   // ── Nuevo grupo de comensales ──────────────────────────────────────────────
   let newGroupName = $state('');
@@ -215,22 +240,29 @@
     />
 
     {#if queued}<p class="success-message" role="status">Cambio guardado en la outbox local, pendiente de sincronizar.</p>{/if}
+    {#if duplicated}
+      <p class="success-message" role="status">
+        Semana del {weekLabel(duplicated.from)} copiada a la del {weekLabel(duplicated.to)}.
+        <a href={`${base}?week=${duplicated.to}&day=${duplicated.day}`}>Ver la semana del {weekLabel(duplicated.to)} →</a>
+      </p>
+    {/if}
 
     <nav class="week-nav" aria-label="Cambiar de semana">
-      <a class="button secondary" href={`${base}?week=${addDays(week.weekStartsOn, -7)}`}>← Semana anterior</a>
-      <a class="button secondary" href={`${base}?week=${addDays(week.weekStartsOn, 7)}`}>Semana siguiente →</a>
+      <a class="button secondary" href={`${base}?week=${addDays(week.weekStartsOn, -7)}&day=${addDays(selectedDate ?? week.weekStartsOn, -7)}`}>← Semana anterior</a>
+      <a class="button secondary" href={`${base}?week=${addDays(week.weekStartsOn, 7)}&day=${addDays(selectedDate ?? week.weekStartsOn, 7)}`}>Semana siguiente →</a>
     </nav>
 
     <div class="space-tabs" role="list" aria-label="Secciones del menú">
       <button type="button" class:active={tab === 'menu'} onclick={() => (tab = 'menu')}>Menú semanal</button>
       <button type="button" class:active={tab === 'compra'} onclick={() => (tab = 'compra')}>Lista de la compra</button>
+      <a class="tab-link" href={`/h/${context.household.id}/recipes`}>Recetas</a>
     </div>
 
     {#if tab === 'menu'}
       <div class="day-tabs" role="tablist" aria-label="Días de la semana">
         {#each week.days as day, index (day)}
           {@const label = dayLabel(day)}
-          <button type="button" role="tab" aria-selected={selectedDay === index} class:active={selectedDay === index} onclick={() => (selectedDay = index)}>
+          <button type="button" role="tab" aria-selected={selectedDay === index} class:active={selectedDay === index} onclick={() => (dayOverride = day)}>
             <span>{label.day}</span><strong>{label.date}</strong>
           </button>
         {/each}
@@ -471,3 +503,20 @@
     </section>
   {/if}
 </div>
+
+<style>
+  /* La pestaña «Recetas» es un enlace a su ruta propia con el mismo aspecto
+     que las pestañas de sección del menú. */
+  .space-tabs a.tab-link {
+    flex: 0 0 auto;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface);
+    padding: 0.45rem 0.8rem;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-decoration: none;
+    line-height: normal;
+  }
+</style>

@@ -33,26 +33,48 @@
     quarterly: 'trimestre(s)'
   };
   const DUE_LABEL = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+  // Hoy en la zona del hogar: default natural de «próxima fecha» en el alta.
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 
   // Las acciones de escritura reales solo existen sobre datos de Postgres; en
   // modo fixture la página conserva el toggle de demostración local.
   let queued = $state(false);
   let busy = $state(false);
 
-  async function dispatch(envelope: Parameters<typeof queueFoodCommand>[0]): Promise<void> {
+  async function dispatch(envelope: Parameters<typeof queueFoodCommand>[0]): Promise<'synced' | 'queued'> {
     busy = true;
     try {
       const outcome = await queueFoodCommand(envelope);
       if (outcome === 'synced') await invalidateAll();
       else queued = true;
+      return outcome;
     } finally {
       busy = false;
     }
   }
 
-  function complete(routineId: string, dueOn: string): void {
-    if (!live) return;
-    void dispatch(completeRoutine({ householdId: live.householdId, routineId, dueOn }));
+  // Guard anti doble disparo: el botón de la rutina queda deshabilitado desde
+  // el click hasta que llegan datos frescos, y el resultado se anuncia con un
+  // feedback visible en la propia fila (no solo la fecha pequeña).
+  let completingId = $state<string | null>(null);
+  let completedFeedback = $state<Record<string, string>>({});
+
+  async function complete(routineId: string, dueOn: string): Promise<void> {
+    if (!live || completingId !== null) return;
+    completingId = routineId;
+    try {
+      const outcome = await dispatch(completeRoutine({ householdId: live.householdId, routineId, dueOn }));
+      const fresh = live.routines.find((candidate) => candidate.id === routineId);
+      completedFeedback = {
+        ...completedFeedback,
+        [routineId]:
+          outcome === 'synced' && fresh
+            ? `Hecha ✓ · próxima el ${DUE_LABEL.format(new Date(`${fresh.nextDueOn}T00:00:00Z`))}`
+            : 'Hecha ✓ · pendiente de sincronizar'
+      };
+    } finally {
+      completingId = null;
+    }
   }
 
   // ── Crear/editar rutina (familia) ──────────────────────────────────────────
@@ -62,7 +84,7 @@
   let routineAudience = $state<RoutineAudience>('all');
   let routineFrequency = $state<RoutineFrequency>('weekly');
   let routineInterval = $state(1);
-  let routineNextDue = $state('');
+  let routineNextDue = $state(today);
 
   function editRoutineForm(id: string): void {
     const routine = live?.routines.find((candidate) => candidate.id === id);
@@ -83,7 +105,7 @@
     routineAudience = 'all';
     routineFrequency = 'weekly';
     routineInterval = 1;
-    routineNextDue = '';
+    routineNextDue = today;
   }
 
   function submitRoutine(event: SubmitEvent): void {
@@ -146,7 +168,15 @@
               {#if routine.completedCurrent}
                 <span class="status-chip success">Hecha</span>
               {:else if canToggle}
-                <button class="button secondary small-button" type="button" disabled={busy} onclick={() => complete(routine.id, routine.nextDueOn)}>
+                {#if completedFeedback[routine.id]}
+                  <span class="status-chip success" role="status">{completedFeedback[routine.id]}</span>
+                {/if}
+                <button
+                  class="button secondary small-button"
+                  type="button"
+                  disabled={busy || completingId === routine.id}
+                  onclick={() => void complete(routine.id, routine.nextDueOn)}
+                >
                   Marcar hecha
                 </button>
               {/if}

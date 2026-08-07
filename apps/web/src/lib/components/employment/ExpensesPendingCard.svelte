@@ -26,8 +26,14 @@
   let queued = $state(false);
   let acted = $state<string[]>([]);
 
+  // El contrato exige un motivo también al aprobar; para no obligar a
+  // redactarlo en el caso habitual, llega PRE-RELLENADO y editable.
+  const DEFAULT_APPROVE_REASON = 'Aprobado';
+  const DEFAULT_REJECT_REASON = 'Rechazado';
+
   let resolveOpenId = $state<string | null>(null);
   let resolveReason = $state('');
+  let reasonField = $state<HTMLInputElement | null>(null);
 
   let expenseDate = $state(new Date().toISOString().slice(0, 10));
   let expenseDescription = $state('');
@@ -84,6 +90,20 @@
     resolveOpenId = null;
     resolveReason = '';
   }
+
+  function reject(expenseId: string): void {
+    const trimmed = resolveReason.trim();
+    // Primer click sobre «Rechazar» con el motivo de aprobación intacto: se
+    // prellena «Rechazado» y el campo queda editable y con foco para poder
+    // matizarlo; el siguiente click confirma con el motivo que haya.
+    if (!trimmed || trimmed === DEFAULT_APPROVE_REASON) {
+      resolveReason = DEFAULT_REJECT_REASON;
+      reasonField?.focus();
+      reasonField?.select();
+      return;
+    }
+    void decide(expenseId, 'rejected');
+  }
 </script>
 
 <article class="card">
@@ -109,7 +129,10 @@
               type="button"
               disabled={busy}
               aria-expanded={resolveOpenId === expense.id}
-              onclick={() => { resolveOpenId = resolveOpenId === expense.id ? null : expense.id; resolveReason = ''; }}
+              onclick={() => {
+                resolveOpenId = resolveOpenId === expense.id ? null : expense.id;
+                resolveReason = resolveOpenId ? DEFAULT_APPROVE_REASON : '';
+              }}
             >Revisar</button>
           {/if}
         </span>
@@ -117,7 +140,14 @@
       {#if canResolve && resolveOpenId === expense.id && !acted.includes(expense.id)}
         <form class="action-form" onsubmit={(event) => { event.preventDefault(); void decide(expense.id, 'approved'); }}>
           <label>Motivo de la decisión
-            <input type="text" bind:value={resolveReason} maxlength="500" required placeholder="Justificante correcto, gasto del hogar…" />
+            <input
+              type="text"
+              bind:value={resolveReason}
+              bind:this={reasonField}
+              maxlength="500"
+              required
+              placeholder="Justificante correcto, gasto del hogar…"
+            />
           </label>
           <div class="action-row">
             <button class="button primary small-button" type="submit" disabled={busy || !resolveReason.trim()}>Aprobar</button>
@@ -125,7 +155,7 @@
               class="button secondary small-button"
               type="button"
               disabled={busy || !resolveReason.trim()}
-              onclick={() => void decide(expense.id, 'rejected')}
+              onclick={() => reject(expense.id)}
             >Rechazar</button>
           </div>
         </form>

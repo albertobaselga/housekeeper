@@ -40,6 +40,22 @@ export function dayLabel(dateISO: string): { day: string; date: string } {
   return { day: DAY_LABEL.format(date), date: DATE_LABEL.format(date) };
 }
 
+/**
+ * Índice del día activo por defecto en la vista semanal del menú: el día
+ * pedido explícitamente si pertenece a la semana; si no, hoy cuando la semana
+ * visible lo contiene; y en último término el lunes. Así la página abre en el
+ * día actual (cambiar «la comida de hoy» no exige el click correctivo) sin
+ * romper la navegación a otras semanas.
+ */
+export function activeMenuDayIndex(days: readonly string[], requested: string | null, today: string): number {
+  if (requested) {
+    const index = days.indexOf(requested);
+    if (index >= 0) return index;
+  }
+  const todayIndex = days.indexOf(today);
+  return todayIndex >= 0 ? todayIndex : 0;
+}
+
 /** Etiqueta "3 ago – 9 ago" para la cabecera de la semana. */
 export function weekLabel(mondayISO: string): string {
   return `${DATE_LABEL.format(new Date(`${mondayISO}T00:00:00Z`))} – ${DATE_LABEL.format(new Date(`${addDays(mondayISO, 6)}T00:00:00Z`))}`;
