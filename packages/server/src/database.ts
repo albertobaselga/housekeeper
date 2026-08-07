@@ -9,7 +9,6 @@ export interface AuthenticatedPrincipal {
 export interface ActiveMembership {
   id: UUID;
   householdId: UUID;
-  personId: UUID;
   role: Role;
   expiresAt: string | null;
 }
@@ -31,13 +30,13 @@ export async function withAuthorizedTransaction<T>(
     const result = await client.query<{
       id: string;
       household_id: string;
-      person_id: string;
       role: Role;
       expires_at: Date | null;
-    }>(`select id, household_id, person_id, role, expires_at
-        from app.memberships
+    }>(`select id, household_id, role, expires_at
+        from app.household_memberships
         where user_id = $1
           and household_id = $2
+          and starts_at <= now()
           and revoked_at is null
           and (expires_at is null or expires_at > now())
         limit 1`, [principal.userId, householdId]);
@@ -47,14 +46,10 @@ export async function withAuthorizedTransaction<T>(
     const membership: ActiveMembership = {
       id: row.id,
       householdId: row.household_id,
-      personId: row.person_id,
       role: row.role,
       expiresAt: row.expires_at?.toISOString() ?? null,
     };
-    await client.query("select set_config('app.household_id', $1, true)", [membership.householdId]);
-    await client.query("select set_config('app.membership_id', $1, true)", [membership.id]);
-    await client.query("select set_config('app.person_id', $1, true)", [membership.personId]);
-    await client.query("select set_config('app.role', $1, true)", [membership.role]);
+    await client.query("select app.set_household_context($1, $2)", [membership.householdId, membership.id]);
 
     const value = await operation(client, membership);
     await client.query("commit");
