@@ -26,6 +26,17 @@ type ResolvePayload = {
   reason: string;
 };
 
+type ExtraWorkEventRow = {
+  id: string;
+  agreement_id: string;
+  employee_membership_id: string;
+  kind: "overtime" | "worked_rest_day";
+  worked_on: string;
+  duration_minutes: number;
+  status: ExtraWorkStatus;
+  requested_by_membership_id: string;
+};
+
 const RESOLVABLE_STATUSES: readonly ExtraWorkStatus[] = [
   "requested",
   "accepted",
@@ -55,6 +66,46 @@ async function appendTransition(
      values ($1, $2, $3, $4, $5, $6, $7)`,
     [householdId, eventId, sequence.rows[0]?.seq ?? 1, fromStatus, toStatus, actorMembershipId, reason],
   );
+}
+
+/**
+ * Carga el evento bajo RLS. Con `lockRow` el SELECT añade FOR UPDATE, pero ojo:
+ * bajo RLS un FOR UPDATE aplica además el USING de las políticas de UPDATE, y
+ * `extra_work_employee_update` solo deja bloquear filas en requested/accepted.
+ * La empleada lee sin bloqueo para poder distinguir "estado no realizable" de
+ * "no existe"; el trigger de la máquina de estados y el advisory lock del
+ * historial siguen garantizando la serialización del cambio.
+ */
+async function requireExtraWorkEvent(
+  client: PoolClient,
+  householdId: UUID,
+  eventId: UUID,
+  lockRow: boolean,
+): Promise<ExtraWorkEventRow> {
+  const loaded = await client.query<ExtraWorkEventRow>(
+    `select id, agreement_id, employee_membership_id, kind, worked_on::text as worked_on,
+            duration_minutes, status, requested_by_membership_id
+       from app.extra_work_events
+      where household_id = $1 and id = $2
+      ${lockRow ? "for update" : ""}`,
+    [householdId, eventId],
+  );
+  const event = loaded.rows[0];
+  if (!event) {
+    throw new CommandRejectedError("extra_work_not_found", "La jornada extra no existe en este hogar");
+  }
+  return event;
+}
+
+/**
+ * El trigger constraint de historial es DEFERRABLE INITIALLY DEFERRED y encola
+ * una comprobación por cada versión de fila; con varios UPDATE en la misma
+ * transacción las versiones intermedias fallarían en el commit. En modo
+ * IMMEDIATE cada paso se valida al final de su propia sentencia, por eso cada
+ * transición se anexa ANTES de actualizar la fila del evento.
+ */
+async function enforceTransitionHistoryImmediately(client: PoolClient): Promise<void> {
+  await client.query("set constraints app.extra_work_requires_transition_history immediate");
 }
 
 async function registerExtraWork(
@@ -99,6 +150,79 @@ async function registerExtraWork(
   return { resourceId: eventId };
 }
 
+async function acceptExtraWork(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  eventId: UUID,
+): Promise<{ resourceId: UUID }> {
+  if (membership.role !== "family_admin") {
+    throw new CommandRejectedError("not_allowed", "Solo la familia administradora acepta jornadas extra");
+  }
+  const event = await requireExtraWorkEvent(client, householdId, eventId, true);
+  if (event.status !== "requested") {
+    throw new CommandRejectedError("extra_work_not_requested", `Estado ${event.status} no admite aceptación`);
+  }
+
+  await enforceTransitionHistoryImmediately(client);
+  await appendTransition(
+    client, householdId, event.id, membership.id,
+    "requested", "accepted", "Jornada extra aceptada por la familia",
+  );
+  // El CHECK de la tabla exige que `accepted` llegue con approved_by/approved_at
+  // en el mismo UPDATE; la transición ya quedó firmada por la administradora.
+  await client.query(
+    `update app.extra_work_events
+        set status = 'accepted', approved_by_membership_id = $3, approved_at = now()
+      where household_id = $1 and id = $2`,
+    [householdId, event.id, membership.id],
+  );
+  return { resourceId: event.id };
+}
+
+async function markExtraWorkPerformed(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  eventId: UUID,
+): Promise<{ resourceId: UUID }> {
+  if (membership.role !== "employee_live_in") {
+    throw new CommandRejectedError("not_allowed", "Solo la empleada marca su trabajo como realizado");
+  }
+  const event = await requireExtraWorkEvent(client, householdId, eventId, false);
+  if (event.employee_membership_id !== membership.id) {
+    throw new CommandRejectedError("not_allowed", "La jornada extra pertenece a otra empleada");
+  }
+  if (event.status !== "requested" && event.status !== "accepted") {
+    throw new CommandRejectedError(
+      "extra_work_not_performable",
+      `Estado ${event.status} no admite marcar el trabajo como realizado`,
+    );
+  }
+
+  // Desde `accepted` el trabajo queda `performed`; desde `requested` (aún sin
+  // visto bueno) pasa a `performed_pending_resolution`, el estado que la
+  // política RLS `extra_work_employee_update` permite escribir a la empleada.
+  const toStatus: ExtraWorkStatus =
+    event.status === "accepted" ? "performed" : "performed_pending_resolution";
+
+  await enforceTransitionHistoryImmediately(client);
+  await appendTransition(
+    client, householdId, event.id, membership.id,
+    event.status, toStatus,
+    event.status === "accepted"
+      ? "Trabajo realizado por la empleada"
+      : "Trabajo realizado sin aceptación previa",
+  );
+  await client.query(
+    `update app.extra_work_events
+        set status = $3, performed_by_membership_id = $4, performed_at = now()
+      where household_id = $1 and id = $2`,
+    [householdId, event.id, toStatus, membership.id],
+  );
+  return { resourceId: event.id };
+}
+
 async function resolveExtraWork(
   client: PoolClient,
   membership: ActiveMembership,
@@ -109,37 +233,12 @@ async function resolveExtraWork(
     throw new CommandRejectedError("not_allowed", "Solo la familia administradora resuelve jornadas extra");
   }
 
-  const loaded = await client.query<{
-    id: string;
-    agreement_id: string;
-    employee_membership_id: string;
-    kind: "overtime" | "worked_rest_day";
-    worked_on: string;
-    duration_minutes: number;
-    status: ExtraWorkStatus;
-    requested_by_membership_id: string;
-  }>(
-    `select id, agreement_id, employee_membership_id, kind, worked_on::text as worked_on,
-            duration_minutes, status, requested_by_membership_id
-       from app.extra_work_events
-      where household_id = $1 and id = $2
-      for update`,
-    [householdId, payload.extraWorkEventId],
-  );
-  const event = loaded.rows[0];
-  if (!event) {
-    throw new CommandRejectedError("extra_work_not_found", "La jornada extra no existe en este hogar");
-  }
+  const event = await requireExtraWorkEvent(client, householdId, payload.extraWorkEventId, true);
   if (!RESOLVABLE_STATUSES.includes(event.status)) {
     throw new CommandRejectedError("extra_work_not_resolvable", `Estado ${event.status} no admite resolución`);
   }
 
-  // El trigger constraint de historial es DEFERRABLE INITIALLY DEFERRED y
-  // encola una comprobación por cada versión de fila; con varios UPDATE en la
-  // misma transacción las versiones intermedias fallarían en el commit. En modo
-  // IMMEDIATE cada paso se valida al final de su propia sentencia, por eso cada
-  // transición se anexa ANTES de actualizar la fila del evento.
-  await client.query("set constraints app.extra_work_requires_transition_history immediate");
+  await enforceTransitionHistoryImmediately(client);
 
   let status = event.status;
   if (status === "requested") {
@@ -297,10 +396,12 @@ async function resolveExtraWork(
 }
 
 /**
- * `extra_work`: registro (empleada u origen familiar) y resolución (solo la
- * familia administradora) de jornadas extra. La resolución recorre la máquina
- * de estados del trigger paso a paso y congela la tarifa vigente el día
- * trabajado usando el motor puro de dominio.
+ * `extra_work`: registro (empleada u origen familiar), aceptación (solo la
+ * familia administradora), marca de trabajo realizado (solo la empleada del
+ * evento) y resolución (solo la familia administradora) de jornadas extra.
+ * Cada acción recorre la máquina de estados del trigger paso a paso —
+ * transición firmada por quien ejecuta antes de cada UPDATE — y la resolución
+ * congela la tarifa vigente el día trabajado usando el motor puro de dominio.
  */
 export const extraWorkCommandHandler: CommandHandler = async (client, membership, envelope) => {
   const parsed = extraWorkCommandPayloadSchema.safeParse(envelope.payload);
@@ -310,6 +411,12 @@ export const extraWorkCommandHandler: CommandHandler = async (client, membership
   const payload = parsed.data;
   if (payload.action === "register") {
     return registerExtraWork(client, membership, envelope.householdId, payload);
+  }
+  if (payload.action === "accept") {
+    return acceptExtraWork(client, membership, envelope.householdId, payload.extraWorkEventId);
+  }
+  if (payload.action === "mark_performed") {
+    return markExtraWorkPerformed(client, membership, envelope.householdId, payload.extraWorkEventId);
   }
   return resolveExtraWork(client, membership, envelope.householdId, payload);
 };
