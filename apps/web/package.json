@@ -18,6 +18,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1105.0",
     "@casa-clara/contracts": "workspace:*",
     "@casa-clara/domain": "workspace:*",
     "@casa-clara/server": "workspace:*",
