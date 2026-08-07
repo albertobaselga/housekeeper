@@ -60,6 +60,65 @@ export function createWikiSpace(
   }) as CommandEnvelopeV1<WikiSpaceCreatePayloadV1>;
 }
 
+/**
+ * Payloads congelados de `wiki_space`/set_template y clone_template. El
+ * contrato zod (`wikiSpaceCommandPayloadSchema`) no expone interfaces V1
+ * dedicadas, así que las formas viven aquí y los tests las validan contra el
+ * schema congelado.
+ */
+export interface WikiSpaceSetTemplatePayload {
+  action: 'set_template';
+  spaceId: string;
+  isTemplate: boolean;
+}
+
+export interface WikiSpaceClonePayload {
+  action: 'clone_template';
+  templateSpaceId: string;
+  name: string;
+  slug?: string;
+}
+
+/** Marca o desmarca un espacio como plantilla clonable (solo familia). */
+export function setWikiSpaceTemplate(
+  input: { householdId: string; spaceId: string; isTemplate: boolean },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<WikiSpaceSetTemplatePayload> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'wiki_space',
+    aggregateId: input.spaceId,
+    payload: {
+      action: 'set_template',
+      spaceId: input.spaceId,
+      isTemplate: input.isTemplate
+    } satisfies WikiSpaceSetTemplatePayload
+  }) as CommandEnvelopeV1<WikiSpaceSetTemplatePayload>;
+}
+
+/**
+ * Espacio nuevo clonado desde una plantilla del MISMO hogar: el servidor copia
+ * la jerarquía completa de páginas y reescribe los enlaces internos.
+ */
+export function cloneWikiTemplate(
+  input: { householdId: string; templateSpaceId: string; name: string; slug?: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<WikiSpaceClonePayload> {
+  const slug = trimmedOrUndefined(input.slug);
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'wiki_space',
+    payload: {
+      action: 'clone_template',
+      templateSpaceId: input.templateSpaceId,
+      name: input.name.trim(),
+      ...(slug ? { slug } : {})
+    } satisfies WikiSpaceClonePayload
+  }) as CommandEnvelopeV1<WikiSpaceClonePayload>;
+}
+
 export function createWikiPage(
   input: {
     householdId: string;
