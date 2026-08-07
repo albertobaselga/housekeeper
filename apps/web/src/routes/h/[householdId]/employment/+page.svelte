@@ -30,6 +30,9 @@
   const canSubmitExpense = $derived(isOwnAgreement && can(context.role, 'expense.create.self'));
   const canConfirmReceipt = $derived(isOwnAgreement && can(context.role, 'payment.confirm.self'));
   const canConfirmWork = $derived(agreement !== null && can(context.role, 'work.confirm'));
+  // La exportación del expediente es exclusivamente de la propia empleada y
+  // solo existe sobre datos reales de Postgres (mismo gating que las acciones).
+  const canDownloadExport = $derived(isOwnAgreement && context.role === 'employee_live_in');
   const canCloseSettlement = $derived(agreement !== null && can(context.role, 'settlement.close'));
   const canRecordPayment = $derived(agreement !== null && can(context.role, 'payment.register'));
 
@@ -292,6 +295,23 @@
               {/each}
             </div>
           </article>
+          {#if canDownloadExport}
+            <article class="card">
+              <p class="eyebrow">Mi expediente</p>
+              <h2>Copia completa de tu historial</h2>
+              <p>
+                Liquidaciones, pagos, jornadas extra, partes semanales, gastos y saldos en CSV, con un
+                resumen en PDF. Documento doméstico no oficial.
+              </p>
+              <a
+                class="button secondary"
+                href={`/api/v1/households/${overview.householdId}/employment-export`}
+                download="mi-expediente.zip"
+              >
+                Descargar mi expediente (PDF + CSV)
+              </a>
+            </article>
+          {/if}
           <article class="card quiet-card">
             <span class="card-icon" aria-hidden="true">✓</span>
             <h2>Confirmación independiente</h2>
