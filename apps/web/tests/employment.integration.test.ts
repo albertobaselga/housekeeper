@@ -100,6 +100,17 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(advanceLine?.amountCents).toBe('-10000');
     expect(advanceLine?.href).toBe('#anticipo-12800000-0000-4000-8000-000000000001');
 
+    // Partes semanales recientes: el fixture trae la semana confirmada de marzo
+    // (confirmación manual, no auto-confirmada).
+    expect(overview!.recentReports).toHaveLength(1);
+    expect(overview!.recentReports[0]).toMatchObject({
+      weekStartsOn: '2025-03-10',
+      weekEndsOn: '2025-03-16',
+      status: 'confirmed',
+      autoConfirmed: false,
+      statusLabel: 'Confirmado'
+    });
+
     // Saldos: crédito permanente de 1440 min (sin caducidad) y 200,00 € de anticipo.
     const credit = overview!.balances.compensation.find(
       (balance) => balance.balanceType === 'worked_rest_day'
@@ -142,6 +153,7 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview!.settlements).toEqual([]);
     expect(overview!.pendingExtras).toEqual([]);
     expect(overview!.pendingExpenses).toEqual([]);
+    expect(overview!.recentReports).toEqual([]);
     expect(overview!.balances).toEqual({ compensation: [], advances: [] });
   });
 

@@ -46,8 +46,8 @@ describe('flush del outbox con ACK parcial', () => {
         acknowledgements: [
           { operationId: ids[0], status: 'accepted' },
           { operationId: ids[1], status: 'duplicate' },
-          { operationId: ids[2], status: 'conflict' },
-          { operationId: ids[3], status: 'rejected' },
+          { operationId: ids[2], status: 'conflict', errorCode: 'revision_mismatch' },
+          { operationId: ids[3], status: 'rejected', errorCode: 'not_allowed' },
           { operationId: ids[4], status: 'retryable' }
         ],
         nextCursor: '2026-08-07T09:00:00.000Z',
@@ -65,6 +65,12 @@ describe('flush del outbox con ACK parcial', () => {
       [ids[2], 'conflict'],
       [ids[3], 'rejected'],
       [ids[4], 'pending']
+    ]);
+    // El motivo del ACK queda guardado para el triaje humano por-acción.
+    expect(remaining.map((record) => record.lastErrorCode)).toEqual([
+      'revision_mismatch',
+      'not_allowed',
+      undefined
     ]);
   });
 

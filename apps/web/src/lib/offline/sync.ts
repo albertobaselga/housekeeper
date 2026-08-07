@@ -38,12 +38,26 @@ export async function refreshSyncStatus(overrides: { syncing?: boolean; conflict
 interface SyncAckLike {
   operationId?: unknown;
   status?: unknown;
+  errorCode?: unknown;
 }
 
 function ackIds(acks: SyncAckLike[], statuses: readonly string[]): string[] {
   return acks
     .filter((ack) => typeof ack.operationId === 'string' && statuses.includes(String(ack.status)))
     .map((ack) => String(ack.operationId));
+}
+
+/** Igual que ackIds pero conservando el errorCode del ACK para el triaje humano. */
+function ackUpdates(
+  acks: SyncAckLike[],
+  statuses: readonly string[]
+): { id: string; errorCode?: string }[] {
+  return acks
+    .filter((ack) => typeof ack.operationId === 'string' && statuses.includes(String(ack.status)))
+    .map((ack) => ({
+      id: String(ack.operationId),
+      ...(typeof ack.errorCode === 'string' && ack.errorCode ? { errorCode: ack.errorCode } : {})
+    }));
 }
 
 /**
@@ -74,8 +88,8 @@ export async function performSyncFlush(
       { ok: true, acknowledgedIds: ackIds(acks, ['accepted', 'duplicate']) },
       databaseName
     );
-    await updateOutboxStatuses(ackIds(acks, ['conflict']), 'conflict', databaseName);
-    await updateOutboxStatuses(ackIds(acks, ['rejected']), 'rejected', databaseName);
+    await updateOutboxStatuses(ackUpdates(acks, ['conflict']), 'conflict', databaseName);
+    await updateOutboxStatuses(ackUpdates(acks, ['rejected']), 'rejected', databaseName);
     return 'flushed';
   } catch {
     // Sin red o servidor caído: el outbox queda intacto y se reintentará.

@@ -303,6 +303,17 @@
   }
   .action-form .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; }
   .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  /* Apertura de liquidación: fecha de vencimiento junto al botón de cabecera. */
+  .open-settlement-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; }
+  .open-settlement-form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  .open-settlement-form input {
+    border: 1px solid var(--line-strong);
+    border-radius: .6rem;
+    background: var(--surface);
+    padding: .5rem .65rem;
+    color: var(--ink);
+    font-size: .82rem;
+  }
   .inline-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
   .queued-note { margin-top: .6rem; border-radius: .65rem; background: var(--warning-soft); padding: .55rem .75rem; color: var(--warning); font-size: .75rem; font-weight: 700; }
 
