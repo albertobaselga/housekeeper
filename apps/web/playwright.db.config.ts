@@ -22,7 +22,10 @@ function appDatabaseUrl(): string {
 
 export default defineConfig({
   testDir: './e2e',
+  // Los flujos serializados escriben sobre la MISMA base de datos: un único
+  // worker y sin paralelismo para que ningún spec pise el estado de otro.
   fullyParallel: false,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: 'list',
