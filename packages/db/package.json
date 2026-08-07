@@ -1,0 +1,18 @@
+{
+  "name": "@casa-clara/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Migraciones PostgreSQL multi-tenant, fixtures sintéticas y pruebas de esquema/RLS.",
+  "scripts": {
+    "migrate": "node scripts/migrate.mjs",
+    "test:db": "node scripts/run-sql-tests.mjs",
+    "test:rls": "node scripts/run-sql-tests.mjs tests/020_rls_matrix.sql"
+  },
+  "dependencies": {
+    "pg": "8.22.0"
+  },
+  "engines": {
+    "node": ">=24 <25"
+  }
+}

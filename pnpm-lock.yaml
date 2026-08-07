@@ -120,6 +120,12 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@24.3.1)(lightningcss@1.33.0)(tsx@4.20.5)
 
+  packages/db:
+    dependencies:
+      pg:
+        specifier: 8.22.0
+        version: 8.22.0
+
   packages/domain:
     devDependencies:
       '@types/node':

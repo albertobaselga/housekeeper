@@ -11,13 +11,16 @@
   "scripts": {
     "build": "pnpm -r --if-present build",
     "check": "pnpm -r --if-present check",
+    "db:migrate": "pnpm --filter @casa-clara/db migrate",
     "dev": "pnpm --filter @casa-clara/web dev",
     "format:check": "pnpm -r --if-present format:check",
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
     "test:coverage": "pnpm -r --if-present test:coverage",
-    "test:db": "pnpm --filter @casa-clara/db test",
+    "test:db": "pnpm --filter @casa-clara/db test:db",
     "test:e2e": "pnpm --filter @casa-clara/web test:e2e",
+    "test:rls": "pnpm --filter @casa-clara/db test:rls",
+    "test:unit": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
