@@ -48,6 +48,7 @@ export const commandEnvelopeSchema = z.object({
     "settlement",
     "time_entry",
     "wiki_page",
+    "wiki_space",
   ]),
   aggregateId: uuidSchema.nullable(),
   baseRevision: z.number().int().nonnegative().nullable(),

@@ -16,3 +16,4 @@ test-results/
 !.env.example
 artifacts/
 C:*
+.claude/

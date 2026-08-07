@@ -4,13 +4,18 @@ import {
   employmentCommandHandlers,
   processSyncBatch,
   submitExpenseHandler,
+  wikiCommandHandlers,
   type CommandHandlers
 } from '@casa-clara/server';
 
 import { getDatabasePool } from '$lib/server/db.server';
 import type { RequestHandler } from './$types';
 
-const handlers: CommandHandlers = { ...employmentCommandHandlers, expense: submitExpenseHandler };
+const handlers: CommandHandlers = {
+  ...employmentCommandHandlers,
+  ...wikiCommandHandlers,
+  expense: submitExpenseHandler
+};
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para sincronizar');
