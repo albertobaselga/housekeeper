@@ -148,7 +148,8 @@ export async function loadEmploymentOverview(
                 incurred_on::text as "incurredOn",
                 description,
                 amount_cents as "amountCents",
-                employee_membership_id as "employeeMembershipId"
+                employee_membership_id as "employeeMembershipId",
+                (receipt_document_id is not null) as "hasReceipt"
            from app.expenses
           where household_id = $1 and agreement_id = $2 and status = 'pending'
           order by incurred_on, submitted_at`,

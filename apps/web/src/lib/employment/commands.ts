@@ -245,6 +245,8 @@ export function submitExpense(
     incurredOn: string;
     description: string;
     amountCents: string;
+    /** storageObjectId del justificante ya subido (opcional en el contrato). */
+    receiptStorageObjectId?: string;
   },
   options: EnvelopeOptions = {}
 ): CommandEnvelopeV1<ExpenseSubmitPayloadV1> {
@@ -256,7 +258,8 @@ export function submitExpense(
       agreementId: input.agreementId,
       incurredOn: input.incurredOn,
       description: input.description.trim(),
-      amountCents: input.amountCents
+      amountCents: input.amountCents,
+      ...(input.receiptStorageObjectId ? { receiptStorageObjectId: input.receiptStorageObjectId } : {})
     } satisfies ExpenseSubmitPayloadV1
   }) as CommandEnvelopeV1<ExpenseSubmitPayloadV1>;
 }

@@ -157,6 +157,8 @@ export interface PendingExpenseRow {
   description: string;
   amountCents: string;
   employeeMembershipId: string;
+  /** true si el gasto llegó con justificante enlazado (receipt_document_id). */
+  hasReceipt?: boolean;
 }
 
 export type WeeklyReportStatus = 'draft' | 'submitted' | 'confirmed' | 'disputed';
@@ -365,6 +367,7 @@ export interface PendingExpenseView {
   amountCents: string;
   amountLabel: string;
   employeeMembershipId: string;
+  hasReceipt: boolean;
 }
 
 export interface WeeklyReportView {
@@ -727,7 +730,8 @@ export function buildPendingExpenseViews(
     description: row.description,
     amountCents: row.amountCents,
     amountLabel: formatCents(row.amountCents),
-    employeeMembershipId: row.employeeMembershipId
+    employeeMembershipId: row.employeeMembershipId,
+    hasReceipt: row.hasReceipt === true
   }));
 }
 
