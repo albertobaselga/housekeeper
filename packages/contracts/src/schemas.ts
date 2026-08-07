@@ -39,6 +39,7 @@ export const commandEnvelopeSchema = z.object({
   aggregateType: z.enum([
     "agreement",
     "comment",
+    "contact",
     "diner",
     "expense",
     "extra_work",
@@ -266,6 +267,27 @@ export const wikiPageCommandPayloadSchema = z.discriminatedUnion("action", [
   wikiPageCreatePayloadSchema,
   wikiPageEditPayloadSchema,
   wikiPageSetStatePayloadSchema,
+]);
+
+export const contactUpsertPayloadSchema = z.object({
+  action: z.literal("upsert"),
+  contactId: uuidSchema.optional(),
+  name: z.string().trim().min(1).max(120),
+  roleLabel: z.string().max(120).optional(),
+  phone: z.string().regex(/^[0-9+][0-9 ().-]{1,24}$/),
+  kind: z.enum(["emergency", "health", "home", "service", "school", "otros"]),
+  featured: z.boolean(),
+  notes: z.string().max(500).optional(),
+});
+
+export const contactArchivePayloadSchema = z.object({
+  action: z.literal("archive"),
+  contactId: uuidSchema,
+});
+
+export const contactCommandPayloadSchema = z.discriminatedUnion("action", [
+  contactUpsertPayloadSchema,
+  contactArchivePayloadSchema,
 ]);
 
 const allergenCodeSchema = z.string().regex(/^[a-z-]+$/);

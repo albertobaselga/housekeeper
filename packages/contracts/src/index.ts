@@ -124,6 +124,7 @@ export interface AppContextV1 {
 export type AggregateType =
   | "agreement"
   | "comment"
+  | "contact"
   | "diner"
   | "expense"
   | "extra_work"
