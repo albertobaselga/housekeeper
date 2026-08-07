@@ -175,6 +175,54 @@ export const extraWorkCommandPayloadSchema = z.discriminatedUnion("action", [
   extraWorkCancelPayloadSchema,
 ]);
 
+const wikiSlugSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+const wikiTermListSchema = z.array(z.string().trim().min(1).max(60)).max(20);
+
+export const wikiSpaceCreatePayloadSchema = z.object({
+  action: z.literal("create"),
+  name: z.string().trim().min(1).max(120),
+  slug: wikiSlugSchema.optional(),
+  description: z.string().max(500).optional(),
+});
+
+export const wikiPageCreatePayloadSchema = z.object({
+  action: z.literal("create"),
+  spaceId: uuidSchema,
+  parentPageId: uuidSchema.nullable().optional(),
+  title: z.string().trim().min(1).max(200),
+  bodyMarkdown: z.string().max(200_000),
+  tags: wikiTermListSchema.optional(),
+  aliases: wikiTermListSchema.optional(),
+  publish: z.boolean().optional(),
+});
+
+export const wikiPageEditPayloadSchema = z.object({
+  action: z.literal("edit"),
+  pageId: uuidSchema,
+  title: z.string().trim().min(1).max(200),
+  bodyMarkdown: z.string().max(200_000),
+  summary: z.string().max(500).optional(),
+  tags: wikiTermListSchema.optional(),
+  aliases: wikiTermListSchema.optional(),
+});
+
+export const wikiPageSetStatePayloadSchema = z
+  .object({
+    action: z.literal("set_state"),
+    pageId: uuidSchema,
+    status: z.enum(["draft", "published"]).optional(),
+    pinned: z.boolean().optional(),
+  })
+  .refine((value) => value.status !== undefined || value.pinned !== undefined, {
+    message: "set_state requiere status o pinned",
+  });
+
+export const wikiPageCommandPayloadSchema = z.discriminatedUnion("action", [
+  wikiPageCreatePayloadSchema,
+  wikiPageEditPayloadSchema,
+  wikiPageSetStatePayloadSchema,
+]);
+
 export const paymentRecordPayloadSchema = z.object({
   settlementId: uuidSchema,
   amountCents: moneyCentsSchema.refine((value) => BigInt(value) > 0n, "El importe debe ser positivo"),

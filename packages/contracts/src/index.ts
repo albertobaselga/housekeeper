@@ -132,7 +132,8 @@ export type AggregateType =
   | "routine_occurrence"
   | "settlement"
   | "time_entry"
-  | "wiki_page";
+  | "wiki_page"
+  | "wiki_space";
 
 export interface CommandEnvelopeV1<TPayload = unknown> {
   apiVersion: typeof API_VERSION;
@@ -274,6 +275,49 @@ export interface SettlementReceiptConfirmPayloadV1 {
   action: "confirm_receipt";
   settlementId: UUID;
   note?: string;
+}
+
+/** `aggregateType: "wiki_space"` — creación de un espacio (solo familia). */
+export interface WikiSpaceCreatePayloadV1 {
+  action: "create";
+  name: string;
+  slug?: string;
+  description?: string;
+}
+
+/** `aggregateType: "wiki_page"` — creación con su primera revisión Markdown. */
+export interface WikiPageCreatePayloadV1 {
+  action: "create";
+  spaceId: UUID;
+  parentPageId?: UUID | null;
+  title: string;
+  bodyMarkdown: string;
+  tags?: string[];
+  aliases?: string[];
+  publish?: boolean;
+}
+
+/**
+ * `aggregateType: "wiki_page"` — nueva revisión. `envelope.baseRevision` debe
+ * ser la revisión sobre la que se editó: si el servidor tiene otra más nueva,
+ * responde conflict y la resolución es humana (sin merges automáticos).
+ */
+export interface WikiPageEditPayloadV1 {
+  action: "edit";
+  pageId: UUID;
+  title: string;
+  bodyMarkdown: string;
+  summary?: string;
+  tags?: string[];
+  aliases?: string[];
+}
+
+/** `aggregateType: "wiki_page"` — publicar/despublicar o fijar en portada. */
+export interface WikiPageSetStatePayloadV1 {
+  action: "set_state";
+  pageId: UUID;
+  status?: "draft" | "published";
+  pinned?: boolean;
 }
 
 /** `aggregateType: "payment"` — pago parcial o total registrado por la familia. */
