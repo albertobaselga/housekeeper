@@ -106,10 +106,12 @@ async function closeSettlement(
     employee_membership_id: string;
     period_start: string;
     period_end: string;
+    due_on: string;
     status: string;
   }>(
     `select id, agreement_id, employee_membership_id,
-            period_start::text as period_start, period_end::text as period_end, status
+            period_start::text as period_start, period_end::text as period_end,
+            due_on::text as due_on, status
        from app.settlements
       where household_id = $1 and id = $2
       for update`,
@@ -378,6 +380,18 @@ async function closeSettlement(
   await client.query("select app.enqueue_job('document.render_receipt', $1::jsonb)", [
     JSON.stringify(receipt),
   ]);
+
+  // Aviso de vencimiento: el worker despierta tres días antes de `due_on` (o ya
+  // mismo si ese momento pasó) y decide entonces, contra el estado real, si
+  // procede avisar. Mismo `app.enqueue_job` y misma transacción que el cierre.
+  await client.query(
+    `select app.enqueue_job(
+       'notification.settlement_due',
+       $1::jsonb,
+       greatest($2::date::timestamptz - interval '3 days', statement_timestamp())
+     )`,
+    [JSON.stringify({ settlementId: settlement.id }), settlement.due_on],
+  );
 
   return { resourceId: settlement.id };
 }

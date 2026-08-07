@@ -75,5 +75,17 @@ export const submitWeeklyReportHandler: CommandHandler = async (client, membersh
     );
   }
 
+  // Auto-confirmación diferida: si la familia no confirma ni disputa en tres
+  // días, el worker confirmará el parte. El job viaja en la misma transacción
+  // que el envío; la función del worker es idempotente y decide sobre estado real.
+  await client.query(
+    `select app.enqueue_job(
+       'time_report.autoconfirm',
+       $1::jsonb,
+       statement_timestamp() + interval '3 days'
+     )`,
+    [JSON.stringify({ reportId })],
+  );
+
   return { resourceId: reportId };
 };

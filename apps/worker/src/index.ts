@@ -4,8 +4,15 @@ import { Pool } from "pg";
 
 import { loadWorkerConfig } from "./config.js";
 import { RENDER_RECEIPT_JOB, createRenderReceiptHandler } from "./handlers.js";
-import { objectStore, putPrivateObject } from "./integrations.js";
+import { objectStore, putPrivateObject, sendEmail } from "./integrations.js";
 import { runOneJob, type JobHandler } from "./queue.js";
+import {
+  AUTOCONFIRM_JOB,
+  SETTLEMENT_DUE_JOB,
+  createAutoconfirmHandler,
+  createReminderQueries,
+  createSettlementDueHandler,
+} from "./reminders.js";
 
 const config = loadWorkerConfig();
 const pool = new Pool({ connectionString: config.databaseUrl, max: 4 });
@@ -19,6 +26,15 @@ const handlers: Record<string, JobHandler> = Object.create(null) as Record<strin
 handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler((key, body, contentType) =>
   putPrivateObject(storageClient, config.storage.bucket, key, body, contentType),
 );
+const reminderQueries = createReminderQueries(pool);
+handlers[SETTLEMENT_DUE_JOB] = createSettlementDueHandler({
+  readState: reminderQueries.readSettlementReminderState,
+  enqueue: reminderQueries.enqueueJob,
+  sendEmail: (input) => sendEmail(config.smtp, input),
+});
+handlers[AUTOCONFIRM_JOB] = createAutoconfirmHandler({
+  autoconfirm: reminderQueries.autoconfirmWeeklyReport,
+});
 
 const healthServer = createServer(async (request, response) => {
   if (request.url === "/metrics") {
