@@ -9,6 +9,12 @@ import { E2E_SEED, HOUSEHOLD, loginAs } from './helpers';
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 test.describe.configure({ mode: 'serial' });
 
+// Hoy en la zona del hogar y su etiqueta de pestaña ("7 ago"), igual que las
+// pinta la página (Intl es-ES sobre la fecha ISO en UTC).
+const MADRID_TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+const TODAY_TAB_LABEL = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  .format(new Date(`${MADRID_TODAY}T00:00:00Z`));
+
 async function gotoMenu(page: Page): Promise<void> {
   await loginAs(page, 'family');
   await page.goto(`/h/${HOUSEHOLD}/menu`);
@@ -18,10 +24,15 @@ async function gotoMenu(page: Page): Promise<void> {
 test('Marta asigna la receta con leche al grupo Casa: bloqueo de alérgenos y reconocimiento explícito (AC-21)', async ({ page }) => {
   await gotoMenu(page);
 
+  // Default sensato: el menú abre con la pestaña de HOY activa, no el lunes.
+  const activeDay = page.locator('.day-tabs button.active');
+  await expect(activeDay).toHaveAttribute('aria-selected', 'true');
+  await expect(activeDay).toContainText(TODAY_TAB_LABEL);
+
   const groupCard = page.locator('section.menu-group-card').filter({ hasText: 'Casa' });
   await expect(groupCard).toContainText('Leo (comensal E2E)');
 
-  // Hueco «Comida» del lunes (pestaña por defecto) del grupo sembrado.
+  // Hueco «Comida» de hoy (pestaña por defecto) del grupo sembrado.
   const comidaRow = groupCard.locator('.menu-slot-row').filter({ hasText: 'Comida' });
   await comidaRow.getByRole('button', { name: 'Asignar' }).click();
 
@@ -64,9 +75,14 @@ test('Marta duplica la semana en la siguiente (AC-23)', async ({ page }) => {
   await gotoMenu(page);
 
   await page.getByRole('button', { name: 'Duplicar en la semana siguiente' }).click();
+
+  // Feedback visible del resultado, sin tener que navegar a comprobarlo.
+  await expect(page.locator('.success-message').filter({ hasText: 'copiada a la del' })).toBeVisible();
+
   await page.getByRole('link', { name: 'Semana siguiente →' }).click();
 
-  // El lunes de la semana siguiente replica los dos huecos asignados.
+  // El mismo día de la semana siguiente (la navegación conserva el día activo)
+  // replica los dos huecos asignados.
   const groupCard = page.locator('section.menu-group-card').filter({ hasText: 'Casa' });
   await expect(groupCard.getByRole('link', { name: 'Arroz con leche (E2E)' })).toBeVisible();
   await expect(groupCard.getByRole('link', { name: 'Pollo asado (E2E)' })).toBeVisible();

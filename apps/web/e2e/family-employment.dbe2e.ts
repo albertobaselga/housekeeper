@@ -67,6 +67,8 @@ test('Alberto aprueba el gasto pendiente de Ana con motivo y entra en el devengo
   await pendingRow.getByRole('button', { name: 'Revisar' }).click();
 
   const decideForm = expensesCard.locator('form.action-form');
+  // Default sensato: el motivo llega prellenado («Aprobado») y editable.
+  await expect(decideForm.getByLabel('Motivo de la decisión')).toHaveValue('Aprobado');
   await decideForm.getByLabel('Motivo de la decisión').fill('Justificante correcto E2E');
   await decideForm.getByRole('button', { name: 'Aprobar' }).click();
 
@@ -97,11 +99,13 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
   await expect(paymentForm).toBeVisible();
   await expect(page.locator('.status-chip').filter({ hasText: 'Pendiente de pago' })).toBeVisible();
 
-  // 3) Pago parcial: queda visible el pendiente restante.
+  // 3) Pago parcial: el importe llega PRELLENADO con todo el pendiente (default
+  //    «pagar todo») pero sigue siendo editable para un pago parcial.
   const amountInput = paymentForm.getByLabel('Importe (€)');
-  const totalLabel = await amountInput.getAttribute('placeholder');
-  const totalCents = euroToCents(totalLabel ?? '');
+  const totalLabel = await amountInput.inputValue();
+  const totalCents = euroToCents(totalLabel);
   expect(totalCents).toBeGreaterThan(100000n);
+  await expect(paymentForm.getByRole('button', { name: /Pagar todo/ })).toBeVisible();
   await amountInput.fill('1.000,00');
   await paymentForm.getByRole('button', { name: 'Registrar pago' }).click();
   await expect(page.locator('.status-chip').filter({ hasText: 'Pago parcial registrado' })).toBeVisible();
@@ -111,9 +115,11 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
   const settlementsCard = page.locator('article.card').filter({ hasText: 'Historial con pagos' });
   await expect(settlementsCard).toContainText(remainingLabel);
 
-  // 4) El resto: la liquidación queda pagada (el cobro lo confirma Ana aparte).
+  // 4) El resto: tras el pago parcial el campo vuelve a proponer exactamente el
+  //    pendiente restante; con el default basta para dejarla pagada (el cobro
+  //    lo confirma Ana aparte).
   const secondForm = page.locator('form').filter({ hasText: 'Registrar pago' });
-  await secondForm.getByLabel('Importe (€)').fill(centsToEuroInput(remainingCents));
+  await expect(secondForm.getByLabel('Importe (€)')).toHaveValue(centsToEuroInput(remainingCents));
   await secondForm.getByRole('button', { name: 'Registrar pago' }).click();
   await expect(page.locator('.status-chip').filter({ hasText: 'Pagada · cobro sin confirmar' })).toBeVisible();
 });

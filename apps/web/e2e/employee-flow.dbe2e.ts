@@ -102,5 +102,9 @@ test('Ana completa la rutina de audiencia empleada y la recurrencia avanza', asy
 
   await expect(page.locator('.status-banner')).toHaveCount(0);
   await expect(dueLine).not.toHaveText(before);
+  // Feedback visible del resultado: chip «Hecha ✓ · próxima el X» en la fila,
+  // y el botón sigue disponible para la NUEVA ocurrencia ya avanzada.
+  await expect(routineItem.locator('.status-chip').filter({ hasText: 'Hecha ✓ · próxima el' })).toBeVisible();
   await expect(routineItem.getByRole('button', { name: 'Marcar hecha' })).toBeVisible();
+  await expect(routineItem.getByRole('button', { name: 'Marcar hecha' })).toBeEnabled();
 });

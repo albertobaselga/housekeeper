@@ -1,3 +1,11 @@
+<script module lang="ts">
+  type PaymentMethod = 'bank_transfer' | 'cash' | 'bizum' | 'mixed' | 'other';
+
+  // Último método usado en esta sesión (estado local básico compartido entre
+  // liquidaciones): el siguiente pago lo propone como default.
+  let lastPaymentMethod: PaymentMethod = 'bank_transfer';
+</script>
+
 <script lang="ts">
   import { invalidateAll } from '$app/navigation';
   import {
@@ -7,7 +15,7 @@
     queueEmploymentCommand,
     recordPayment
   } from '$lib/employment/commands';
-  import type { SettlementView } from '$lib/employment/model';
+  import { centsToEuroInput, type SettlementView } from '$lib/employment/model';
 
   let {
     householdId,
@@ -27,10 +35,22 @@
   let queued = $state(false);
   let sent = $state<string | null>(null);
 
+  // Defaults que la app ya conoce: importe prellenado con el pendiente (el
+  // caso dominante es «pagar todo»), fecha valor hoy y el último método usado.
   let paymentAmount = $state('');
-  let paymentMethod = $state<'bank_transfer' | 'cash' | 'bizum' | 'mixed' | 'other'>('bank_transfer');
+  let paymentMethod = $state<PaymentMethod>(lastPaymentMethod);
   let paymentDate = $state(new Date().toISOString().slice(0, 10));
   let paymentError = $state<string | null>(null);
+
+  // Prellena el importe con el pendiente y, tras un pago parcial, vuelve a
+  // proponer el nuevo resto sin machacar lo que el usuario teclee entre medias.
+  let knownPendingCents: string | null = null;
+  $effect(() => {
+    if (settlement.pendingCents !== knownPendingCents) {
+      knownPendingCents = settlement.pendingCents;
+      paymentAmount = centsToEuroInput(settlement.pendingCents);
+    }
+  });
 
   let receiptNote = $state('');
 
@@ -70,6 +90,7 @@
       return;
     }
     paymentError = null;
+    lastPaymentMethod = paymentMethod;
     await run(
       recordPayment({
         householdId,
@@ -80,7 +101,11 @@
       }),
       'payment'
     );
-    paymentAmount = '';
+  }
+
+  function fillFullPending(): void {
+    paymentAmount = centsToEuroInput(settlement.pendingCents);
+    paymentError = null;
   }
 </script>
 
@@ -110,7 +135,7 @@
           <h3>Registrar pago</h3>
           <div class="form-grid">
             <label>Importe (€)
-              <input type="text" inputmode="decimal" bind:value={paymentAmount} required placeholder={settlement.pendingLabel.replace(' €', '')} />
+              <input type="text" inputmode="decimal" bind:value={paymentAmount} required />
             </label>
             <label>Método
               <select bind:value={paymentMethod}>
@@ -128,6 +153,9 @@
           {#if paymentError}<p class="queued-note" role="alert">{paymentError}</p>{/if}
           <div class="action-row">
             <button class="button primary small-button" type="submit" disabled={busy}>Registrar pago</button>
+            <button class="button secondary small-button" type="button" disabled={busy} onclick={fillFullPending}>
+              Pagar todo ({settlement.pendingLabel})
+            </button>
             <small>Pendiente actual: {settlement.pendingLabel}</small>
           </div>
         </form>
