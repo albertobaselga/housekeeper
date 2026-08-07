@@ -1,9 +1,4 @@
-export interface AgreementVersion {
-  id: string;
-  validFrom: string;
-  validTo: string | null;
-  monthlySalaryCents: bigint;
-}
+import { agreementVersionForDate, type AgreementVersion } from "./agreements.js";
 
 export interface SettledExtraWork {
   id: string;
@@ -64,10 +59,6 @@ export interface SettlementProjection {
   permanentCreditMinutes: number;
 }
 
-function isIsoDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`));
-}
-
 function periodBounds(period: string): { first: string; last: string } {
   const match = /^(\d{4})-(\d{2})$/.exec(period);
   if (!match) throw new TypeError("El periodo debe usar el formato YYYY-MM");
@@ -77,22 +68,6 @@ function periodBounds(period: string): { first: string; last: string } {
   const first = `${period}-01`;
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return { first, last: `${period}-${String(lastDay).padStart(2, "0")}` };
-}
-
-export function agreementVersionForDate(
-  versions: readonly AgreementVersion[],
-  onDate: string,
-): AgreementVersion {
-  if (!isIsoDate(onDate)) throw new TypeError("La fecha debe usar el formato YYYY-MM-DD");
-  const matches = versions
-    .filter((version) =>
-      version.validFrom <= onDate &&
-      (version.validTo === null || version.validTo >= onDate),
-    )
-    .sort((left, right) => right.validFrom.localeCompare(left.validFrom));
-  const selected = matches[0];
-  if (!selected) throw new RangeError(`No hay una versión laboral vigente el ${onDate}`);
-  return selected;
 }
 
 function sum(lines: readonly SettlementLine[]): bigint {
