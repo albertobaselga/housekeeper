@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { invalidateAll } from '$app/navigation';
 import { writable } from 'svelte/store';
 import { API_VERSION, MAX_SYNC_COMMANDS } from '@casa-clara/contracts';
 import type { CriticalSnapshotV1, OutboxRecord } from './schema';
@@ -17,6 +18,14 @@ export const syncStatus = writable<SyncPresentation>(
   deriveSyncState({ online: true, pendingCount: 0 })
 );
 
+/**
+ * Momento (epoch ms) del último flush que APLICÓ cambios en el servidor
+ * (algún ACK accepted/duplicate). Las páginas lo observan para limpiar la
+ * nota «guardado en este dispositivo» y reconciliar su estado optimista sin
+ * intervención del usuario. Null hasta el primer flush con efecto.
+ */
+export const lastFlushAt = writable<number | null>(null);
+
 let activeHouseholdId: string | null = null;
 let flushInFlight = false;
 
@@ -28,12 +37,17 @@ export async function refreshSyncStatus(overrides: { syncing?: boolean; conflict
   if (!browser || !activeHouseholdId) return;
   try {
     const records = await listOutbox(activeHouseholdId);
-    const conflict = records.some((record) => record.status !== 'pending');
+    // «Pendiente de red» (ámbar) y «necesita tu decisión» (rojo) son cosas
+    // distintas: lo segundo se cuenta aparte para que la píldora sea veraz.
+    const attentionCount = records.filter(
+      (record) => record.status === 'rejected' || record.status === 'conflict'
+    ).length;
     syncStatus.set(
       deriveSyncState({
         online: navigator.onLine,
         pendingCount: pendingRecords(records).length,
-        conflict,
+        conflict: attentionCount > 0,
+        attentionCount,
         ...overrides
       })
     );
@@ -65,6 +79,43 @@ function ackUpdates(
       id: String(ack.operationId),
       ...(typeof ack.errorCode === 'string' && ack.errorCode ? { errorCode: ack.errorCode } : {})
     }));
+}
+
+/** ACK por operación tal y como lo devolvió /api/v1/sync, ya tipado. */
+export interface SyncCommandAck {
+  status: 'accepted' | 'duplicate' | 'conflict' | 'rejected' | 'retryable';
+  errorCode?: string;
+}
+
+const ACK_STATUSES: readonly SyncCommandAck['status'][] = [
+  'accepted',
+  'duplicate',
+  'conflict',
+  'rejected',
+  'retryable'
+];
+
+/** operationId → ack tipado; los acks malformados se descartan. */
+function ackMap(acks: SyncAckLike[]): Map<string, SyncCommandAck> {
+  const map = new Map<string, SyncCommandAck>();
+  for (const ack of acks) {
+    if (typeof ack.operationId !== 'string') continue;
+    const status = String(ack.status) as SyncCommandAck['status'];
+    if (!ACK_STATUSES.includes(status)) continue;
+    map.set(ack.operationId, {
+      status,
+      ...(typeof ack.errorCode === 'string' && ack.errorCode ? { errorCode: ack.errorCode } : {})
+    });
+  }
+  return map;
+}
+
+/** ¿Algún ACK confirmó que el servidor aplicó (o ya tenía) el cambio? */
+export function acksApplied(acks: ReadonlyMap<string, SyncCommandAck>): boolean {
+  for (const ack of acks.values()) {
+    if (ack.status === 'accepted' || ack.status === 'duplicate') return true;
+  }
+  return false;
 }
 
 /** Mapeo blob local → objeto de almacenamiento confirmado por el servidor. */
@@ -128,12 +179,20 @@ export async function flushBlobs(
  * aplica el ACK parcial. Solo accepted/duplicate se eliminan; conflict/rejected
  * quedan marcados para resolución humana; retryable y los errores de red
  * permanecen pendientes.
+ *
+ * API aditiva: `options.onAcks` recibe el mapa operationId→ack REAL del
+ * servidor tras aplicarlo al outbox. Lo consume `queueCommand` para dar un
+ * resultado veraz por acción (un rejected jamás se anuncia como «se
+ * sincronizará»). El retorno de siempre no cambia.
  */
 export async function performSyncFlush(
   householdId: string,
   fetchFn: typeof fetch,
   databaseName?: string,
-  options: { onBlobUploaded?: (mapping: BlobUploadMapping) => void | Promise<void> } = {}
+  options: {
+    onBlobUploaded?: (mapping: BlobUploadMapping) => void | Promise<void>;
+    onAcks?: (acks: ReadonlyMap<string, SyncCommandAck>) => void;
+  } = {}
 ): Promise<'idle' | 'flushed' | 'failed'> {
   // Los blobs que fallen se conservan y se reintentarán en la próxima pasada;
   // los comandos siguen su curso (hoy ninguno referencia blobs: hueco anotado).
@@ -158,6 +217,9 @@ export async function performSyncFlush(
     );
     await updateOutboxStatuses(ackUpdates(acks, ['conflict']), 'conflict', databaseName);
     await updateOutboxStatuses(ackUpdates(acks, ['rejected']), 'rejected', databaseName);
+    // El mapa se entrega DESPUÉS de aplicar el ACK: cuando el consumidor lo
+    // lea, el outbox ya refleja el estado que el mapa describe.
+    options.onAcks?.(ackMap(acks));
     return 'flushed';
   } catch {
     // Sin red o servidor caído: el outbox queda intacto y se reintentará.
@@ -165,16 +227,31 @@ export async function performSyncFlush(
   }
 }
 
-export async function flushOutbox(fetchFn: typeof fetch = fetch): Promise<void> {
-  if (!browser || !activeHouseholdId || flushInFlight) return;
+/**
+ * Flush desde el navegador. Devuelve el mapa operationId→ack cuando el envío
+ * llegó a producirse (puede ser vacío si no había comandos) o null si no hubo
+ * intento (sin navegador, sin hogar activo, offline, flush ya en vuelo o fallo
+ * de red): con null el llamador debe decidir mirando el outbox, no inventar.
+ */
+export async function flushOutbox(
+  fetchFn: typeof fetch = fetch
+): Promise<ReadonlyMap<string, SyncCommandAck> | null> {
+  if (!browser || !activeHouseholdId || flushInFlight) return null;
   if (!navigator.onLine) {
     await refreshSyncStatus();
-    return;
+    return null;
   }
   flushInFlight = true;
   try {
     await refreshSyncStatus({ syncing: true });
-    await performSyncFlush(activeHouseholdId, fetchFn);
+    const captured: { acks: ReadonlyMap<string, SyncCommandAck> | null } = { acks: null };
+    await performSyncFlush(activeHouseholdId, fetchFn, undefined, {
+      onAcks: (map) => {
+        captured.acks = map;
+      }
+    });
+    if (captured.acks && acksApplied(captured.acks)) lastFlushAt.set(Date.now());
+    return captured.acks;
   } finally {
     flushInFlight = false;
     await refreshSyncStatus();
@@ -185,7 +262,14 @@ export function startSyncMonitor(snapshot: CriticalSnapshotV1, snapshotPublicKey
   if (!browser) return () => undefined;
   activeHouseholdId = snapshot.householdId;
   const update = () => void refreshSyncStatus();
-  const flush = () => void flushOutbox();
+  // Reconexión honesta: si el flush disparado por `online` aplicó cambios en
+  // el servidor, se re-ejecutan los loads (invalidateAll) para que la UI
+  // refleje lo sincronizado sin intervención; `lastFlushAt` permite además a
+  // cada página limpiar su nota «guardado en este dispositivo».
+  const flush = () =>
+    void flushOutbox().then((acks) => {
+      if (acks && acksApplied(acks)) return invalidateAll();
+    });
   window.addEventListener('online', flush);
   window.addEventListener('offline', update);
 

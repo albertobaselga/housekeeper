@@ -1,8 +1,7 @@
 import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
 
-import { queueOutbox, listOutbox } from '$lib/offline/idb';
-import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
-import { flushOutbox, refreshSyncStatus } from '$lib/offline/sync';
+import { createCommandEnvelope } from '$lib/offline/schema';
+import { queueCommand, type QueueOutcome } from '$lib/offline/queue-command';
 
 /**
  * Constructores puros de envelopes para la gestión de accesos (F4-03).
@@ -64,18 +63,14 @@ export function revokeMembership(
   }) as CommandEnvelopeV1<MembershipRevokePayload>;
 }
 
-export type QueueOutcome = 'synced' | 'queued';
+export type { QueueOutcome };
 
 /**
- * Encola el comando en el outbox (offline-first: siempre persiste primero) y
- * dispara un flush inmediato hacia /api/v1/sync. Devuelve 'synced' si el
- * servidor lo reconoció ya (el caller puede refrescar con `invalidateAll()`)
- * o 'queued' si quedó pendiente de red.
+ * Delegado del encolado unificado (`$lib/offline/queue-command`): conserva la
+ * firma histórica devolviendo solo el outcome ('synced' | 'queued' |
+ * 'rejected' | 'conflict'). Para el mensaje veraz completo (causa traducida de
+ * un rejected/conflict) llama a `queueCommand` directamente.
  */
 export async function queueAccessCommand(envelope: CommandEnvelopeV1): Promise<QueueOutcome> {
-  await queueOutbox(createOutboxRecord(envelope));
-  await refreshSyncStatus();
-  await flushOutbox();
-  const remaining = await listOutbox(envelope.householdId);
-  return remaining.some((record) => record.id === envelope.operationId) ? 'queued' : 'synced';
+  return (await queueCommand(envelope)).outcome;
 }
