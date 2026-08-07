@@ -215,31 +215,25 @@
     const dayDiff = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
     const day = addDays(selectedDate ?? from, dayDiff);
     duplicated = null;
-    duplicateError = null;
     duplicating = true;
+    // Un rechazo (p. ej. week_overlap) lo anuncia la nota unificada de
+    // acciones con el mensaje traducido real del servidor.
     void optimistic
       .run(duplicateMenuWeek({ householdId: week.householdId, fromWeekStartsOn: from, toWeekStartsOn: to }), {
         settle: () => {
           duplicated = { from, to, day };
-        },
-        // Rechazo real del servidor (p. ej. week_overlap): además de la nota
-        // unificada, el motivo queda junto al formulario que lo provocó.
-        revert: () => {
-          duplicateError = 'No se pudo guardar: las semanas se solapan o el servidor rechazó la copia.';
         }
       })
       .finally(() => {
         duplicating = false;
       });
   }
-  let duplicateError = $state<string | null>(null);
 
   $effect(() => {
     // El aviso de copia pertenece a la semana de origen: al navegar, fuera.
     if (duplicated && week && week.weekStartsOn !== duplicated.from) duplicated = null;
     if (week) {
       duplicateTarget = addDays(week.weekStartsOn, 7);
-      duplicateError = null;
     }
   });
 
@@ -362,9 +356,6 @@
         Semana del {weekLabel(duplicated.from)} copiada a la del {weekLabel(duplicated.to)}.
         <a href={`${base}?week=${duplicated.to}&day=${duplicated.day}`}>Ver la semana del {weekLabel(duplicated.to)} →</a>
       </p>
-    {/if}
-    {#if duplicateError}
-      <p class="form-error" role="alert">{duplicateError}</p>
     {/if}
 
     <nav class="week-nav" aria-label="Cambiar de semana">
