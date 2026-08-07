@@ -161,7 +161,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     expect(replayed).toMatchObject({ status: "rejected", errorCode: "already_completed" });
   });
 
-  it("la empleada completa una rutina 'employee'; el avance queda pendiente por RLS (hueco 0009)", async () => {
+  it("la empleada completa una rutina 'employee' y la 0009 avanza la recurrencia", async () => {
     const routineId = await upsertRoutine({
       title: "Plancha semanal",
       audience: "employee",
@@ -186,13 +186,12 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       { completed_by_membership_id: "11000000-0000-4000-8000-000000000003" },
     ]);
 
-    // La política de escritura de app.routines es solo familiar: la finalización
-    // de la empleada NO avanza next_due_on con el esquema congelado (la 0009
-    // añadirá una función definer para este avance).
-    expect(await nextDueOn(routineId)).toBe("2027-08-02");
-    expect(await routineDueJobs(routineId)).toHaveLength(1);
+    // La función definer de la 0009 permite el avance aunque quien completa
+    // no tenga escritura sobre app.routines (audiencia empleada).
+    expect(await nextDueOn(routineId)).toBe("2027-08-09");
+    expect(await routineDueJobs(routineId)).toHaveLength(2);
 
-    // El primer aviso de una rutina 'employee' va solo a la empleada.
+    // Los avisos de una rutina 'employee' van solo a la empleada.
     const jobs = await routineDueJobs(routineId);
     expect(jobs[0]?.payload.recipients).toEqual([EMPLOYEE_EMAIL]);
   });

@@ -45,10 +45,13 @@ handlers[AUTOCONFIRM_JOB] = createAutoconfirmHandler({
 handlers[ROUTINE_DUE_JOB] = createRoutineDueHandler({
   sendEmail: (input) => sendEmail(config.smtp, input),
 });
-// Sin `persist`: el worker no tiene grant sobre app.ics_sources con el esquema
-// congelado; la migración 0009 añadirá la función de persistencia de alcance mínimo.
 handlers[ICS_SYNC_JOB] = createIcsSyncHandler({
   fetchSource: (url) => fetchIcsSource(url),
+  // La función definer de la 0009 registra el resultado sin dar al worker
+  // lectura ni escritura directa sobre app.ics_sources.
+  persist: async (householdId, sourceId) => {
+    await pool.query("select app_private.record_ics_sync($1, $2, '')", [householdId, sourceId]);
+  },
 });
 
 const healthServer = createServer(async (request, response) => {

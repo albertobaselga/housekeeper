@@ -313,7 +313,7 @@ export interface IcsSyncDeps {
    * migración 0009 añadirá una función `app_private.*` de alcance mínimo. Hasta
    * entonces el hook es opcional y por defecto el resultado se descarta.
    */
-  persist?: (sourceId: string, events: IcsEvent[]) => Promise<void>;
+  persist?: (householdId: string, sourceId: string, events: IcsEvent[]) => Promise<void>;
 }
 
 /**
@@ -333,6 +333,6 @@ export function createIcsSyncHandler(deps: IcsSyncDeps): JobHandler {
       throw new PermanentJobError("La sincronización ICS requiere una url https");
     }
     const events = await deps.fetchSource(url);
-    if (deps.persist) await deps.persist(sourceId, events);
+    if (deps.persist) await deps.persist(job.householdId, sourceId, events);
   };
 }

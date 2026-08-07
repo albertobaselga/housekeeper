@@ -255,17 +255,17 @@ async function completeRoutine(
   }
 
   // Completar la ocurrencia vigente avanza la recurrencia y deja encolado el
-  // aviso de la siguiente. La política de escritura de app.routines es solo
-  // familiar: si el actor es la empleada o el apoyo, el UPDATE afecta 0 filas
-  // y el avance queda pendiente (hueco documentado para una función definer
-  // en la migración 0009); la finalización en sí queda registrada igualmente.
+  // aviso de la siguiente. La escritura de app.routines es solo familiar por
+  // RLS, pero la función definer de la 0009 permite el avance también cuando
+  // completan la empleada o el apoyo (exige contexto y la finalización recién
+  // registrada del propio hogar).
   if (payload.dueOn === routine.next_due_on) {
-    const nextDueOn = advanceDueDate(routine.next_due_on, routine.frequency, routine.interval_count);
-    const advanced = await client.query(
-      `update app.routines set next_due_on = $3 where household_id = $1 and id = $2`,
-      [householdId, payload.routineId, nextDueOn],
+    const advanced = await client.query<{ next_due_on: string | null }>(
+      "select app.advance_routine_after_completion($1, $2)::text as next_due_on",
+      [payload.routineId, payload.dueOn],
     );
-    if ((advanced.rowCount ?? 0) === 1) {
+    const nextDueOn = advanced.rows[0]?.next_due_on;
+    if (nextDueOn) {
       await enqueueRoutineDue(
         client,
         householdId,

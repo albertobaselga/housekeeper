@@ -1,38 +1,74 @@
-import { error } from '@sveltejs/kit';
+import { createHash } from 'node:crypto';
 
+import { error } from '@sveltejs/kit';
+import ical from 'ical-generator';
+import { advanceDueDate } from '@casa-clara/server';
+
+import { getDatabasePool } from '$lib/server/db.server';
 import type { RequestHandler } from './$types';
 
-/**
- * Feed ICS público por token (sin sesión): el cliente de calendario presenta el
- * token opaco en la URL y el servidor debería localizar el feed no revocado por
- * su sha-256 y emitir las próximas ocurrencias de rutinas según su audiencia.
- *
- * HUECO DE ESQUEMA (documentado para la migración 0009): con el esquema
- * congelado esta ruta NO puede emitir el feed. `app.ics_feeds` y `app.routines`
- * están bajo RLS forzada y solo son visibles con contexto de usuario/hogar
- * (`app.user_id` + `app.set_household_context`), que aquí no existe porque la
- * petición es anónima por diseño. Ni siquiera la búsqueda del feed por
- * `token_hash` es posible: el pool de la aplicación ve cero filas sin contexto,
- * y para fijar el contexto del creador habría que leer antes el propio feed.
- * La 0009 añadirá una función SECURITY DEFINER de alcance mínimo (token_hash →
- * feed vigente + rutinas de su audiencia) y esta ruta pasará a usarla.
- */
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,128}$/;
+const PROJECTED_OCCURRENCES = 8;
 
-export const GET: RequestHandler = ({ params }) => {
-  if (!TOKEN_PATTERN.test(params.token)) {
-    error(404, 'Feed no encontrado');
+interface FeedRow {
+  feed_id: string;
+  household_id: string;
+  feed_audience: string;
+  routine_id: string | null;
+  title: string | null;
+  details: string | null;
+  next_due_on: string | null;
+  frequency: string | null;
+  interval_count: number | null;
+}
+
+/**
+ * Feed ICS público por token (sin sesión). La única puerta a los datos es la
+ * función SECURITY DEFINER `app_private.ics_feed_events` (migración 0009):
+ * conocer el token equivale a la autorización, el servidor solo guarda su
+ * sha-256 y la revocación corta el acceso al instante. La emisión usa
+ * ical-generator para producir un .ics interoperable (plegado, CRLF, escapado).
+ */
+export const GET: RequestHandler = async ({ params }) => {
+  if (!TOKEN_PATTERN.test(params.token)) error(404, 'Feed no encontrado');
+  const pool = getDatabasePool();
+  if (!pool) error(404, 'Feed no encontrado');
+
+  const tokenHash = createHash('sha256').update(params.token).digest('hex');
+  const result = await pool.query<FeedRow>(
+    'select * from app_private.ics_feed_events($1)',
+    [tokenHash]
+  );
+  if (result.rows.length === 0) error(404, 'Feed no encontrado');
+
+  const calendar = ical({
+    name: 'Casa Clara · rutinas',
+    prodId: { company: 'Casa Clara', product: 'routines', language: 'ES' }
+  });
+
+  for (const row of result.rows) {
+    if (!row.routine_id || !row.next_due_on || !row.frequency || !row.interval_count) continue;
+    let dueOn = row.next_due_on;
+    for (let occurrence = 0; occurrence < PROJECTED_OCCURRENCES; occurrence += 1) {
+      calendar.createEvent({
+        id: `${row.routine_id}-${dueOn}@casaclara`,
+        start: new Date(`${dueOn}T00:00:00.000Z`),
+        allDay: true,
+        summary: row.title ?? 'Rutina',
+        description: row.details || undefined
+      });
+      dueOn = advanceDueDate(
+        dueOn,
+        row.frequency as 'daily' | 'weekly' | 'monthly' | 'quarterly',
+        row.interval_count
+      );
+    }
   }
 
-  return new Response(
-    'La emisión del feed ICS requiere la función de acceso de la migración 0009; pendiente de integración.\n',
-    {
-      status: 503,
-      headers: {
-        'content-type': 'text/plain; charset=utf-8',
-        'cache-control': 'no-store',
-        'retry-after': '86400'
-      }
+  return new Response(calendar.toString(), {
+    headers: {
+      'content-type': 'text/calendar; charset=utf-8',
+      'cache-control': 'no-store'
     }
-  );
+  });
 };

@@ -260,7 +260,7 @@ describe("ics.sync_source", () => {
         expect(url).toBe("https://calendario.example.com/colegio.ics");
         return parseIcs(SAMPLE_ICS);
       },
-      persist: async (sourceId, events) => {
+      persist: async (_householdId, sourceId, events) => {
         persisted.push({ sourceId, count: events.length });
       },
     });
