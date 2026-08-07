@@ -39,13 +39,20 @@ export const commandEnvelopeSchema = z.object({
   aggregateType: z.enum([
     "agreement",
     "comment",
+    "diner",
     "expense",
     "extra_work",
+    "food",
+    "ics_feed",
     "leave_request",
+    "menu_group",
     "menu_slot",
     "payment",
+    "recipe",
+    "routine",
     "routine_occurrence",
     "settlement",
+    "shopping_item",
     "time_entry",
     "wiki_page",
     "wiki_space",
@@ -222,6 +229,159 @@ export const wikiPageCommandPayloadSchema = z.discriminatedUnion("action", [
   wikiPageCreatePayloadSchema,
   wikiPageEditPayloadSchema,
   wikiPageSetStatePayloadSchema,
+]);
+
+const allergenCodeSchema = z.string().regex(/^[a-z-]+$/);
+const decimalQuantitySchema = z.string().regex(/^\d{1,8}([.,]\d{1,2})?$/);
+
+export const foodUpsertPayloadSchema = z.object({
+  action: z.literal("upsert"),
+  foodId: uuidSchema.optional(),
+  name: z.string().trim().min(1).max(120),
+  shoppingSection: z.string().trim().min(1).max(60),
+  allergenCodes: z.array(allergenCodeSchema).max(14),
+  reviewed: z.boolean(),
+});
+
+export const dinerUpsertPayloadSchema = z.object({
+  action: z.literal("upsert"),
+  dinerId: uuidSchema.optional(),
+  name: z.string().trim().min(1).max(120),
+  notes: z.string().max(500).optional(),
+  flags: z
+    .array(
+      z.object({
+        allergenCode: allergenCodeSchema,
+        severity: z.enum(["high", "medium"]),
+        note: z.string().max(200).optional(),
+      }),
+    )
+    .max(14),
+});
+
+export const recipeSetDetailsPayloadSchema = z.object({
+  action: z.literal("set_details"),
+  pageId: uuidSchema,
+  baseServings: z.number().int().min(1).max(50),
+  timeMinutes: z.number().int().min(1).max(24 * 60).optional(),
+  ingredients: z
+    .array(
+      z.object({
+        foodId: uuidSchema,
+        quantity: decimalQuantitySchema,
+        unit: z.string().trim().min(1).max(30),
+        scaling: z.enum(["linear", "fixed"]),
+      }),
+    )
+    .min(1)
+    .max(60),
+});
+
+export const menuGroupUpsertPayloadSchema = z.object({
+  action: z.literal("upsert"),
+  groupId: uuidSchema.optional(),
+  name: z.string().trim().min(1).max(120),
+  dinerIds: z.array(uuidSchema).max(30),
+});
+
+// La regla "receta o texto" la garantizan el handler y el CHECK de la tabla;
+// aquí se mantiene el objeto plano para poder entrar en la unión discriminada.
+export const menuSlotSetPayloadSchema = z.object({
+  action: z.literal("set"),
+  groupId: uuidSchema,
+  onDate: isoDateSchema,
+  meal: z.enum(["desayuno", "almuerzo", "comida", "merienda", "cena"]),
+  recipePageId: uuidSchema.optional(),
+  freeText: z.string().max(300).optional(),
+  notes: z.string().max(500).optional(),
+  servingsOverride: z.number().int().min(1).max(50).optional(),
+  /** Reconocimiento explícito de una incompatibilidad de alérgenos (AC-21). */
+  acknowledgeAllergens: z.boolean().optional(),
+});
+
+export const menuSlotClearPayloadSchema = z.object({
+  action: z.literal("clear"),
+  slotId: uuidSchema,
+});
+
+export const menuWeekDuplicatePayloadSchema = z.object({
+  action: z.literal("duplicate_week"),
+  fromWeekStartsOn: isoDateSchema,
+  toWeekStartsOn: isoDateSchema,
+});
+
+export const menuConfirmPayloadSchema = z.object({
+  action: z.literal("confirm"),
+  slotId: uuidSchema,
+  contentHash: z.string().regex(/^[0-9a-f]{64}$/),
+});
+
+export const menuSlotCommandPayloadSchema = z.discriminatedUnion("action", [
+  menuSlotSetPayloadSchema,
+  menuSlotClearPayloadSchema,
+  menuWeekDuplicatePayloadSchema,
+  menuConfirmPayloadSchema,
+]);
+
+export const shoppingAddPayloadSchema = z
+  .object({
+    action: z.literal("add"),
+    foodId: uuidSchema.optional(),
+    customName: z.string().trim().max(120).optional(),
+    quantity: decimalQuantitySchema.optional(),
+    unit: z.string().trim().min(1).max(30).optional(),
+    section: z.string().trim().min(1).max(60).optional(),
+    weekStartsOn: isoDateSchema.optional(),
+  })
+  .refine((value) => value.foodId !== undefined || (value.customName ?? "").trim().length > 0, {
+    message: "Un añadido necesita alimento o nombre libre",
+  });
+
+export const shoppingSetCheckedPayloadSchema = z.object({
+  action: z.literal("set_checked"),
+  itemId: uuidSchema,
+  checked: z.boolean(),
+});
+
+export const routineUpsertPayloadSchema = z.object({
+  action: z.literal("upsert"),
+  routineId: uuidSchema.optional(),
+  title: z.string().trim().min(1).max(160),
+  details: z.string().max(1000).optional(),
+  audience: z.enum(["family", "employee", "all"]),
+  frequency: z.enum(["daily", "weekly", "monthly", "quarterly"]),
+  intervalCount: z.number().int().min(1).max(12),
+  nextDueOn: isoDateSchema,
+});
+
+export const routineCompletePayloadSchema = z.object({
+  action: z.literal("complete"),
+  routineId: uuidSchema,
+  dueOn: isoDateSchema,
+});
+
+export const icsFeedCreatePayloadSchema = z.object({
+  action: z.literal("create"),
+  audience: z.enum(["family", "employee", "all"]),
+});
+
+export const icsFeedRevokePayloadSchema = z.object({
+  action: z.literal("revoke"),
+  feedId: uuidSchema,
+});
+
+export const icsSourceUpsertPayloadSchema = z.object({
+  action: z.literal("upsert_source"),
+  sourceId: uuidSchema.optional(),
+  url: z.string().url().startsWith("https://").max(500),
+  label: z.string().trim().min(1).max(120),
+  enabled: z.boolean(),
+});
+
+export const icsFeedCommandPayloadSchema = z.discriminatedUnion("action", [
+  icsFeedCreatePayloadSchema,
+  icsFeedRevokePayloadSchema,
+  icsSourceUpsertPayloadSchema,
 ]);
 
 export const paymentRecordPayloadSchema = z.object({
