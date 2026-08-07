@@ -26,6 +26,11 @@ type ResolvePayload = {
   reason: string;
 };
 
+type DismissPayload = {
+  extraWorkEventId: UUID;
+  reason: string;
+};
+
 type ExtraWorkEventRow = {
   id: string;
   agreement_id: string;
@@ -43,6 +48,14 @@ const RESOLVABLE_STATUSES: readonly ExtraWorkStatus[] = [
   "performed",
   "performed_pending_resolution",
 ];
+
+// Estados desde los que la máquina de 0002 admite cada descarte. `cancel` no
+// alcanza a un trabajo ya realizado: el CHECK de `cancelled` exige
+// performed_by/performed_at NULL, así que lo hecho se rechaza o se resuelve.
+const DISMISSIBLE_STATUSES: Record<"rejected" | "cancelled", readonly ExtraWorkStatus[]> = {
+  rejected: ["requested", "performed_pending_resolution"],
+  cancelled: ["requested", "accepted"],
+};
 
 async function appendTransition(
   client: PoolClient,
@@ -223,6 +236,39 @@ async function markExtraWorkPerformed(
   return { resourceId: event.id };
 }
 
+async function dismissExtraWork(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  toStatus: "rejected" | "cancelled",
+  payload: DismissPayload,
+): Promise<{ resourceId: UUID }> {
+  if (membership.role !== "family_admin") {
+    throw new CommandRejectedError("not_allowed", "Solo la familia administradora rechaza o cancela jornadas extra");
+  }
+
+  const event = await requireExtraWorkEvent(client, householdId, payload.extraWorkEventId, true);
+  if (!DISMISSIBLE_STATUSES[toStatus].includes(event.status)) {
+    throw new CommandRejectedError(
+      "extra_work_not_dismissible",
+      `Estado ${event.status} no admite el descarte a ${toStatus}`,
+    );
+  }
+
+  await enforceTransitionHistoryImmediately(client);
+  // Transición firmada por la administradora antes del UPDATE; el CHECK de los
+  // estados terminales exige resolved_by/resolved_at/resolution_reason en la
+  // misma sentencia que fija el nuevo estado.
+  await appendTransition(client, householdId, event.id, membership.id, event.status, toStatus, payload.reason);
+  await client.query(
+    `update app.extra_work_events
+        set status = $3, resolved_by_membership_id = $4, resolved_at = now(), resolution_reason = $5
+      where household_id = $1 and id = $2`,
+    [householdId, event.id, toStatus, membership.id, payload.reason],
+  );
+  return { resourceId: event.id };
+}
+
 async function resolveExtraWork(
   client: PoolClient,
   membership: ActiveMembership,
@@ -398,7 +444,8 @@ async function resolveExtraWork(
 /**
  * `extra_work`: registro (empleada u origen familiar), aceptación (solo la
  * familia administradora), marca de trabajo realizado (solo la empleada del
- * evento) y resolución (solo la familia administradora) de jornadas extra.
+ * evento), resolución y descarte —reject/cancel— (solo la familia
+ * administradora) de jornadas extra.
  * Cada acción recorre la máquina de estados del trigger paso a paso —
  * transición firmada por quien ejecuta antes de cada UPDATE — y la resolución
  * congela la tarifa vigente el día trabajado usando el motor puro de dominio.
@@ -417,6 +464,15 @@ export const extraWorkCommandHandler: CommandHandler = async (client, membership
   }
   if (payload.action === "mark_performed") {
     return markExtraWorkPerformed(client, membership, envelope.householdId, payload.extraWorkEventId);
+  }
+  if (payload.action === "reject" || payload.action === "cancel") {
+    return dismissExtraWork(
+      client,
+      membership,
+      envelope.householdId,
+      payload.action === "reject" ? "rejected" : "cancelled",
+      payload,
+    );
   }
   return resolveExtraWork(client, membership, envelope.householdId, payload);
 };

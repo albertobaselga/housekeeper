@@ -304,6 +304,25 @@ async function closeSettlement(
     );
   }
 
+  // Los gastos materializados como línea de reembolso quedan `reimbursed` en la
+  // misma transacción del cierre: la lectura de gastos de un cierre posterior
+  // filtra por `status = 'approved'`, así que ninguno vuelve a incluirse.
+  if (expenseRows.rows.length > 0) {
+    const reimbursed = await client.query(
+      `update app.expenses
+          set status = 'reimbursed', reimbursed_at = now()
+        where household_id = $1 and id = any($2::uuid[]) and status = 'approved'`,
+      [householdId, expenseRows.rows.map((row) => row.id)],
+    );
+    if ((reimbursed.rowCount ?? 0) !== expenseRows.rows.length) {
+      // Un gasto leído como aprobado que ya no lo esté delata una carrera: se
+      // aborta la transacción antes que congelar un reembolso duplicado.
+      throw new Error(
+        `Se esperaban ${expenseRows.rows.length} gastos por marcar reembolsados y fueron ${reimbursed.rowCount}`,
+      );
+    }
+  }
+
   // Snapshot canónico de las líneas: el hash congelado es reproducible desde
   // las propias filas y sus referencias de procedencia.
   const snapshot = {
@@ -458,8 +477,9 @@ async function confirmReceipt(
 
 /**
  * `settlement`: apertura (admin), cierre con materialización de líneas desde
- * los hechos del periodo + hash del snapshot canónico + encolado del recibo
- * (admin), y confirmación de cobro (solo la empleada, con el total cubierto).
+ * los hechos del periodo + paso a `reimbursed` de los gastos incluidos + hash
+ * del snapshot canónico + encolado del recibo (admin), y confirmación de cobro
+ * (solo la empleada, con el total cubierto).
  */
 export const settlementCommandHandler: CommandHandler = async (client, membership, envelope) => {
   const parsed = settlementCommandPayloadSchema.safeParse(envelope.payload);
