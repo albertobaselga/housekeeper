@@ -44,6 +44,7 @@ export interface WikiSpaceView {
   slug: string;
   name: string;
   description: string;
+  isTemplate: boolean;
   pages: WikiPageNode[];
 }
 
@@ -74,6 +75,8 @@ export interface WikiHome {
   canWrite: boolean;
   canPublish: boolean;
   spaces: WikiSpaceView[];
+  /** Espacios marcados como plantilla, listados aparte de los espacios vivos. */
+  templates: WikiSpaceView[];
   pinned: WikiHomeEntry[];
   recent: WikiHomeEntry[];
   /**
@@ -111,8 +114,14 @@ export async function loadWikiHome(
   if (!pool) return null;
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
-      const spaces = await client.query<{ id: string; slug: string; name: string; description: string }>(
-        `select id, slug, name, description
+      const spaces = await client.query<{
+        id: string;
+        slug: string;
+        name: string;
+        description: string;
+        isTemplate: boolean;
+      }>(
+        `select id, slug, name, description, is_template as "isTemplate"
            from app.wiki_spaces
           where household_id = $1 and archived_at is null
           order by position, name`,
@@ -194,8 +203,14 @@ export async function loadWikiHome(
         };
       };
 
-      const pinned = pages.rows.filter((row) => row.pinned).map(toEntry);
-      const recent = [...pages.rows]
+      // Las páginas de una plantilla no compiten en portada: solo cuentan las
+      // de espacios vivos (fijadas y actividad reciente).
+      const templateSpaceIds = new Set(
+        spaces.rows.filter((space) => space.isTemplate).map((space) => space.id)
+      );
+      const liveRows = pages.rows.filter((row) => !templateSpaceIds.has(row.spaceId));
+      const pinned = liveRows.filter((row) => row.pinned).map(toEntry);
+      const recent = [...liveRows]
         .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
         .slice(0, 6)
         .map(toEntry);
@@ -219,7 +234,10 @@ export async function loadWikiHome(
         role: membership.role,
         canWrite: WRITER_ROLES.includes(membership.role),
         canPublish: PUBLISHER_ROLES.includes(membership.role),
-        spaces: spaceViews,
+        // Las plantillas se listan aparte: no son espacios "vivos" de lectura
+        // sino orígenes de clonación (F4-01).
+        spaces: spaceViews.filter((space) => !space.isTemplate),
+        templates: spaceViews.filter((space) => space.isTemplate),
         pinned,
         recent,
         searchGaps

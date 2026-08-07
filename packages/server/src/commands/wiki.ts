@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import type { UUID } from "@casa-clara/contracts";
 import {
   wikiPageCommandPayloadSchema,
-  wikiSpaceCreatePayloadSchema,
+  wikiSpaceCommandPayloadSchema,
 } from "@casa-clara/contracts/schemas";
 
 import type { ActiveMembership } from "../database.js";
@@ -129,37 +129,35 @@ async function insertRevision(
 }
 
 /**
- * `wiki_space` — solo creación, reservada a la familia (RLS lo respalda con
- * `wiki_spaces_admin_write`; aquí se rechaza antes con un código claro). El
- * slug llega explícito o se deriva del nombre; la colisión con un slug
- * derivado se resuelve con sufijos `-2`, `-3`… y la de un slug explícito se
- * rechaza porque fue una elección deliberada del usuario.
+ * Slug del espacio nuevo: explícito → la colisión se rechaza (fue una elección
+ * deliberada); derivado del nombre → se desambigua con sufijos `-2`, `-3`…
  */
-export const wikiSpaceCommandHandler: CommandHandler = async (client, membership, envelope) => {
-  if (!SPACE_ADMIN_ROLES.has(membership.role)) {
-    throw new CommandRejectedError("not_allowed", "Solo la familia administra espacios de la wiki");
-  }
-  const parsed = wikiSpaceCreatePayloadSchema.safeParse(envelope.payload);
-  if (!parsed.success) {
-    throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
-  }
-  const payload = parsed.data;
-  const householdId = envelope.householdId;
-
-  let slug: string;
-  if (payload.slug !== undefined) {
+async function resolveSpaceSlug(
+  client: PoolClient,
+  householdId: UUID,
+  name: string,
+  explicitSlug: string | undefined,
+): Promise<string> {
+  if (explicitSlug !== undefined) {
     const clash = await client.query(
       `select 1 from app.wiki_spaces where household_id = $1 and slug = $2`,
-      [householdId, payload.slug],
+      [householdId, explicitSlug],
     );
     if ((clash.rowCount ?? 0) > 0) {
-      throw new CommandRejectedError("slug_taken", `El slug ${payload.slug} ya existe en este hogar`);
+      throw new CommandRejectedError("slug_taken", `El slug ${explicitSlug} ya existe en este hogar`);
     }
-    slug = payload.slug;
-  } else {
-    slug = await availableSpaceSlug(client, householdId, slugifyWikiTitle(payload.name));
+    return explicitSlug;
   }
+  return availableSpaceSlug(client, householdId, slugifyWikiTitle(name));
+}
 
+async function createSpace(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  payload: { name: string; slug?: string | undefined; description?: string | undefined },
+): Promise<{ resourceId: UUID }> {
+  const slug = await resolveSpaceSlug(client, householdId, payload.name, payload.slug);
   const inserted = await client.query<{ id: string }>(
     `insert into app.wiki_spaces (household_id, slug, name, description, created_by_membership_id)
      values ($1, $2, $3, $4, $5)
@@ -169,6 +167,234 @@ export const wikiSpaceCommandHandler: CommandHandler = async (client, membership
   const spaceId = inserted.rows[0]?.id;
   if (!spaceId) throw new Error("La inserción del espacio no devolvió identificador");
   return { resourceId: spaceId };
+}
+
+/** Marca o desmarca un espacio como plantilla clonable (solo familia). */
+async function setSpaceTemplate(
+  client: PoolClient,
+  householdId: UUID,
+  payload: { spaceId: UUID; isTemplate: boolean },
+): Promise<{ resourceId: UUID }> {
+  const updated = await client.query(
+    `update app.wiki_spaces
+        set is_template = $3
+      where household_id = $1 and id = $2 and archived_at is null`,
+    [householdId, payload.spaceId, payload.isTemplate],
+  );
+  if ((updated.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError("space_not_found", "El espacio no existe o no es visible");
+  }
+  return { resourceId: payload.spaceId };
+}
+
+interface TemplatePageRow {
+  id: string;
+  parent_page_id: string | null;
+  status: "draft" | "published";
+  pinned: boolean;
+  position: number;
+  current_revision_id: string | null;
+}
+
+interface TemplateRevisionRow {
+  id: string;
+  page_id: string;
+  title: string;
+  body_markdown: string;
+  tags: string[];
+  aliases: string[];
+}
+
+/**
+ * Enlaces internos `[texto](wiki:slug)` del cuerpo: los que resuelven a una
+ * página del espacio ORIGEN (por cualquiera de sus slugs, vigente o histórico)
+ * se reescriben al slug de la página clonada; el resto (otras wikis del hogar,
+ * externos) se conserva tal cual.
+ */
+function rewriteWikiLinks(body: string, slugMap: ReadonlyMap<string, string>): string {
+  return body.replace(/\]\(wiki:([a-z0-9]+(?:-[a-z0-9]+)*)\)/g, (match, slug: string) => {
+    const target = slugMap.get(slug);
+    return target === undefined ? match : `](wiki:${target})`;
+  });
+}
+
+/**
+ * Clona un espacio plantilla DEL MISMO HOGAR como espacio nuevo editable:
+ * copia toda la jerarquía de páginas (parent remapeado al clon, mismo
+ * status/pinned/position) y, por página, una revisión 1 con el contenido de la
+ * revisión VIGENTE del origen firmada por la membresía actora. Los slugs de
+ * las páginas clonadas se desambiguan con los sufijos habituales (son únicos
+ * por hogar) sin tocar los del origen. RLS acota el SELECT del origen al
+ * hogar del contexto: una plantilla de otro hogar simplemente "no existe".
+ */
+async function cloneTemplateSpace(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  payload: { templateSpaceId: UUID; name: string; slug?: string | undefined },
+): Promise<{ resourceId: UUID }> {
+  const origin = await client.query<{ description: string }>(
+    `select description from app.wiki_spaces
+      where household_id = $1 and id = $2 and is_template = true and archived_at is null`,
+    [householdId, payload.templateSpaceId],
+  );
+  if ((origin.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError(
+      "template_not_found",
+      "La plantilla no existe en este hogar o no está marcada como plantilla",
+    );
+  }
+
+  const spaceSlug = await resolveSpaceSlug(client, householdId, payload.name, payload.slug);
+  const insertedSpace = await client.query<{ id: string }>(
+    `insert into app.wiki_spaces (household_id, slug, name, description, created_by_membership_id)
+     values ($1, $2, $3, $4, $5)
+     returning id`,
+    [householdId, spaceSlug, payload.name, origin.rows[0]?.description ?? "", membership.id],
+  );
+  const newSpaceId = insertedSpace.rows[0]?.id;
+  if (!newSpaceId) throw new Error("La inserción del espacio clonado no devolvió identificador");
+
+  const pages = await client.query<TemplatePageRow>(
+    `select id, parent_page_id, status::text as status, pinned, position, current_revision_id
+       from app.wiki_pages
+      where household_id = $1 and space_id = $2 and archived_at is null
+      order by position, created_at, id`,
+    [householdId, payload.templateSpaceId],
+  );
+
+  // Solo se clona lo que tiene contenido vigente (toda página creada por
+  // comando lo tiene; una sin revisión sería un resto inconsistente).
+  const clonable = pages.rows.filter((row) => row.current_revision_id !== null);
+  if (clonable.length === 0) return { resourceId: newSpaceId };
+
+  const revisionRows = await client.query<TemplateRevisionRow>(
+    `select id, page_id, title, body_markdown, tags, aliases
+       from app.wiki_revisions
+      where household_id = $1 and id = any($2::uuid[])`,
+    [householdId, clonable.map((row) => row.current_revision_id)],
+  );
+  const currentRevisionByPage = new Map(revisionRows.rows.map((row) => [row.page_id, row]));
+
+  // Fase 1 — páginas y slugs, de padres a hijas (la FK exige el padre antes):
+  // por página, slug nuevo desambiguado a partir del título vigente.
+  const clonableIds = new Set(clonable.map((row) => row.id));
+  const childrenOf = new Map<string | null, TemplatePageRow[]>();
+  for (const row of clonable) {
+    // Si el padre no es clonable (fuera del espacio no puede estar; sin
+    // revisión vigente sí), la hija cuelga de la raíz del clon.
+    const parentKey = row.parent_page_id !== null && clonableIds.has(row.parent_page_id) ? row.parent_page_id : null;
+    const siblings = childrenOf.get(parentKey) ?? [];
+    siblings.push(row);
+    childrenOf.set(parentKey, siblings);
+  }
+
+  const newPageIdByOrigin = new Map<string, string>();
+  const newSlugByOriginPage = new Map<string, string>();
+  const queue: TemplatePageRow[] = [...(childrenOf.get(null) ?? [])];
+  while (queue.length > 0) {
+    const originPage = queue.shift()!;
+    const revision = currentRevisionByPage.get(originPage.id);
+    if (!revision) continue;
+
+    const base = slugifyWikiTitle(revision.title);
+    const existing = await client.query<{ slug: string }>(
+      `select slug from app.wiki_page_slugs
+        where household_id = $1 and (slug = $2 or slug like $2 || '-%')`,
+      [householdId, base],
+    );
+    const slug = nextFreeSlug(base, new Set(existing.rows.map((row) => row.slug)));
+
+    const parentId =
+      originPage.parent_page_id !== null
+        ? newPageIdByOrigin.get(originPage.parent_page_id) ?? null
+        : null;
+    const insertedPage = await client.query<{ id: string }>(
+      `insert into app.wiki_pages
+         (household_id, space_id, parent_page_id, status, current_slug, pinned, position,
+          created_by_membership_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       returning id`,
+      [
+        householdId,
+        newSpaceId,
+        parentId,
+        originPage.status,
+        slug,
+        originPage.pinned,
+        originPage.position,
+        membership.id,
+      ],
+    );
+    const newPageId = insertedPage.rows[0]?.id;
+    if (!newPageId) throw new Error("La inserción de la página clonada no devolvió identificador");
+    await client.query(
+      `insert into app.wiki_page_slugs (household_id, page_id, slug) values ($1, $2, $3)`,
+      [householdId, newPageId, slug],
+    );
+    newPageIdByOrigin.set(originPage.id, newPageId);
+    newSlugByOriginPage.set(originPage.id, slug);
+    queue.push(...(childrenOf.get(originPage.id) ?? []));
+  }
+
+  // Fase 2 — contenido: todos los slugs del origen (vigentes e históricos)
+  // resuelven al slug del clon para que los enlaces internos no apunten atrás.
+  const originSlugs = await client.query<{ slug: string; page_id: string }>(
+    `select slug, page_id from app.wiki_page_slugs
+      where household_id = $1 and page_id = any($2::uuid[])`,
+    [householdId, [...newSlugByOriginPage.keys()]],
+  );
+  const slugMap = new Map<string, string>();
+  for (const row of originSlugs.rows) {
+    const target = newSlugByOriginPage.get(row.page_id);
+    if (target !== undefined && !slugMap.has(row.slug)) slugMap.set(row.slug, target);
+  }
+
+  for (const [originPageId, newPageId] of newPageIdByOrigin) {
+    const revision = currentRevisionByPage.get(originPageId);
+    if (!revision) continue;
+    const revisionId = await insertRevision(client, householdId, newPageId, 1, membership.id, {
+      title: revision.title,
+      bodyMarkdown: rewriteWikiLinks(revision.body_markdown, slugMap),
+      summary: "clonada de plantilla",
+      tags: revision.tags,
+      aliases: revision.aliases,
+    });
+    await client.query(
+      `update app.wiki_pages set current_revision_id = $3 where household_id = $1 and id = $2`,
+      [householdId, newPageId, revisionId],
+    );
+  }
+
+  return { resourceId: newSpaceId };
+}
+
+/**
+ * `wiki_space` — create / set_template / clone_template, reservado a la
+ * familia (RLS lo respalda con `wiki_spaces_admin_write`; aquí se rechaza
+ * antes con un código claro). `clone_template` exige un origen del MISMO
+ * hogar con `is_template = true`; en cualquier otro caso responde
+ * `template_not_found`.
+ */
+export const wikiSpaceCommandHandler: CommandHandler = async (client, membership, envelope) => {
+  if (!SPACE_ADMIN_ROLES.has(membership.role)) {
+    throw new CommandRejectedError("not_allowed", "Solo la familia administra espacios de la wiki");
+  }
+  const parsed = wikiSpaceCommandPayloadSchema.safeParse(envelope.payload);
+  if (!parsed.success) {
+    throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
+  }
+  const payload = parsed.data;
+  const householdId = envelope.householdId;
+
+  switch (payload.action) {
+    case "create":
+      return createSpace(client, membership, householdId, payload);
+    case "set_template":
+      return setSpaceTemplate(client, householdId, payload);
+    case "clone_template":
+      return cloneTemplateSpace(client, membership, householdId, payload);
+  }
 };
 
 async function createPage(

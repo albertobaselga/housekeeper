@@ -4,11 +4,13 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { useAppContext } from '$lib/auth/context';
   import {
+    cloneWikiTemplate,
     createWikiPage,
     createWikiSpace,
     parseTermList,
     queueWikiCommand,
-    setWikiPageState
+    setWikiPageState,
+    setWikiSpaceTemplate
   } from '$lib/wiki/commands';
   import type { WikiPageNode } from '$lib/server/wiki.server';
   import type { PageData } from './$types';
@@ -68,6 +70,25 @@
       newPageBody = '';
       newPageTags = '';
       newPagePublish = false;
+    });
+  }
+
+  // Plantillas (F4-01): alternar la marca de plantilla y clonar con nombre nuevo.
+  let cloneNames = $state<Record<string, string>>({});
+
+  function toggleTemplate(spaceId: string, isTemplate: boolean): void {
+    if (!home) return;
+    void dispatch(setWikiSpaceTemplate({ householdId: home.householdId, spaceId, isTemplate: !isTemplate }));
+  }
+
+  function submitCloneTemplate(event: SubmitEvent, templateSpaceId: string): void {
+    event.preventDefault();
+    const name = cloneNames[templateSpaceId]?.trim();
+    if (!home || !name) return;
+    void dispatch(
+      cloneWikiTemplate({ householdId: home.householdId, templateSpaceId, name })
+    ).then(() => {
+      cloneNames = { ...cloneNames, [templateSpaceId]: '' };
     });
   }
 
@@ -157,7 +178,14 @@
         <div class="section-heading"><div><p class="eyebrow">Por espacios</p><h2 id="spaces-title">Espacios de la casa</h2></div></div>
         {#each home.spaces as space (space.id)}
           <div class="wiki-space">
-            <h3>{space.name}</h3>
+            <div class="wiki-node-row">
+              <h3>{space.name}</h3>
+              {#if home.canPublish}
+                <button class="button secondary small-button" type="button" disabled={busy} onclick={() => toggleTemplate(space.id, space.isTemplate)}>
+                  Convertir en plantilla
+                </button>
+              {/if}
+            </div>
             {#if space.description}<p class="article-summary">{space.description}</p>{/if}
             {#if space.pages.length}
               <ul class="wiki-tree">
@@ -172,6 +200,33 @@
         {:else}
           <p class="audit-note">Tu rol no tiene contenido visible en la wiki de este hogar.</p>
         {/each}
+
+        {#if home.templates.length}
+          <!-- Plantillas (F4-01): orígenes de clonación listados aparte de los espacios vivos. -->
+          <div class="section-heading"><div><p class="eyebrow">Reutilizar</p><h2 id="templates-title">Plantillas</h2></div></div>
+          {#each home.templates as template (template.id)}
+            <div class="wiki-space" aria-labelledby="templates-title">
+              <div class="wiki-node-row">
+                <h3>{template.name}</h3>
+                <span class="status-chip">Plantilla</span>
+                {#if home.canPublish}
+                  <button class="button secondary small-button" type="button" disabled={busy} onclick={() => toggleTemplate(template.id, template.isTemplate)}>
+                    Dejar de ser plantilla
+                  </button>
+                {/if}
+              </div>
+              {#if template.description}<p class="article-summary">{template.description}</p>{/if}
+              {#if home.canPublish}
+                <form class="wiki-node-row" onsubmit={(event) => submitCloneTemplate(event, template.id)}>
+                  <label>Nombre del espacio nuevo
+                    <input type="text" bind:value={cloneNames[template.id]} maxlength="120" required />
+                  </label>
+                  <button class="button primary small-button" type="submit" disabled={busy}>Crear espacio desde plantilla</button>
+                </form>
+              {/if}
+            </div>
+          {/each}
+        {/if}
       </section>
 
       <aside class="stack">
