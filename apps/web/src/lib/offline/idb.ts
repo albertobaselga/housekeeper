@@ -132,6 +132,31 @@ export async function acknowledgeOutbox(
   return { clearedIds, pendingIds };
 }
 
+/** Marca registros de outbox que requieren resolución humana (conflict/rejected). */
+export async function updateOutboxStatuses(
+  ids: string[],
+  status: OutboxRecord['status'],
+  databaseName?: string
+): Promise<void> {
+  if (!ids.length) return;
+  const database = await openOfflineDatabase(databaseName);
+  try {
+    const transaction = database.transaction(OFFLINE_STORES.outbox, 'readwrite');
+    const store = transaction.objectStore(OFFLINE_STORES.outbox);
+    for (const id of ids) {
+      const record = await requestResult<OutboxRecord | undefined>(store.get(id));
+      if (record) store.put({ ...record, status });
+    }
+    await new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error ?? new Error('Could not update outbox statuses'));
+      transaction.onabort = () => reject(transaction.error ?? new Error('Outbox status update aborted'));
+    });
+  } finally {
+    database.close();
+  }
+}
+
 export async function saveOfflineBlob(record: OfflineBlobRecord, databaseName?: string): Promise<void> {
   if (record.size !== record.blob.size) throw new TypeError('Blob size metadata does not match payload');
   await withStore(OFFLINE_STORES.blobs, 'readwrite', (store) => store.put(record), databaseName);

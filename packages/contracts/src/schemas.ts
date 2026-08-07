@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   API_VERSION,
+  MAX_SYNC_COMMANDS,
   capabilities,
   roles,
 } from "./index.js";
@@ -59,6 +60,18 @@ const commandAckSchema = z.object({
   revision: z.number().int().nonnegative().optional(),
   errorCode: z.string().max(100).optional(),
   retryAfterSeconds: z.number().int().positive().optional(),
+});
+
+export const syncRequestSchema = z.object({
+  apiVersion: z.literal(API_VERSION),
+  commands: z.array(commandEnvelopeSchema).min(1).max(MAX_SYNC_COMMANDS),
+});
+
+export const expenseSubmitPayloadSchema = z.object({
+  agreementId: uuidSchema,
+  incurredOn: isoDateSchema,
+  description: z.string().trim().min(1).max(500),
+  amountCents: moneyCentsSchema.refine((value) => BigInt(value) > 0n, "El importe debe ser positivo"),
 });
 
 export const syncResultSchema = z.object({

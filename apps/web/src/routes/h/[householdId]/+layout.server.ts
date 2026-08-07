@@ -1,6 +1,8 @@
 import { error } from '@sveltejs/kit';
 import { capabilitiesFor } from '$lib/auth/capabilities';
-import { getCriticalSnapshot, getHousehold } from '$lib/server/fixtures.server';
+import { getHousehold } from '$lib/server/fixtures.server';
+import { getSnapshotKeys } from '$lib/server/keys.server';
+import { buildCriticalSnapshot } from '$lib/server/snapshot.server';
 import type { AppContext } from '$lib/auth/types';
 import type { LayoutServerLoad } from './$types';
 
@@ -16,7 +18,8 @@ export const load: LayoutServerLoad = ({ locals, params }) => {
     capabilities: capabilitiesFor(locals.user.role),
     locale: 'es-ES',
     timeZone: 'Europe/Madrid',
-    criticalSnapshot: getCriticalSnapshot(household.id)
+    criticalSnapshot: buildCriticalSnapshot(household.id, locals.user.membershipId),
+    snapshotPublicKey: getSnapshotKeys().publicKeyRaw
   };
   return { context };
 };

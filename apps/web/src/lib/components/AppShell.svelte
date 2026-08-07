@@ -27,7 +27,7 @@
   const isActive = (moduleName: HouseholdModule) => page.url.pathname === pathFor(moduleName) || page.url.pathname.startsWith(`${pathFor(moduleName)}/`);
 
   onMount(() => {
-    const stopMonitor = startSyncMonitor(context.criticalSnapshot);
+    const stopMonitor = startSyncMonitor(context.criticalSnapshot, context.snapshotPublicKey);
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k' && has('search.use')) {
         event.preventDefault();

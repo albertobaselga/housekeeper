@@ -3,6 +3,7 @@ import type { CriticalSnapshotV1 } from '$lib/offline/schema';
 
 export interface DemoUser {
   id: string;
+  membershipId: string;
   name: string;
   initials: string;
   email: string;
@@ -31,4 +32,6 @@ export interface AppContext {
   locale: 'es-ES';
   timeZone: 'Europe/Madrid';
   criticalSnapshot: CriticalSnapshotV1;
+  /** Clave pública Ed25519 (raw, base64url) para verificar snapshots offline. */
+  snapshotPublicKey: string;
 }

@@ -3,7 +3,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { useAppContext } from '$lib/auth/context';
   import { queueOutbox } from '$lib/offline/idb';
-  import { createOutboxRecord } from '$lib/offline/schema';
+  import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
   import { refreshSyncStatus } from '$lib/offline/sync';
   import type { PageData } from './$types';
 
@@ -17,8 +17,11 @@
     const item = groups.flatMap((group) => group.items).find((candidate) => candidate.id === itemId);
     if (!item) return;
     item.done = !item.done;
-    const id = crypto.randomUUID();
-    await queueOutbox(createOutboxRecord({ id, idempotencyKey: id, householdId: context.household.id, operation: 'routine.toggle', payload: { itemId, done: item.done } }));
+    await queueOutbox(createOutboxRecord(createCommandEnvelope({
+      householdId: context.household.id,
+      aggregateType: 'routine_occurrence',
+      payload: { itemId, done: item.done }
+    })));
     await refreshSyncStatus();
   }
 </script>

@@ -1,7 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -11,13 +8,6 @@ import { API_VERSION, type CommandEnvelopeV1 } from "@casa-clara/contracts";
 import { AuthorizationError, withAuthorizedTransaction } from "./database.js";
 import { IdempotencyConflictError, executeIdempotentCommand } from "./idempotency.js";
 
-const dbWorkspaceUrl = new URL("../../db/", import.meta.url);
-
-async function loadMigrationRunner(): Promise<{
-  applyMigrations: (client: pg.PoolClient) => Promise<number>;
-}> {
-  return import(new URL("scripts/migrate.mjs", dbWorkspaceUrl).href);
-}
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
@@ -44,38 +34,17 @@ describe.runIf(Boolean(adminUrl))("contexto autorizado e idempotencia sobre Post
   let adminPool: pg.Pool;
   let appPool: pg.Pool;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     adminPool = new pg.Pool({ connectionString: adminUrl, max: 2 });
-    const admin = await adminPool.connect();
-    try {
-      await admin.query("drop schema if exists app cascade");
-      await admin.query("drop schema if exists app_private cascade");
-      await admin.query("drop table if exists public.schema_migrations");
-      const { applyMigrations } = await loadMigrationRunner();
-      await applyMigrations(admin);
-      const fixturesDir = fileURLToPath(new URL("fixtures", dbWorkspaceUrl));
-      for (const fixture of (await readdir(fixturesDir)).filter((f) => f.endsWith(".sql")).sort()) {
-        await admin.query(await readFile(path.join(fixturesDir, fixture), "utf8"));
-      }
-      await admin.query(`drop role if exists ${APP_LOGIN}`);
-      await admin.query(
-        `create role ${APP_LOGIN} login password 'integration-only' nosuperuser nobypassrls in role casa_clara_app`,
-      );
-    } finally {
-      admin.release();
-    }
     const url = new URL(adminUrl as string);
     url.username = APP_LOGIN;
     url.password = "integration-only";
     appPool = new pg.Pool({ connectionString: url.toString(), max: 2 });
-  }, 60_000);
+  });
 
   afterAll(async () => {
     await appPool?.end();
-    if (adminPool) {
-      await adminPool.query(`drop role if exists ${APP_LOGIN}`).catch(() => {});
-      await adminPool.end();
-    }
+    await adminPool?.end();
   });
 
   it("fija contexto de hogar y RLS limita la lectura al propio hogar", async () => {

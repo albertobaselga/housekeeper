@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { useAppContext } from '$lib/auth/context';
-  import { createOutboxRecord } from '$lib/offline/schema';
+  import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
   import { queueOutbox } from '$lib/offline/idb';
   import { refreshSyncStatus } from '$lib/offline/sync';
   import type { PageData } from './$types';
@@ -18,14 +18,11 @@
     const task = tasks.find((candidate) => candidate.id === taskId);
     if (!task) return;
     task.done = !task.done;
-    const id = crypto.randomUUID();
-    await queueOutbox(createOutboxRecord({
-      id,
-      idempotencyKey: id,
+    await queueOutbox(createOutboxRecord(createCommandEnvelope({
       householdId: context.household.id,
-      operation: 'routine.toggle',
+      aggregateType: 'routine_occurrence',
       payload: { taskId, done: task.done }
-    }));
+    })));
     await refreshSyncStatus();
   }
 </script>

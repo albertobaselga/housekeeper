@@ -160,11 +160,26 @@ export interface CommandAckV1 {
   retryAfterSeconds?: number;
 }
 
+export const MAX_SYNC_COMMANDS = 25;
+
+export interface SyncRequestV1 {
+  apiVersion: typeof API_VERSION;
+  commands: CommandEnvelopeV1[];
+}
+
 export interface SyncResultV1 {
   apiVersion: typeof API_VERSION;
   acknowledgements: CommandAckV1[];
   nextCursor: string;
   snapshotVersion: string | null;
+}
+
+/** Payload de `aggregateType: "expense"` para registrar un gasto propio. */
+export interface ExpenseSubmitPayloadV1 {
+  agreementId: UUID;
+  incurredOn: ISODate;
+  description: string;
+  amountCents: MoneyCents;
 }
 
 export interface CriticalSnapshotV1 {
@@ -209,6 +224,34 @@ export interface SearchResponseV1 {
   mode: "offline" | "online";
   elapsedMs: number;
   groups: Partial<Record<SearchResultKind, SearchResultV1[]>>;
+}
+
+function canonicalValue(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("JSON canónico no admite números no finitos");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalValue).join(",")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalValue(record[key])}`)
+      .join(",")}}`;
+  }
+  throw new TypeError(`JSON canónico no admite ${typeof value}`);
+}
+
+/**
+ * Serialización canónica compartida por firma y hashing en cliente y servidor.
+ * Vive en contracts porque no depende de Node y ambos lados deben producir
+ * exactamente los mismos bytes.
+ */
+export function canonicalJson(value: unknown): string {
+  return canonicalValue(value);
 }
 
 export function isRole(value: string): value is Role {

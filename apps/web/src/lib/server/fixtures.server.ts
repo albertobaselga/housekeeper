@@ -1,15 +1,18 @@
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
-import type { CriticalSnapshotV1 } from '$lib/offline/schema';
 
+// Los identificadores replican las fixtures sintéticas de @casa-clara/db
+// (fixture-casa-roble): con DATABASE_URL configurada, la sesión demo opera
+// directamente contra Postgres bajo RLS sin tabla de correspondencias.
 const HOUSEHOLD: HouseholdSummary = {
-  id: 'casa-roble',
+  id: '10000000-0000-4000-8000-000000000001',
   name: 'Casa Clara',
   subtitle: 'Familia Roble · datos ficticios'
 };
 
 const DEMO_USERS: DemoUser[] = [
   {
-    id: 'demo-alberto',
+    id: 'fixture:roble:admin',
+    membershipId: '11000000-0000-4000-8000-000000000001',
     name: 'Alberto',
     initials: 'A',
     email: 'alberto.admin@casaclara.demo',
@@ -17,7 +20,8 @@ const DEMO_USERS: DemoUser[] = [
     householdIds: [HOUSEHOLD.id]
   },
   {
-    id: 'demo-marta',
+    id: 'fixture:roble:family',
+    membershipId: '11000000-0000-4000-8000-000000000002',
     name: 'Marta',
     initials: 'M',
     email: 'marta.familia@casaclara.demo',
@@ -25,7 +29,8 @@ const DEMO_USERS: DemoUser[] = [
     householdIds: [HOUSEHOLD.id]
   },
   {
-    id: 'demo-ana',
+    id: 'fixture:roble:employee',
+    membershipId: '11000000-0000-4000-8000-000000000003',
     name: 'Ana',
     initials: 'AN',
     email: 'ana.empleada@casaclara.demo',
@@ -33,7 +38,8 @@ const DEMO_USERS: DemoUser[] = [
     householdIds: [HOUSEHOLD.id]
   },
   {
-    id: 'demo-lucia',
+    id: 'fixture:roble:helper',
+    membershipId: '11000000-0000-4000-8000-000000000004',
     name: 'Lucía',
     initials: 'L',
     email: 'lucia.apoyo@casaclara.demo',
@@ -41,7 +47,8 @@ const DEMO_USERS: DemoUser[] = [
     householdIds: [HOUSEHOLD.id]
   },
   {
-    id: 'demo-diego',
+    id: 'fixture:roble:viewer',
+    membershipId: '11000000-0000-4000-8000-000000000005',
     name: 'Diego',
     initials: 'D',
     email: 'diego.canguro@casaclara.demo',
@@ -131,28 +138,33 @@ export function getHousehold(householdId: string): HouseholdSummary | null {
   return householdId === HOUSEHOLD.id ? copy(HOUSEHOLD) : null;
 }
 
-export function getCriticalSnapshot(householdId: string): CriticalSnapshotV1 {
-  const savedAt = new Date().toISOString();
+export interface CriticalSnapshotFixturePayload {
+  emergency: Array<{ id: string; title: string; body: string }>;
+  contacts: Array<{ id: string; name: string; phone: string; kind: string }>;
+  dietaryFlags: Array<{ id: string; label: string; severity: 'high' | 'medium' }>;
+  today: { dateLabel: string; nextEvent: string; menu: string };
+  wikiPages: Array<{ id: string; title: string; space: string; body: string }>;
+}
+
+export function getCriticalSnapshotPayload(): CriticalSnapshotFixturePayload {
   return {
-    schemaVersion: 1,
-    householdId,
-    revision: 'critical-demo-r3',
-    savedAt,
-    validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    payload: {
-      today: {
-        dateLabel: 'Viernes, 7 de agosto',
-        nextEvent: '16:45 · Recoger a Leo',
-        menu: '14:00 · Lentejas con verduras'
-      },
-      emergencyContacts: CONTACTS.filter((contact) => contact.featured).map((contact) => ({
-        id: contact.id,
-        name: contact.name,
-        phone: contact.phone,
-        kind: contact.kind
-      })),
-      safeNotes: ['Alergia alimentaria de demostración: revisar siempre las etiquetas.', 'La llave de corte de agua está bajo el fregadero.']
-    }
+    emergency: [
+      { id: 'note-allergy', title: 'Alergia alimentaria', body: 'Alergia alimentaria de demostración: revisar siempre las etiquetas.' },
+      { id: 'note-water', title: 'Corte de agua', body: 'La llave de corte de agua está bajo el fregadero.' }
+    ],
+    contacts: CONTACTS.filter((contact) => contact.featured).map((contact) => ({
+      id: contact.id,
+      name: contact.name,
+      phone: contact.phone,
+      kind: contact.kind
+    })),
+    dietaryFlags: [{ id: 'dairy-free', label: 'Leo · sin lácteos', severity: 'high' }],
+    today: {
+      dateLabel: 'Viernes, 7 de agosto',
+      nextEvent: '16:45 · Recoger a Leo',
+      menu: '14:00 · Lentejas con verduras'
+    },
+    wikiPages: WIKI_PAGES.map((page) => ({ id: page.id, title: page.title, space: page.space, body: page.body }))
   };
 }
 

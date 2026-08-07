@@ -1,3 +1,29 @@
+import type { AggregateType, CommandEnvelopeV1, CriticalSnapshotV1 } from '@casa-clara/contracts';
+
+export type { CommandEnvelopeV1, CriticalSnapshotV1 };
+
+export function createCommandEnvelope(input: {
+  householdId: string;
+  aggregateType: AggregateType;
+  payload: unknown;
+  operationId?: string;
+  aggregateId?: string | null;
+  baseRevision?: number | null;
+  occurredAt?: string;
+}): CommandEnvelopeV1 {
+  return {
+    apiVersion: 1,
+    operationId: input.operationId ?? crypto.randomUUID(),
+    householdId: input.householdId,
+    schemaVersion: 1,
+    aggregateType: input.aggregateType,
+    aggregateId: input.aggregateId ?? null,
+    baseRevision: input.baseRevision ?? null,
+    occurredAt: input.occurredAt ?? new Date().toISOString(),
+    payload: input.payload
+  };
+}
+
 export const OFFLINE_DB_NAME = 'casa-clara-web';
 export const OFFLINE_DB_VERSION = 1;
 
@@ -7,39 +33,16 @@ export const OFFLINE_STORES = {
   blobs: 'blobs'
 } as const;
 
-export interface CriticalSnapshotPayload {
-  today: {
-    dateLabel: string;
-    nextEvent: string;
-    menu: string;
-  };
-  emergencyContacts: Array<{
-    id: string;
-    name: string;
-    phone: string;
-    kind: string;
-  }>;
-  safeNotes: string[];
-}
-
-export interface CriticalSnapshotV1 {
-  schemaVersion: 1;
-  householdId: string;
-  revision: string;
-  savedAt: string;
-  validUntil: string;
-  payload: CriticalSnapshotPayload;
-}
+export type OutboxStatus = 'pending' | 'conflict' | 'rejected';
 
 export interface OutboxRecord {
+  /** Igual al operationId del envelope: clave idempotente extremo a extremo. */
   id: string;
   householdId: string;
-  idempotencyKey: string;
-  operation: string;
-  payload: unknown;
+  envelope: CommandEnvelopeV1;
   createdAt: string;
   attempts: number;
-  status: 'pending' | 'conflict';
+  status: OutboxStatus;
 }
 
 export interface OfflineBlobRecord {
@@ -55,27 +58,33 @@ export function isCriticalSnapshotV1(value: unknown): value is CriticalSnapshotV
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<CriticalSnapshotV1>;
   return (
+    candidate.apiVersion === 1 &&
     candidate.schemaVersion === 1 &&
     typeof candidate.householdId === 'string' &&
     candidate.householdId.length > 0 &&
-    typeof candidate.revision === 'string' &&
-    typeof candidate.savedAt === 'string' &&
-    typeof candidate.validUntil === 'string' &&
+    typeof candidate.membershipId === 'string' &&
+    typeof candidate.version === 'string' &&
+    typeof candidate.etag === 'string' &&
+    typeof candidate.generatedAt === 'string' &&
+    typeof candidate.expiresAt === 'string' &&
+    typeof candidate.signature === 'string' &&
     Boolean(candidate.payload && typeof candidate.payload === 'object')
   );
 }
 
 export function createOutboxRecord(
-  input: Omit<OutboxRecord, 'createdAt' | 'attempts' | 'status'> &
-    Partial<Pick<OutboxRecord, 'createdAt' | 'attempts' | 'status'>>
+  envelope: CommandEnvelopeV1,
+  overrides: Partial<Pick<OutboxRecord, 'createdAt' | 'attempts' | 'status'>> = {}
 ): OutboxRecord {
-  if (!input.id.trim() || !input.householdId.trim() || !input.idempotencyKey.trim()) {
+  if (!envelope.operationId.trim() || !envelope.householdId.trim()) {
     throw new TypeError('Outbox records require stable identifiers');
   }
   return {
-    ...input,
-    createdAt: input.createdAt ?? new Date().toISOString(),
-    attempts: input.attempts ?? 0,
-    status: input.status ?? 'pending'
+    id: envelope.operationId,
+    householdId: envelope.householdId,
+    envelope,
+    createdAt: overrides.createdAt ?? new Date().toISOString(),
+    attempts: overrides.attempts ?? 0,
+    status: overrides.status ?? 'pending'
   };
 }

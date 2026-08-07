@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { createOutboxRecord } from '$lib/offline/schema';
+  import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
   import { queueOutbox, saveOfflineBlob } from '$lib/offline/idb';
   import { refreshSyncStatus } from '$lib/offline/sync';
 
@@ -37,13 +37,12 @@
       });
     }
 
-    await queueOutbox(createOutboxRecord({
-      id: operationId,
-      idempotencyKey: operationId,
+    await queueOutbox(createOutboxRecord(createCommandEnvelope({
+      operationId,
       householdId,
-      operation: 'content.write',
+      aggregateType: 'wiki_page',
       payload: { pageId, body: value, blobId }
-    }));
+    })));
     await refreshSyncStatus();
     saving = false;
     onSaved();
