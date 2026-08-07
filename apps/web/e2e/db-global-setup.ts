@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
 import { E2E_APP_LOGIN, E2E_APP_PASSWORD } from '../playwright.db.config';
+import { E2E_SEED } from './helpers';
 
 // Siembra de la base de datos para los e2e con Postgres: igual que el
 // global-setup de @casa-clara/server (migraciones + fixtures sintéticas) más
@@ -43,6 +44,119 @@ UPDATE app.wiki_pages SET current_revision_id = '${REVISION}' WHERE id = '${PAGE
 COMMIT;
 `;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Siembra propia de la batería e2e de familia/empleada (ids aa… de E2E_SEED).
+// No toca ninguna entidad de WIKI_SEED ni de las fixtures 1…/2…: alimentos con
+// alérgenos revisados y uno sin revisar, comensales con restricción, un grupo
+// de menú, dos recetas ligadas a páginas wiki nuevas, rutinas por audiencia y
+// hechos laborales pendientes (jornadas extra y un gasto) para que los flujos
+// de aceptación/resolución/liquidación partan de un estado conocido. Las
+// fechas son relativas a current_date para que el "mes en curso" y "esta
+// semana" sean siempre verdad.
+// ─────────────────────────────────────────────────────────────────────────────
+const E2E_BATTERY_SEED = `
+BEGIN;
+SET LOCAL row_security = off;
+
+-- Catálogo de alimentos: tres revisados (leche→lácteos, arroz, pollo) y uno sin revisar.
+INSERT INTO app.foods (id, household_id, name, shopping_section, allergens_reviewed, created_by_membership_id) VALUES
+  ('${E2E_SEED.foods.leche}', '${HOUSEHOLD}', 'Leche entera E2E', 'lácteos', true, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.foods.arroz}', '${HOUSEHOLD}', 'Arroz redondo E2E', 'despensa', true, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.foods.pollo}', '${HOUSEHOLD}', 'Pollo entero E2E', 'carnicería', true, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.foods.sinRevisar}', '${HOUSEHOLD}', 'Pan de espelta E2E', 'panadería', false, '${ADMIN_MEMBERSHIP}');
+
+INSERT INTO app.food_allergens (household_id, food_id, allergen_code)
+VALUES ('${HOUSEHOLD}', '${E2E_SEED.foods.leche}', 'lacteos');
+
+-- Comensales: Marta sin restricciones y Leo con lácteos en severidad alta.
+INSERT INTO app.diners (id, household_id, name, notes) VALUES
+  ('${E2E_SEED.diners.marta}', '${HOUSEHOLD}', 'Marta (comensal E2E)', ''),
+  ('${E2E_SEED.diners.leo}', '${HOUSEHOLD}', 'Leo (comensal E2E)', 'Revisar etiquetas siempre');
+
+INSERT INTO app.diner_flags (household_id, diner_id, allergen_code, severity, note)
+VALUES ('${HOUSEHOLD}', '${E2E_SEED.diners.leo}', 'lacteos', 'high', 'Alergia a la proteína de la leche');
+
+INSERT INTO app.menu_groups (id, household_id, name, position)
+VALUES ('${E2E_SEED.menuGroup}', '${HOUSEHOLD}', 'Casa', 10);
+
+INSERT INTO app.menu_group_diners (household_id, group_id, diner_id) VALUES
+  ('${HOUSEHOLD}', '${E2E_SEED.menuGroup}', '${E2E_SEED.diners.marta}'),
+  ('${HOUSEHOLD}', '${E2E_SEED.menuGroup}', '${E2E_SEED.diners.leo}');
+
+-- Dos recetas como extensión de páginas wiki nuevas en un espacio propio.
+INSERT INTO app.wiki_spaces (id, household_id, slug, name, description, position, created_by_membership_id)
+VALUES ('${E2E_SEED.wikiSpace}', '${HOUSEHOLD}', 'cocina-e2e', 'Cocina E2E', 'Recetario de la batería e2e', 5, '${ADMIN_MEMBERSHIP}');
+
+INSERT INTO app.wiki_pages (id, household_id, space_id, parent_page_id, status, current_slug, pinned, position, created_by_membership_id) VALUES
+  ('${E2E_SEED.recipePages.conLeche}', '${HOUSEHOLD}', '${E2E_SEED.wikiSpace}', NULL, 'published', 'arroz-con-leche-e2e', false, 0, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.recipePages.sinAlergenos}', '${HOUSEHOLD}', '${E2E_SEED.wikiSpace}', NULL, 'published', 'pollo-asado-e2e', false, 1, '${ADMIN_MEMBERSHIP}');
+
+INSERT INTO app.wiki_page_slugs (household_id, page_id, slug) VALUES
+  ('${HOUSEHOLD}', '${E2E_SEED.recipePages.conLeche}', 'arroz-con-leche-e2e'),
+  ('${HOUSEHOLD}', '${E2E_SEED.recipePages.sinAlergenos}', 'pollo-asado-e2e');
+
+INSERT INTO app.wiki_revisions (id, household_id, page_id, revision_number, title, body_markdown, summary, tags, aliases, authored_by_membership_id) VALUES
+  ('aa411000-0000-4000-8000-000000000001', '${HOUSEHOLD}', '${E2E_SEED.recipePages.conLeche}', 1,
+   'Arroz con leche (E2E)', 'Cocer el arroz en la leche a fuego suave.', '', ARRAY['postre'], ARRAY[]::text[], '${ADMIN_MEMBERSHIP}'),
+  ('aa421000-0000-4000-8000-000000000001', '${HOUSEHOLD}', '${E2E_SEED.recipePages.sinAlergenos}', 1,
+   'Pollo asado (E2E)', 'Asar el pollo una hora a 190°.', '', ARRAY['comida'], ARRAY[]::text[], '${ADMIN_MEMBERSHIP}');
+
+UPDATE app.wiki_pages SET current_revision_id = 'aa411000-0000-4000-8000-000000000001' WHERE id = '${E2E_SEED.recipePages.conLeche}';
+UPDATE app.wiki_pages SET current_revision_id = 'aa421000-0000-4000-8000-000000000001' WHERE id = '${E2E_SEED.recipePages.sinAlergenos}';
+
+INSERT INTO app.recipes (household_id, page_id, base_servings, time_minutes) VALUES
+  ('${HOUSEHOLD}', '${E2E_SEED.recipePages.conLeche}', 4, 45),
+  ('${HOUSEHOLD}', '${E2E_SEED.recipePages.sinAlergenos}', 4, 60);
+
+INSERT INTO app.recipe_ingredients (id, household_id, page_id, food_id, quantity, unit, scaling, position) VALUES
+  ('aa412000-0000-4000-8000-000000000001', '${HOUSEHOLD}', '${E2E_SEED.recipePages.conLeche}', '${E2E_SEED.foods.leche}', 1, 'l', 'linear', 0),
+  ('aa412000-0000-4000-8000-000000000002', '${HOUSEHOLD}', '${E2E_SEED.recipePages.conLeche}', '${E2E_SEED.foods.arroz}', 0.25, 'kg', 'linear', 1),
+  ('aa422000-0000-4000-8000-000000000001', '${HOUSEHOLD}', '${E2E_SEED.recipePages.sinAlergenos}', '${E2E_SEED.foods.pollo}', 1.5, 'kg', 'linear', 0);
+
+-- Rutinas: una de audiencia empleada que vence hoy y una solo de familia.
+INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
+  ('${E2E_SEED.routines.employee}', '${HOUSEHOLD}', 'Repaso del filtro del agua (E2E)', 'Aclarar el filtro de la jarra', 'employee', 'weekly', 1, current_date, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.routines.family}', '${HOUSEHOLD}', 'Revisión del botiquín (E2E)', '', 'family', 'monthly', 1, current_date + 1, '${ADMIN_MEMBERSHIP}');
+
+-- Jornadas extra de Ana en el mes en curso: una solicitada (pendiente de
+-- aceptación) y un festivo trabajado sin aceptación previa (para resolver).
+INSERT INTO app.extra_work_events (
+  id, household_id, agreement_id, employee_membership_id, kind, worked_on,
+  duration_minutes, note, origin, status, requested_by_membership_id, requested_at,
+  performed_by_membership_id, performed_at
+) VALUES
+  ('${E2E_SEED.extras.requested}', '${HOUSEHOLD}', '${E2E_SEED.agreement}', '${E2E_SEED.memberships.employee}',
+   'overtime', date_trunc('month', current_date)::date + 1, 90, 'Plancha del sábado E2E', 'employee_report',
+   'requested', '${E2E_SEED.memberships.employee}', now() - interval '2 days', NULL, NULL),
+  ('${E2E_SEED.extras.porResolver}', '${HOUSEHOLD}', '${E2E_SEED.agreement}', '${E2E_SEED.memberships.employee}',
+   'worked_rest_day', date_trunc('month', current_date)::date, 480, 'Festivo trabajado E2E', 'employee_report',
+   'performed_pending_resolution', '${E2E_SEED.memberships.employee}', now() - interval '3 days',
+   '${E2E_SEED.memberships.employee}', now() - interval '3 days' + interval '1 hour');
+
+INSERT INTO app.extra_work_transitions (
+  id, household_id, extra_work_event_id, sequence_number, from_status, to_status,
+  actor_membership_id, occurred_at, reason
+) VALUES
+  ('aa610000-0000-4000-8000-000000000001', '${HOUSEHOLD}', '${E2E_SEED.extras.requested}', 1, NULL, 'requested',
+   '${E2E_SEED.memberships.employee}', now() - interval '2 days', 'Solicitada E2E'),
+  ('aa610000-0000-4000-8000-000000000002', '${HOUSEHOLD}', '${E2E_SEED.extras.porResolver}', 1, NULL, 'requested',
+   '${E2E_SEED.memberships.employee}', now() - interval '3 days', 'Solicitada E2E'),
+  ('aa610000-0000-4000-8000-000000000003', '${HOUSEHOLD}', '${E2E_SEED.extras.porResolver}', 2, 'requested', 'performed_pending_resolution',
+   '${E2E_SEED.memberships.employee}', now() - interval '3 days' + interval '1 hour', 'Realizada sin aceptación previa E2E');
+
+-- Gasto de Ana pendiente de aprobación, dentro del mes en curso.
+INSERT INTO app.expenses (
+  id, household_id, agreement_id, employee_membership_id, incurred_on,
+  description, amount_cents, status, submitted_by_membership_id, submitted_at
+) VALUES (
+  '${E2E_SEED.expensePending}', '${HOUSEHOLD}', '${E2E_SEED.agreement}', '${E2E_SEED.memberships.employee}',
+  date_trunc('month', current_date)::date + 2, 'Farmacia E2E pendiente', 2175, 'pending',
+  '${E2E_SEED.memberships.employee}', now() - interval '1 day'
+);
+
+COMMIT;
+`;
+
 export default async function globalSetup(): Promise<void> {
   const adminUrl = process.env.E2E_DATABASE_URL;
   if (!adminUrl) return;
@@ -66,6 +180,7 @@ export default async function globalSetup(): Promise<void> {
       await admin.query(await readFile(path.join(fixturesDir, fixture), 'utf8'));
     }
     await admin.query(WIKI_SEED);
+    await admin.query(E2E_BATTERY_SEED);
 
     // Login del servidor web: miembro de casa_clara_app, sin BYPASSRLS. Se
     // conserva entre ejecuciones (el servidor anterior puede seguir teniendo
