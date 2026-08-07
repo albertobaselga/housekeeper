@@ -25,3 +25,11 @@ test('Emergencias no tiene incidencias serias de accesibilidad', async ({ page }
   await page.goto(`/h/${HOUSEHOLD}/emergency`);
   expect(await seriousViolations(page)).toEqual([]);
 });
+
+test('la hoja «Más» de la navegación móvil no tiene incidencias serias', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await loginAs(page, 'family');
+  await page.getByRole('button', { name: 'Más' }).click();
+  await expect(page.getByRole('dialog', { name: 'Más opciones' })).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});

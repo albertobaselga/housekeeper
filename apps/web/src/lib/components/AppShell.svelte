@@ -1,7 +1,8 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { onMount, type Snippet } from 'svelte';
+  import { onMount, tick, type Snippet } from 'svelte';
+  import type { Action } from 'svelte/action';
   import { ROLE_LABELS, type Capability } from '$lib/auth/capabilities';
   import { householdPath, type HouseholdModule } from '$lib/auth/routing';
   import type { AppContext } from '$lib/auth/types';
@@ -10,28 +11,134 @@
 
   let { context, children }: { context: AppContext; children: Snippet } = $props();
 
-  const navigation: Array<{ module: HouseholdModule; label: string; capability: Capability }> = [
-    { module: 'today', label: 'Hoy', capability: 'emergency.read' },
-    { module: 'employment', label: 'Acuerdos y pagos', capability: 'settlement.read' },
-    { module: 'menu', label: 'Menú', capability: 'menu.read' },
-    { module: 'recipes', label: 'Recetas', capability: 'content.read' },
-    { module: 'wiki', label: 'Wiki de la casa', capability: 'content.read' },
-    { module: 'routines', label: 'Rutinas', capability: 'routine.read' },
-    { module: 'calendar', label: 'Calendario', capability: 'calendar.read' },
-    { module: 'contacts', label: 'Contactos', capability: 'contact.read' }
+  const has = (capability: Capability) => context.capabilities.includes(capability);
+
+  interface NavEntry {
+    module: HouseholdModule;
+    label: string;
+    short: string;
+    capability: Capability;
+  }
+
+  const NAV_ENTRIES: Readonly<Record<string, NavEntry>> = {
+    today: { module: 'today', label: 'Hoy', short: 'Hoy', capability: 'emergency.read' },
+    employment: { module: 'employment', label: 'Acuerdos y pagos', short: 'Pagos', capability: 'settlement.read' },
+    menu: { module: 'menu', label: 'Menú', short: 'Menú', capability: 'menu.read' },
+    wiki: { module: 'wiki', label: 'Wiki de la casa', short: 'Wiki', capability: 'content.read' },
+    routines: { module: 'routines', label: 'Rutinas', short: 'Rutinas', capability: 'routine.read' },
+    calendar: { module: 'calendar', label: 'Calendario', short: 'Agenda', capability: 'calendar.read' },
+    contacts: { module: 'contacts', label: 'Contactos', short: 'Contactos', capability: 'contact.read' },
+    emergency: { module: 'emergency', label: 'Emergencias', short: 'Ayuda', capability: 'emergency.read' }
+  };
+
+  // Orden por rol según el mapa del informe heurístico (H-02/H-12): quien
+  // trabaja la casa (registra jornadas o no gestiona pagos) lleva Rutinas al
+  // frente; la familia prioriza Menú, Pagos y Agenda. Recetas deja de ser
+  // destino de primer nivel: vive dentro de Menú y sigue accesible por URL.
+  const handsOnOrder = ['today', 'routines', 'menu', 'employment', 'wiki', 'calendar', 'contacts'];
+  const familyOrder = ['today', 'menu', 'employment', 'calendar', 'wiki', 'routines', 'contacts'];
+  const order = has('work.register.self') || !has('settlement.read') ? handsOnOrder : familyOrder;
+
+  const visibleNavigation = order
+    .map((key) => NAV_ENTRIES[key])
+    .filter((item) => has(item.capability));
+
+  // Bottom-nav móvil: 4 destinos principales + «Más». Emergencias cierra la
+  // lista para que roles con pocos módulos (viewer) la conserven a un tap.
+  const mobileOrder = [...visibleNavigation, NAV_ENTRIES.emergency];
+  const mobilePrimary = mobileOrder.slice(0, 4);
+  const sheetNavigation: NavEntry[] = [
+    ...mobileOrder.slice(4),
+    ...(has('access.manage')
+      ? [{ module: 'settings', label: 'Ajustes del hogar', short: 'Ajustes', capability: 'access.manage' } as NavEntry]
+      : [])
   ];
 
-  const visibleNavigation = navigation.filter((item) => context.capabilities.includes(item.capability));
-  const has = (capability: Capability) => context.capabilities.includes(capability);
   const pathFor = (moduleName: HouseholdModule) => householdPath(context.household.id, moduleName);
   const isActive = (moduleName: HouseholdModule) => page.url.pathname === pathFor(moduleName) || page.url.pathname.startsWith(`${pathFor(moduleName)}/`);
+
+  let moreOpen = $state(false);
+  let searchOpen = $state(false);
+  let searchQuery = $state('');
+
+  const sheetActive = $derived(sheetNavigation.some((item) => isActive(item.module)));
+
+  // Cerrar hoja y overlay al navegar (backstop además del cierre en el click).
+  $effect(() => {
+    void page.url.pathname;
+    moreOpen = false;
+    searchOpen = false;
+  });
+
+  /**
+   * Diálogo accesible mínimo: foco inicial, ciclo de Tab dentro del nodo,
+   * Escape cierra, bloqueo de scroll del fondo y foco de vuelta al disparador.
+   */
+  const modalDialog: Action<HTMLElement, { onClose: () => void }> = (node, options) => {
+    const previous = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
+        )
+      );
+    void tick().then(() => {
+      (node.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0] ?? node).focus();
+    });
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        options.onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusables();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const current = document.activeElement;
+      if (event.shiftKey && (current === first || current === node)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && current === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    node.addEventListener('keydown', onKeydown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return {
+      destroy() {
+        node.removeEventListener('keydown', onKeydown);
+        document.body.style.overflow = previousOverflow;
+        previous?.focus?.();
+      }
+    };
+  };
+
+  function openSearch(): void {
+    searchQuery = '';
+    moreOpen = false;
+    searchOpen = true;
+  }
+
+  function submitSearch(event: SubmitEvent): void {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    searchOpen = false;
+    // Sin duplicar la lógica de resultados: navega a la página de búsqueda.
+    void goto(query ? `${pathFor('search')}?q=${encodeURIComponent(query)}` : pathFor('search'));
+  }
 
   onMount(() => {
     const stopMonitor = startSyncMonitor(context.criticalSnapshot, context.snapshotPublicKey);
     const handleShortcut = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k' && has('search.use')) {
         event.preventDefault();
-        void goto(pathFor('search'));
+        if (searchOpen) searchOpen = false;
+        else openSearch();
       }
     };
     window.addEventListener('keydown', handleShortcut);
@@ -91,11 +198,11 @@
         <span class="brand-mark small" aria-hidden="true">⌂</span><strong>Casa Clara</strong>
       </a>
       {#if has('search.use')}
-        <a class="global-search" href={pathFor('search')}>
+        <button type="button" class="global-search" aria-haspopup="dialog" aria-label="Buscar en toda la casa" onclick={openSearch}>
           <NavIcon name="search" />
           <span>Buscar en toda la casa…</span>
           <kbd>⌘ K</kbd>
-        </a>
+        </button>
       {/if}
       <div class="topbar-actions">
         <span class="sync-pill" class:pending={$syncStatus.phase !== 'saved'} role="status" title={$syncStatus.detail}>
@@ -111,13 +218,82 @@
   </div>
 
   <nav class="bottom-nav" aria-label="Navegación móvil">
-    {#each visibleNavigation.slice(0, 4) as item}
+    {#each mobilePrimary as item}
       <a class:active={isActive(item.module)} href={pathFor(item.module)} aria-current={isActive(item.module) ? 'page' : undefined}>
-        <NavIcon name={item.module} /><span>{item.label === 'Acuerdos y pagos' ? 'Pagos' : item.label.replace(' de la casa', '')}</span>
+        <NavIcon name={item.module} /><span>{item.short}</span>
       </a>
     {/each}
-    <a class:active={isActive('emergency')} href={pathFor('emergency')} aria-current={isActive('emergency') ? 'page' : undefined}>
-      <NavIcon name="emergency" /><span>Ayuda</span>
-    </a>
+    <button
+      type="button"
+      class="more-button"
+      class:active={sheetActive}
+      aria-haspopup="dialog"
+      aria-expanded={moreOpen}
+      onclick={() => (moreOpen = !moreOpen)}
+    >
+      <span class="nav-symbol" aria-hidden="true">⋯</span><span>Más</span>
+    </button>
   </nav>
 </div>
+
+{#if moreOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="sheet-backdrop" onclick={() => (moreOpen = false)}></div>
+  <div
+    class="more-sheet"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="more-sheet-title"
+    use:modalDialog={{ onClose: () => (moreOpen = false) }}
+  >
+    <header class="sheet-header">
+      <h2 id="more-sheet-title">Más opciones</h2>
+      <button type="button" class="sheet-close" onclick={() => (moreOpen = false)} aria-label="Cerrar el menú">✕</button>
+    </header>
+    <nav class="sheet-nav" aria-label="Más secciones">
+      {#each sheetNavigation as item}
+        <a
+          class:active={isActive(item.module)}
+          class:danger={item.module === 'emergency'}
+          href={pathFor(item.module)}
+          aria-current={isActive(item.module) ? 'page' : undefined}
+          onclick={() => (moreOpen = false)}
+        >
+          <NavIcon name={item.module} />
+          <span>{item.label}</span>
+          {#if item.module === 'emergency'}<small>Disponible sin conexión</small>{/if}
+        </a>
+      {/each}
+    </nav>
+    <form method="POST" action="/logout" class="sheet-logout">
+      <button type="submit">Salir<small>Cerrar la sesión de {context.user.name}</small></button>
+    </form>
+  </div>
+{/if}
+
+{#if searchOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="sheet-backdrop" onclick={() => (searchOpen = false)}></div>
+  <div
+    class="search-overlay"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Buscar en toda la casa"
+    use:modalDialog={{ onClose: () => (searchOpen = false) }}
+  >
+    <form role="search" onsubmit={submitSearch}>
+      <span aria-hidden="true">⌕</span>
+      <input
+        type="search"
+        name="q"
+        bind:value={searchQuery}
+        data-autofocus
+        placeholder="Buscar en toda la casa…"
+        aria-label="Texto a buscar"
+        autocomplete="off"
+      />
+      <button type="submit" class="button primary small-button">Buscar</button>
+    </form>
+    <p>Enter busca en wiki, contactos y más · Escape cierra</p>
+  </div>
+{/if}
