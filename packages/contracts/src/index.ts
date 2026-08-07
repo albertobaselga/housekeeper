@@ -130,6 +130,7 @@ export type AggregateType =
   | "food"
   | "ics_feed"
   | "leave_request"
+  | "membership"
   | "menu_group"
   | "menu_slot"
   | "payment"

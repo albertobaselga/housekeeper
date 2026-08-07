@@ -45,6 +45,7 @@ export const commandEnvelopeSchema = z.object({
     "food",
     "ics_feed",
     "leave_request",
+    "membership",
     "menu_group",
     "menu_slot",
     "payment",
@@ -224,6 +225,41 @@ export const wikiPageSetStatePayloadSchema = z
   .refine((value) => value.status !== undefined || value.pinned !== undefined, {
     message: "set_state requiere status o pinned",
   });
+
+export const wikiSpaceSetTemplatePayloadSchema = z.object({
+  action: z.literal("set_template"),
+  spaceId: uuidSchema,
+  isTemplate: z.boolean(),
+});
+
+export const wikiSpaceClonePayloadSchema = z.object({
+  action: z.literal("clone_template"),
+  templateSpaceId: uuidSchema,
+  name: z.string().trim().min(1).max(120),
+  slug: wikiSlugSchema.optional(),
+});
+
+export const wikiSpaceCommandPayloadSchema = z.discriminatedUnion("action", [
+  wikiSpaceCreatePayloadSchema,
+  wikiSpaceSetTemplatePayloadSchema,
+  wikiSpaceClonePayloadSchema,
+]);
+
+export const membershipSetExpiryPayloadSchema = z.object({
+  action: z.literal("set_expiry"),
+  membershipId: uuidSchema,
+  expiresAt: isoDateTimeSchema.nullable(),
+});
+
+export const membershipRevokePayloadSchema = z.object({
+  action: z.literal("revoke"),
+  membershipId: uuidSchema,
+});
+
+export const membershipCommandPayloadSchema = z.discriminatedUnion("action", [
+  membershipSetExpiryPayloadSchema,
+  membershipRevokePayloadSchema,
+]);
 
 export const wikiPageCommandPayloadSchema = z.discriminatedUnion("action", [
   wikiPageCreatePayloadSchema,
