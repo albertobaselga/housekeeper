@@ -404,7 +404,10 @@ export function completeRoutine(
   return createCommandEnvelope({
     ...options,
     householdId: input.householdId,
-    aggregateType: 'routine_occurrence',
+    // El handler del servidor vive bajo el agregado `routine` (rhythm.ts);
+    // `routine_occurrence` provocaba rejected/unsupported_aggregate (bug
+    // cazado por la batería e2e).
+    aggregateType: 'routine',
     aggregateId: input.routineId,
     payload: {
       action: 'complete',

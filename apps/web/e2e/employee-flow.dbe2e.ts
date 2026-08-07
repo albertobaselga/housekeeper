@@ -85,22 +85,22 @@ test('Ana ve la rutina de audiencia empleada y no la de familia (RLS por audienc
   await expect(page.getByText('Revisión del botiquín (E2E)')).toHaveCount(0);
 });
 
-// BUG real detectado por esta batería: el cliente emite la finalización de
-// rutina con aggregateType 'routine_occurrence' (src/lib/food/commands.ts →
-// completeRoutine), pero el servidor registra el action 'complete' bajo el
-// aggregate 'routine' (rhythmCommandHandlers en packages/server). /api/v1/sync
-// responde `rejected · unsupported_aggregate`, el comando queda varado en la
-// outbox ("Revisión necesaria") y «Marcar hecha» nunca persiste. Arreglo
-// pendiente fuera de esta ronda (tocaría src/ o packages/): igualar el
-// aggregateType del envelope con la clave del handler.
-test.fixme('Ana completa la rutina de audiencia empleada y queda «Hecha»', async ({ page }) => {
+// Bug original cazado por esta batería (envelope 'routine_occurrence' vs
+// handler 'routine' → rejected/unsupported_aggregate) ya corregido en
+// src/lib/food/commands.ts. Semántica real al completar: la función definer de
+// la 0009 AVANZA la recurrencia, así que la rutina pasa a mostrar la próxima
+// fecha (sin chip «Hecha» para la nueva ocurrencia) y jamás un conflicto.
+test('Ana completa la rutina de audiencia empleada y la recurrencia avanza', async ({ page }) => {
   await loginAs(page, 'employee');
   await page.goto(`/h/${HOUSEHOLD}/routines`);
 
   const routineItem = page.locator('li').filter({ hasText: 'Repaso del filtro del agua (E2E)' });
+  const dueLine = routineItem.locator('small').first();
+  const before = await dueLine.innerText();
+
   await routineItem.getByRole('button', { name: 'Marcar hecha' }).click();
-  // La ocurrencia vigente avanza al completarse: o chip «Hecha» o la siguiente
-  // fecha con el botón de nuevo disponible, pero NUNCA un conflicto de outbox.
+
   await expect(page.locator('.status-banner')).toHaveCount(0);
-  await expect(routineItem.locator('.status-chip').filter({ hasText: 'Hecha' })).toBeVisible();
+  await expect(dueLine).not.toHaveText(before);
+  await expect(routineItem.getByRole('button', { name: 'Marcar hecha' })).toBeVisible();
 });
