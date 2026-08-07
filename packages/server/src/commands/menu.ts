@@ -426,20 +426,35 @@ export interface ShoppingListEntry {
 }
 
 /** `"12,5"` / `"12.50"` → céntimas exactas como BigInt (1250n). Sin floats. */
-function toHundredths(value: string): bigint {
+export function toHundredths(value: string): bigint {
   const [integerPart = "0", fractionPart = ""] = value.replace(",", ".").split(".");
   return BigInt(integerPart) * 100n + BigInt(fractionPart.padEnd(2, "0").slice(0, 2));
 }
 
 /** Escala lineal exacta en céntimas con redondeo half-up a la céntima. */
-function scaleHundredths(quantity: bigint, targetServings: number, baseServings: number): bigint {
+export function scaleHundredths(quantity: bigint, targetServings: number, baseServings: number): bigint {
   const numerator = quantity * BigInt(targetServings);
   const base = BigInt(baseServings);
   return (2n * numerator + base) / (2n * base);
 }
 
+/**
+ * Cantidad de un ingrediente en céntimas según su modo de escalado: `linear`
+ * escala con `scaleHundredths`; `fixed` es invariante a las raciones (AC-22).
+ * Es exactamente la regla que aplica `aggregateShoppingList`, exportada para
+ * poder someterla a tests de propiedades.
+ */
+export function scaleIngredientHundredths(
+  quantity: bigint,
+  scaling: "linear" | "fixed",
+  targetServings: number,
+  baseServings: number,
+): bigint {
+  return scaling === "linear" ? scaleHundredths(quantity, targetServings, baseServings) : quantity;
+}
+
 /** Céntimas → decimal legible sin ceros de relleno: 30000n → "300", 150n → "1.5". */
-function formatHundredths(value: bigint): string {
+export function formatHundredths(value: bigint): string {
   const integerPart = value / 100n;
   const fraction = value % 100n;
   if (fraction === 0n) return integerPart.toString();
@@ -523,7 +538,12 @@ export async function aggregateShoppingList(
     // del grupo; un grupo vacío cae a base_servings (factor 1).
     const target = row.servings_override ?? (row.diner_count > 0 ? row.diner_count : row.base_servings);
     const raw = toHundredths(row.quantity);
-    const scaled = row.scaling === "linear" ? scaleHundredths(raw, target, row.base_servings) : raw;
+    const scaled = scaleIngredientHundredths(
+      raw,
+      row.scaling === "linear" ? "linear" : "fixed",
+      target,
+      row.base_servings,
+    );
     accumulate(
       entries,
       { foodId: row.food_id, name: row.name, unit: row.unit, section: row.section },

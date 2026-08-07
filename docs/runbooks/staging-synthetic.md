@@ -36,6 +36,32 @@ docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml \
 
 Después, ejecutar smoke de los cinco roles, matriz RLS, una escritura offline, PDF, adjunto en cuarentena y modo avión. Mailpit debe contener únicamente identidades `.demo` o equivalentes sintéticas.
 
+## Retención de datos de descubrimiento
+
+La poda de `app.wiki_page_reads` y `app.search_gap_events` la ejecuta el worker
+con el job `maintenance.prune_discovery` (función `app_private.prune_discovery_data`
+de la migración 0012; mínimo duro de 30 días, por defecto 45 días de lecturas y
+180 de huecos de búsqueda). El worker la auto-encola al arrancar si no hay
+ninguna pendiente y se re-encola sola cada 7 días al completar.
+
+Único caso que requiere intervención: una base recién sembrada cuya
+`app_private.job_queue` está completamente vacía. Como `household_id` es NOT
+NULL y el worker no puede leer `app.households` (a propósito), no tiene ningún
+hogar que tomar prestado y se abstiene. En ese caso el operador encola la
+primera poda con el rol propietario de migraciones:
+
+```sql
+INSERT INTO app_private.job_queue (household_id, job_type, payload, run_at)
+SELECT id, 'maintenance.prune_discovery',
+       '{"readsKeepDays": 45, "gapsKeepDays": 180}', now()
+  FROM app.households
+ ORDER BY created_at
+ LIMIT 1;
+```
+
+A partir de ahí el ciclo semanal se mantiene solo (y cualquier reinicio del
+worker lo re-encola si se perdiera, porque la cola ya nunca está vacía).
+
 ## Observabilidad y backup
 
 ```bash

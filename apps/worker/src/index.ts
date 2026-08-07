@@ -12,6 +12,12 @@ import {
   fetchIcsSource,
 } from "./ics.js";
 import { objectStore, putPrivateObject, sendEmail } from "./integrations.js";
+import {
+  PRUNE_DISCOVERY_JOB,
+  createMaintenanceQueries,
+  createPruneDiscoveryHandler,
+  ensurePruneDiscoveryScheduled,
+} from "./maintenance.js";
 import { runOneJob, type JobHandler } from "./queue.js";
 import {
   AUTOCONFIRM_JOB,
@@ -44,6 +50,11 @@ handlers[AUTOCONFIRM_JOB] = createAutoconfirmHandler({
 });
 handlers[ROUTINE_DUE_JOB] = createRoutineDueHandler({
   sendEmail: (input) => sendEmail(config.smtp, input),
+});
+const maintenanceQueries = createMaintenanceQueries(pool);
+handlers[PRUNE_DISCOVERY_JOB] = createPruneDiscoveryHandler({
+  prune: maintenanceQueries.pruneDiscoveryData,
+  enqueue: maintenanceQueries.enqueueJob,
 });
 handlers[ICS_SYNC_JOB] = createIcsSyncHandler({
   fetchSource: (url) => fetchIcsSource(url),
@@ -85,6 +96,14 @@ const healthServer = createServer(async (request, response) => {
 healthServer.listen(config.healthPort, "0.0.0.0");
 
 async function loop(): Promise<void> {
+  // Retención de descubrimiento: si no hay ninguna poda pendiente, se encola
+  // una al arrancar (re-encolado semanal al completar). Un fallo aquí no debe
+  // tumbar el worker: el siguiente arranque —o el operador— la encolará.
+  try {
+    await ensurePruneDiscoveryScheduled(pool);
+  } catch {
+    pollFailures += 1;
+  }
   while (!stopping) {
     try {
       const worked = await runOneJob(pool, handlers, config.maxJobAttempts);
