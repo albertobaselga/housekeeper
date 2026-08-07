@@ -40,10 +40,12 @@ export const commandEnvelopeSchema = z.object({
     "agreement",
     "comment",
     "expense",
+    "extra_work",
     "leave_request",
     "menu_slot",
     "payment",
     "routine_occurrence",
+    "settlement",
     "time_entry",
     "wiki_page",
   ]),
@@ -72,6 +74,80 @@ export const expenseSubmitPayloadSchema = z.object({
   incurredOn: isoDateSchema,
   description: z.string().trim().min(1).max(500),
   amountCents: moneyCentsSchema.refine((value) => BigInt(value) > 0n, "El importe debe ser positivo"),
+});
+
+const isoTimeSchema = z.string().regex(/^\d{2}:\d{2}$/);
+
+export const weeklyReportSubmitPayloadSchema = z.object({
+  action: z.literal("submit_week"),
+  agreementId: uuidSchema,
+  weekStartsOn: isoDateSchema,
+  entries: z
+    .array(
+      z.object({
+        workedOn: isoDateSchema,
+        startedAt: isoTimeSchema.optional(),
+        endedAt: isoTimeSchema.optional(),
+        regularMinutes: z.number().int().min(0).max(24 * 60),
+        note: z.string().max(500).optional(),
+      }),
+    )
+    .min(1)
+    .max(31),
+});
+
+export const extraWorkRegisterPayloadSchema = z.object({
+  action: z.literal("register"),
+  agreementId: uuidSchema,
+  kind: z.enum(["overtime", "worked_rest_day"]),
+  workedOn: isoDateSchema,
+  durationMinutes: z.number().int().min(1).max(24 * 60),
+  note: z.string().max(500).optional(),
+});
+
+export const extraWorkResolvePayloadSchema = z.object({
+  action: z.literal("resolve"),
+  extraWorkEventId: uuidSchema,
+  resolution: z.enum(["money", "time_off"]),
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const settlementOpenPayloadSchema = z.object({
+  action: z.literal("open"),
+  agreementId: uuidSchema,
+  periodStart: isoDateSchema,
+  periodEnd: isoDateSchema,
+  dueOn: isoDateSchema,
+});
+
+export const settlementClosePayloadSchema = z.object({
+  action: z.literal("close"),
+  settlementId: uuidSchema,
+});
+
+export const settlementReceiptConfirmPayloadSchema = z.object({
+  action: z.literal("confirm_receipt"),
+  settlementId: uuidSchema,
+  note: z.string().max(500).optional(),
+});
+
+export const settlementCommandPayloadSchema = z.discriminatedUnion("action", [
+  settlementOpenPayloadSchema,
+  settlementClosePayloadSchema,
+  settlementReceiptConfirmPayloadSchema,
+]);
+
+export const extraWorkCommandPayloadSchema = z.discriminatedUnion("action", [
+  extraWorkRegisterPayloadSchema,
+  extraWorkResolvePayloadSchema,
+]);
+
+export const paymentRecordPayloadSchema = z.object({
+  settlementId: uuidSchema,
+  amountCents: moneyCentsSchema.refine((value) => BigInt(value) > 0n, "El importe debe ser positivo"),
+  method: z.enum(["bank_transfer", "cash", "bizum", "mixed", "other"]),
+  valueOn: isoDateSchema,
+  reference: z.string().max(200).optional(),
 });
 
 export const syncResultSchema = z.object({

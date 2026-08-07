@@ -125,10 +125,12 @@ export type AggregateType =
   | "agreement"
   | "comment"
   | "expense"
+  | "extra_work"
   | "leave_request"
   | "menu_slot"
   | "payment"
   | "routine_occurrence"
+  | "settlement"
   | "time_entry"
   | "wiki_page";
 
@@ -180,6 +182,76 @@ export interface ExpenseSubmitPayloadV1 {
   incurredOn: ISODate;
   description: string;
   amountCents: MoneyCents;
+}
+
+/** `aggregateType: "time_entry"` — la empleada envía su semana con sus entradas. */
+export interface WeeklyReportSubmitPayloadV1 {
+  action: "submit_week";
+  agreementId: UUID;
+  weekStartsOn: ISODate;
+  entries: Array<{
+    workedOn: ISODate;
+    startedAt?: string;
+    endedAt?: string;
+    regularMinutes: number;
+    note?: string;
+  }>;
+}
+
+/** `aggregateType: "extra_work"` — registro de jornada extra (empleada o familia). */
+export interface ExtraWorkRegisterPayloadV1 {
+  action: "register";
+  agreementId: UUID;
+  kind: "overtime" | "worked_rest_day";
+  workedOn: ISODate;
+  durationMinutes: number;
+  note?: string;
+}
+
+/**
+ * `aggregateType: "extra_work"` — resolución del administrador. La tarifa se
+ * congela en el servidor desde la versión de acuerdo vigente en `workedOn`.
+ */
+export interface ExtraWorkResolvePayloadV1 {
+  action: "resolve";
+  extraWorkEventId: UUID;
+  resolution: "money" | "time_off";
+  reason: string;
+}
+
+/** `aggregateType: "settlement"` — apertura de una liquidación de periodo. */
+export interface SettlementOpenPayloadV1 {
+  action: "open";
+  agreementId: UUID;
+  periodStart: ISODate;
+  periodEnd: ISODate;
+  dueOn: ISODate;
+}
+
+/**
+ * `aggregateType: "settlement"` — cierre: el servidor materializa las líneas
+ * desde los hechos (motor puro de dominio), congela totales, fija el hash del
+ * snapshot canónico y encola el render del recibo.
+ */
+export interface SettlementClosePayloadV1 {
+  action: "close";
+  settlementId: UUID;
+}
+
+/** `aggregateType: "settlement"` — confirmación de cobro por la empleada. */
+export interface SettlementReceiptConfirmPayloadV1 {
+  action: "confirm_receipt";
+  settlementId: UUID;
+  note?: string;
+}
+
+/** `aggregateType: "payment"` — pago parcial o total registrado por la familia. */
+export interface PaymentRecordPayloadV1 {
+  settlementId: UUID;
+  amountCents: MoneyCents;
+  method: "bank_transfer" | "cash" | "bizum" | "mixed" | "other";
+  valueOn: ISODate;
+  reference?: string;
 }
 
 export interface CriticalSnapshotV1 {
