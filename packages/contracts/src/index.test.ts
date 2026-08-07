@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   API_VERSION,
   assertSnapshotFresh,
+  hasCapability,
   isMoneyCents,
   isRole,
   type CriticalSnapshotV1,
@@ -32,6 +33,13 @@ describe("contratos públicos", () => {
   it("deniega roles desconocidos", () => {
     expect(isRole("family_admin")).toBe(true);
     expect(isRole("owner")).toBe(false);
+  });
+
+  it("aplica permisos mínimos a helper y viewer", () => {
+    expect(hasCapability("helper", "content.read")).toBe(true);
+    expect(hasCapability("helper", "settlement.read")).toBe(false);
+    expect(hasCapability("viewer", "calendar.read")).toBe(true);
+    expect(hasCapability("viewer", "menu.read")).toBe(false);
   });
 
   it("representa dinero como céntimos enteros serializables", () => {

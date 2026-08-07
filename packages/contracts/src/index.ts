@@ -42,6 +42,59 @@ export const capabilities = [
 ] as const;
 
 export type Capability = (typeof capabilities)[number];
+
+const allCapabilities = [...capabilities];
+
+export const roleCapabilities: Readonly<Record<Role, readonly Capability[]>> = {
+  family_admin: allCapabilities,
+  family_member: [
+    "agreement.read",
+    "calendar.read",
+    "calendar.write",
+    "comment.create",
+    "contact.read",
+    "contact.write",
+    "content.publish",
+    "content.read",
+    "content.write",
+    "emergency.read",
+    "menu.read",
+    "menu.write",
+    "routine.read",
+    "routine.toggle",
+    "search.use",
+    "settlement.read",
+  ],
+  employee_live_in: [
+    "agreement.read",
+    "calendar.read",
+    "comment.create",
+    "contact.read",
+    "content.read",
+    "emergency.read",
+    "expense.create.self",
+    "export.employment.self",
+    "leave.request.self",
+    "menu.read",
+    "payment.confirm.self",
+    "routine.read",
+    "routine.toggle",
+    "search.use",
+    "settlement.read",
+    "work.register.self",
+  ],
+  helper: [
+    "comment.create",
+    "contact.read",
+    "content.read",
+    "emergency.read",
+    "menu.read",
+    "routine.read",
+    "routine.toggle",
+    "search.use",
+  ],
+  viewer: ["calendar.read", "contact.read", "emergency.read"],
+};
 export type UUID = string;
 export type ISODate = string;
 export type ISODateTime = string;
@@ -164,6 +217,10 @@ export function isRole(value: string): value is Role {
 
 export function isMoneyCents(value: string): value is MoneyCents {
   return /^-?(0|[1-9]\d*)$/.test(value);
+}
+
+export function hasCapability(role: Role, capability: Capability): boolean {
+  return roleCapabilities[role].includes(capability);
 }
 
 export function assertSnapshotFresh(
