@@ -219,7 +219,7 @@
               {#if home.canPublish}
                 <form class="wiki-node-row" onsubmit={(event) => submitCloneTemplate(event, template.id)}>
                   <label>Nombre del espacio nuevo
-                    <input type="text" bind:value={cloneNames[template.id]} maxlength="120" required />
+                    <input type="text" autocomplete="off" enterkeyhint="done" bind:value={cloneNames[template.id]} maxlength="120" required />
                   </label>
                   <button class="button primary small-button" type="submit" disabled={busy}>Crear espacio desde plantilla</button>
                 </form>
@@ -278,7 +278,7 @@
             <div class="section-heading"><div><p class="eyebrow">Escribir</p><h2 id="new-page-title">Nueva página</h2></div></div>
             <form class="stack" onsubmit={submitNewPage}>
               <label>Título
-                <input type="text" bind:value={newPageTitle} maxlength="200" required />
+                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={newPageTitle} maxlength="200" required />
               </label>
               <label>Espacio
                 <select bind:value={newPageSpaceId} required>
@@ -292,7 +292,7 @@
                 <textarea rows="6" bind:value={newPageBody} required></textarea>
               </label>
               <label>Etiquetas (separadas por comas)
-                <input type="text" bind:value={newPageTags} />
+                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={newPageTags} />
               </label>
               {#if home.canPublish}
                 <label class="inline-check"><input type="checkbox" bind:checked={newPagePublish} /> Publicar directamente</label>
@@ -307,10 +307,10 @@
             <div class="section-heading"><div><p class="eyebrow">Organizar</p><h2 id="new-space-title">Nuevo espacio</h2></div></div>
             <form class="stack" onsubmit={submitNewSpace}>
               <label>Nombre
-                <input type="text" bind:value={newSpaceName} maxlength="120" required />
+                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={newSpaceName} maxlength="120" required />
               </label>
               <label>Descripción
-                <input type="text" bind:value={newSpaceDescription} maxlength="500" />
+                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={newSpaceDescription} maxlength="500" />
               </label>
               <button class="button secondary" type="submit" disabled={busy}>Crear espacio</button>
             </form>

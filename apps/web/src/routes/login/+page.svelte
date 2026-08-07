@@ -28,7 +28,7 @@
       {:else}
         <form method="POST" action="?/magiclink" class="magic-form" use:enhance>
           <label for="magic-email">Correo del hogar</label>
-          <input id="magic-email" name="email" type="email" autocomplete="email" required placeholder="tu@correo.es" />
+          <input id="magic-email" name="email" type="email" autocomplete="email" enterkeyhint="send" required placeholder="tu@correo.es" />
           <input type="hidden" name="next" value={data.next ?? ''} />
           <button class="account-card" type="submit"><span class="account-copy"><strong>Enviarme un enlace de acceso</strong><span>Sin contraseñas: el enlace caduca en 10 minutos.</span></span><span class="account-arrow" aria-hidden="true">→</span></button>
         </form>

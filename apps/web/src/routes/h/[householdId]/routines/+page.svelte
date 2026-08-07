@@ -198,10 +198,10 @@
         <div class="section-heading"><div><p class="eyebrow">Organizar</p><h2 id="routine-form-title">{routineId ? 'Editar rutina' : 'Nueva rutina'}</h2></div></div>
         <form class="action-form" onsubmit={submitRoutine}>
           <label>Título
-            <input type="text" bind:value={routineTitle} maxlength="160" required />
+            <input type="text" autocomplete="off" enterkeyhint="next" bind:value={routineTitle} maxlength="160" required />
           </label>
           <label>Detalles
-            <input type="text" bind:value={routineDetails} maxlength="1000" />
+            <input type="text" autocomplete="off" enterkeyhint="next" bind:value={routineDetails} maxlength="1000" />
           </label>
           <label>Audiencia
             <select bind:value={routineAudience}>
@@ -219,7 +219,7 @@
             </select>
           </label>
           <label>Cada cuántas (1–12)
-            <input type="number" min="1" max="12" bind:value={routineInterval} required />
+            <input type="number" inputmode="numeric" enterkeyhint="next" min="1" max="12" bind:value={routineInterval} required />
           </label>
           <label>Próxima fecha
             <input type="date" bind:value={routineNextDue} required />

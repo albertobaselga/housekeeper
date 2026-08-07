@@ -96,10 +96,10 @@
             <input type="date" bind:value={row.workedOn} min={days[0]} max={days[6]} required />
           </label>
           <label>Minutos trabajados
-            <input type="number" bind:value={row.minutes} min="0" max="1440" step="1" required />
+            <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={row.minutes} min="0" max="1440" step="1" required />
           </label>
           <label>Nota (opcional)
-            <input type="text" bind:value={row.note} maxlength="500" placeholder="Detalle del día" />
+            <input type="text" autocomplete="off" enterkeyhint="done" bind:value={row.note} maxlength="500" placeholder="Detalle del día" />
           </label>
           {#if rows.length > 1}
             <button

@@ -64,7 +64,7 @@
   <form class="search-form" method="GET" onsubmit={handleSubmit}>
     <label class="sr-only" for="global-query">Buscar en toda la casa</label>
     <span aria-hidden="true">⌕</span>
-    <input id="global-query" name="q" type="search" value={offline?.query ?? live?.query ?? data.search?.query ?? ''} placeholder="Prueba «lavadora» o «pediatra»" />
+    <input id="global-query" name="q" type="search" autocomplete="off" enterkeyhint="search" value={offline?.query ?? live?.query ?? data.search?.query ?? ''} placeholder="Prueba «lavadora» o «pediatra»" />
     <button class="button primary" type="submit">Buscar</button>
   </form>
 

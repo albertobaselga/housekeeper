@@ -180,6 +180,8 @@
           <label>Motivo de la decisión
             <input
               type="text"
+              autocomplete="off"
+              enterkeyhint="done"
               bind:value={resolveReason}
               bind:this={reasonField}
               maxlength="500"
@@ -211,11 +213,11 @@
           <input type="date" bind:value={expenseDate} required />
         </label>
         <label>Importe (€)
-          <input type="text" inputmode="decimal" bind:value={expenseAmount} required placeholder="12,50" />
+          <input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" bind:value={expenseAmount} required placeholder="12,50" />
         </label>
       </div>
       <label>Descripción
-        <input type="text" bind:value={expenseDescription} maxlength="500" required placeholder="Farmacia, compra…" />
+        <input type="text" autocomplete="off" enterkeyhint="done" bind:value={expenseDescription} maxlength="500" required placeholder="Farmacia, compra…" />
       </label>
       <label>Foto del justificante (opcional)
         <input

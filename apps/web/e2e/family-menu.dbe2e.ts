@@ -88,6 +88,21 @@ test('Marta duplica la semana en la siguiente (AC-23)', async ({ page }) => {
   await expect(groupCard.getByRole('link', { name: 'Pollo asado (E2E)' })).toBeVisible();
 });
 
+test('duplicar sobre una semana solapada muestra el rechazo veraz del servidor', async ({ page }) => {
+  await gotoMenu(page);
+
+  // La semana destino es elegible (P3 week_overlap): una fecha a menos de 7
+  // días de la de origen produce el rechazo real y su mensaje, sin prometer
+  // reenvío ni dejar banners eternos.
+  const form = page.locator('form.duplicate-week-form');
+  const overlapping = new Date(`${MADRID_TODAY}T00:00:00Z`);
+  await form.locator('input[type="date"]').fill(overlapping.toISOString().slice(0, 10));
+  await form.getByRole('button', { name: /Duplicar/ }).click();
+
+  await expect(page.locator('.form-error')).toContainText('No se pudo guardar');
+  await expect(page.locator('.form-error')).toContainText('solapa');
+});
+
 test('Marta añade un artículo manual a la compra y lo marca (AC-24)', async ({ page }) => {
   await gotoMenu(page);
   await page.getByRole('button', { name: 'Lista de la compra' }).click();

@@ -13,6 +13,10 @@
   {#snippet actions()}{#if context.capabilities.includes('calendar.write')}<button class="button primary" type="button">Nuevo evento</button>{/if}{/snippet}
   <PageHeader eyebrow={data.calendar.month} title="Calendario" description="Solo lo que afecta a la casa y a quien necesita verlo." {actions} />
 
+  <!-- Única fixture restante sin versión real: su fuente verdadera será el
+       espejo ICS. Banda honesta hasta entonces (P2-2 de la re-auditoría). -->
+  <p class="demo-note" role="note">Contenido de demostración: estos eventos no son de tu hogar. El calendario real llegará con la conexión ICS.</p>
+
   <div class="calendar-layout">
     <section class="card mini-calendar" aria-label={data.calendar.month}>
       <header><button type="button" aria-label="Mes anterior">←</button><h2>{data.calendar.month}</h2><button type="button" aria-label="Mes siguiente">→</button></header>

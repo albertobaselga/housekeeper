@@ -142,7 +142,7 @@
                     <strong>{CONFIRM_WORD}</strong> para confirmar.
                   </p>
                   <label>Confirmación
-                    <input type="text" bind:value={confirmText} placeholder={CONFIRM_WORD} autocomplete="off" />
+                    <input type="text" bind:value={confirmText} placeholder={CONFIRM_WORD} autocomplete="off" enterkeyhint="done" />
                   </label>
                   <div class="menu-slot-actions">
                     <button

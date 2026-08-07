@@ -146,18 +146,26 @@ export interface CriticalSnapshotFixturePayload {
   wikiPages: Array<{ id: string; title: string; space: string; body: string }>;
 }
 
-export function getCriticalSnapshotPayload(): CriticalSnapshotFixturePayload {
+export function getCriticalSnapshotPayload(
+  realContacts?: Array<{ id: string; name: string; phone: string; kind: string }> | null
+): CriticalSnapshotFixturePayload {
   return {
-    emergency: [
-      { id: 'note-allergy', title: 'Alergia alimentaria', body: 'Alergia alimentaria de demostración: revisar siempre las etiquetas.' },
-      { id: 'note-water', title: 'Corte de agua', body: 'La llave de corte de agua está bajo el fregadero.' }
-    ],
-    contacts: CONTACTS.filter((contact) => contact.featured).map((contact) => ({
-      id: contact.id,
-      name: contact.name,
-      phone: contact.phone,
-      kind: contact.kind
-    })),
+    // Con contactos REALES del hogar las notas de demostración desaparecen:
+    // el snapshot no debe mezclar datos verdaderos con inventados sin marca.
+    emergency: realContacts
+      ? []
+      : [
+          { id: 'note-allergy', title: 'Alergia alimentaria', body: 'Alergia alimentaria de demostración: revisar siempre las etiquetas.' },
+          { id: 'note-water', title: 'Corte de agua', body: 'La llave de corte de agua está bajo el fregadero.' }
+        ],
+    contacts: realContacts
+      ? realContacts.map((contact) => ({ ...contact }))
+      : CONTACTS.filter((contact) => contact.featured).map((contact) => ({
+          id: contact.id,
+          name: contact.name,
+          phone: contact.phone,
+          kind: contact.kind
+        })),
     dietaryFlags: [{ id: 'dairy-free', label: 'Leo · sin lácteos', severity: 'high' }],
     today: {
       dateLabel: 'Viernes, 7 de agosto',

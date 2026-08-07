@@ -135,7 +135,7 @@
           <h3>Registrar pago</h3>
           <div class="form-grid">
             <label>Importe (€)
-              <input type="text" inputmode="decimal" bind:value={paymentAmount} required />
+              <input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" bind:value={paymentAmount} required />
             </label>
             <label>Método
               <select bind:value={paymentMethod}>
@@ -177,7 +177,7 @@
         >
           <h3>Confirmar cobro</h3>
           <label>Nota (opcional)
-            <input type="text" bind:value={receiptNote} maxlength="500" placeholder="Recibido completo" />
+            <input type="text" autocomplete="off" enterkeyhint="done" bind:value={receiptNote} maxlength="500" placeholder="Recibido completo" />
           </label>
           <div class="action-row">
             <button class="button primary small-button" type="submit" disabled={busy}>Confirmar cobro</button>

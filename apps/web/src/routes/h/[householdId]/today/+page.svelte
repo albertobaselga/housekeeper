@@ -52,11 +52,19 @@
 <svelte:head><title>Hoy · Casa Clara</title></svelte:head>
 
 <div class="page-wrap today-page">
+  <!-- Acceso fijo a Emergencias desde Hoy (P3 de la re-auditoría UX v2: en
+       móvil «Ayuda» pasó a vivir dentro de «Más» y perdió su tap directo). -->
+  {#snippet emergencyShortcut()}
+    <a class="button secondary today-emergency-link" href={`/h/${context.household.id}/emergency`}>
+      <span aria-hidden="true">+</span> Emergencias
+    </a>
+  {/snippet}
   {#if overview}
     <PageHeader
       eyebrow={overview.dateLabel}
       title={`${overview.greeting}, ${context.user.name}`}
       description="Lo importante de hoy, sin ruido."
+      actions={emergencyShortcut}
     />
 
     {#await OutboxTriage then Triage}<Triage householdId={overview.householdId} />{/await}
@@ -149,7 +157,7 @@
       </article>
     </section>
   {:else if data.today}
-    <PageHeader eyebrow={data.today.dateLabel} title={`${data.today.greeting}, ${context.user.name}`} description="Lo importante de hoy, sin ruido." />
+    <PageHeader eyebrow={data.today.dateLabel} title={`${data.today.greeting}, ${context.user.name}`} description="Lo importante de hoy, sin ruido." actions={emergencyShortcut} />
 
     {#await OutboxTriage then Triage}<Triage householdId={context.household.id} />{/await}
 

@@ -42,7 +42,15 @@ export const E2E_SEED = {
     /** Festivo trabajado sin aceptación previa: la familia lo resuelve. */
     porResolver: 'aa600000-0000-4000-8000-000000000002'
   },
-  expensePending: 'aa700000-0000-4000-8000-000000000001'
+  expensePending: 'aa700000-0000-4000-8000-000000000001',
+  contacts: {
+    /** Destacado: aparece en Emergencias y en el CriticalSnapshot. */
+    pediatra: 'aa800000-0000-4000-8000-000000000001',
+    /** Destacada (casa y vecinos). */
+    vecina: 'aa800000-0000-4000-8000-000000000002',
+    /** No destacado: solo en el directorio y la búsqueda. */
+    fontanero: 'aa800000-0000-4000-8000-000000000003'
+  }
 } as const;
 
 export const ACCOUNT_EMAILS = {
