@@ -105,10 +105,27 @@ export const extraWorkRegisterPayloadSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
+export const extraWorkAcceptPayloadSchema = z.object({
+  action: z.literal("accept"),
+  extraWorkEventId: uuidSchema,
+});
+
+export const extraWorkMarkPerformedPayloadSchema = z.object({
+  action: z.literal("mark_performed"),
+  extraWorkEventId: uuidSchema,
+});
+
 export const extraWorkResolvePayloadSchema = z.object({
   action: z.literal("resolve"),
   extraWorkEventId: uuidSchema,
   resolution: z.enum(["money", "time_off"]),
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const expenseResolvePayloadSchema = z.object({
+  action: z.literal("resolve"),
+  expenseId: uuidSchema,
+  resolution: z.enum(["approved", "rejected"]),
   reason: z.string().trim().min(1).max(500),
 });
 
@@ -139,6 +156,8 @@ export const settlementCommandPayloadSchema = z.discriminatedUnion("action", [
 
 export const extraWorkCommandPayloadSchema = z.discriminatedUnion("action", [
   extraWorkRegisterPayloadSchema,
+  extraWorkAcceptPayloadSchema,
+  extraWorkMarkPerformedPayloadSchema,
   extraWorkResolvePayloadSchema,
 ]);
 

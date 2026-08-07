@@ -208,6 +208,18 @@ export interface ExtraWorkRegisterPayloadV1 {
   note?: string;
 }
 
+/** `aggregateType: "extra_work"` — aceptación previa por la familia. */
+export interface ExtraWorkAcceptPayloadV1 {
+  action: "accept";
+  extraWorkEventId: UUID;
+}
+
+/** `aggregateType: "extra_work"` — la empleada marca la jornada como realizada. */
+export interface ExtraWorkMarkPerformedPayloadV1 {
+  action: "mark_performed";
+  extraWorkEventId: UUID;
+}
+
 /**
  * `aggregateType: "extra_work"` — resolución del administrador. La tarifa se
  * congela en el servidor desde la versión de acuerdo vigente en `workedOn`.
@@ -216,6 +228,14 @@ export interface ExtraWorkResolvePayloadV1 {
   action: "resolve";
   extraWorkEventId: UUID;
   resolution: "money" | "time_off";
+  reason: string;
+}
+
+/** `aggregateType: "expense"` — resolución del administrador sobre un gasto pendiente. */
+export interface ExpenseResolvePayloadV1 {
+  action: "resolve";
+  expenseId: UUID;
+  resolution: "approved" | "rejected";
   reason: string;
 }
 

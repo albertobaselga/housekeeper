@@ -56,11 +56,11 @@ try {
     const password = requireEnv(`${account.prefix}_PASSWORD`);
     let user = await context.internalAdapter.findUserByEmail(email);
     if (user?.user) {
-      seeded.push({ id: user.user.id, name, role: account.role, created: false });
+      seeded.push({ id: user.user.id, name, email, role: account.role, created: false });
       continue;
     }
     const result = await auth.api.signUpEmail({ body: { name, email, password } });
-    seeded.push({ id: result.user.id, name, role: account.role, created: true });
+    seeded.push({ id: result.user.id, name, email, role: account.role, created: true });
   }
 
   const client = await appPool.connect();
@@ -76,10 +76,11 @@ try {
     );
     for (const account of seeded) {
       await client.query(
-        `insert into app.user_profiles (user_id, display_name)
-         values ($1, $2)
-         on conflict (user_id) do update set display_name = excluded.display_name`,
-        [account.id, account.name]
+        `insert into app.user_profiles (user_id, display_name, email)
+         values ($1, $2, $3)
+         on conflict (user_id) do update
+           set display_name = excluded.display_name, email = excluded.email`,
+        [account.id, account.name, account.email]
       );
       await client.query(
         `insert into app.household_memberships (household_id, user_id, role)
