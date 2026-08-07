@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
   import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
@@ -8,11 +8,18 @@
   import WeeklyReportCard from '$lib/components/employment/WeeklyReportCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
-  import { openSettlement, queueEmploymentCommand } from '$lib/employment/commands';
+  import { OptimisticActions } from '$lib/offline/optimistic';
+  import { openSettlement } from '$lib/employment/commands';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const context = useAppContext();
+
+  // Patrón wiki (P2-1): apertura de liquidación optimista con invalidate
+  // selectivo ('cc:employment'); las tarjetas hijas llevan su propia instancia.
+  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:employment' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
 
   const overview = $derived(data.overview);
 
@@ -58,8 +65,10 @@
       : null
   );
 
-  let openBusy = $state(false);
-  let openQueued = $state(false);
+  // Chip optimista: la apertura se da por enviada al instante; los datos
+  // frescos retiran el formulario (openableAccrual pasa a null) y, si el
+  // servidor la rechaza, el formulario vuelve con la causa en la nota.
+  let openSent = $state(false);
   // Vencimiento elegido por la familia: nunca antes del fin del periodo y, por
   // defecto, el propio fin de mes.
   const openPeriodEnd = $derived(openableAccrual ? monthEnd(openableAccrual.period) : '');
@@ -68,29 +77,29 @@
     if (openPeriodEnd && !openDueOn) openDueOn = openPeriodEnd;
   });
 
-  async function openCurrentSettlement(): Promise<void> {
-    if (!overview || !agreement || !openableAccrual) return;
+  function openCurrentSettlement(): void {
+    if (!overview || !agreement || !openableAccrual || openSent) return;
     const dueOn = openDueOn && openDueOn >= openPeriodEnd ? openDueOn : openPeriodEnd;
-    openBusy = true;
-    try {
-      const outcome = await queueEmploymentCommand(
-        openSettlement({
-          householdId: overview.householdId,
-          agreementId: agreement.id,
-          periodStart: `${openableAccrual.period}-01`,
-          periodEnd: openPeriodEnd,
-          dueOn
-        })
-      );
-      if (outcome === 'synced') {
-        // La liquidación ya existe en el servidor: el overview fresco retira el botón.
-        await invalidateAll();
-      } else {
-        openQueued = true;
+    void optimistic.run(
+      openSettlement({
+        householdId: overview.householdId,
+        agreementId: agreement.id,
+        periodStart: `${openableAccrual.period}-01`,
+        periodEnd: openPeriodEnd,
+        dueOn
+      }),
+      {
+        apply: () => {
+          openSent = true;
+        },
+        revert: () => {
+          openSent = false;
+        },
+        settle: () => {
+          openSent = false;
+        }
       }
-    } finally {
-      openBusy = false;
-    }
+    );
   }
 </script>
 
@@ -98,26 +107,28 @@
 
 <div class="page-wrap">
   {#snippet actions()}
-    {#if openableAccrual && !openQueued}
+    {#if openableAccrual && !openSent}
       <form
         class="open-settlement-form"
         onsubmit={(event) => {
           event.preventDefault();
-          void openCurrentSettlement();
+          openCurrentSettlement();
         }}
       >
         <label>Vencimiento
           <input type="date" bind:value={openDueOn} min={openPeriodEnd} required />
         </label>
-        <button class="button primary" type="submit" disabled={openBusy}>
+        <button class="button primary" type="submit">
           Abrir liquidación de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
         </button>
       </form>
-    {:else if openQueued}
-      <span class="status-chip warning">Apertura pendiente de sincronizar</span>
+    {:else if openSent}
+      <span class="status-chip success">Apertura enviada</span>
     {/if}
   {/snippet}
   <PageHeader eyebrow="Expediente laboral" title="Acuerdos y pagos" description="Importes trazables, confirmaciones separadas y un historial claro." {actions} />
+
+  <ActionStatus status={actionStatus} />
 
   {#if overview}
     {#if !overview.hasEmploymentData}

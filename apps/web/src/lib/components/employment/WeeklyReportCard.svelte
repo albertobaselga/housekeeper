@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
-  import { queueEmploymentCommand, submitWeek } from '$lib/employment/commands';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import { OptimisticActions } from '$lib/offline/optimistic';
+  import { submitWeek } from '$lib/employment/commands';
   import { dateLabel, type WeeklyReportView } from '$lib/employment/model';
   import {
     MAX_WEEK_ROWS,
@@ -34,12 +35,17 @@
     recentReports.some((report) => report.weekStartsOn === weekStartsOn)
   );
 
+  // Patrón wiki (P2-1): el chip «Semana enviada» se pinta al instante, con
+  // `invalidate('cc:employment')` selectivo tras el ACK y reversión honesta.
+  // svelte-ignore state_referenced_locally -- el hogar no cambia dentro de la página
+  const optimistic = new OptimisticActions({ householdId, invalidateToken: 'cc:employment' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
   let rows = $state<WeekEntryDraft[]>([
     { workedOn: days.includes(today) ? today : days[0]!, minutes: 480, note: '' }
   ]);
-  let busy = $state(false);
   let sent = $state(false);
-  let queued = $state(false);
   let error = $state<string | null>(null);
 
   function addRow(): void {
@@ -54,7 +60,7 @@
     rows = rows.filter((_, position) => position !== index);
   }
 
-  async function submit(event: SubmitEvent): Promise<void> {
+  function submit(event: SubmitEvent): void {
     event.preventDefault();
     const result = buildWeekEntries(weekStartsOn, rows);
     if (!result.ok) {
@@ -62,20 +68,16 @@
       return;
     }
     error = null;
-    busy = true;
-    try {
-      const outcome = await queueEmploymentCommand(
-        submitWeek({ householdId, agreementId, weekStartsOn, entries: result.entries })
-      );
-      sent = true;
-      queued = outcome === 'queued';
-      if (outcome === 'synced') {
-        // El servidor ya registró el parte: el overview fresco lo lista como enviado.
-        await invalidateAll();
+    void optimistic.run(submitWeek({ householdId, agreementId, weekStartsOn, entries: result.entries }), {
+      // El chip «Semana enviada» sustituye al formulario al instante; si el
+      // servidor rechaza el parte, el formulario vuelve con la causa visible.
+      apply: () => {
+        sent = true;
+      },
+      revert: () => {
+        sent = false;
       }
-    } finally {
-      busy = false;
-    }
+    });
   }
 </script>
 
@@ -88,7 +90,7 @@
   </div>
 
   {#if canSubmit && !alreadyReported && !sent}
-    <form class="action-form" onsubmit={(event) => void submit(event)}>
+    <form class="action-form" onsubmit={submit}>
       <p class="audit-note">Semana en curso: del {dateLabel(days[0]!)} al {dateLabel(days[6]!)}. Una fila por día trabajado.</p>
       {#each rows as row, index (index)}
         <div class="form-grid">
@@ -105,7 +107,6 @@
             <button
               class="button secondary small-button"
               type="button"
-              disabled={busy}
               onclick={() => removeRow(index)}
             >Quitar día</button>
           {/if}
@@ -116,10 +117,10 @@
         <button
           class="button secondary small-button"
           type="button"
-          disabled={busy || rows.length >= MAX_WEEK_ROWS}
+          disabled={rows.length >= MAX_WEEK_ROWS}
           onclick={addRow}
         >Añadir día</button>
-        <button class="button primary small-button" type="submit" disabled={busy}>Enviar parte semanal</button>
+        <button class="button primary small-button" type="submit">Enviar parte semanal</button>
         <small>Al enviarlo, la familia tiene tres días para confirmarlo o disputarlo.</small>
       </div>
     </form>
@@ -127,9 +128,7 @@
     <p class="audit-note">Esta semana ya está enviada; no se puede reenviar.</p>
   {/if}
 
-  {#if queued}
-    <p class="queued-note" role="status">Guardado en este dispositivo; se sincronizará al recuperar la conexión.</p>
-  {/if}
+  <ActionStatus status={actionStatus} />
 
   <div class="ledger-list">
     {#each recentReports as report (report.id)}

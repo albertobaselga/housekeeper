@@ -3,8 +3,9 @@ import { expect, test } from '@playwright/test';
 import { HOUSEHOLD, loginAs } from './helpers';
 
 // AC-11 (sin foto) con la INTERNA (Ana): un añadido a la compra hecho sin
-// conexión queda en la outbox local con aviso visible y, al volver la red y
-// dispararse el evento `online`, se sincroniza contra Postgres real.
+// conexión se pinta optimista, queda pendiente en este dispositivo con el
+// aviso unificado (ámbar y veraz) y, al volver la red y dispararse el evento
+// `online`, se sincroniza contra Postgres real.
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 test.describe.configure({ mode: 'serial' });
 
@@ -24,8 +25,10 @@ test('Ana añade a la compra sin conexión y el artículo se sincroniza al volve
     await addForm.getByLabel('Sección').fill('hogar');
     await addForm.getByRole('button', { name: 'Añadir a la compra' }).click();
 
-    // El comando queda en la outbox local: aviso en página y píldora offline.
-    await expect(page.locator('.success-message')).toContainText('outbox local, pendiente de sincronizar');
+    // El artículo se pinta YA de forma optimista y el aviso unificado es
+    // veraz: ámbar, «guardado en este dispositivo» (nunca jerga de outbox).
+    await expect(page.locator('.ingredient-list li').filter({ hasText: 'Pilas AAA E2E' })).toBeVisible();
+    await expect(page.locator('.queued-note')).toContainText('Guardado en este dispositivo');
     await expect(page.locator('.sync-pill')).toContainText('Sin conexión · 1 pendiente');
   } finally {
     await context.setOffline(false);

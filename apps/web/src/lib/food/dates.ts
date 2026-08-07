@@ -19,6 +19,42 @@ export function addDays(dateISO: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Suma meses en UTC recortando el día al último del mes destino (31/01 + 1 mes → 28/02). */
+export function addMonthsClamped(dateISO: string, months: number): string {
+  const year = Number(dateISO.slice(0, 4));
+  const monthIndex = Number(dateISO.slice(5, 7)) - 1;
+  const day = Number(dateISO.slice(8, 10));
+  const total = monthIndex + months;
+  const targetYear = year + Math.floor(total / 12);
+  const targetMonth = ((total % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  const targetDay = Math.min(day, lastDay);
+  return `${String(targetYear).padStart(4, '0')}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+}
+
+/**
+ * Próxima ocurrencia de una rutina tras completar la vigente. Réplica exacta
+ * de `app.advance_routine_after_completion` (migración 0009) y de
+ * `advanceDueDate` en el servidor: permite pintar «Hecha ✓ · próxima el X»
+ * de forma OPTIMISTA con la misma fecha que confirmará el servidor.
+ */
+export function nextRoutineDue(
+  dueOn: string,
+  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly',
+  intervalCount: number
+): string {
+  switch (frequency) {
+    case 'daily':
+      return addDays(dueOn, intervalCount);
+    case 'weekly':
+      return addDays(dueOn, 7 * intervalCount);
+    case 'monthly':
+      return addMonthsClamped(dueOn, intervalCount);
+    case 'quarterly':
+      return addMonthsClamped(dueOn, 3 * intervalCount);
+  }
+}
+
 /** Lunes de la semana a la que pertenece la fecha (la propia fecha si ya es lunes). */
 export function mondayOf(dateISO: string): string {
   const date = new Date(`${dateISO}T00:00:00Z`);

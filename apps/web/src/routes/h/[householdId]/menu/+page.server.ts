@@ -5,7 +5,10 @@ import type { PageServerLoad } from './$types';
 
 const MADRID_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' });
 
-export const load: PageServerLoad = async ({ locals, params, url }) => {
+export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
+  // Patrón wiki (latencia): las acciones de menú y compra re-ejecutan SOLO
+  // este load con `invalidate('cc:menu')`, sin re-firmar el snapshot del layout.
+  depends('cc:menu');
   const today = MADRID_DATE.format(new Date());
   const requested = url.searchParams.get('week');
   const monday = mondayOf(requested && isIsoDate(requested) ? requested : today);

@@ -45,12 +45,16 @@ test('Marta asigna la receta con leche al grupo Casa: bloqueo de alérgenos y re
   await expect(block).toContainText('Leche y derivados (lactosa) — afecta a Leo (comensal E2E)');
   await expect(editor.getByRole('button', { name: 'Guardar hueco' })).toBeDisabled();
 
-  // Reconocimiento explícito → guardar. El hueco queda con la alerta visible.
+  // Reconocimiento explícito → guardar. El hueco se pinta AL INSTANTE
+  // (optimista) con su alerta, y después llega la confirmación del servidor.
   await block.getByRole('checkbox', { name: /asumo la decisión/ }).check();
   await editor.getByRole('button', { name: 'Guardar hueco' }).click();
   await expect(comidaRow.getByRole('link', { name: 'Arroz con leche (E2E)' })).toBeVisible();
   await expect(comidaRow.getByRole('alert')).toContainText('Incompatibilidad de alérgenos');
   await expect(comidaRow.getByRole('alert')).toContainText('Leo (comensal E2E)');
+  // La línea de raciones solo existe en el render del servidor: garantiza que
+  // el comando quedó aplicado antes de cerrar el contexto del test.
+  await expect(comidaRow).toContainText('raciones · base');
 });
 
 test('Marta asigna la receta compatible y confirma el hueco', async ({ page }) => {
@@ -67,6 +71,10 @@ test('Marta asigna la receta compatible y confirma el hueco', async ({ page }) =
   await expect(cenaRow.getByRole('link', { name: 'Pollo asado (E2E)' })).toBeVisible();
 
   // Confirmación bloqueante ligada al hash del contenido leído en esta carga.
+  // El botón «Confirmar» solo existe sobre el hueco YA persistido (mientras el
+  // borrador optimista está en vuelo las acciones se ocultan), así que este
+  // click también verifica que el guardado llegó al servidor. El chip
+  // «Confirmado» se pinta al instante (optimista).
   await cenaRow.getByRole('button', { name: 'Confirmar' }).click();
   await expect(cenaRow.locator('.status-chip').filter({ hasText: 'Confirmado' })).toBeVisible();
 });

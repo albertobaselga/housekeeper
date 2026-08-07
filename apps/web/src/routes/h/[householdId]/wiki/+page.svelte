@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
   import { untrack } from 'svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { useAppContext } from '$lib/auth/context';
+  import { OptimisticActions } from '$lib/offline/optimistic';
   import {
     cloneWikiTemplate,
     createWikiPage,
     createWikiSpace,
     parseTermList,
-    queueWikiCommand,
     setWikiPageState,
     setWikiSpaceTemplate
   } from '$lib/wiki/commands';
@@ -23,15 +23,17 @@
 
   // Las acciones de escritura solo existen sobre datos reales de Postgres; en
   // modo fixture (demo sin base de datos) la página es de solo lectura.
-  let queued = $state(false);
+  // Patrón wiki: `invalidate('cc:wiki')` selectivo y nota veraz unificada.
+  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:wiki' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
   let busy = $state(false);
 
-  async function dispatch(envelope: Parameters<typeof queueWikiCommand>[0]): Promise<void> {
+  async function dispatch(envelope: Parameters<typeof optimistic.run>[0]): Promise<void> {
     busy = true;
     try {
-      const outcome = await queueWikiCommand(envelope);
-      if (outcome === 'synced') await invalidateAll();
-      else queued = true;
+      await optimistic.run(envelope);
     } finally {
       busy = false;
     }
@@ -156,7 +158,7 @@
   <PageHeader eyebrow="Conocimiento compartido" title="Wiki de la casa" description="Cómo funciona cada cosa, escrito para encontrarlo deprisa." />
 
   {#if home}
-    {#if queued}<p class="success-message" role="status">Cambio guardado en la outbox local, pendiente de sincronizar.</p>{/if}
+    <ActionStatus status={actionStatus} />
 
     {#if home.pinned.length}
       <section class="card" aria-labelledby="pinned-title">

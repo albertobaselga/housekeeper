@@ -7,12 +7,12 @@
 </script>
 
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import { OptimisticActions } from '$lib/offline/optimistic';
   import {
     closeSettlement,
     confirmReceipt,
     parseEuroInput,
-    queueEmploymentCommand,
     recordPayment
   } from '$lib/employment/commands';
   import { centsToEuroInput, type SettlementView } from '$lib/employment/model';
@@ -31,8 +31,15 @@
     canConfirmReceipt: boolean;
   } = $props();
 
-  let busy = $state(false);
-  let queued = $state(false);
+  // Patrón wiki (P2-1): el chip de resultado se pinta ANTES de que el comando
+  // viaje; `invalidate('cc:employment')` selectivo tras el ACK refresca la
+  // liquidación y retira el estado optimista; rejected/conflict lo revierte y
+  // el formulario vuelve con la causa traducida en la nota.
+  // svelte-ignore state_referenced_locally -- el hogar no cambia dentro de la página
+  const optimistic = new OptimisticActions({ householdId, invalidateToken: 'cc:employment' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
   let sent = $state<string | null>(null);
 
   // Defaults que la app ya conoce: importe prellenado con el pendiente (el
@@ -65,24 +72,23 @@
       !settlement.receiptConfirmed
   );
 
-  async function run(envelope: Parameters<typeof queueEmploymentCommand>[0], action: string): Promise<void> {
-    busy = true;
-    try {
-      const outcome = await queueEmploymentCommand(envelope);
-      queued = outcome === 'queued';
-      if (outcome === 'synced') {
-        // El servidor ya lo aplicó: la vista fresca de la liquidación manda.
-        await invalidateAll();
-        sent = null;
-      } else {
+  function run(envelope: Parameters<typeof optimistic.run>[0], action: string): void {
+    void optimistic.run(envelope, {
+      // El chip sustituye al formulario al instante: sin `busy` de tarjeta.
+      apply: () => {
         sent = action;
+      },
+      revert: () => {
+        sent = null;
+      },
+      settle: () => {
+        // La vista fresca de la liquidación decide qué acciones quedan.
+        sent = null;
       }
-    } finally {
-      busy = false;
-    }
+    });
   }
 
-  async function submitPayment(event: SubmitEvent): Promise<void> {
+  function submitPayment(event: SubmitEvent): void {
     event.preventDefault();
     const amountCents = parseEuroInput(paymentAmount);
     if (!amountCents || !paymentDate) {
@@ -91,7 +97,7 @@
     }
     paymentError = null;
     lastPaymentMethod = paymentMethod;
-    await run(
+    run(
       recordPayment({
         householdId,
         settlementId: settlement.id,
@@ -119,8 +125,7 @@
           <button
             class="button primary small-button"
             type="button"
-            disabled={busy}
-            onclick={() => void run(closeSettlement({ householdId, settlementId: settlement.id }), 'close')}
+            onclick={() => run(closeSettlement({ householdId, settlementId: settlement.id }), 'close')}
           >Cerrar liquidación</button>
           <small>El servidor materializa las líneas desde los hechos y congela los totales.</small>
         </div>
@@ -131,7 +136,7 @@
       {#if sent === 'payment'}
         <div class="action-row"><span class="status-chip success">Pago enviado</span></div>
       {:else}
-        <form onsubmit={(event) => void submitPayment(event)}>
+        <form onsubmit={submitPayment}>
           <h3>Registrar pago</h3>
           <div class="form-grid">
             <label>Importe (€)
@@ -152,8 +157,8 @@
           </div>
           {#if paymentError}<p class="queued-note" role="alert">{paymentError}</p>{/if}
           <div class="action-row">
-            <button class="button primary small-button" type="submit" disabled={busy}>Registrar pago</button>
-            <button class="button secondary small-button" type="button" disabled={busy} onclick={fillFullPending}>
+            <button class="button primary small-button" type="submit">Registrar pago</button>
+            <button class="button secondary small-button" type="button" onclick={fillFullPending}>
               Pagar todo ({settlement.pendingLabel})
             </button>
             <small>Pendiente actual: {settlement.pendingLabel}</small>
@@ -169,10 +174,7 @@
         <form
           onsubmit={(event) => {
             event.preventDefault();
-            void run(
-              confirmReceipt({ householdId, settlementId: settlement.id, note: receiptNote }),
-              'receipt'
-            );
+            run(confirmReceipt({ householdId, settlementId: settlement.id, note: receiptNote }), 'receipt');
           }}
         >
           <h3>Confirmar cobro</h3>
@@ -180,15 +182,13 @@
             <input type="text" autocomplete="off" enterkeyhint="done" bind:value={receiptNote} maxlength="500" placeholder="Recibido completo" />
           </label>
           <div class="action-row">
-            <button class="button primary small-button" type="submit" disabled={busy}>Confirmar cobro</button>
+            <button class="button primary small-button" type="submit">Confirmar cobro</button>
             <small>Tu confirmación queda registrada aparte del pago de la familia.</small>
           </div>
         </form>
       {/if}
     {/if}
 
-    {#if queued}
-      <p class="queued-note" role="status">Guardado en este dispositivo; se sincronizará al recuperar la conexión.</p>
-    {/if}
+    <ActionStatus status={actionStatus} />
   </div>
 {/if}

@@ -99,8 +99,12 @@ test('Ana marca su rutina de hoy desde Hoy sin banner rojo y la recurrencia avan
   await routineRow.getByRole('button', { name: 'Marcar hecha' }).click();
 
   // El comando real (routine.complete) sincroniza y la función definer avanza
-  // la recurrencia: la rutina deja de vencer hoy. Nada de «Revisión necesaria».
-  await expect(routineRow).toHaveCount(0);
+  // la recurrencia. La fila NO desaparece en seco (P3): queda atenuada, con el
+  // chip optimista «Hecha ✓ · próxima el X» pintado al instante. Nada de
+  // «Revisión necesaria».
+  await expect(routineRow.locator('.status-chip').filter({ hasText: 'Hecha ✓ · próxima el' })).toBeVisible();
+  await expect(routineRow).toHaveClass(/routine-done/);
+  await expect(routineRow.getByRole('button', { name: 'Marcar hecha' })).toHaveCount(0);
   await expect(page.locator('.status-banner')).toHaveCount(0);
   await expect(page.locator('.sync-pill')).toContainText('Todo guardado');
 });
