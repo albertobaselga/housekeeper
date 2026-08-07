@@ -1,11 +1,16 @@
 import { error, json } from '@sveltejs/kit';
 import { syncRequestSchema } from '@casa-clara/contracts/schemas';
-import { processSyncBatch, submitExpenseHandler, type CommandHandlers } from '@casa-clara/server';
+import {
+  employmentCommandHandlers,
+  processSyncBatch,
+  submitExpenseHandler,
+  type CommandHandlers
+} from '@casa-clara/server';
 
 import { getDatabasePool } from '$lib/server/db.server';
 import type { RequestHandler } from './$types';
 
-const handlers: CommandHandlers = { expense: submitExpenseHandler };
+const handlers: CommandHandlers = { ...employmentCommandHandlers, expense: submitExpenseHandler };
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para sincronizar');
