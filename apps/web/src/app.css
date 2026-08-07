@@ -288,6 +288,24 @@
   .empty-state p { max-width: 30rem; }
   .success-message { margin: 1rem 0; border-radius: .65rem; background: var(--success-soft); padding: .65rem .8rem; color: var(--success); font-size: .8rem; font-weight: 700; }
 
+  /* Formularios de acción del expediente laboral (outbox offline-first). */
+  .action-form { display: grid; gap: .65rem; margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+  .action-form form { display: grid; gap: .65rem; }
+  .action-form h3 { font-size: .84rem; }
+  .action-form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  .action-form input, .action-form select, .action-form textarea {
+    border: 1px solid var(--line-strong);
+    border-radius: .6rem;
+    background: var(--surface);
+    padding: .5rem .65rem;
+    color: var(--ink);
+    font-size: .82rem;
+  }
+  .action-form .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; }
+  .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+  .inline-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+  .queued-note { margin-top: .6rem; border-radius: .65rem; background: var(--warning-soft); padding: .55rem .75rem; color: var(--warning); font-size: .75rem; font-weight: 700; }
+
   .login-stage, .error-stage {
     display: grid;
     min-height: 100dvh;

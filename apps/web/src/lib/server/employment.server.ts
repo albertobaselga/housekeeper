@@ -7,6 +7,8 @@ import {
   buildAdvanceBalanceViews,
   buildAgreementVersionViews,
   buildCompensationBalanceViews,
+  buildPendingExpenseViews,
+  buildPendingExtraViews,
   buildSettlementViews,
   currentPeriod,
   type AdvanceRow,
@@ -15,6 +17,8 @@ import {
   type CompensationBalanceRow,
   type EmploymentOverview,
   type PaymentRow,
+  type PendingExpenseRow,
+  type PendingExtraWorkRow,
   type ResolvedExtraWorkRow,
   type SettlementLineRow,
   type SettlementRow
@@ -55,8 +59,13 @@ export async function loadEmploymentOverview(
         status: string;
         startsOn: string;
         endsOn: string | null;
+        employeeMembershipId: string;
       }>(
-        `select id, status::text as "status", starts_on::text as "startsOn", ends_on::text as "endsOn"
+        `select id,
+                status::text as "status",
+                starts_on::text as "startsOn",
+                ends_on::text as "endsOn",
+                employee_membership_id as "employeeMembershipId"
            from app.employment_agreements
           where household_id = $1
           order by (status = 'active') desc, starts_on desc
@@ -72,6 +81,8 @@ export async function loadEmploymentOverview(
           versions: [],
           accrual: null,
           settlements: [],
+          pendingExtras: [],
+          pendingExpenses: [],
           balances: { compensation: [], advances: [] }
         } satisfies EmploymentOverview;
       }
@@ -108,6 +119,37 @@ export async function loadEmploymentOverview(
             and worked_on between $3 and $4
           order by worked_on, requested_at`,
         [householdId, agreement.id, first, last]
+      );
+
+      // Jornadas extra vivas (sin resolver ni rechazar): sobre ellas actúan la
+      // empleada (marcar realizada) y la familia (aceptar/resolver). Sin filtro
+      // de mes: una jornada pendiente exige acción aunque sea antigua.
+      const pendingExtras = await client.query<PendingExtraWorkRow>(
+        `select id,
+                kind::text as "kind",
+                worked_on::text as "workedOn",
+                duration_minutes as "durationMinutes",
+                note,
+                status::text as "status",
+                employee_membership_id as "employeeMembershipId"
+           from app.extra_work_events
+          where household_id = $1 and agreement_id = $2
+            and status in ('requested', 'accepted', 'performed', 'performed_pending_resolution')
+          order by worked_on, requested_at`,
+        [householdId, agreement.id]
+      );
+
+      // Gastos pendientes de resolución: la familia los aprueba o rechaza.
+      const pendingExpenses = await client.query<PendingExpenseRow>(
+        `select id,
+                incurred_on::text as "incurredOn",
+                description,
+                amount_cents as "amountCents",
+                employee_membership_id as "employeeMembershipId"
+           from app.expenses
+          where household_id = $1 and agreement_id = $2 and status = 'pending'
+          order by incurred_on, submitted_at`,
+        [householdId, agreement.id]
       );
 
       // Gastos aprobados aún no incorporados a una liquidación: son los que el
@@ -234,6 +276,8 @@ export async function loadEmploymentOverview(
           expenses: expenses.rows
         }),
         settlements: buildSettlementViews(settlements.rows, lineRows, paymentRows),
+        pendingExtras: buildPendingExtraViews(pendingExtras.rows),
+        pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows),
         balances: {
           compensation: buildCompensationBalanceViews(compensation.rows),
           advances: buildAdvanceBalanceViews(advances.rows)
