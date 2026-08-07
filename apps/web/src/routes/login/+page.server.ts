@@ -60,7 +60,7 @@ export const load: PageServerLoad = ({ locals, url }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ cookies, request, url }) => {
+  demo: async ({ cookies, request, url }) => {
     if (!dev && !isLocalHostname(url.hostname)) error(403, 'El acceso demo solo está disponible en local');
     const formData = await request.formData();
     const accountId = String(formData.get('accountId') ?? '');

@@ -18,14 +18,18 @@
     --surface-strong: #fff;
     --ink: #26302b;
     --ink-soft: #626962;
-    --ink-faint: #767d76;
+    /* 4.98:1 sobre --paper: el tono anterior (#767d76) se quedaba en 4.16 y
+       fallaba el AA de axe en texto pequeño. */
+    --ink-faint: #6a706a;
     --line: #d8d4cb;
     --line-strong: #a5aaa4;
     --primary: #21483a;
     --primary-hover: #18382e;
     --primary-soft: #e2eee7;
     --primary-pale: #f0f6f2;
-    --accent: #c8764e;
+    /* 4.9:1 sobre --paper: el terracota anterior (#c8764e) daba 3.35 y fallaba
+       el AA de axe cuando se usa como color de texto. */
+    --accent: #a85a33;
     --accent-soft: #fae8dd;
     --warning: #885b18;
     --warning-soft: #fff1cf;

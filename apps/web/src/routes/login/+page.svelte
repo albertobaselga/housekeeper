@@ -37,7 +37,7 @@
 
     <div class="account-grid" aria-label="Cuentas demo">
       {#each data.accounts as account}
-        <form method="POST" use:enhance={() => {
+        <form method="POST" action="?/demo" use:enhance={() => {
           pendingAccount = account.id;
           return async ({ update }) => {
             await update();

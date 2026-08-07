@@ -17,13 +17,16 @@
     "test": "pnpm -r --if-present test",
     "test:coverage": "pnpm -r --if-present test:coverage",
     "test:db": "pnpm --filter @casa-clara/db test:db",
+    "test:a11y": "pnpm --filter @casa-clara/web test:a11y",
     "test:e2e": "pnpm --filter @casa-clara/web test:e2e",
+    "test:lighthouse": "lhci autorun --config=infra/quality/lighthouserc.json",
     "test:rls": "pnpm --filter @casa-clara/db test:rls",
     "test:unit": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@lhci/cli": "0.15.1",
     "@types/node": "24.3.1",
     "eslint": "^9.39.5",
     "globals": "^15.15.0",

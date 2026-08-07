@@ -69,6 +69,7 @@ services:
       DATABASE_AUTH_URL: postgresql://casa_clara_auth_login:${AUTH_DB_PASSWORD:-local-auth-only}@postgres:5432/${POSTGRES_DB:-casaclara}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-local-better-auth-secret-change-before-use}
       BETTER_AUTH_URL: http://localhost:8080
+      ORIGIN: http://localhost:8080
       ENABLE_DEMO_PASSWORD_AUTH: ${ENABLE_DEMO_PASSWORD_AUTH:-true}
       DEMO_ADMIN_NAME: ${DEMO_ADMIN_NAME:-Alberto}
       DEMO_ADMIN_EMAIL: ${DEMO_ADMIN_EMAIL:-alberto.admin@casaclara.demo}

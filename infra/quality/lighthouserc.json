@@ -1,6 +1,9 @@
 {
   "ci": {
     "collect": {
+      "startServerCommand": "pnpm --filter @casa-clara/web build && env PORT=3000 node apps/web/build",
+      "startServerReadyPattern": "Listening on",
+      "startServerReadyTimeout": 240000,
       "url": [
         "http://127.0.0.1:3000/login",
         "http://127.0.0.1:3000/offline"
@@ -16,7 +19,7 @@
       "assertions": {
         "categories:accessibility": ["error", { "minScore": 1 }],
         "largest-contentful-paint": ["error", { "maxNumericValue": 2000 }],
-        "interaction-to-next-paint": ["error", { "maxNumericValue": 200 }],
+        "total-blocking-time": ["error", { "maxNumericValue": 200 }],
         "resource-summary:script:size": ["error", { "maxNumericValue": 122880 }]
       }
     },
