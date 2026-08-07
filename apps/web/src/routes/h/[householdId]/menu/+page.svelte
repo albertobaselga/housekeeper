@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { useAppContext } from '$lib/auth/context';
+  import { OptimisticActions } from '$lib/offline/optimistic';
   import { activeMenuDayIndex, addDays, dayLabel, weekLabel } from '$lib/food/dates';
   import { formatQuantityEs } from '$lib/food/quantities';
   import {
@@ -9,7 +10,6 @@
     clearMenuSlot,
     confirmMenuSlot,
     duplicateMenuWeek,
-    queueFoodCommand,
     setMenuSlot,
     setShoppingChecked,
     upsertMenuGroup,
@@ -35,10 +35,14 @@
     cena: 'Cena'
   };
 
-  // Las acciones de escritura solo existen sobre datos reales de Postgres; en
-  // modo fixture (demo sin base de datos) la página es de solo lectura.
-  let queued = $state(false);
-  let busy = $state(false);
+  // Patrón wiki replicado (P2-1): cada acción pinta su estado optimista al
+  // instante, `invalidate('cc:menu')` selectivo tras el ACK y reversión ante
+  // rejected/conflict. Sin `busy` global: los taps son encadenables y cada
+  // control lleva su propio guard.
+  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:menu' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
   let tab = $state<'menu' | 'compra'>('menu');
 
   // Día activo: por defecto hoy (si cae en la semana visible); la navegación
@@ -55,25 +59,23 @@
   });
   const selectedDate = $derived(week ? week.days[selectedDay]! : null);
 
-  async function dispatch(
-    envelope: Parameters<typeof queueFoodCommand>[0]
-  ): Promise<Awaited<ReturnType<typeof queueFoodCommand>>> {
-    busy = true;
-    try {
-      const outcome = await queueFoodCommand(envelope);
-      if (outcome === 'synced') await invalidateAll();
-      else queued = true;
-      return outcome;
-    } finally {
-      busy = false;
-    }
-  }
-
   const slotByKey = $derived(new Map((week?.slots ?? []).map((slot) => [`${slot.groupId}:${slot.onDate}:${slot.meal}`, slot])));
 
   function slotFor(groupId: string, onDate: string, meal: MealSlot): MenuSlotView | undefined {
     return slotByKey.get(`${groupId}:${onDate}:${meal}`);
   }
+
+  // ── Estado optimista por hueco ─────────────────────────────────────────────
+  // `null` = vaciado optimista; un borrador = asignación recién guardada que se
+  // pinta YA mientras el comando viaja. Se retira al llegar los datos frescos.
+  type SlotDraft =
+    | { kind: 'recipe'; pageId: string; title: string; notes: string; conflicts: Array<{ name: string; diners: string[] }> }
+    | { kind: 'text'; text: string; notes: string };
+  let slotDrafts = $state<Record<string, SlotDraft | null>>({});
+  /** Confirmación optimista por slotId (chip «Confirmado» inmediato). */
+  let confirmedSlotIds = $state<Record<string, true>>({});
+  /** Guard anti doble-tap del botón «Confirmar» de cada hueco. */
+  let confirmingSlotIds = $state<Record<string, true>>({});
 
   // ── Editor de hueco (asignar receta o texto) ───────────────────────────────
   let editorKey = $state<string | null>(null);
@@ -116,53 +118,106 @@
 
   function submitEditor(event: SubmitEvent): void {
     event.preventDefault();
-    if (!week || !editorParts) return;
+    if (!week || !editorParts || !editorKey) return;
     if (editorMode === 'recipe' && !editorRecipeId) return;
     if (editorMode === 'text' && !editorText.trim()) return;
     if (editorConflicts.length > 0 && !editorAcknowledge) return;
+    const key = editorKey;
     const servings = editorServings;
-    void dispatch(
-      setMenuSlot({
-        householdId: week.householdId,
-        groupId: editorParts[0]!,
-        onDate: editorParts[1]!,
-        meal: editorParts[2] as MealSlot,
-        recipePageId: editorMode === 'recipe' ? editorRecipeId : undefined,
-        freeText: editorMode === 'text' ? editorText : undefined,
-        notes: editorNotes,
-        servingsOverride: servings !== null && Number.isInteger(servings) && servings > 0 ? servings : undefined,
-        acknowledgeAllergens: editorConflicts.length > 0 ? editorAcknowledge : undefined
-      })
-    ).then(() => {
-      editorKey = null;
+    const draft: SlotDraft =
+      editorMode === 'recipe'
+        ? {
+            kind: 'recipe',
+            pageId: editorRecipeId,
+            title: editorRecipe?.title ?? 'Receta',
+            notes: editorNotes.trim(),
+            conflicts: editorConflicts.map((conflict) => ({ name: conflict.name, diners: conflict.diners }))
+          }
+        : { kind: 'text', text: editorText.trim(), notes: editorNotes.trim() };
+    const envelope = setMenuSlot({
+      householdId: week.householdId,
+      groupId: editorParts[0]!,
+      onDate: editorParts[1]!,
+      meal: editorParts[2] as MealSlot,
+      recipePageId: editorMode === 'recipe' ? editorRecipeId : undefined,
+      freeText: editorMode === 'text' ? editorText : undefined,
+      notes: editorNotes,
+      servingsOverride: servings !== null && Number.isInteger(servings) && servings > 0 ? servings : undefined,
+      acknowledgeAllergens: editorConflicts.length > 0 ? editorAcknowledge : undefined
+    });
+    void optimistic.run(envelope, {
+      apply: () => {
+        slotDrafts[key] = draft;
+        editorKey = null;
+      },
+      revert: () => {
+        delete slotDrafts[key];
+      },
+      settle: () => {
+        delete slotDrafts[key];
+      }
     });
   }
 
   function confirmSlot(slot: MenuSlotView): void {
-    if (!week) return;
-    void dispatch(confirmMenuSlot({ householdId: week.householdId, slotId: slot.id, contentHash: slot.contentHash }));
+    if (!week || confirmingSlotIds[slot.id]) return;
+    confirmingSlotIds[slot.id] = true;
+    void optimistic
+      .run(confirmMenuSlot({ householdId: week.householdId, slotId: slot.id, contentHash: slot.contentHash }), {
+        apply: () => {
+          confirmedSlotIds[slot.id] = true;
+        },
+        revert: () => {
+          delete confirmedSlotIds[slot.id];
+        },
+        settle: () => {
+          delete confirmedSlotIds[slot.id];
+        }
+      })
+      .finally(() => {
+        delete confirmingSlotIds[slot.id];
+      });
   }
 
   function clearSlot(slot: MenuSlotView): void {
     if (!week) return;
-    void dispatch(clearMenuSlot({ householdId: week.householdId, slotId: slot.id }));
+    const key = `${slot.groupId}:${slot.onDate}:${slot.meal}`;
+    void optimistic.run(clearMenuSlot({ householdId: week.householdId, slotId: slot.id }), {
+      apply: () => {
+        slotDrafts[key] = null;
+      },
+      revert: () => {
+        delete slotDrafts[key];
+      },
+      settle: () => {
+        delete slotDrafts[key];
+      }
+    });
   }
 
   // Confirmación visible del duplicado: qué semana se copió y adónde, con
-  // enlace directo para comprobarlo sin navegar a ciegas.
+  // enlace directo para comprobarlo sin navegar a ciegas. A diferencia del
+  // resto de acciones, aquí NO se pinta antes del ACK: el resultado vive en
+  // otra semana (no visible) y anunciar «copiada» sin confirmación mentiría.
+  // `settle` corre tras el ACK real (inmediato o del flush diferido).
   let duplicated = $state<{ from: string; to: string; day: string } | null>(null);
+  let duplicating = $state(false);
 
   function duplicateWeek(): void {
-    if (!week) return;
+    if (!week || duplicating) return;
     const from = week.weekStartsOn;
     const to = addDays(from, 7);
     const day = addDays(selectedDate ?? from, 7);
-    duplicated = null;
-    void dispatch(
-      duplicateMenuWeek({ householdId: week.householdId, fromWeekStartsOn: from, toWeekStartsOn: to })
-    ).then((outcome) => {
-      if (outcome === 'synced') duplicated = { from, to, day };
-    });
+    duplicating = true;
+    void optimistic
+      .run(duplicateMenuWeek({ householdId: week.householdId, fromWeekStartsOn: from, toWeekStartsOn: to }), {
+        settle: () => {
+          duplicated = { from, to, day };
+        }
+      })
+      .finally(() => {
+        duplicating = false;
+      });
   }
 
   $effect(() => {
@@ -177,11 +232,12 @@
   function submitNewGroup(event: SubmitEvent): void {
     event.preventDefault();
     if (!week || !newGroupName.trim()) return;
-    void dispatch(
-      upsertMenuGroup({ householdId: week.householdId, name: newGroupName, dinerIds: newGroupDiners })
-    ).then(() => {
-      newGroupName = '';
-      newGroupDiners = [];
+    const envelope = upsertMenuGroup({ householdId: week.householdId, name: newGroupName, dinerIds: newGroupDiners });
+    void optimistic.run(envelope, {
+      apply: () => {
+        newGroupName = '';
+        newGroupDiners = [];
+      }
     });
   }
 
@@ -192,33 +248,67 @@
   let itemUnit = $state('');
   let itemSection = $state('');
 
+  /** Marcado optimista por artículo: taps encadenables, sin bloquear nada. */
+  let checkedOverrides = $state<Record<string, boolean>>({});
+  /** Añadidos recién guardados que aún no llegaron del servidor. */
+  type OptimisticAddition = { operationId: string; name: string; quantity: string; unit: string };
+  let optimisticAdds = $state<OptimisticAddition[]>([]);
+  const serverEntryNames = $derived(
+    new Set((shopping?.sections ?? []).flatMap((section) => section.entries.map((entry) => entry.name)))
+  );
+  // Dedupe por nombre: cuando los datos frescos ya lo listan, la fila
+  // optimista desaparece sin solaparse ni parpadear.
+  const pendingAdds = $derived(optimisticAdds.filter((addition) => !serverEntryNames.has(addition.name)));
+
   function submitShoppingItem(event: SubmitEvent): void {
     event.preventDefault();
     if (!shopping) return;
     if (!itemFoodId && !itemName.trim()) return;
     const food = shopping.foods.find((candidate) => candidate.id === itemFoodId);
-    void dispatch(
-      addShoppingItem({
-        householdId: shopping.householdId,
-        foodId: itemFoodId || undefined,
-        customName: itemFoodId ? undefined : itemName,
-        quantity: itemQuantity,
-        unit: itemUnit,
-        section: itemSection || food?.section,
-        weekStartsOn: shopping.weekStartsOn
-      })
-    ).then(() => {
-      itemFoodId = '';
-      itemName = '';
-      itemQuantity = '';
-      itemUnit = '';
-      itemSection = '';
+    const displayName = (itemFoodId ? food?.name : itemName.trim()) ?? itemName.trim();
+    const envelope = addShoppingItem({
+      householdId: shopping.householdId,
+      foodId: itemFoodId || undefined,
+      customName: itemFoodId ? undefined : itemName,
+      quantity: itemQuantity,
+      unit: itemUnit,
+      section: itemSection || food?.section,
+      weekStartsOn: shopping.weekStartsOn
+    });
+    const removeAddition = () => {
+      optimisticAdds = optimisticAdds.filter((addition) => addition.operationId !== envelope.operationId);
+    };
+    void optimistic.run(envelope, {
+      apply: () => {
+        optimisticAdds = [
+          ...optimisticAdds,
+          { operationId: envelope.operationId, name: displayName, quantity: itemQuantity.trim(), unit: itemUnit.trim() }
+        ];
+        itemFoodId = '';
+        itemName = '';
+        itemQuantity = '';
+        itemUnit = '';
+        itemSection = '';
+      },
+      revert: removeAddition,
+      settle: removeAddition
     });
   }
 
   function toggleChecked(itemId: string, checked: boolean): void {
     if (!shopping) return;
-    void dispatch(setShoppingChecked({ householdId: shopping.householdId, itemId, checked: !checked }));
+    const next = !checked;
+    void optimistic.run(setShoppingChecked({ householdId: shopping.householdId, itemId, checked: next }), {
+      apply: () => {
+        checkedOverrides[itemId] = next;
+      },
+      revert: () => {
+        delete checkedOverrides[itemId];
+      },
+      settle: () => {
+        delete checkedOverrides[itemId];
+      }
+    });
   }
 
   // Modo fixture (sin base de datos): lectura pura del menú de demostración.
@@ -231,7 +321,7 @@
   {#if week}
     {#snippet weekActions()}
       {#if week.canWrite}
-        <button class="button secondary" type="button" disabled={busy} onclick={duplicateWeek}>Duplicar en la semana siguiente</button>
+        <button class="button secondary" type="button" disabled={duplicating} onclick={duplicateWeek}>Duplicar en la semana siguiente</button>
       {/if}
     {/snippet}
     <PageHeader
@@ -241,7 +331,7 @@
       actions={weekActions}
     />
 
-    {#if queued}<p class="success-message" role="status">Cambio guardado en la outbox local, pendiente de sincronizar.</p>{/if}
+    <ActionStatus status={actionStatus} />
     {#if duplicated}
       <p class="success-message" role="status">
         Semana del {weekLabel(duplicated.from)} copiada a la del {weekLabel(duplicated.to)}.
@@ -287,10 +377,29 @@
 
           {#each MEALS as meal (meal)}
             {@const slot = slotFor(group.id, day, meal)}
+            {@const key = `${group.id}:${day}:${meal}`}
+            {@const draftPending = key in slotDrafts}
+            {@const draft = slotDrafts[key]}
             <div class="menu-slot-row">
               <div class="menu-slot-copy">
                 <small>{MEAL_LABEL[meal]}</small>
-                {#if slot?.recipe}
+                {#if draftPending}
+                  {#if draft === null || draft === undefined}
+                    <span class="audit-note">Sin plan</span>
+                  {:else if draft.kind === 'recipe'}
+                    <strong><a href={`/h/${context.household.id}/recipes?receta=${draft.pageId}`}>{draft.title}</a></strong>
+                    {#if draft.notes}<small class="menu-slot-note">{draft.notes}</small>{/if}
+                    {#if draft.conflicts.length}
+                      <p class="queued-note" role="alert">
+                        Incompatibilidad de alérgenos:
+                        {draft.conflicts.map((conflict) => `${conflict.name} (${conflict.diners.join(', ')})`).join(', ')}
+                      </p>
+                    {/if}
+                  {:else}
+                    <strong>{draft.text}</strong>
+                    {#if draft.notes}<small class="menu-slot-note">{draft.notes}</small>{/if}
+                  {/if}
+                {:else if slot?.recipe}
                   <strong><a href={`/h/${context.household.id}/recipes?receta=${slot.recipe.pageId}`}>{slot.recipe.title}</a></strong>
                   <small>{slot.servingsOverride ?? (group.diners.length > 0 ? group.diners.length : slot.recipe.baseServings)} raciones · base {slot.recipe.baseServings}</small>
                 {:else if slot}
@@ -298,29 +407,31 @@
                 {:else}
                   <span class="audit-note">Sin plan</span>
                 {/if}
-                {#if slot?.notes}<small class="menu-slot-note">{slot.notes}</small>{/if}
-                {#if slot && slot.conflicts.length}
+                {#if !draftPending && slot?.notes}<small class="menu-slot-note">{slot.notes}</small>{/if}
+                {#if !draftPending && slot && slot.conflicts.length}
                   <p class="queued-note" role="alert">
                     Incompatibilidad de alérgenos:
                     {slot.conflicts.map((conflict) => `${conflict.allergenName} (${conflict.dinerName})`).join(', ')}
                   </p>
                 {/if}
-                {#if slot?.confirmation?.upToDate}
-                  <span class="status-chip success">Confirmado</span>
-                {:else if slot?.confirmation}
-                  <span class="status-chip warning">Confirmación caducada: el contenido cambió</span>
+                {#if !draftPending && slot}
+                  {#if slot.confirmation?.upToDate || confirmedSlotIds[slot.id]}
+                    <span class="status-chip success">Confirmado</span>
+                  {:else if slot.confirmation}
+                    <span class="status-chip warning">Confirmación caducada: el contenido cambió</span>
+                  {/if}
                 {/if}
               </div>
-              {#if week.canWrite}
+              {#if week.canWrite && !draftPending}
                 <div class="menu-slot-actions">
-                  {#if slot && !slot.confirmation?.upToDate}
-                    <button class="button secondary small-button" type="button" disabled={busy} onclick={() => confirmSlot(slot)}>Confirmar</button>
+                  {#if slot && !slot.confirmation?.upToDate && !confirmedSlotIds[slot.id]}
+                    <button class="button secondary small-button" type="button" disabled={confirmingSlotIds[slot.id]} onclick={() => confirmSlot(slot)}>Confirmar</button>
                   {/if}
-                  <button class="button secondary small-button" type="button" disabled={busy} onclick={() => openEditor(group.id, day, meal)}>
+                  <button class="button secondary small-button" type="button" onclick={() => openEditor(group.id, day, meal)}>
                     {slot ? 'Cambiar' : 'Asignar'}
                   </button>
                   {#if slot}
-                    <button class="button secondary small-button" type="button" disabled={busy} onclick={() => clearSlot(slot)}>Vaciar</button>
+                    <button class="button secondary small-button" type="button" onclick={() => clearSlot(slot)}>Vaciar</button>
                   {/if}
                 </div>
               {/if}
@@ -372,7 +483,7 @@
                   </div>
                 {/if}
                 <div class="menu-slot-actions">
-                  <button class="button primary" type="submit" disabled={busy || (editorConflicts.length > 0 && !editorAcknowledge)}>
+                  <button class="button primary" type="submit" disabled={editorConflicts.length > 0 && !editorAcknowledge}>
                     Guardar hueco
                   </button>
                   <button class="button secondary" type="button" onclick={() => (editorKey = null)}>Cancelar</button>
@@ -405,7 +516,7 @@
                 {/each}
               </fieldset>
             {/if}
-            <button class="button secondary" type="submit" disabled={busy}>Crear grupo</button>
+            <button class="button secondary" type="submit">Crear grupo</button>
           </form>
         </section>
       {/if}
@@ -418,10 +529,11 @@
           <h3 class="shopping-section-title">{section.section}</h3>
           <ul class="ingredient-list">
             {#each section.entries as entry (entry.itemId ?? `${entry.foodId}:${entry.unit}`)}
-              <li class:checked={entry.checked}>
+              {@const shownChecked = entry.itemId !== null && entry.itemId in checkedOverrides ? checkedOverrides[entry.itemId] : entry.checked}
+              <li class:checked={shownChecked}>
                 {#if entry.kind === 'manual' && shopping.canWrite}
                   <label class="inline-check">
-                    <input type="checkbox" checked={entry.checked} disabled={busy} onchange={() => toggleChecked(entry.itemId!, entry.checked)} />
+                    <input type="checkbox" checked={shownChecked} onchange={() => toggleChecked(entry.itemId!, shownChecked ?? false)} />
                     <span>{entry.name}</span>
                   </label>
                 {:else}
@@ -438,6 +550,16 @@
         {:else}
           <p class="audit-note">No hay nada en la lista de esta semana todavía.</p>
         {/each}
+        {#if pendingAdds.length}
+          <ul class="ingredient-list">
+            {#each pendingAdds as addition (addition.operationId)}
+              <li>
+                <span>{addition.name}</span>
+                <small>{#if addition.quantity}{addition.quantity} {addition.unit}{/if}</small>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </section>
 
       {#if shopping.canWrite}
@@ -466,7 +588,7 @@
             <label>Sección
               <input type="text" bind:value={itemSection} maxlength="60" placeholder="despensa" />
             </label>
-            <button class="button primary" type="submit" disabled={busy}>Añadir a la compra</button>
+            <button class="button primary" type="submit">Añadir a la compra</button>
           </form>
         </section>
       {/if}

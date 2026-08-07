@@ -1,17 +1,22 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { ROLE_LABELS, type Role } from '$lib/auth/capabilities';
-  import {
-    queueAccessCommand,
-    revokeMembership,
-    setMembershipExpiry
-  } from '$lib/access/commands';
+  import { OptimisticActions } from '$lib/offline/optimistic';
+  import { revokeMembership, setMembershipExpiry } from '$lib/access/commands';
   import type { PageData } from './$types';
 
+  import { useAppContext } from '$lib/auth/context';
+
   let { data }: { data: PageData } = $props();
+  const context = useAppContext();
 
   const access = $derived(data.access);
+
+  // Patrón wiki: `invalidate('cc:settings')` selectivo y nota veraz unificada.
+  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:settings' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
 
   const DATE_LABEL = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
   const CONFIRM_WORD = 'REVOCAR';
@@ -20,19 +25,16 @@
     return DATE_LABEL.format(new Date(iso));
   }
 
-  let queued = $state(false);
   let busy = $state(false);
   // Borradores por membresía: caducidad propuesta y confirmación de revocación.
   let expiryDrafts = $state<Record<string, string>>({});
   let confirmingId = $state<string | null>(null);
   let confirmText = $state('');
 
-  async function dispatch(envelope: Parameters<typeof queueAccessCommand>[0]): Promise<void> {
+  async function dispatch(envelope: Parameters<typeof optimistic.run>[0]): Promise<void> {
     busy = true;
     try {
-      const outcome = await queueAccessCommand(envelope);
-      if (outcome === 'synced') await invalidateAll();
-      else queued = true;
+      await optimistic.run(envelope);
     } finally {
       busy = false;
     }
@@ -76,7 +78,7 @@
   {#if access}
     <section class="card" aria-labelledby="access-title">
       <div class="section-heading"><div><p class="eyebrow">Accesos del hogar</p><h2 id="access-title">Caducidad y revocación</h2></div></div>
-      {#if queued}<p class="success-message" role="status">Cambio guardado en la outbox local, pendiente de sincronizar.</p>{/if}
+      <ActionStatus status={actionStatus} />
       <ul class="wiki-recent">
         {#each access.memberships as member (member.id)}
           <li>

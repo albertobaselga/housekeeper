@@ -84,7 +84,9 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
         nextDueOn: '2026-08-07',
         dueLabel: 'Hoy',
         overdue: false,
-        completedCurrent: false
+        completedCurrent: false,
+        frequency: 'weekly',
+        intervalCount: 1
       },
       {
         id: 'r-hecha',
@@ -93,7 +95,9 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
         nextDueOn: '2026-08-07',
         dueLabel: 'Hoy',
         overdue: false,
-        completedCurrent: true
+        completedCurrent: true,
+        frequency: 'weekly',
+        intervalCount: 1
       }
     ],
     ...overrides

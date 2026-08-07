@@ -1,11 +1,14 @@
 <script lang="ts">
   import { invalidate } from '$app/navigation';
   import type { Component } from 'svelte';
+  import { writable } from 'svelte/store';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import WikiMarkdown from '$lib/components/wiki/WikiMarkdown.svelte';
   import { useAppContext } from '$lib/auth/context';
   import { listOutbox } from '$lib/offline/idb';
   import { describeErrorCode } from '$lib/offline/error-codes';
+  import type { ActionFeedback } from '$lib/offline/optimistic';
   import { queueCommand, type QueueCommandResult } from '$lib/offline/queue-command';
   import { lastFlushAt } from '$lib/offline/sync';
   import { setWikiPageState } from '$lib/wiki/commands';
@@ -70,7 +73,8 @@
   let optimistic = $state<{ title: string; blocks: WikiBlock[]; tags: string[]; aliases: string[] } | null>(null);
   let stateOverride = $state<{ status?: 'draft' | 'published'; pinned?: boolean } | null>(null);
   let pendingOpId = $state<string | null>(null);
-  let feedback = $state<{ tone: 'success' | 'pending' | 'error'; text: string } | null>(null);
+  // Nota unificada (P2-5): mismo componente/copy que el resto de páginas.
+  const feedback = writable<ActionFeedback | null>(null);
 
   // Lo que se pinta: el borrador optimista si existe; si no, los datos del load.
   const shownTitle = $derived(optimistic?.title ?? view?.revision.title ?? data.fixture?.title ?? 'Wiki');
@@ -97,23 +101,23 @@
     stateOverride = null;
     pendingOpId = null;
     const cause = describeErrorCode(errorCode);
-    feedback = { tone: 'error', text: cause ? `${fallback}: ${cause}.` : `${fallback}.` };
+    feedback.set({ tone: 'error', text: cause ? `${fallback}: ${cause}.` : `${fallback}.` });
   }
 
   async function applyResult(result: QueueCommandResult, operationId: string): Promise<void> {
     if (result.outcome === 'synced') {
       pendingOpId = null;
-      feedback = { tone: 'success', text: result.message };
+      feedback.set({ tone: 'success', text: result.message });
       await settleWithServer();
     } else if (result.outcome === 'queued') {
       pendingOpId = operationId;
-      feedback = { tone: 'pending', text: result.message };
+      feedback.set({ tone: 'pending', text: result.message });
     } else {
       // rejected/conflict: reversión inmediata + causa veraz (nunca «se sincronizará»).
       optimistic = null;
       stateOverride = null;
       pendingOpId = null;
-      feedback = { tone: 'error', text: result.message };
+      feedback.set({ tone: 'error', text: result.message });
     }
   }
 
@@ -153,7 +157,7 @@
       if (pendingOpId !== operationId) return;
       if (!record) {
         pendingOpId = null;
-        feedback = { tone: 'success', text: 'Cambio sincronizado.' };
+        feedback.set({ tone: 'success', text: 'Cambio sincronizado.' });
         await settleWithServer();
       } else if (record.status === 'rejected') {
         revertOptimistic(record.lastErrorCode, 'No se pudo guardar');
@@ -193,12 +197,7 @@
       {#if shownPinned}· <span class="status-chip success">Fijada</span>{/if}
     </p>
 
-    {#if feedback}
-      <p
-        class={feedback.tone === 'error' ? 'form-error' : feedback.tone === 'pending' ? 'queued-note' : 'success-message'}
-        role={feedback.tone === 'error' ? 'alert' : 'status'}
-      >{feedback.text}</p>
-    {/if}
+    <ActionStatus status={feedback} />
 
     <article class="card wiki-article">
       {#if Editor}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { page } from '$app/state';
+  import { navigating, page } from '$app/state';
   import { onMount, tick, type Snippet } from 'svelte';
   import type { Action } from 'svelte/action';
   import { ROLE_LABELS, type Capability } from '$lib/auth/capabilities';
@@ -60,6 +60,27 @@
   let moreOpen = $state(false);
   let searchOpen = $state(false);
   let searchQuery = $state('');
+  // Detalle de la píldora de sync accesible en táctil (P3): el `title` es
+  // invisible en móvil, así que un tap abre un mini-popover con el estado.
+  let pillOpen = $state(false);
+
+  // Feedback de navegación (H-07 / P2-4): barra de progreso fina, global y
+  // sin CLS (position: fixed). Solo aparece en navegaciones que superan los
+  // 150 ms para no parpadear en las instantáneas.
+  let navBusy = $state(false);
+  $effect(() => {
+    if (!navigating.to) {
+      navBusy = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      navBusy = true;
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+      navBusy = false;
+    };
+  });
 
   const sheetActive = $derived(sheetNavigation.some((item) => isActive(item.module)));
 
@@ -68,6 +89,7 @@
     void page.url.pathname;
     moreOpen = false;
     searchOpen = false;
+    pillOpen = false;
   });
 
   /**
@@ -151,6 +173,13 @@
 
 <a class="skip-link" href="#main-content">Saltar al contenido</a>
 
+{#if navBusy}
+  <!-- Barra fija fuera del flujo: cero CLS. El texto es solo para lectores. -->
+  <div class="nav-progress" role="status">
+    <span class="sr-only">Cargando la página…</span>
+  </div>
+{/if}
+
 {#if $syncStatus.phase === 'offline' || $syncStatus.phase === 'conflict' || $syncStatus.phase === 'error'}
   <div class="status-banner" class:danger={$syncStatus.phase !== 'offline'} role="status">
     <strong>{$syncStatus.label}</strong>
@@ -214,14 +243,25 @@
         </button>
       {/if}
       <div class="topbar-actions">
-        <span class="sync-pill" class:pending={$syncStatus.phase !== 'saved'} role="status" title={$syncStatus.detail}>
+        <!-- El detalle de la píldora deja de vivir solo en `title` (invisible
+             en táctil): el tap abre un mini-popover accesible con el estado. -->
+        <button
+          type="button"
+          class="sync-pill"
+          class:pending={$syncStatus.phase !== 'saved'}
+          title={$syncStatus.detail}
+          aria-label={`Estado de sincronización: ${$syncStatus.label}`}
+          aria-haspopup="dialog"
+          aria-expanded={pillOpen}
+          onclick={() => (pillOpen = !pillOpen)}
+        >
           <i aria-hidden="true"></i><span>{$syncStatus.label}</span>
-        </span>
+        </button>
         <span class="top-avatar" aria-hidden="true">{context.user.initials}</span>
       </div>
     </header>
 
-    <main id="main-content" tabindex="-1">
+    <main id="main-content" tabindex="-1" aria-busy={navBusy}>
       {@render children()}
     </main>
   </div>
@@ -277,6 +317,21 @@
     <form method="POST" action="/logout" class="sheet-logout">
       <button type="submit">Salir<small>Cerrar la sesión de {context.user.name}</small></button>
     </form>
+  </div>
+{/if}
+
+{#if pillOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="sheet-backdrop transparent" onclick={() => (pillOpen = false)}></div>
+  <div
+    class="sync-popover"
+    role="dialog"
+    aria-label="Estado de sincronización"
+    use:modalDialog={{ onClose: () => (pillOpen = false) }}
+  >
+    <p class="sync-popover-label"><strong>{$syncStatus.label}</strong></p>
+    <p class="sync-popover-detail">{$syncStatus.detail}</p>
+    <button type="button" class="button secondary small-button" onclick={() => (pillOpen = false)}>Cerrar</button>
   </div>
 {/if}
 

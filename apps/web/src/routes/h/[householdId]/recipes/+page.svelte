@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
   import { untrack } from 'svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { useAppContext } from '$lib/auth/context';
+  import { OptimisticActions } from '$lib/offline/optimistic';
   import { formatQuantityEs, scaleQuantity } from '$lib/food/quantities';
   import {
-    queueFoodCommand,
     setRecipeDetails,
     upsertDiner,
     upsertFood,
@@ -23,15 +23,17 @@
 
   // Las acciones de escritura solo existen sobre datos reales de Postgres; en
   // modo fixture (demo sin base de datos) la página es de solo lectura.
-  let queued = $state(false);
+  // Patrón wiki: `invalidate('cc:recipes')` selectivo y nota veraz unificada.
+  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:recipes' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
   let busy = $state(false);
 
-  async function dispatch(envelope: Parameters<typeof queueFoodCommand>[0]): Promise<void> {
+  async function dispatch(envelope: Parameters<typeof optimistic.run>[0]): Promise<void> {
     busy = true;
     try {
-      const outcome = await queueFoodCommand(envelope);
-      if (outcome === 'synced') await invalidateAll();
-      else queued = true;
+      await optimistic.run(envelope);
     } finally {
       busy = false;
     }
@@ -196,7 +198,7 @@
       description="Datos estructurados sobre páginas de la wiki, con alérgenos y escalado exacto."
     />
 
-    {#if queued}<p class="success-message" role="status">Cambio guardado en la outbox local, pendiente de sincronizar.</p>{/if}
+    <ActionStatus status={actionStatus} />
 
     <div class="content-grid">
       <section class="card" aria-labelledby="recipes-title">

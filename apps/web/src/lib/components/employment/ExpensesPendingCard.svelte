@@ -1,13 +1,9 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import { OptimisticActions } from '$lib/offline/optimistic';
   import { uploadAttachment, UploadAttachmentError } from '$lib/attachments/upload';
-  import {
-    parseEuroInput,
-    queueEmploymentCommand,
-    resolveExpense,
-    submitExpense
-  } from '$lib/employment/commands';
-  import type { PendingExpenseView } from '$lib/employment/model';
+  import { parseEuroInput, resolveExpense, submitExpense } from '$lib/employment/commands';
+  import { dateLabel, formatCents, type PendingExpenseView } from '$lib/employment/model';
   import { syncStatus } from '$lib/offline/sync';
 
   let {
@@ -24,8 +20,15 @@
     canResolve: boolean;
   } = $props();
 
-  let busy = $state(false);
-  let queued = $state(false);
+  // Patrón wiki (P2-1): decisiones y altas se pintan al instante, con
+  // `invalidate('cc:employment')` selectivo tras el ACK y reversión honesta.
+  // svelte-ignore state_referenced_locally -- el hogar no cambia dentro de la página
+  const optimistic = new OptimisticActions({ householdId, invalidateToken: 'cc:employment' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
+  // Entidades ya actuadas: el chip sustituye a los botones al instante y solo
+  // vuelve atrás si el servidor rechaza la decisión.
   let acted = $state<string[]>([]);
 
   // El contrato exige un motivo también al aprobar; para no obligar a
@@ -42,6 +45,15 @@
   let expenseAmount = $state('');
   let expenseError = $state<string | null>(null);
   let expenseSent = $state(false);
+  let uploadBusy = $state(false);
+
+  // Alta optimista: la fila nueva aparece YA como «pendiente de aprobación» y
+  // se dedupe por descripción cuando los datos frescos la traen del servidor.
+  type OptimisticExpense = { operationId: string; description: string; amountLabel: string; incurredOnLabel: string };
+  let optimisticExpenses = $state<OptimisticExpense[]>([]);
+  const pendingOptimistic = $derived(
+    optimisticExpenses.filter((draft) => !expenses.some((expense) => expense.description === draft.description))
+  );
 
   // Justificante (AC-11): la subida de la foto es exclusivamente ONLINE; sin
   // conexión el input se deshabilita y se explica con honestidad. El enlace
@@ -50,22 +62,6 @@
   let receiptInput = $state<HTMLInputElement | null>(null);
   let receiptNotice = $state<string | null>(null);
   let receiptAttached = $state(false);
-
-  async function run(envelope: Parameters<typeof queueEmploymentCommand>[0], entityId?: string): Promise<void> {
-    busy = true;
-    try {
-      const outcome = await queueEmploymentCommand(envelope);
-      queued = outcome === 'queued';
-      if (outcome === 'synced') {
-        // El servidor ya lo aplicó: el overview fresco decide qué acciones quedan.
-        await invalidateAll();
-      } else if (entityId) {
-        acted = [...acted, entityId];
-      }
-    } finally {
-      busy = false;
-    }
-  }
 
   async function submitNewExpense(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -87,7 +83,7 @@
     let receiptStorageObjectId: string | undefined;
     const receiptFile = receiptInput?.files?.[0];
     if (receiptFile && online) {
-      busy = true;
+      uploadBusy = true;
       try {
         receiptStorageObjectId = await uploadAttachment(householdId, receiptFile);
       } catch (cause) {
@@ -96,35 +92,60 @@
             ? `${cause.message} El gasto se registra sin justificante.`
             : 'No se pudo subir la foto. El gasto se registra sin justificante.';
       } finally {
-        busy = false;
+        uploadBusy = false;
       }
     }
 
-    await run(
-      submitExpense({
-        householdId,
-        agreementId,
-        incurredOn: expenseDate,
-        description: expenseDescription,
-        amountCents,
-        ...(receiptStorageObjectId ? { receiptStorageObjectId } : {})
-      })
-    );
-    expenseDescription = '';
-    expenseAmount = '';
-    if (receiptInput) receiptInput.value = '';
+    const description = expenseDescription.trim();
+    const envelope = submitExpense({
+      householdId,
+      agreementId,
+      incurredOn: expenseDate,
+      description,
+      amountCents,
+      ...(receiptStorageObjectId ? { receiptStorageObjectId } : {})
+    });
+    const removeDraft = () => {
+      optimisticExpenses = optimisticExpenses.filter((draft) => draft.operationId !== envelope.operationId);
+    };
     receiptAttached = Boolean(receiptStorageObjectId);
-    expenseSent = true;
+    await optimistic.run(envelope, {
+      apply: () => {
+        optimisticExpenses = [
+          ...optimisticExpenses,
+          {
+            operationId: envelope.operationId,
+            description,
+            amountLabel: formatCents(amountCents),
+            incurredOnLabel: dateLabel(expenseDate)
+          }
+        ];
+        expenseDescription = '';
+        expenseAmount = '';
+        if (receiptInput) receiptInput.value = '';
+        expenseSent = true;
+      },
+      revert: () => {
+        removeDraft();
+        expenseSent = false;
+      },
+      settle: removeDraft
+    });
   }
 
-  async function decide(expenseId: string, resolution: 'approved' | 'rejected'): Promise<void> {
+  function decide(expenseId: string, resolution: 'approved' | 'rejected'): void {
     if (!resolveReason.trim()) return;
-    await run(
-      resolveExpense({ householdId, expenseId, resolution, reason: resolveReason }),
-      expenseId
-    );
-    resolveOpenId = null;
-    resolveReason = '';
+    const envelope = resolveExpense({ householdId, expenseId, resolution, reason: resolveReason });
+    void optimistic.run(envelope, {
+      apply: () => {
+        acted = [...acted, expenseId];
+        resolveOpenId = null;
+        resolveReason = '';
+      },
+      revert: () => {
+        acted = acted.filter((candidate) => candidate !== expenseId);
+      }
+    });
   }
 
   function reject(expenseId: string): void {
@@ -138,7 +159,7 @@
       reasonField?.select();
       return;
     }
-    void decide(expenseId, 'rejected');
+    decide(expenseId, 'rejected');
   }
 </script>
 
@@ -165,7 +186,6 @@
             <button
               class="button secondary small-button"
               type="button"
-              disabled={busy}
               aria-expanded={resolveOpenId === expense.id}
               onclick={() => {
                 resolveOpenId = resolveOpenId === expense.id ? null : expense.id;
@@ -176,7 +196,7 @@
         </span>
       </div>
       {#if canResolve && resolveOpenId === expense.id && !acted.includes(expense.id)}
-        <form class="action-form" onsubmit={(event) => { event.preventDefault(); void decide(expense.id, 'approved'); }}>
+        <form class="action-form" onsubmit={(event) => { event.preventDefault(); decide(expense.id, 'approved'); }}>
           <label>Motivo de la decisión
             <input
               type="text"
@@ -188,18 +208,31 @@
             />
           </label>
           <div class="action-row">
-            <button class="button primary small-button" type="submit" disabled={busy || !resolveReason.trim()}>Aprobar</button>
+            <button class="button primary small-button" type="submit" disabled={!resolveReason.trim()}>Aprobar</button>
             <button
               class="button secondary small-button"
               type="button"
-              disabled={busy || !resolveReason.trim()}
+              disabled={!resolveReason.trim()}
               onclick={() => reject(expense.id)}
             >Rechazar</button>
           </div>
         </form>
       {/if}
     {:else}
-      <div><span><strong>Sin gastos pendientes</strong><small>No hay justificantes esperando revisión.</small></span></div>
+      {#if pendingOptimistic.length === 0}
+        <div><span><strong>Sin gastos pendientes</strong><small>No hay justificantes esperando revisión.</small></span></div>
+      {/if}
+    {/each}
+    {#each pendingOptimistic as draft (draft.operationId)}
+      <div>
+        <span>
+          <strong>{draft.description}</strong>
+          <small>{draft.incurredOnLabel} · pendiente de aprobación</small>
+        </span>
+        <span class="inline-actions">
+          <strong>{draft.amountLabel}</strong>
+        </span>
+      </div>
     {/each}
   </div>
 
@@ -223,7 +256,7 @@
           accept="image/*,application/pdf"
           capture="environment"
           bind:this={receiptInput}
-          disabled={busy || !online}
+          disabled={uploadBusy || !online}
         />
       </label>
       {#if !online}
@@ -232,15 +265,13 @@
       {#if receiptNotice}<p class="queued-note" role="status">{receiptNotice}</p>{/if}
       {#if expenseError}<p class="queued-note" role="alert">{expenseError}</p>{/if}
       <div class="action-row">
-        <button class="button primary small-button" type="submit" disabled={busy}>Añadir gasto</button>
-        {#if expenseSent && !queued}
+        <button class="button primary small-button" type="submit" disabled={uploadBusy}>Añadir gasto</button>
+        {#if expenseSent}
           <span class="status-chip success">{receiptAttached ? 'Enviado · Justificante adjunto ✓' : 'Enviado'}</span>
         {/if}
       </div>
     </form>
   {/if}
 
-  {#if queued}
-    <p class="queued-note" role="status">Guardado en este dispositivo; se sincronizará al recuperar la conexión.</p>
-  {/if}
+  <ActionStatus status={actionStatus} />
 </article>

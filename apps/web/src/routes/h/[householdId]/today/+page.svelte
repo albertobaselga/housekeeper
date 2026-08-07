@@ -1,13 +1,16 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { invalidateAll } from '$app/navigation';
   // El triaje arrastra los descriptores de todos los dominios: se carga como
   // chunk aparte (mismo mecanismo que WikiEditor) para respetar el presupuesto
   // de JavaScript inicial de Hoy.
   const OutboxTriage = import('$lib/components/OutboxTriage.svelte').then((module) => module.default);
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { useAppContext } from '$lib/auth/context';
-  import { completeRoutine, queueFoodCommand } from '$lib/food/commands';
+  import { OptimisticActions } from '$lib/offline/optimistic';
+  import { nextRoutineDue } from '$lib/food/dates';
+  import { completeRoutine } from '$lib/food/routine-complete';
+  import type { TodayRoutineView } from '$lib/server/today.server';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -16,23 +19,56 @@
 
   const overview = $derived(data.overview);
 
-  // ── Modo real (Postgres bajo RLS): rutinas accionables con el comando que el
-  // servidor SÍ implementa (routine.complete), con guard anti doble-tap. ──────
-  let busyRoutineId = $state<string | null>(null);
-  let queued = $state(false);
+  const DUE_LABEL = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 
-  async function markRoutineDone(routineId: string, dueOn: string): Promise<void> {
-    if (!overview || busyRoutineId !== null) return;
-    busyRoutineId = routineId;
-    try {
-      const outcome = await queueFoodCommand(
-        completeRoutine({ householdId: overview.householdId, routineId, dueOn })
-      );
-      if (outcome === 'synced') await invalidateAll();
-      else queued = true;
-    } finally {
-      busyRoutineId = null;
-    }
+  // ── Modo real (Postgres bajo RLS): «Marcar hecha» OPTIMISTA con el patrón
+  // wiki. El chip «Hecha ✓ · próxima el X» se pinta al instante y la fila NO
+  // desaparece en seco: queda atenuada y tachada con su chip (P3), aunque los
+  // datos frescos ya no la lista como pendiente. Guard POR RUTINA: las demás
+  // filas siguen accionables sin esperar. ─────────────────────────────────────
+  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:today' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
+  type DoneRoutine = { id: string; title: string; details: string; chip: string };
+  let doneRoutines = $state<Record<string, DoneRoutine>>({});
+  let completingIds = $state<Record<string, true>>({});
+
+  // Fila viva mientras el load la traiga; al desaparecer del overview, la
+  // versión «hecha» local la mantiene visible (atenuada) el resto de la visita.
+  const shownRoutines = $derived.by(() => {
+    const fresh = overview?.routines ?? [];
+    const freshIds = new Set(fresh.map((routine) => routine.id));
+    const ghosts = Object.values(doneRoutines).filter((routine) => !freshIds.has(routine.id));
+    return { fresh, ghosts };
+  });
+
+  function markRoutineDone(routine: TodayRoutineView): void {
+    if (!overview || completingIds[routine.id] || doneRoutines[routine.id]) return;
+    completingIds[routine.id] = true;
+    const predictedDue = nextRoutineDue(routine.nextDueOn, routine.frequency, routine.intervalCount);
+    const entry: DoneRoutine = {
+      id: routine.id,
+      title: routine.title,
+      details: routine.details,
+      chip: `Hecha ✓ · próxima el ${DUE_LABEL.format(new Date(`${predictedDue}T00:00:00Z`))}`
+    };
+    void optimistic
+      .run(completeRoutine({ householdId: overview.householdId, routineId: routine.id, dueOn: routine.nextDueOn }), {
+        apply: () => {
+          doneRoutines[routine.id] = entry;
+        },
+        revert: () => {
+          delete doneRoutines[routine.id];
+          delete completingIds[routine.id];
+        },
+        settle: () => {
+          delete completingIds[routine.id];
+        }
+      })
+      .catch(() => {
+        delete completingIds[routine.id];
+      });
   }
 
   // ── Modo fixture (demo sin base de datos): las tareas de la maqueta se
@@ -61,9 +97,7 @@
 
     {#await OutboxTriage then Triage}<Triage householdId={overview.householdId} />{/await}
 
-    {#if queued}
-      <p class="success-message" role="status">Cambio guardado en este dispositivo, pendiente de sincronizar.</p>
-    {/if}
+    <ActionStatus status={actionStatus} />
 
     {#if overview.decisions.length > 0}
       <section class="card" aria-labelledby="decisions-title">
@@ -119,24 +153,35 @@
           <div><p class="eyebrow">Rutinas</p><h2 id="today-routines-title">Vencen hoy</h2></div>
           <a href={`/h/${overview.householdId}/routines`}>Todas →</a>
         </div>
-        {#if overview.routines.length > 0}
+        {#if shownRoutines.fresh.length > 0 || shownRoutines.ghosts.length > 0}
           <div class="ledger-list">
-            {#each overview.routines as routine (routine.id)}
-              <div>
+            {#each shownRoutines.fresh as routine (routine.id)}
+              <div class:routine-done={doneRoutines[routine.id]}>
                 <span>
                   <strong>{routine.title}</strong>
                   <small>{routine.dueLabel}{routine.details ? ` · ${routine.details}` : ''}</small>
                 </span>
-                {#if routine.completedCurrent}
+                {#if doneRoutines[routine.id]}
+                  <span class="status-chip success" role="status">{doneRoutines[routine.id].chip}</span>
+                {:else if routine.completedCurrent}
                   <span class="status-chip success">Hecha</span>
                 {:else if canToggle}
                   <button
                     class="button secondary small-button"
                     type="button"
-                    disabled={busyRoutineId !== null}
-                    onclick={() => void markRoutineDone(routine.id, routine.nextDueOn)}
+                    disabled={completingIds[routine.id]}
+                    onclick={() => markRoutineDone(routine)}
                   >Marcar hecha</button>
                 {/if}
+              </div>
+            {/each}
+            {#each shownRoutines.ghosts as routine (routine.id)}
+              <div class="routine-done">
+                <span>
+                  <strong>{routine.title}</strong>
+                  <small>Hoy{routine.details ? ` · ${routine.details}` : ''}</small>
+                </span>
+                <span class="status-chip success" role="status">{routine.chip}</span>
               </div>
             {/each}
           </div>

@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
   import { untrack } from 'svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { useAppContext } from '$lib/auth/context';
   import { queueOutbox } from '$lib/offline/idb';
   import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
   import { refreshSyncStatus } from '$lib/offline/sync';
+  import { OptimisticActions } from '$lib/offline/optimistic';
+  import { nextRoutineDue } from '$lib/food/dates';
   import {
     completeRoutine,
-    queueFoodCommand,
     upsertRoutine,
     type RoutineAudience,
     type RoutineFrequency
@@ -36,47 +37,41 @@
   // Hoy en la zona del hogar: default natural de «próxima fecha» en el alta.
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
 
-  // Las acciones de escritura reales solo existen sobre datos de Postgres; en
-  // modo fixture la página conserva el toggle de demostración local.
-  let queued = $state(false);
-  let busy = $state(false);
+  // Patrón wiki replicado (P2-1): pintado optimista inmediato, invalidate
+  // selectivo ('cc:routines') tras el ACK y reversión ante rejected/conflict.
+  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:routines' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
 
-  async function dispatch(
-    envelope: Parameters<typeof queueFoodCommand>[0]
-  ): Promise<Awaited<ReturnType<typeof queueFoodCommand>>> {
-    busy = true;
-    try {
-      const outcome = await queueFoodCommand(envelope);
-      if (outcome === 'synced') await invalidateAll();
-      else queued = true;
-      return outcome;
-    } finally {
-      busy = false;
-    }
-  }
-
-  // Guard anti doble disparo: el botón de la rutina queda deshabilitado desde
-  // el click hasta que llegan datos frescos, y el resultado se anuncia con un
-  // feedback visible en la propia fila (no solo la fecha pequeña).
-  let completingId = $state<string | null>(null);
+  // «Marcar hecha» optimista: el chip «Hecha ✓ · próxima el X» se pinta al
+  // instante con la MISMA fecha que confirmará el servidor (nextRoutineDue).
+  // El guard es POR RUTINA: otras filas siguen accionables (taps encadenables).
+  let completingIds = $state<Record<string, true>>({});
   let completedFeedback = $state<Record<string, string>>({});
 
-  async function complete(routineId: string, dueOn: string): Promise<void> {
-    if (!live || completingId !== null) return;
-    completingId = routineId;
-    try {
-      const outcome = await dispatch(completeRoutine({ householdId: live.householdId, routineId, dueOn }));
-      const fresh = live.routines.find((candidate) => candidate.id === routineId);
-      completedFeedback = {
-        ...completedFeedback,
-        [routineId]:
-          outcome === 'synced' && fresh
-            ? `Hecha ✓ · próxima el ${DUE_LABEL.format(new Date(`${fresh.nextDueOn}T00:00:00Z`))}`
-            : 'Hecha ✓ · pendiente de sincronizar'
-      };
-    } finally {
-      completingId = null;
-    }
+  function complete(routine: { id: string; nextDueOn: string; frequency: RoutineFrequency; intervalCount: number }): void {
+    if (!live || completingIds[routine.id]) return;
+    completingIds[routine.id] = true;
+    const predictedDue = nextRoutineDue(routine.nextDueOn, routine.frequency, routine.intervalCount);
+    const chip = `Hecha ✓ · próxima el ${DUE_LABEL.format(new Date(`${predictedDue}T00:00:00Z`))}`;
+    void optimistic
+      .run(completeRoutine({ householdId: live.householdId, routineId: routine.id, dueOn: routine.nextDueOn }), {
+        apply: () => {
+          completedFeedback[routine.id] = chip;
+        },
+        revert: () => {
+          delete completedFeedback[routine.id];
+          delete completingIds[routine.id];
+        },
+        settle: () => {
+          // Los datos frescos ya traen la nueva fecha: la fila vuelve a ser
+          // accionable para la SIGUIENTE ocurrencia.
+          delete completingIds[routine.id];
+        }
+      })
+      .catch(() => {
+        delete completingIds[routine.id];
+      });
   }
 
   // ── Crear/editar rutina (familia) ──────────────────────────────────────────
@@ -87,6 +82,7 @@
   let routineFrequency = $state<RoutineFrequency>('weekly');
   let routineInterval = $state(1);
   let routineNextDue = $state(today);
+  let formBusy = $state(false);
 
   function editRoutineForm(id: string): void {
     const routine = live?.routines.find((candidate) => candidate.id === id);
@@ -112,19 +108,25 @@
 
   function submitRoutine(event: SubmitEvent): void {
     event.preventDefault();
-    if (!live || !routineTitle.trim() || !routineNextDue) return;
-    void dispatch(
-      upsertRoutine({
-        householdId: live.householdId,
-        routineId: routineId || undefined,
-        title: routineTitle,
-        details: routineDetails,
-        audience: routineAudience,
-        frequency: routineFrequency,
-        intervalCount: routineInterval,
-        nextDueOn: routineNextDue
-      })
-    ).then(resetRoutineForm);
+    if (!live || !routineTitle.trim() || !routineNextDue || formBusy) return;
+    formBusy = true;
+    void optimistic
+      .run(
+        upsertRoutine({
+          householdId: live.householdId,
+          routineId: routineId || undefined,
+          title: routineTitle,
+          details: routineDetails,
+          audience: routineAudience,
+          frequency: routineFrequency,
+          intervalCount: routineInterval,
+          nextDueOn: routineNextDue
+        }),
+        { apply: resetRoutineForm }
+      )
+      .finally(() => {
+        formBusy = false;
+      });
   }
 
   // Modo fixture (sin base de datos): toggle local de demostración.
@@ -151,7 +153,7 @@
   {#if live}
     <PageHeader eyebrow="Orden cotidiano" title="Rutinas" description="Cada rutina con su próxima fecha; sin porcentajes ni histórico." />
 
-    {#if queued}<p class="success-message" role="status">Cambio guardado en la outbox local, pendiente de sincronizar.</p>{/if}
+    <ActionStatus status={actionStatus} />
 
     <section class="card" aria-labelledby="routines-title">
       <div class="section-heading"><div><p class="eyebrow">Visibles para tu rol</p><h2 id="routines-title">Rutinas de la casa</h2></div></div>
@@ -176,8 +178,8 @@
                 <button
                   class="button secondary small-button"
                   type="button"
-                  disabled={busy || completingId === routine.id}
-                  onclick={() => void complete(routine.id, routine.nextDueOn)}
+                  disabled={completingIds[routine.id]}
+                  onclick={() => complete(routine)}
                 >
                   Marcar hecha
                 </button>
@@ -225,7 +227,7 @@
             <input type="date" bind:value={routineNextDue} required />
           </label>
           <div class="menu-slot-actions">
-            <button class="button primary" type="submit" disabled={busy}>{routineId ? 'Guardar rutina' : 'Crear rutina'}</button>
+            <button class="button primary" type="submit" disabled={formBusy}>{routineId ? 'Guardar rutina' : 'Crear rutina'}</button>
             {#if routineId}<button class="button secondary" type="button" onclick={resetRoutineForm}>Cancelar edición</button>{/if}
           </div>
         </form>

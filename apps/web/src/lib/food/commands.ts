@@ -114,11 +114,10 @@ export interface RoutineUpsertPayload {
   nextDueOn: string;
 }
 
-export interface RoutineCompletePayload {
-  action: 'complete';
-  routineId: string;
-  dueOn: string;
-}
+// `routine.complete` vive en su módulo mínimo (routine-complete.ts) para no
+// arrastrar todos los constructores al bundle inicial de Hoy; se re-exporta
+// aquí para conservar la superficie histórica del módulo.
+export { completeRoutine, type RoutineCompletePayload } from './routine-complete';
 
 function trimmedOrUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -394,26 +393,6 @@ export function upsertRoutine(
       nextDueOn: input.nextDueOn
     } satisfies RoutineUpsertPayload
   }) as CommandEnvelopeV1<RoutineUpsertPayload>;
-}
-
-export function completeRoutine(
-  input: { householdId: string; routineId: string; dueOn: string },
-  options: EnvelopeOptions = {}
-): CommandEnvelopeV1<RoutineCompletePayload> {
-  return createCommandEnvelope({
-    ...options,
-    householdId: input.householdId,
-    // El handler del servidor vive bajo el agregado `routine` (rhythm.ts);
-    // `routine_occurrence` provocaba rejected/unsupported_aggregate (bug
-    // cazado por la batería e2e).
-    aggregateType: 'routine',
-    aggregateId: input.routineId,
-    payload: {
-      action: 'complete',
-      routineId: input.routineId,
-      dueOn: input.dueOn
-    } satisfies RoutineCompletePayload
-  }) as CommandEnvelopeV1<RoutineCompletePayload>;
 }
 
 export type { QueueOutcome };

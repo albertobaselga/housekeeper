@@ -1,3 +1,4 @@
+import { browser } from '$app/environment';
 import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
 
 import { listOutbox, queueOutbox } from './idb';
@@ -30,6 +31,14 @@ import {
  */
 
 export type QueueOutcome = 'synced' | 'queued' | 'rejected' | 'conflict';
+
+/** Reintentos del flush para taps encadenados (otro flush en vuelo). */
+const CHAINED_FLUSH_ATTEMPTS = 5;
+const CHAINED_FLUSH_DELAY_MS = 150;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export interface QueueCommandResult {
   outcome: QueueOutcome;
@@ -118,6 +127,27 @@ export async function queueCommand(
     });
   } else {
     captured.acks = await flushOutbox();
+    // Taps ENCADENADOS: si otro flush estaba en vuelo cuando se encoló este
+    // comando, flushOutbox devuelve sin su ACK y nadie lo reenviaría hasta el
+    // próximo evento (otra acción o la reconexión). Mientras haya red se
+    // reintenta el flush unas pocas veces hasta leer el ACK real de ESTA
+    // operación; si aun así sigue pendiente, el resultado honesto es 'queued'
+    // y la reconciliación diferida (lastFlushAt) hará el resto.
+    if (browser && !captured.acks?.get(envelope.operationId)) {
+      for (let attempt = 0; attempt < CHAINED_FLUSH_ATTEMPTS; attempt += 1) {
+        if (!navigator.onLine) break;
+        const record = (await listOutbox(envelope.householdId, databaseName)).find(
+          (candidate) => candidate.id === envelope.operationId
+        );
+        if (!record || record.status !== 'pending') break;
+        await delay(CHAINED_FLUSH_DELAY_MS);
+        const acks = await flushOutbox();
+        if (acks?.get(envelope.operationId)) {
+          captured.acks = acks;
+          break;
+        }
+      }
+    }
   }
 
   // 3) Resultado veraz: primero el ACK real de ESTA operación…

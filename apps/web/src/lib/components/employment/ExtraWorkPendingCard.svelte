@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
+  import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import { OptimisticActions } from '$lib/offline/optimistic';
   import {
     acceptExtra,
     markExtraPerformed,
-    queueEmploymentCommand,
     registerExtra,
     resolveExtra
   } from '$lib/employment/commands';
-  import type { PendingExtraWorkView } from '$lib/employment/model';
+  import { dateLabel, formatMinutes, type PendingExtraWorkView } from '$lib/employment/model';
 
   let {
     householdId,
@@ -25,10 +25,16 @@
     canConfirm: boolean;
   } = $props();
 
-  let busy = $state(false);
-  let queued = $state(false);
-  // Entidades ya actuadas en esta sesión: el control queda deshabilitado aunque
-  // el overview tarde en reflejar el cambio tras invalidateAll().
+  // Patrón wiki (P2-1): cada decisión pinta su chip al instante, con
+  // `invalidate('cc:employment')` selectivo tras el ACK y reversión honesta
+  // ante rejected/conflict. Sin `busy` de tarjeta: acciones encadenables.
+  // svelte-ignore state_referenced_locally -- el hogar no cambia dentro de la página
+  const optimistic = new OptimisticActions({ householdId, invalidateToken: 'cc:employment' });
+  const actionStatus = optimistic.status;
+  $effect(() => optimistic.start());
+
+  // Entidades ya actuadas: el chip sustituye a los botones al instante y solo
+  // vuelve atrás si el servidor rechaza la decisión.
   let acted = $state<string[]>([]);
 
   let resolveOpenId = $state<string | null>(null);
@@ -41,53 +47,84 @@
   let registerNote = $state('');
   let registerSent = $state(false);
 
-  async function run(envelope: Parameters<typeof queueEmploymentCommand>[0], entityId?: string): Promise<void> {
-    busy = true;
-    try {
-      const outcome = await queueEmploymentCommand(envelope);
-      queued = outcome === 'queued';
-      if (outcome === 'synced') {
-        // El servidor ya lo aplicó: el overview fresco decide qué acciones quedan.
-        await invalidateAll();
-      } else if (entityId) {
+  const KIND_LABEL: Record<'overtime' | 'worked_rest_day', string> = {
+    overtime: 'Horas extraordinarias',
+    worked_rest_day: 'Festivo o descanso trabajado'
+  };
+
+  // Alta optimista de jornadas: la fila nueva aparece YA como «Solicitada» y
+  // se dedupe cuando los datos frescos la traen del servidor.
+  type OptimisticExtra = { operationId: string; kindLabel: string; workedOnLabel: string; durationLabel: string; note: string };
+  let optimisticExtras = $state<OptimisticExtra[]>([]);
+  const pendingOptimistic = $derived(
+    optimisticExtras.filter(
+      (draft) =>
+        !extras.some((extra) => extra.workedOnLabel === draft.workedOnLabel && extra.durationLabel === draft.durationLabel && (extra.note ?? '') === draft.note)
+    )
+  );
+
+  function runDecision(envelope: Parameters<typeof optimistic.run>[0], entityId: string): void {
+    void optimistic.run(envelope, {
+      apply: () => {
         acted = [...acted, entityId];
+      },
+      revert: () => {
+        acted = acted.filter((candidate) => candidate !== entityId);
       }
-    } finally {
-      busy = false;
-    }
+    });
   }
 
-  async function submitRegister(event: SubmitEvent): Promise<void> {
+  function submitRegister(event: SubmitEvent): void {
     event.preventDefault();
     if (!registerDate || registerMinutes < 1) return;
-    await run(
-      registerExtra({
-        householdId,
-        agreementId,
-        kind: registerKind,
-        workedOn: registerDate,
-        durationMinutes: Math.trunc(registerMinutes),
-        note: registerNote
-      })
-    );
-    registerNote = '';
-    registerSent = true;
+    const minutes = Math.trunc(registerMinutes);
+    const note = registerNote.trim();
+    const envelope = registerExtra({
+      householdId,
+      agreementId,
+      kind: registerKind,
+      workedOn: registerDate,
+      durationMinutes: minutes,
+      note: registerNote
+    });
+    const removeDraft = () => {
+      optimisticExtras = optimisticExtras.filter((draft) => draft.operationId !== envelope.operationId);
+    };
+    void optimistic.run(envelope, {
+      apply: () => {
+        optimisticExtras = [
+          ...optimisticExtras,
+          {
+            operationId: envelope.operationId,
+            kindLabel: KIND_LABEL[registerKind],
+            workedOnLabel: dateLabel(registerDate),
+            durationLabel: formatMinutes(minutes),
+            note
+          }
+        ];
+        registerNote = '';
+        registerSent = true;
+      },
+      revert: () => {
+        removeDraft();
+        registerSent = false;
+      },
+      settle: removeDraft
+    });
   }
 
-  async function submitResolve(event: SubmitEvent, extraId: string): Promise<void> {
+  function submitResolve(event: SubmitEvent, extraId: string): void {
     event.preventDefault();
     if (!resolveReason.trim()) return;
-    await run(
-      resolveExtra({
-        householdId,
-        extraWorkEventId: extraId,
-        resolution: resolveResolution,
-        reason: resolveReason
-      }),
-      extraId
-    );
+    const envelope = resolveExtra({
+      householdId,
+      extraWorkEventId: extraId,
+      resolution: resolveResolution,
+      reason: resolveReason
+    });
     resolveOpenId = null;
     resolveReason = '';
+    runDecision(envelope, extraId);
   }
 </script>
 
@@ -112,15 +149,13 @@
               <button
                 class="button secondary small-button"
                 type="button"
-                disabled={busy}
-                onclick={() => void run(acceptExtra({ householdId, extraWorkEventId: extra.id }), extra.id)}
+                onclick={() => runDecision(acceptExtra({ householdId, extraWorkEventId: extra.id }), extra.id)}
               >Aceptar</button>
             {/if}
             {#if canConfirm && extra.resolvable}
               <button
                 class="button secondary small-button"
                 type="button"
-                disabled={busy}
                 aria-expanded={resolveOpenId === extra.id}
                 onclick={() => { resolveOpenId = resolveOpenId === extra.id ? null : extra.id; resolveReason = ''; }}
               >Resolver</button>
@@ -129,15 +164,14 @@
               <button
                 class="button secondary small-button"
                 type="button"
-                disabled={busy}
-                onclick={() => void run(markExtraPerformed({ householdId, extraWorkEventId: extra.id }), extra.id)}
+                onclick={() => runDecision(markExtraPerformed({ householdId, extraWorkEventId: extra.id }), extra.id)}
               >Marcar realizada</button>
             {/if}
           {/if}
         </span>
       </div>
       {#if canConfirm && resolveOpenId === extra.id && !acted.includes(extra.id)}
-        <form class="action-form" onsubmit={(event) => void submitResolve(event, extra.id)}>
+        <form class="action-form" onsubmit={(event) => submitResolve(event, extra.id)}>
           <div class="form-grid">
             <label>Compensación
               <select bind:value={resolveResolution}>
@@ -150,18 +184,28 @@
             </label>
           </div>
           <div class="action-row">
-            <button class="button primary small-button" type="submit" disabled={busy || !resolveReason.trim()}>Confirmar resolución</button>
+            <button class="button primary small-button" type="submit" disabled={!resolveReason.trim()}>Confirmar resolución</button>
             <small>La tarifa se congela en el servidor con la versión vigente del acuerdo.</small>
           </div>
         </form>
       {/if}
     {:else}
-      <div><span><strong>Sin jornadas pendientes</strong><small>Todo lo registrado está resuelto.</small></span></div>
+      {#if pendingOptimistic.length === 0}
+        <div><span><strong>Sin jornadas pendientes</strong><small>Todo lo registrado está resuelto.</small></span></div>
+      {/if}
+    {/each}
+    {#each pendingOptimistic as draft (draft.operationId)}
+      <div>
+        <span>
+          <strong>{draft.kindLabel} · {draft.workedOnLabel}</strong>
+          <small>{draft.durationLabel}{draft.note ? ` · ${draft.note}` : ''} · Solicitada</small>
+        </span>
+      </div>
     {/each}
   </div>
 
   {#if canRegister}
-    <form class="action-form" onsubmit={(event) => void submitRegister(event)}>
+    <form class="action-form" onsubmit={submitRegister}>
       <h3>Registrar jornada extra</h3>
       <div class="form-grid">
         <label>Tipo
@@ -181,13 +225,11 @@
         <input type="text" bind:value={registerNote} maxlength="500" placeholder="Qué se trabajó y por qué" />
       </label>
       <div class="action-row">
-        <button class="button primary small-button" type="submit" disabled={busy}>Registrar jornada extra</button>
-        {#if registerSent && !queued}<span class="status-chip success">Enviada</span>{/if}
+        <button class="button primary small-button" type="submit">Registrar jornada extra</button>
+        {#if registerSent}<span class="status-chip success">Enviada</span>{/if}
       </div>
     </form>
   {/if}
 
-  {#if queued}
-    <p class="queued-note" role="status">Guardado en este dispositivo; se sincronizará al recuperar la conexión.</p>
-  {/if}
+  <ActionStatus status={actionStatus} />
 </article>

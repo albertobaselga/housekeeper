@@ -75,6 +75,9 @@ export interface TodayRoutineView {
   /** Vencía antes de hoy. */
   overdue: boolean;
   completedCurrent: boolean;
+  /** Recurrencia: permite pintar la próxima fecha de forma optimista al marcar. */
+  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly';
+  intervalCount: number;
 }
 
 export interface TodayOverview {
@@ -307,11 +310,15 @@ export async function loadTodayOverview(
         details: string;
         nextDueOn: string;
         completedCurrent: boolean;
+        frequency: TodayRoutineView['frequency'];
+        intervalCount: number;
       }>(
         `select routine.id,
                 routine.title,
                 routine.details,
                 routine.next_due_on::text as "nextDueOn",
+                routine.frequency::text as "frequency",
+                routine.interval_count as "intervalCount",
                 exists (
                   select 1 from app.routine_completions as completion
                    where completion.household_id = routine.household_id
@@ -332,7 +339,9 @@ export async function loadTodayOverview(
         nextDueOn: row.nextDueOn,
         dueLabel: row.nextDueOn === todayISO ? 'Hoy' : `Vencía el ${dateLabel(row.nextDueOn)}`,
         overdue: row.nextDueOn < todayISO,
-        completedCurrent: row.completedCurrent
+        completedCurrent: row.completedCurrent,
+        frequency: row.frequency,
+        intervalCount: row.intervalCount
       }));
 
       // Huecos de menú de hoy±3 días con su receta, grupo y confirmación. El
