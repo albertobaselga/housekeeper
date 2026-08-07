@@ -68,6 +68,10 @@ importers:
         version: 3.2.4(@types/node@24.3.1)(tsx@4.20.5)
 
   packages/contracts:
+    dependencies:
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       typescript:
         specifier: 5.9.2
@@ -1282,6 +1286,9 @@ packages:
   zlibjs@0.3.1:
     resolution: {integrity: sha512-+J9RrgTKOmlxFSDHo0pI1xM6BLVUv+o0ZT9ANtCxGkjIVCCUdx9alUF8Gm+dGLKbkkkidWIHFDZHDMpfITt4+w==}
 
+  zod@4.4.3:
+    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+
 snapshots:
 
   '@aws-sdk/checksums@3.1000.26':
@@ -2389,3 +2396,5 @@ snapshots:
   xtend@4.0.2: {}
 
   zlibjs@0.3.1: {}
+
+  zod@4.4.3: {}

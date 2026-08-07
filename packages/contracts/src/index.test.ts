@@ -8,6 +8,7 @@ import {
   isRole,
   type CriticalSnapshotV1,
 } from "./index.js";
+import { commandEnvelopeSchema } from "./schemas.js";
 
 const snapshot = (generatedAt: string, expiresAt: string): CriticalSnapshotV1 => ({
   apiVersion: API_VERSION,
@@ -46,6 +47,20 @@ describe("contratos públicos", () => {
     expect(isMoneyCents("145330")).toBe(true);
     expect(isMoneyCents("-10000")).toBe(true);
     expect(isMoneyCents("14.53")).toBe(false);
+  });
+
+  it("valida el envelope compartido en tiempo de ejecución", () => {
+    expect(commandEnvelopeSchema.safeParse({
+      apiVersion: 1,
+      operationId: "d9ea93f9-0373-42c9-bde6-3c84ce96f8f4",
+      householdId: "47959c6f-390f-4a67-9fd9-9e8f2f5a4512",
+      schemaVersion: 1,
+      aggregateType: "expense",
+      aggregateId: null,
+      baseRevision: null,
+      occurredAt: "2026-08-07T10:00:00+02:00",
+      payload: { amountCents: "4730" },
+    }).success).toBe(true);
   });
 
   it("rechaza snapshots con concesiones superiores a 24 horas", () => {
