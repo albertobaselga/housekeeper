@@ -1,0 +1,20 @@
+{
+  "name": "Casa Clara",
+  "short_name": "Casa Clara",
+  "description": "Acuerdos, cuidados y el día a día del hogar.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f3ec",
+  "theme_color": "#21483a",
+  "lang": "es",
+  "categories": ["lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

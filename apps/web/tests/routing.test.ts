@@ -1,0 +1,38 @@
+import { describe, expect, it } from 'vitest';
+import { HOUSEHOLD_MODULES, MODULE_CAPABILITY, guardForPath, householdPath } from '../src/lib/auth/routing';
+
+describe('household route contract', () => {
+  it('keeps every required stable module addressable', () => {
+    expect(HOUSEHOLD_MODULES).toEqual([
+      'today', 'employment', 'menu', 'recipes', 'wiki', 'search',
+      'routines', 'calendar', 'contacts', 'emergency', 'settings'
+    ]);
+
+    for (const moduleName of HOUSEHOLD_MODULES) {
+      const path = householdPath('household one', moduleName);
+      expect(path).toBe(`/h/household%20one/${moduleName}`);
+      expect(guardForPath(path)).toEqual({
+        householdId: 'household one',
+        module: moduleName,
+        capability: MODULE_CAPABILITY[moduleName],
+        known: true
+      });
+    }
+  });
+
+  it('allows the household index and supported wiki children', () => {
+    expect(guardForPath('/h/casa-roble')).toMatchObject({ known: true, capability: null });
+    expect(guardForPath('/h/casa-roble/wiki/lavadora')).toMatchObject({
+      known: true,
+      module: 'wiki',
+      capability: 'content.read'
+    });
+  });
+
+  it('fails closed for unknown or unsupported child paths', () => {
+    expect(guardForPath('/h/casa-roble/admin')).toMatchObject({ known: false, capability: null });
+    expect(guardForPath('/h/casa-roble/today/private')).toMatchObject({ known: false, capability: null });
+    expect(guardForPath('/h/%E0%A4%A/today')).toMatchObject({ known: false });
+    expect(guardForPath('/login')).toBeNull();
+  });
+});
