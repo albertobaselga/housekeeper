@@ -191,6 +191,33 @@
           </ul>
         </section>
 
+        {#if home.searchGaps.length}
+          <!-- Solo la familia recibe huecos (AC-18); para el resto la lista llega vacía. -->
+          <section class="card" aria-labelledby="search-gaps-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Huecos documentales</p>
+                <h2 id="search-gaps-title">Lo que la casa buscó y no encontró</h2>
+              </div>
+            </div>
+            <ul class="wiki-recent">
+              {#each home.searchGaps as gap (gap.representative)}
+                <li>
+                  <strong>{gap.representative}</strong>
+                  <small>
+                    {gap.missTotal} sin resultado{gap.missTotal === 1 ? '' : 's'}
+                    · {gap.noClickTotal} sin clic
+                    {#if gap.variants.length > 1}
+                      · {gap.variants.length} variantes ({gap.variants.filter((variant) => variant !== gap.representative).join(', ')})
+                    {/if}
+                    · última el {gap.lastSeenLabel}
+                  </small>
+                </li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
+
         {#if home.canWrite && home.spaces.length}
           <section class="card" aria-labelledby="new-page-title">
             <div class="section-heading"><div><p class="eyebrow">Escribir</p><h2 id="new-page-title">Nueva página</h2></div></div>

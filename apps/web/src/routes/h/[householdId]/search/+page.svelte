@@ -1,6 +1,10 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import { useAppContext } from '$lib/auth/context';
+  import { readCriticalSnapshot } from '$lib/offline/idb';
+  import { searchOffline, type OfflineSearchResult } from '$lib/search/offline';
   import { highlightSegments } from '$lib/wiki/highlight';
   import type { PageData } from './$types';
 
@@ -9,6 +13,37 @@
 
   const live = $derived(data.live);
   const liveTotal = $derived(live ? live.wiki.length + live.contacts.length : 0);
+
+  // Modo sin conexión: resultados desde el CriticalSnapshot de IndexedDB.
+  // Online la página funciona exactamente igual (formulario GET sin tocar).
+  let offline = $state<{ query: string; results: OfflineSearchResult[] } | null>(null);
+
+  async function runOfflineSearch(query: string): Promise<void> {
+    let results: OfflineSearchResult[] = [];
+    if (query) {
+      try {
+        results = searchOffline(query, await readCriticalSnapshot(context.household.id));
+      } catch {
+        results = [];
+      }
+    }
+    offline = { query, results };
+  }
+
+  function handleSubmit(event: SubmitEvent): void {
+    if (!browser || navigator.onLine !== false) return;
+    event.preventDefault();
+    const form = new FormData(event.currentTarget as HTMLFormElement);
+    const query = String(form.get('q') ?? '').trim();
+    if (query) void runOfflineSearch(query);
+    else offline = null;
+  }
+
+  onMount(() => {
+    // SSR sin datos vivos y sin red: el snapshot local sustituye a la fixture.
+    const query = (live?.query ?? data.search?.query ?? '').trim();
+    if (navigator.onLine === false && query && !live) void runOfflineSearch(query);
+  });
 
   function telHref(phone: string): string {
     return `tel:${phone.replace(/[^+\d]/g, '')}`;
@@ -26,14 +61,48 @@
 <div class="page-wrap search-page">
   <PageHeader eyebrow="Buscador global" title="¿Qué necesitas encontrar?" description="Wiki, recetas y contactos en una sola búsqueda." />
 
-  <form class="search-form" method="GET">
+  <form class="search-form" method="GET" onsubmit={handleSubmit}>
     <label class="sr-only" for="global-query">Buscar en toda la casa</label>
     <span aria-hidden="true">⌕</span>
-    <input id="global-query" name="q" type="search" value={live?.query ?? data.search?.query ?? ''} placeholder="Prueba «lavadora» o «pediatra»" />
+    <input id="global-query" name="q" type="search" value={offline?.query ?? live?.query ?? data.search?.query ?? ''} placeholder="Prueba «lavadora» o «pediatra»" />
     <button class="button primary" type="submit">Buscar</button>
   </form>
 
-  {#if live}
+  {#if offline}
+    <p class="audit-note" role="status">Sin conexión · Resultados guardados en este dispositivo</p>
+    {#if offline.results.length}
+      <section class="search-results" aria-labelledby="offline-results-title">
+        <h2 id="offline-results-title">{offline.results.length} resultado{offline.results.length === 1 ? '' : 's'} guardado{offline.results.length === 1 ? '' : 's'}</h2>
+        {#each offline.results as result (result.kind + result.id)}
+          {#if result.kind === 'contact' && result.phone}
+            <a href={telHref(result.phone)} class="contact-result">
+              <span class="result-type">Contacto</span>
+              <span>
+                <strong>{@render marked(result.title, offline.query)}</strong>
+                <small>{result.detail} · {result.phone}</small>
+              </span>
+              <span class="button secondary small-button">Llamar</span>
+            </a>
+          {:else}
+            <a href={`/h/${context.household.id}/wiki`}>
+              <span class="result-type">Wiki</span>
+              <span>
+                <strong>{@render marked(result.title, offline.query)}</strong>
+                <small>{result.detail} · {@render marked(result.excerpt, offline.query)}</small>
+              </span>
+              <span aria-hidden="true">→</span>
+            </a>
+          {/if}
+        {/each}
+      </section>
+    {:else}
+      <section class="empty-state">
+        <span aria-hidden="true">⌕</span>
+        <h2>No aparece “{offline.query}” en lo guardado</h2>
+        <p>Sin conexión solo buscamos en el snapshot de este dispositivo. Vuelve a intentarlo cuando haya red.</p>
+      </section>
+    {/if}
+  {:else if live}
     {#if liveTotal > 0}
       <section class="search-results" aria-labelledby="results-title">
         <h2 id="results-title">{liveTotal} resultado{liveTotal === 1 ? '' : 's'}</h2>

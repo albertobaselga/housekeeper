@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, listSearchGapClusters, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { diffLines, type WikiDiffLine } from '$lib/wiki/diff';
 import { getDatabasePool } from './db.server';
@@ -59,6 +59,15 @@ export interface WikiHomeEntry {
   pinned: boolean;
 }
 
+export interface WikiSearchGapView {
+  representative: string;
+  variants: string[];
+  missTotal: number;
+  noClickTotal: number;
+  lastSeenOn: string;
+  lastSeenLabel: string;
+}
+
 export interface WikiHome {
   householdId: string;
   role: Role;
@@ -67,6 +76,12 @@ export interface WikiHome {
   spaces: WikiSpaceView[];
   pinned: WikiHomeEntry[];
   recent: WikiHomeEntry[];
+  /**
+   * Huecos documentales (AC-18), solo para la familia: clusters deterministas
+   * de búsquedas sin resultado o sin clic de los últimos 30 días. Vacío para
+   * el resto de roles (RLS tampoco les daría filas).
+   */
+  searchGaps: WikiSearchGapView[];
 }
 
 interface PageRow {
@@ -185,6 +200,20 @@ export async function loadWikiHome(
         .slice(0, 6)
         .map(toEntry);
 
+      // Huecos documentales, solo familia: la agrupación determinista vive en
+      // @casa-clara/server y RLS acota las filas al hogar; para el resto de
+      // roles ni siquiera se consulta.
+      const searchGaps: WikiSearchGapView[] = PUBLISHER_ROLES.includes(membership.role)
+        ? (await listSearchGapClusters(client, { days: 30, limit: 10 })).map((cluster) => ({
+            representative: cluster.representative,
+            variants: cluster.variants,
+            missTotal: cluster.missTotal,
+            noClickTotal: cluster.noClickTotal,
+            lastSeenOn: cluster.lastSeenOn,
+            lastSeenLabel: DATE_LABEL.format(new Date(`${cluster.lastSeenOn}T00:00:00Z`))
+          }))
+        : [];
+
       return {
         householdId,
         role: membership.role,
@@ -192,7 +221,8 @@ export async function loadWikiHome(
         canPublish: PUBLISHER_ROLES.includes(membership.role),
         spaces: spaceViews,
         pinned,
-        recent
+        recent,
+        searchGaps
       } satisfies WikiHome;
     });
   } catch (cause) {

@@ -111,3 +111,113 @@ export async function recordSearchOutcome(
 export async function recordWikiRead(client: PoolClient, pageId: UUID): Promise<void> {
   await client.query("select app.record_wiki_read($1)", [pageId]);
 }
+
+export interface SearchGapCluster {
+  /** Consulta de más peso del cluster; da nombre al hueco. */
+  representative: string;
+  /** Todas las consultas equivalentes, representante incluida, por peso desc. */
+  variants: string[];
+  missTotal: number;
+  noClickTotal: number;
+  /** Último día (YYYY-MM-DD) en que alguien tropezó con el hueco. */
+  lastSeenOn: string;
+}
+
+/**
+ * Trigramas al estilo pg_trgm: cada palabra alfanumérica se rellena con dos
+ * espacios delante y uno detrás y se trocea en ventanas de tres caracteres.
+ * Las consultas ya llegan normalizadas (minúsculas y sin acentos) desde
+ * app.record_search_gap; la normalización de aquí es solo defensiva.
+ */
+function trigramSet(value: string): Set<string> {
+  const trigrams = new Set<string>();
+  const words = value.toLowerCase().split(/[^a-z0-9ñç]+/u).filter(Boolean);
+  for (const word of words) {
+    const padded = `  ${word} `;
+    for (let index = 0; index + 3 <= padded.length; index += 1) {
+      trigrams.add(padded.slice(index, index + 3));
+    }
+  }
+  return trigrams;
+}
+
+/** Similitud de Jaccard entre conjuntos de trigramas, equivalente a similarity() de pg_trgm. */
+export function trigramSimilarity(left: string, right: string): number {
+  const a = trigramSet(left);
+  const b = trigramSet(right);
+  if (a.size === 0 || b.size === 0) return 0;
+  let shared = 0;
+  for (const trigram of a) if (b.has(trigram)) shared += 1;
+  const union = a.size + b.size - shared;
+  return union === 0 ? 0 : shared / union;
+}
+
+const GAP_CLUSTER_THRESHOLD = 0.55;
+
+/**
+ * Huecos documentales agregados (AC-18): agrupa las consultas registradas en
+ * app.search_gap_events durante los últimos `days` días en clusters de
+ * variantes equivalentes ('robot cocina' ≈ 'robot de cocina' ≈ 'robot cozina').
+ *
+ * Agrupación determinista greedy: las consultas se ordenan por peso
+ * (miss+no_click) descendente y alfabético como desempate; cada una se asigna
+ * al primer cluster cuyo REPRESENTANTE supere similarity > 0.55 (trigramas
+ * equivalentes a pg_trgm) y, si ninguno lo supera, abre cluster nuevo. Con los
+ * mismos datos el resultado es idéntico llamada tras llamada.
+ *
+ * RLS decide la visibilidad: solo family_admin/family_member ven filas de
+ * search_gap_events, así que cualquier otro rol recibe una lista vacía.
+ */
+export async function listSearchGapClusters(
+  client: PoolClient,
+  options: { days?: number; limit?: number } = {},
+): Promise<SearchGapCluster[]> {
+  const days = Math.max(1, Math.trunc(options.days ?? 30));
+  const limit = Math.max(1, Math.trunc(options.limit ?? 10));
+
+  const result = await client.query<{
+    query: string;
+    missTotal: number;
+    noClickTotal: number;
+    lastSeenOn: string;
+  }>(
+    `select query_normalized as "query",
+            sum(miss_count)::int as "missTotal",
+            sum(no_click_count)::int as "noClickTotal",
+            max(occurred_on)::text as "lastSeenOn"
+       from app.search_gap_events
+      where occurred_on >= current_date - ($1::int - 1)
+      group by query_normalized
+      order by (sum(miss_count) + sum(no_click_count)) desc, query_normalized asc`,
+    [days],
+  );
+
+  const clusters: SearchGapCluster[] = [];
+  for (const row of result.rows) {
+    const cluster = clusters.find(
+      (candidate) => trigramSimilarity(candidate.representative, row.query) > GAP_CLUSTER_THRESHOLD,
+    );
+    if (cluster) {
+      cluster.variants.push(row.query);
+      cluster.missTotal += row.missTotal;
+      cluster.noClickTotal += row.noClickTotal;
+      if (row.lastSeenOn > cluster.lastSeenOn) cluster.lastSeenOn = row.lastSeenOn;
+    } else {
+      clusters.push({
+        representative: row.query,
+        variants: [row.query],
+        missTotal: row.missTotal,
+        noClickTotal: row.noClickTotal,
+        lastSeenOn: row.lastSeenOn,
+      });
+    }
+  }
+
+  return clusters
+    .sort(
+      (left, right) =>
+        right.missTotal + right.noClickTotal - (left.missTotal + left.noClickTotal) ||
+        left.representative.localeCompare(right.representative),
+    )
+    .slice(0, limit);
+}
