@@ -9,10 +9,25 @@ const config = loadWorkerConfig();
 const pool = new Pool({ connectionString: config.databaseUrl, max: 4 });
 let stopping = false;
 let lastSuccessfulPollAt: string | null = null;
+let processedJobs = 0;
+let pollFailures = 0;
 
 const handlers: Record<string, JobHandler> = Object.create(null) as Record<string, JobHandler>;
 
 const healthServer = createServer(async (request, response) => {
+  if (request.url === "/metrics") {
+    response.writeHead(200, { "content-type": "text/plain; version=0.0.4", "cache-control": "no-store" });
+    response.end([
+      "# HELP casa_clara_worker_processed_jobs_total Jobs claimed by this worker.",
+      "# TYPE casa_clara_worker_processed_jobs_total counter",
+      `casa_clara_worker_processed_jobs_total ${processedJobs}`,
+      "# HELP casa_clara_worker_poll_failures_total Queue polling failures.",
+      "# TYPE casa_clara_worker_poll_failures_total counter",
+      `casa_clara_worker_poll_failures_total ${pollFailures}`,
+      "",
+    ].join("\n"));
+    return;
+  }
   if (request.url !== "/health") {
     response.writeHead(404).end();
     return;
@@ -31,9 +46,15 @@ healthServer.listen(config.healthPort, "0.0.0.0");
 
 async function loop(): Promise<void> {
   while (!stopping) {
-    const worked = await runOneJob(pool, handlers, config.maxJobAttempts);
-    lastSuccessfulPollAt = new Date().toISOString();
-    if (!worked) await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs));
+    try {
+      const worked = await runOneJob(pool, handlers, config.maxJobAttempts);
+      lastSuccessfulPollAt = new Date().toISOString();
+      if (worked) processedJobs += 1;
+      else await new Promise((resolve) => setTimeout(resolve, config.pollIntervalMs));
+    } catch {
+      pollFailures += 1;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(30_000, config.pollIntervalMs * 5)));
+    }
   }
 }
 
