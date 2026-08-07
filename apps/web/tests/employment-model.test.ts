@@ -5,6 +5,8 @@ import {
   buildAdvanceBalanceViews,
   buildAgreementVersionViews,
   buildCompensationBalanceViews,
+  buildPendingExpenseViews,
+  buildPendingExtraViews,
   buildSettlementViews,
   currentPeriod,
   formatCents,
@@ -270,5 +272,31 @@ describe('liquidaciones y saldos', () => {
   it('solo genera anclas para orígenes conocidos', () => {
     expect(sourceAnchor('agreement-version', 'x')).toBe('#version-x');
     expect(sourceAnchor('desconocido', 'x')).toBeNull();
+  });
+});
+
+describe('trabajo y gastos pendientes de acción', () => {
+  it('marca qué acción admite cada jornada extra según su estado', () => {
+    const views = buildPendingExtraViews([
+      { id: 'e1', kind: 'overtime', workedOn: '2026-08-05', durationMinutes: 90, note: '', status: 'requested', employeeMembershipId: 'm1' },
+      { id: 'e2', kind: 'worked_rest_day', workedOn: '2026-08-09', durationMinutes: 480, note: 'Domingo', status: 'accepted', employeeMembershipId: 'm1' },
+      { id: 'e3', kind: 'overtime', workedOn: '2026-08-10', durationMinutes: 45, note: '', status: 'performed_pending_resolution', employeeMembershipId: 'm1' }
+    ]);
+    expect(views.map((view) => [view.acceptable, view.performable, view.resolvable])).toEqual([
+      [true, true, false],
+      [false, true, false],
+      [false, false, true]
+    ]);
+    expect(views[0]!.durationLabel).toBe('1 h 30 min');
+    expect(views[1]!.kindLabel).toBe('Festivo o descanso trabajado');
+    expect(views[2]!.statusLabel).toBe('Realizada sin aceptación previa');
+  });
+
+  it('presenta los gastos pendientes con importe en céntimos formateado', () => {
+    const views = buildPendingExpenseViews([
+      { id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850', employeeMembershipId: 'm1' }
+    ]);
+    expect(views[0]!.amountLabel).toBe('18,50 €');
+    expect(views[0]!.incurredOnLabel).toBe('5 ago 2026');
   });
 });

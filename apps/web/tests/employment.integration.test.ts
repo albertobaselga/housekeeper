@@ -63,6 +63,22 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview).not.toBeNull();
     expect(overview!.hasEmploymentData).toBe(true);
     expect(overview!.agreement?.status).toBe('active');
+    expect(overview!.agreement?.employeeMembershipId).toBe('11000000-0000-4000-8000-000000000003');
+
+    // Trabajo pendiente de acción: la jornada realizada sin aceptación previa
+    // espera resolución del administrador; no hay gastos pendientes en fixtures.
+    expect(overview!.pendingExtras.map((extra) => extra.id)).toEqual([
+      '12400000-0000-4000-8000-000000000005'
+    ]);
+    expect(overview!.pendingExtras[0]).toMatchObject({
+      status: 'performed_pending_resolution',
+      durationMinutes: 45,
+      acceptable: false,
+      performable: false,
+      resolvable: true,
+      employeeMembershipId: '11000000-0000-4000-8000-000000000003'
+    });
+    expect(overview!.pendingExpenses).toEqual([]);
 
     // Liquidación cerrada de marzo: transfer 145330, 8 líneas trazables,
     // pagada al completo (vista settlement_payment_totals) y cobro confirmado.
@@ -124,6 +140,8 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview!.versions).toEqual([]);
     expect(overview!.accrual).toBeNull();
     expect(overview!.settlements).toEqual([]);
+    expect(overview!.pendingExtras).toEqual([]);
+    expect(overview!.pendingExpenses).toEqual([]);
     expect(overview!.balances).toEqual({ compensation: [], advances: [] });
   });
 

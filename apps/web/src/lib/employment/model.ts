@@ -126,6 +126,30 @@ export interface ApprovedExpenseRow {
   amountCents: string;
 }
 
+export type PendingExtraWorkStatus =
+  | 'requested'
+  | 'accepted'
+  | 'performed'
+  | 'performed_pending_resolution';
+
+export interface PendingExtraWorkRow {
+  id: string;
+  kind: 'overtime' | 'worked_rest_day';
+  workedOn: string;
+  durationMinutes: number;
+  note: string;
+  status: PendingExtraWorkStatus;
+  employeeMembershipId: string;
+}
+
+export interface PendingExpenseRow {
+  id: string;
+  incurredOn: string;
+  description: string;
+  amountCents: string;
+  employeeMembershipId: string;
+}
+
 export interface CompensationBalanceRow {
   accountId: string;
   balanceType: string;
@@ -293,13 +317,51 @@ export interface AdvanceBalanceView {
   detail: string;
 }
 
+export interface PendingExtraWorkView {
+  id: string;
+  kind: PendingExtraWorkRow['kind'];
+  kindLabel: string;
+  workedOn: string;
+  workedOnLabel: string;
+  durationMinutes: number;
+  durationLabel: string;
+  note: string;
+  status: PendingExtraWorkStatus;
+  statusLabel: string;
+  employeeMembershipId: string;
+  /** requested → la familia puede aceptarla. */
+  acceptable: boolean;
+  /** requested/accepted → la empleada puede marcarla como realizada. */
+  performable: boolean;
+  /** performed/performed_pending_resolution → la familia puede resolverla. */
+  resolvable: boolean;
+}
+
+export interface PendingExpenseView {
+  id: string;
+  incurredOn: string;
+  incurredOnLabel: string;
+  description: string;
+  amountCents: string;
+  amountLabel: string;
+  employeeMembershipId: string;
+}
+
 export interface EmploymentOverview {
   householdId: string;
   hasEmploymentData: boolean;
-  agreement: { id: string; status: string; startsOn: string; endsOn: string | null } | null;
+  agreement: {
+    id: string;
+    status: string;
+    startsOn: string;
+    endsOn: string | null;
+    employeeMembershipId: string;
+  } | null;
   versions: AgreementVersionView[];
   accrual: AccrualView | null;
   settlements: SettlementView[];
+  pendingExtras: PendingExtraWorkView[];
+  pendingExpenses: PendingExpenseView[];
   balances: {
     compensation: CompensationBalanceView[];
     advances: AdvanceBalanceView[];
@@ -592,6 +654,48 @@ export function buildSettlementViews(
       payments: ownPayments
     };
   });
+}
+
+const PENDING_EXTRA_STATUS_LABELS: Record<PendingExtraWorkStatus, string> = {
+  requested: 'Solicitada',
+  accepted: 'Aceptada · sin realizar',
+  performed: 'Realizada · pendiente de resolver',
+  performed_pending_resolution: 'Realizada sin aceptación previa'
+};
+
+export function buildPendingExtraViews(
+  rows: readonly PendingExtraWorkRow[]
+): PendingExtraWorkView[] {
+  return rows.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    kindLabel: EXTRA_WORK_LABELS[row.kind],
+    workedOn: row.workedOn,
+    workedOnLabel: dateLabel(row.workedOn),
+    durationMinutes: row.durationMinutes,
+    durationLabel: formatMinutes(row.durationMinutes),
+    note: row.note,
+    status: row.status,
+    statusLabel: PENDING_EXTRA_STATUS_LABELS[row.status] ?? row.status,
+    employeeMembershipId: row.employeeMembershipId,
+    acceptable: row.status === 'requested',
+    performable: row.status === 'requested' || row.status === 'accepted',
+    resolvable: row.status === 'performed' || row.status === 'performed_pending_resolution'
+  }));
+}
+
+export function buildPendingExpenseViews(
+  rows: readonly PendingExpenseRow[]
+): PendingExpenseView[] {
+  return rows.map((row) => ({
+    id: row.id,
+    incurredOn: row.incurredOn,
+    incurredOnLabel: dateLabel(row.incurredOn),
+    description: row.description,
+    amountCents: row.amountCents,
+    amountLabel: formatCents(row.amountCents),
+    employeeMembershipId: row.employeeMembershipId
+  }));
 }
 
 export function buildCompensationBalanceViews(

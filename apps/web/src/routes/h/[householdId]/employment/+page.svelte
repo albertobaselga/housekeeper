@@ -1,21 +1,89 @@
 <script lang="ts">
+  import { invalidateAll } from '$app/navigation';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
+  import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
+  import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
+  import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
+  import { openSettlement, queueEmploymentCommand } from '$lib/employment/commands';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const context = useAppContext();
-  const canClose = context.capabilities.includes('settlement.close');
-  const canRegisterPayment = context.capabilities.includes('payment.register');
 
   const overview = $derived(data.overview);
+
+  // Las acciones de escritura solo existen sobre datos reales de Postgres; en
+  // modo fixture (demo sin base de datos) la página es de solo lectura.
+  const agreement = $derived(overview?.hasEmploymentData ? overview.agreement : null);
+  const isOwnAgreement = $derived(
+    agreement !== null && agreement.employeeMembershipId === context.user.membershipId
+  );
+
+  const canRegisterExtra = $derived(isOwnAgreement && can(context.role, 'work.register.self'));
+  const canSubmitExpense = $derived(isOwnAgreement && can(context.role, 'expense.create.self'));
+  const canConfirmReceipt = $derived(isOwnAgreement && can(context.role, 'payment.confirm.self'));
+  const canConfirmWork = $derived(agreement !== null && can(context.role, 'work.confirm'));
+  const canCloseSettlement = $derived(agreement !== null && can(context.role, 'settlement.close'));
+  const canRecordPayment = $derived(agreement !== null && can(context.role, 'payment.register'));
+
+  function monthEnd(period: string): string {
+    const [year, month] = period.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
+    return `${period}-${String(lastDay).padStart(2, '0')}`;
+  }
+
+  const openableAccrual = $derived(
+    overview?.hasEmploymentData &&
+      canCloseSettlement &&
+      overview.accrual !== null &&
+      !overview.settlements.some(
+        (settlement) => settlement.periodStart.slice(0, 7) === overview.accrual!.period
+      )
+      ? overview.accrual
+      : null
+  );
+
+  let openBusy = $state(false);
+  let openQueued = $state(false);
+
+  async function openCurrentSettlement(): Promise<void> {
+    if (!overview || !agreement || !openableAccrual) return;
+    openBusy = true;
+    try {
+      const outcome = await queueEmploymentCommand(
+        openSettlement({
+          householdId: overview.householdId,
+          agreementId: agreement.id,
+          periodStart: `${openableAccrual.period}-01`,
+          periodEnd: monthEnd(openableAccrual.period),
+          dueOn: monthEnd(openableAccrual.period)
+        })
+      );
+      if (outcome === 'synced') {
+        // La liquidación ya existe en el servidor: el overview fresco retira el botón.
+        await invalidateAll();
+      } else {
+        openQueued = true;
+      }
+    } finally {
+      openBusy = false;
+    }
+  }
 </script>
 
 <svelte:head><title>Acuerdos y pagos · Casa Clara</title></svelte:head>
 
 <div class="page-wrap">
   {#snippet actions()}
-    {#if canClose}<button class="button primary" type="button">Revisar y cerrar</button>{/if}
+    {#if openableAccrual && !openQueued}
+      <button class="button primary" type="button" disabled={openBusy} onclick={() => void openCurrentSettlement()}>
+        Abrir liquidación de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
+      </button>
+    {:else if openQueued}
+      <span class="status-chip warning">Apertura pendiente de sincronizar</span>
+    {/if}
   {/snippet}
   <PageHeader eyebrow="Expediente laboral" title="Acuerdos y pagos" description="Importes trazables, confirmaciones separadas y un historial claro." {actions} />
 
@@ -61,6 +129,27 @@
             {/if}
             <p class="audit-note">Cada línea conserva su origen y la regla vigente al cerrar el periodo.</p>
           </article>
+
+          {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra)}
+            <ExtraWorkPendingCard
+              householdId={overview.householdId}
+              agreementId={agreement.id}
+              extras={overview.pendingExtras}
+              ownMembershipId={context.user.membershipId}
+              canRegister={canRegisterExtra}
+              canConfirm={canConfirmWork}
+            />
+          {/if}
+
+          {#if agreement && (overview.pendingExpenses.length > 0 || canSubmitExpense)}
+            <ExpensesPendingCard
+              householdId={overview.householdId}
+              agreementId={agreement.id}
+              expenses={overview.pendingExpenses}
+              canSubmit={canSubmitExpense}
+              canResolve={canCloseSettlement}
+            />
+          {/if}
 
           <article class="card">
             <div class="section-heading">
@@ -133,6 +222,13 @@
                   La empleada aún no ha confirmado el cobro.
                 {/if}
               </p>
+              <SettlementActions
+                householdId={overview.householdId}
+                {settlement}
+                canClose={canCloseSettlement}
+                canRecordPayment={canRecordPayment}
+                canConfirmReceipt={canConfirmReceipt}
+              />
             {:else}
               <p class="audit-note">Todavía no hay liquidaciones cerradas ni abiertas.</p>
             {/each}
@@ -165,7 +261,6 @@
             <span class="card-icon" aria-hidden="true">✓</span>
             <h2>Confirmación independiente</h2>
             <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
-            {#if canRegisterPayment}<button class="button secondary full" type="button">Registrar pago</button>{/if}
           </article>
         </aside>
       </div>
@@ -203,7 +298,6 @@
           <span class="card-icon" aria-hidden="true">✓</span>
           <h2>Confirmación independiente</h2>
           <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
-          {#if canRegisterPayment}<button class="button secondary full" type="button">Registrar pago</button>{/if}
         </article>
       </aside>
     </div>
