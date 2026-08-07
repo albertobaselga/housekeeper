@@ -10,6 +10,11 @@ export interface ClaimedJob {
 
 export type JobHandler = (job: ClaimedJob) => Promise<void>;
 
+/** Error que no merece reintentos: el job pasa directamente a `dead`. */
+export class PermanentJobError extends Error {
+  override readonly name = "PermanentJobError";
+}
+
 async function transaction<T>(pool: Pool, operation: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
@@ -103,7 +108,7 @@ export async function runOneJob(
     await handler(job);
     await completeJob(pool, job.id);
   } catch (error) {
-    await failJob(pool, job, error, maxAttempts);
+    await failJob(pool, job, error, error instanceof PermanentJobError ? 1 : maxAttempts);
   }
   return true;
 }

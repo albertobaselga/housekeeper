@@ -3,16 +3,22 @@ import { createServer } from "node:http";
 import { Pool } from "pg";
 
 import { loadWorkerConfig } from "./config.js";
+import { RENDER_RECEIPT_JOB, createRenderReceiptHandler } from "./handlers.js";
+import { objectStore, putPrivateObject } from "./integrations.js";
 import { runOneJob, type JobHandler } from "./queue.js";
 
 const config = loadWorkerConfig();
 const pool = new Pool({ connectionString: config.databaseUrl, max: 4 });
+const storageClient = objectStore(config.storage);
 let stopping = false;
 let lastSuccessfulPollAt: string | null = null;
 let processedJobs = 0;
 let pollFailures = 0;
 
 const handlers: Record<string, JobHandler> = Object.create(null) as Record<string, JobHandler>;
+handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler((key, body, contentType) =>
+  putPrivateObject(storageClient, config.storage.bucket, key, body, contentType),
+);
 
 const healthServer = createServer(async (request, response) => {
   if (request.url === "/metrics") {
