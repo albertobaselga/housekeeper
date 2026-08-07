@@ -231,6 +231,17 @@ export interface ExtraWorkResolvePayloadV1 {
   reason: string;
 }
 
+/**
+ * `aggregateType: "extra_work"` — cierre negativo del administrador: `reject`
+ * (no se reconoce el trabajo) o `cancel` (la petición deja de tener sentido).
+ * La política RLS impide estos estados a la empleada.
+ */
+export interface ExtraWorkDismissPayloadV1 {
+  action: "reject" | "cancel";
+  extraWorkEventId: UUID;
+  reason: string;
+}
+
 /** `aggregateType: "expense"` — resolución del administrador sobre un gasto pendiente. */
 export interface ExpenseResolvePayloadV1 {
   action: "resolve";
