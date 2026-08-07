@@ -1,0 +1,6 @@
+env/*.env
+backups/
+restore-work/
+*.pem
+*.key
+*.p12

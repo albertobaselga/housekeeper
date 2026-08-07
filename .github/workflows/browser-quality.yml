@@ -1,0 +1,61 @@
+name: Browser quality
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  TZ: Europe/Madrid
+  ALLOW_SYNTHETIC_DATA_ONLY: "true"
+
+jobs:
+  e2e-accessibility:
+    name: E2E, offline and axe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Install Chromium runtime
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run non-empty browser suite
+        run: scripts/ci/run-tests-nonempty.sh pnpm test:e2e
+      - name: Run non-empty axe suite
+        run: scripts/ci/run-tests-nonempty.sh pnpm test:a11y
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-results
+          path: |
+            artifacts/e2e
+            playwright-report
+            test-results
+          if-no-files-found: ignore
+
+  lighthouse:
+    name: Lighthouse budgets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Install Chromium runtime
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Enforce brief performance budgets
+        run: pnpm test:lighthouse -- --config=infra/quality/lighthouserc.json
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-results
+          path: artifacts/lighthouse
+          if-no-files-found: error

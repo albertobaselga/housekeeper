@@ -1,0 +1,28 @@
+{
+  "ci": {
+    "collect": {
+      "url": [
+        "http://127.0.0.1:3000/today",
+        "http://127.0.0.1:3000/emergencies"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "preset": "desktop",
+        "throttlingMethod": "simulate",
+        "budgetsPath": "infra/quality/lighthouse-budget.json"
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:accessibility": ["error", { "minScore": 1 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 2000 }],
+        "interaction-to-next-paint": ["error", { "maxNumericValue": 200 }],
+        "resource-summary:script:size": ["error", { "maxNumericValue": 122880 }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "artifacts/lighthouse"
+    }
+  }
+}

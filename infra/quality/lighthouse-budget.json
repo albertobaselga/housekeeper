@@ -1,0 +1,11 @@
+[
+  {
+    "path": "/today",
+    "resourceSizes": [
+      {
+        "resourceType": "script",
+        "budget": 120
+      }
+    ]
+  }
+]

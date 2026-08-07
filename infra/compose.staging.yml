@@ -1,0 +1,345 @@
+name: casaclara-staging
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  APP_ENV: staging
+  ALLOW_SYNTHETIC_DATA_ONLY: "true"
+  DATABASE_URL: postgresql://${POSTGRES_USER:?set POSTGRES_USER}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
+  AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET}
+  S3_ENDPOINT: http://minio:9000
+  S3_REGION: ${S3_REGION:-eu-west-1}
+  S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+  S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+  S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+  S3_FORCE_PATH_STYLE: "true"
+  SMTP_URL: smtp://mailpit:1025
+  CLAMAV_HOST: clamav
+  CLAMAV_PORT: "3310"
+  PUBLIC_ORIGIN: https://${STAGING_HOST:-staging.casaclara.test}:${CADDY_HTTPS_PORT:-8443}
+
+x-app-hardening: &app-hardening
+  restart: unless-stopped
+  init: true
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+
+services:
+  caddy:
+    image: caddy:2.11.2-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      STAGING_HOST: ${STAGING_HOST:-staging.casaclara.test}
+    ports:
+      - "127.0.0.1:${CADDY_HTTP_PORT:-8081}:8081"
+      - "127.0.0.1:${CADDY_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./caddy/Caddyfile.staging:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - edge
+
+  web:
+    <<: *app-hardening
+    image: casaclara/web:${RELEASE_TAG:?set RELEASE_TAG}
+    build:
+      context: ..
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
+    environment:
+      <<: *app-environment
+      WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
+      WEB_HEALTH_PATH: ${WEB_HEALTH_PATH:-/api/health}
+      HOST: 0.0.0.0
+      PORT: "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- \"http://127.0.0.1:3000$${WEB_HEALTH_PATH}\""]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - edge
+      - data
+
+  worker:
+    <<: *app-hardening
+    image: casaclara/worker:${RELEASE_TAG:?set RELEASE_TAG}
+    build:
+      context: ..
+      dockerfile: infra/docker/worker.Dockerfile
+      args:
+        WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+    environment:
+      <<: *app-environment
+      WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+      HOST: 0.0.0.0
+      PORT: "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - edge
+      - data
+
+  postgres:
+    image: postgres:18.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: --data-checksums
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - data
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - data
+
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+    entrypoint: ["/bin/sh", "-eu", "-c"]
+    command:
+      - >-
+        mc alias set staging http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}";
+        mc mb --ignore-existing "staging/$${S3_BUCKET}";
+        mc anonymous set none "staging/$${S3_BUCKET}"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - data
+
+  mailpit:
+    image: axllent/mailpit:v1.30.0
+    restart: unless-stopped
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: "1000"
+    ports:
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8026}:8025"
+    volumes:
+      - mailpit_data:/data
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/livez"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - data
+
+  clamav:
+    image: clamav/clamav:1.4.5
+    restart: unless-stopped
+    volumes:
+      - clamav_signatures:/var/lib/clamav
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - edge
+      - data
+
+  prometheus:
+    image: quay.io/prometheus/prometheus:v3.12.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9091}:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - edge
+      - observability
+
+  grafana:
+    image: grafana/grafana:13.0.4
+    profiles: ["observability"]
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?set GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3003}:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    networks:
+      - observability
+
+  db-backup:
+    image: postgres:18.4-alpine
+    profiles: ["backup"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:?set POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:?set POSTGRES_DB}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - ./backup/db-backup.sh:/usr/local/bin/db-backup:ro
+      - backup_data:/backups
+    entrypoint: ["/bin/sh", "/usr/local/bin/db-backup"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - data
+
+  object-backup:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    profiles: ["backup"]
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET:?set S3_BUCKET}
+    volumes:
+      - ./backup/object-backup.sh:/usr/local/bin/object-backup:ro
+      - backup_data:/backups
+    entrypoint: ["/bin/sh", "/usr/local/bin/object-backup"]
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - data
+
+networks:
+  edge: {}
+  data:
+    internal: true
+  observability:
+    internal: true
+
+volumes:
+  postgres_data: {}
+  minio_data: {}
+  mailpit_data: {}
+  clamav_signatures: {}
+  caddy_data: {}
+  caddy_config: {}
+  prometheus_data: {}
+  grafana_data: {}
+  backup_data: {}

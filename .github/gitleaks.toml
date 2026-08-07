@@ -1,0 +1,13 @@
+title = "Casa Clara secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented synthetic-only credentials"
+regexTarget = "match"
+regexes = [
+  '''Demo-(Admin|Familia|Ana|Apoyo|Visor)-2026!''',
+  '''local-(development|object-storage|observability)-only''',
+  '''replace-with-(random-staging-value|at-least-32-random-bytes|random-object-storage-value|random-observability-value)'''
+]

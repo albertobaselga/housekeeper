@@ -1,0 +1,17 @@
+.git
+.github
+.codex
+node_modules
+**/node_modules
+**/.svelte-kit
+**/.next
+**/build
+**/dist
+coverage
+artifacts
+playwright-report
+test-results
+.env
+.env.*
+!.env.example
+infra/backups
