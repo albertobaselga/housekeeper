@@ -1,4 +1,5 @@
 export * from "./canonical-json.js";
+export * from "./commands/contact.js";
 export * from "./commands/employment.js";
 export * from "./commands/expense.js";
 export * from "./commands/extra-work.js";

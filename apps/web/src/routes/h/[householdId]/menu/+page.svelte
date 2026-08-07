@@ -15,6 +15,7 @@
     upsertMenuGroup,
     type MealSlot
   } from '$lib/food/commands';
+  import { queueCommand } from '$lib/offline/queue-command';
   import type { MenuSlotView } from '$lib/server/food.server';
   import type { PageData } from './$types';
 
@@ -149,25 +150,50 @@
   }
 
   // Confirmación visible del duplicado: qué semana se copió y adónde, con
-  // enlace directo para comprobarlo sin navegar a ciegas.
+  // enlace directo para comprobarlo sin navegar a ciegas. La semana destino es
+  // elegible (P3 week_overlap): por defecto la siguiente; una fecha a menos de
+  // 7 días produce el rechazo real del servidor y su mensaje veraz.
   let duplicated = $state<{ from: string; to: string; day: string } | null>(null);
+  let duplicateTarget = $state('');
+  let duplicateError = $state<string | null>(null);
+  const duplicateDefault = $derived(week ? addDays(week.weekStartsOn, 7) : '');
 
-  function duplicateWeek(): void {
+  async function duplicateWeek(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
     if (!week) return;
     const from = week.weekStartsOn;
-    const to = addDays(from, 7);
-    const day = addDays(selectedDate ?? from, 7);
+    const to = duplicateTarget || duplicateDefault;
+    const dayDiff = Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+    const day = addDays(selectedDate ?? from, dayDiff);
     duplicated = null;
-    void dispatch(
-      duplicateMenuWeek({ householdId: week.householdId, fromWeekStartsOn: from, toWeekStartsOn: to })
-    ).then((outcome) => {
-      if (outcome === 'synced') duplicated = { from, to, day };
-    });
+    duplicateError = null;
+    busy = true;
+    try {
+      const result = await queueCommand(
+        duplicateMenuWeek({ householdId: week.householdId, fromWeekStartsOn: from, toWeekStartsOn: to })
+      );
+      if (result.outcome === 'synced') {
+        await invalidateAll();
+        duplicated = { from, to, day };
+      } else if (result.outcome === 'queued') {
+        queued = true;
+      } else {
+        // Rechazo/conflicto real del servidor (p. ej. week_overlap), sin
+        // prometer reenvío: mensaje traducido del diccionario compartido.
+        duplicateError = result.message;
+      }
+    } finally {
+      busy = false;
+    }
   }
 
   $effect(() => {
     // El aviso de copia pertenece a la semana de origen: al navegar, fuera.
     if (duplicated && week && week.weekStartsOn !== duplicated.from) duplicated = null;
+    if (week) {
+      duplicateTarget = addDays(week.weekStartsOn, 7);
+      duplicateError = null;
+    }
   });
 
   // ── Nuevo grupo de comensales ──────────────────────────────────────────────
@@ -231,7 +257,14 @@
   {#if week}
     {#snippet weekActions()}
       {#if week.canWrite}
-        <button class="button secondary" type="button" disabled={busy} onclick={duplicateWeek}>Duplicar en la semana siguiente</button>
+        <form class="duplicate-week-form" onsubmit={duplicateWeek}>
+          <label>Copiar esta semana al lunes
+            <input type="date" bind:value={duplicateTarget} required enterkeyhint="done" />
+          </label>
+          <button class="button secondary" type="submit" disabled={busy}>
+            {duplicateTarget === duplicateDefault ? 'Duplicar en la semana siguiente' : 'Duplicar en esa semana'}
+          </button>
+        </form>
       {/if}
     {/snippet}
     <PageHeader
@@ -247,6 +280,9 @@
         Semana del {weekLabel(duplicated.from)} copiada a la del {weekLabel(duplicated.to)}.
         <a href={`${base}?week=${duplicated.to}&day=${duplicated.day}`}>Ver la semana del {weekLabel(duplicated.to)} →</a>
       </p>
+    {/if}
+    {#if duplicateError}
+      <p class="form-error" role="alert">{duplicateError}</p>
     {/if}
 
     <nav class="week-nav" aria-label="Cambiar de semana">
@@ -348,14 +384,14 @@
                   {/if}
                 {:else}
                   <label>Plan en texto libre
-                    <input type="text" bind:value={editorText} maxlength="300" required />
+                    <input type="text" autocomplete="off" enterkeyhint="next" bind:value={editorText} maxlength="300" required />
                   </label>
                 {/if}
                 <label>Notas
-                  <input type="text" bind:value={editorNotes} maxlength="500" />
+                  <input type="text" autocomplete="off" enterkeyhint="next" bind:value={editorNotes} maxlength="500" />
                 </label>
                 <label>Raciones (vacío = comensales del grupo)
-                  <input type="number" min="1" max="50" bind:value={editorServings} />
+                  <input type="number" inputmode="numeric" enterkeyhint="done" min="1" max="50" bind:value={editorServings} />
                 </label>
                 {#if editorConflicts.length > 0}
                   <div class="allergen-block" role="alert">
@@ -392,7 +428,7 @@
           <div class="section-heading"><div><p class="eyebrow">Organizar</p><h2 id="new-group-title">Nuevo grupo de comensales</h2></div></div>
           <form class="action-form" onsubmit={submitNewGroup}>
             <label>Nombre
-              <input type="text" bind:value={newGroupName} maxlength="120" required />
+              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={newGroupName} maxlength="120" required />
             </label>
             {#if week.diners.length}
               <fieldset class="inline-check-group">
@@ -454,17 +490,17 @@
             </label>
             {#if !itemFoodId}
               <label>Nombre libre
-                <input type="text" bind:value={itemName} maxlength="120" />
+                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={itemName} maxlength="120" />
               </label>
             {/if}
             <label>Cantidad
-              <input type="text" inputmode="decimal" bind:value={itemQuantity} placeholder="1,5" />
+              <input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" bind:value={itemQuantity} placeholder="1,5" />
             </label>
             <label>Unidad
-              <input type="text" bind:value={itemUnit} maxlength="30" placeholder="kg" />
+              <input type="text" autocomplete="off" enterkeyhint="next" bind:value={itemUnit} maxlength="30" placeholder="kg" />
             </label>
             <label>Sección
-              <input type="text" bind:value={itemSection} maxlength="60" placeholder="despensa" />
+              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={itemSection} maxlength="60" placeholder="despensa" />
             </label>
             <button class="button primary" type="submit" disabled={busy}>Añadir a la compra</button>
           </form>

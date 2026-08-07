@@ -54,6 +54,9 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   duplicate_week: 'Esa semana ya tiene menú',
   diner_not_found: 'El comensal ya no existe',
 
+  // Contactos
+  contact_not_found: 'El contacto ya no existe',
+
   // Rutinas y calendario
   routine_not_found: 'La rutina ya no existe',
   already_completed: 'Ya estaba marcada como hecha',

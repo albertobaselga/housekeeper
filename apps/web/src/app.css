@@ -63,6 +63,11 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* P2-3 (pasada móvil de formularios): iOS hace zoom automático al enfocar
+     controles con fuente efectiva < 16 px. Piso global para todo control de
+     texto; las reglas de componente pueden subirlo, nunca bajarlo. */
+  input, select, textarea { font-size: max(1em, 1rem); }
+
   button, a { -webkit-tap-highlight-color: transparent; }
   button { border: 0; background: none; cursor: pointer; }
   button:disabled { cursor: not-allowed; opacity: .55; }
@@ -378,7 +383,8 @@
     background: var(--surface);
     padding: .5rem .65rem;
     color: var(--ink);
-    font-size: .82rem;
+    /* ≥16 px efectivos: evita el zoom automático de iOS al enfocar (P2-3). */
+    font-size: 1rem;
   }
   .action-form .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; }
   .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
@@ -391,7 +397,8 @@
     background: var(--surface);
     padding: .5rem .65rem;
     color: var(--ink);
-    font-size: .82rem;
+    /* ≥16 px efectivos: evita el zoom automático de iOS al enfocar (P2-3). */
+    font-size: 1rem;
   }
   .inline-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
   .queued-note { margin-top: .6rem; border-radius: .65rem; background: var(--warning-soft); padding: .55rem .75rem; color: var(--warning); font-size: .75rem; font-weight: 700; }
@@ -650,7 +657,26 @@
   .event-dot.home { background: var(--success); }
   .event-dot.health { background: var(--danger); }
 
-  .contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+  .contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.1rem; }
+  /* Acciones del directorio real: llamar + editar/archivar (solo familia). */
+  .contact-actions { display: grid; gap: .35rem; justify-items: stretch; }
+  .contact-actions .call-button { text-align: center; }
+  .contact-card div > small { display: block; margin-top: .15rem; }
+  /* Selector de semana destino del duplicado (P3 week_overlap). */
+  .duplicate-week-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; }
+  .duplicate-week-form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  .duplicate-week-form input {
+    border: 1px solid var(--line-strong);
+    border-radius: .6rem;
+    background: var(--surface);
+    padding: .5rem .65rem;
+    color: var(--ink);
+    font-size: 1rem;
+  }
+  /* Acceso fijo a Emergencias desde Hoy (P3): siempre visible, también móvil. */
+  .button.secondary.today-emergency-link { gap: .4rem; border-color: var(--danger); color: var(--danger); }
+  .button.secondary.today-emergency-link:hover { border-color: var(--danger); background: var(--danger-soft); }
+  .today-emergency-link span { font-weight: 800; }
   .contact-card { display: grid; grid-template-columns: 3rem 1fr auto; align-items: center; gap: .8rem; }
   .contact-card.featured { background: linear-gradient(140deg, var(--surface), var(--primary-pale)); }
   .contact-avatar { display: grid; width: 3rem; height: 3rem; place-items: center; border-radius: .8rem; background: var(--primary-soft); color: var(--primary); font-weight: 800; }

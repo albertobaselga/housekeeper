@@ -2,6 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { syncRequestSchema } from '@casa-clara/contracts/schemas';
 import {
   accessCommandHandlers,
+  contactCommandHandlers,
   employmentCommandHandlers,
   foodCommandHandlers,
   processSyncBatch,
@@ -20,6 +21,7 @@ const handlers: CommandHandlers = {
   ...foodCommandHandlers,
   ...rhythmCommandHandlers,
   ...accessCommandHandlers,
+  ...contactCommandHandlers,
   expense: submitExpenseHandler
 };
 

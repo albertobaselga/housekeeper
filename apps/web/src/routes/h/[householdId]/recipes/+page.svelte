@@ -259,10 +259,10 @@
               {:else}
                 <form class="action-form" onsubmit={submitRecipeDetails}>
                   <label>Raciones base
-                    <input type="number" min="1" max="50" bind:value={draftServings} required />
+                    <input type="number" inputmode="numeric" enterkeyhint="next" min="1" max="50" bind:value={draftServings} required />
                   </label>
                   <label>Tiempo (minutos)
-                    <input type="number" min="1" max="1440" bind:value={draftMinutes} />
+                    <input type="number" inputmode="numeric" enterkeyhint="next" min="1" max="1440" bind:value={draftMinutes} />
                   </label>
                   {#each draftIngredients as row, index (index)}
                     <div class="ingredient-editor-row">
@@ -275,10 +275,10 @@
                         </select>
                       </label>
                       <label>Cantidad
-                        <input type="text" inputmode="decimal" bind:value={row.quantity} placeholder="1,5" required />
+                        <input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" bind:value={row.quantity} placeholder="1,5" required />
                       </label>
                       <label>Unidad
-                        <input type="text" bind:value={row.unit} maxlength="30" required />
+                        <input type="text" autocomplete="off" enterkeyhint="done" bind:value={row.unit} maxlength="30" required />
                       </label>
                       <label>Escalado
                         <select bind:value={row.scaling}>
@@ -340,10 +340,10 @@
             <form class="action-form" onsubmit={submitFood}>
               <h3>{foodId ? 'Editar alimento' : 'Nuevo alimento'}</h3>
               <label>Nombre
-                <input type="text" bind:value={foodName} maxlength="120" required />
+                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={foodName} maxlength="120" required />
               </label>
               <label>Sección de compra
-                <input type="text" bind:value={foodSection} maxlength="60" required />
+                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={foodSection} maxlength="60" required />
               </label>
               <fieldset class="inline-check-group">
                 <legend>Alérgenos de declaración obligatoria (UE)</legend>
@@ -396,10 +396,10 @@
             <form class="action-form" onsubmit={submitDiner}>
               <h3>{dinerId ? 'Editar comensal' : 'Nuevo comensal'}</h3>
               <label>Nombre
-                <input type="text" bind:value={dinerName} maxlength="120" required />
+                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={dinerName} maxlength="120" required />
               </label>
               <label>Notas
-                <input type="text" bind:value={dinerNotes} maxlength="500" />
+                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={dinerNotes} maxlength="500" />
               </label>
               <fieldset class="inline-check-group">
                 <legend>Restricciones por alérgeno</legend>

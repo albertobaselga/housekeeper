@@ -109,7 +109,7 @@
 
 <div class="editor-panel">
   <label for="wiki-title">Título</label>
-  <input id="wiki-title" type="text" bind:value={title} maxlength="200" />
+  <input id="wiki-title" type="text" autocomplete="off" enterkeyhint="next" bind:value={title} maxlength="200" />
 
   <span class="editor-content-label" id="wiki-content-label" aria-hidden="true">Contenido</span>
   <div class="editor-body">
@@ -155,11 +155,11 @@
   </div>
 
   <label for="wiki-summary">Resumen del cambio</label>
-  <input id="wiki-summary" type="text" bind:value={summary} maxlength="500" placeholder="Qué has cambiado y por qué" />
+  <input id="wiki-summary" type="text" autocomplete="off" enterkeyhint="next" bind:value={summary} maxlength="500" placeholder="Qué has cambiado y por qué" />
   <label for="wiki-tags">Etiquetas (separadas por comas)</label>
-  <input id="wiki-tags" type="text" bind:value={tags} />
+  <input id="wiki-tags" type="text" autocomplete="off" enterkeyhint="next" bind:value={tags} />
   <label for="wiki-aliases">Alias de búsqueda (separados por comas)</label>
-  <input id="wiki-aliases" type="text" bind:value={aliases} />
+  <input id="wiki-aliases" type="text" autocomplete="off" enterkeyhint="done" bind:value={aliases} />
   <p class="audit-note">Editas sobre la revisión {baseRevision}. Si alguien guardó otra más nueva, el servidor pedirá resolverlo a mano.</p>
   <button
     class="button primary"

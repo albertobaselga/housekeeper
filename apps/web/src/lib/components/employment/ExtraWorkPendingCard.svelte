@@ -146,7 +146,7 @@
               </select>
             </label>
             <label>Motivo
-              <input type="text" bind:value={resolveReason} maxlength="500" required placeholder="Motivo de la resolución" />
+              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={resolveReason} maxlength="500" required placeholder="Motivo de la resolución" />
             </label>
           </div>
           <div class="action-row">
@@ -174,11 +174,11 @@
           <input type="date" bind:value={registerDate} required />
         </label>
         <label>Minutos
-          <input type="number" bind:value={registerMinutes} min="1" max="1440" step="1" required />
+          <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerMinutes} min="1" max="1440" step="1" required />
         </label>
       </div>
       <label>Nota (opcional)
-        <input type="text" bind:value={registerNote} maxlength="500" placeholder="Qué se trabajó y por qué" />
+        <input type="text" autocomplete="off" enterkeyhint="done" bind:value={registerNote} maxlength="500" placeholder="Qué se trabajó y por qué" />
       </label>
       <div class="action-row">
         <button class="button primary small-button" type="submit" disabled={busy}>Registrar jornada extra</button>

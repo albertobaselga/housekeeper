@@ -144,6 +144,14 @@ INSERT INTO app.extra_work_transitions (
   ('aa610000-0000-4000-8000-000000000003', '${HOUSEHOLD}', '${E2E_SEED.extras.porResolver}', 2, 'requested', 'performed_pending_resolution',
    '${E2E_SEED.memberships.employee}', now() - interval '3 days' + interval '1 hour', 'Realizada sin aceptación previa E2E');
 
+-- Contactos reales del hogar: dos destacados (Emergencias + snapshot) y uno
+-- solo de directorio. El nombre del pediatra replica la fixture para que la
+-- batería offline (emergency-offline.dbe2e) siga afirmando el mismo texto.
+INSERT INTO app.contacts (id, household_id, name, role_label, phone, kind, featured, notes, position, created_by_membership_id) VALUES
+  ('${E2E_SEED.contacts.pediatra}', '${HOUSEHOLD}', 'Centro Pediátrico Olmo', 'Pediatría', '910 000 111', 'health', true, '', 0, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.contacts.vecina}', '${HOUSEHOLD}', 'Carmen · 2.º B', 'Vecina de confianza', '600 000 344', 'home', true, 'Tiene llaves de repuesto', 1, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.contacts.fontanero}', '${HOUSEHOLD}', 'Javier · Fontanería', 'Averías de agua', '600 000 122', 'service', false, '', 2, '${ADMIN_MEMBERSHIP}');
+
 -- Gasto de Ana pendiente de aprobación, dentro del mes en curso.
 INSERT INTO app.expenses (
   id, household_id, agreement_id, employee_membership_id, incurred_on,
