@@ -4,6 +4,7 @@ import {
   employmentCommandHandlers,
   foodCommandHandlers,
   processSyncBatch,
+  rhythmCommandHandlers,
   submitExpenseHandler,
   wikiCommandHandlers,
   type CommandHandlers
@@ -16,6 +17,7 @@ const handlers: CommandHandlers = {
   ...employmentCommandHandlers,
   ...wikiCommandHandlers,
   ...foodCommandHandlers,
+  ...rhythmCommandHandlers,
   expense: submitExpenseHandler
 };
 
