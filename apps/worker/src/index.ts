@@ -4,6 +4,13 @@ import { Pool } from "pg";
 
 import { loadWorkerConfig } from "./config.js";
 import { RENDER_RECEIPT_JOB, createRenderReceiptHandler } from "./handlers.js";
+import {
+  ICS_SYNC_JOB,
+  ROUTINE_DUE_JOB,
+  createIcsSyncHandler,
+  createRoutineDueHandler,
+  fetchIcsSource,
+} from "./ics.js";
 import { objectStore, putPrivateObject, sendEmail } from "./integrations.js";
 import { runOneJob, type JobHandler } from "./queue.js";
 import {
@@ -34,6 +41,14 @@ handlers[SETTLEMENT_DUE_JOB] = createSettlementDueHandler({
 });
 handlers[AUTOCONFIRM_JOB] = createAutoconfirmHandler({
   autoconfirm: reminderQueries.autoconfirmWeeklyReport,
+});
+handlers[ROUTINE_DUE_JOB] = createRoutineDueHandler({
+  sendEmail: (input) => sendEmail(config.smtp, input),
+});
+// Sin `persist`: el worker no tiene grant sobre app.ics_sources con el esquema
+// congelado; la migración 0009 añadirá la función de persistencia de alcance mínimo.
+handlers[ICS_SYNC_JOB] = createIcsSyncHandler({
+  fetchSource: (url) => fetchIcsSource(url),
 });
 
 const healthServer = createServer(async (request, response) => {
