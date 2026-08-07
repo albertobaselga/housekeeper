@@ -89,26 +89,10 @@ export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
   }
 }
 
-const ERROR_CODE_LABELS: Record<string, string> = {
-  week_already_reported: 'La semana ya fue enviada',
-  agreement_not_found: 'El acuerdo no existe o no es visible',
-  not_allowed: 'Tu rol no permite esta acción',
-  invalid_payload: 'El servidor rechazó el contenido',
-  extra_work_not_found: 'La jornada extra ya no existe',
-  extra_work_not_requested: 'La jornada ya no admite aceptación',
-  extra_work_not_resolvable: 'La jornada ya no admite resolución',
-  settlement_not_found: 'La liquidación ya no existe',
-  settlement_not_open: 'La liquidación ya no está abierta',
-  settlement_not_closed: 'La liquidación no está cerrada',
-  receipt_already_confirmed: 'El cobro ya estaba confirmado',
-  unsupported_period: 'El periodo no es un mes natural'
-};
-
-/** Etiqueta humana del código de error del servidor; conserva el código crudo si es desconocido. */
-export function describeErrorCode(code: string | undefined): string | null {
-  if (!code) return null;
-  return ERROR_CODE_LABELS[code] ?? code;
-}
+// El diccionario de códigos de error vive ahora en el módulo compartido
+// `$lib/offline/error-codes` (lo usa también el queueCommand unificado); se
+// reexporta aquí para no romper los imports existentes del triaje laboral.
+export { describeErrorCode } from '$lib/offline/error-codes';
 
 /**
  * Copia del envelope lista para reintentar: MISMOS hechos, operationId NUEVO

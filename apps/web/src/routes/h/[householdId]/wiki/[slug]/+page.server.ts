@@ -5,7 +5,13 @@ import { loadWikiPage } from '$lib/server/wiki.server';
 import { parseWikiMarkdown } from '$lib/wiki/markdown';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, depends }) => {
+  // PATRÓN DE REFERENCIA (latencia): este load declara la dependencia
+  // 'cc:wiki' para que las acciones de la página lo re-ejecuten con
+  // `invalidate('cc:wiki')` en vez de `invalidateAll()`. Así el ciclo de
+  // acción NO re-ejecuta el load del layout (que reconstruye y firma Ed25519
+  // el snapshot crítico en cada pasada): un solo viaje de datos, el mínimo.
+  depends('cc:wiki');
   const base = `/h/${encodeURIComponent(params.householdId)}/wiki`;
   const view = locals.user
     ? await loadWikiPage({ id: locals.user.id }, params.householdId, params.slug)

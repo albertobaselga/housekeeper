@@ -264,7 +264,10 @@ describe('constructores de envelopes de comida y rutinas', () => {
       { householdId: HOUSEHOLD, routineId: ROUTINE, dueOn: '2026-08-10' },
       OPTIONS
     );
-    expect(completion.aggregateType).toBe('routine_occurrence');
+    // 'routine', no 'routine_occurrence': el servidor solo registra el
+    // agregado 'routine' (el fix de 03dfe24; 'routine_occurrence' provocaba
+    // rejected/unsupported_aggregate).
+    expect(completion.aggregateType).toBe('routine');
     expect(completion.aggregateId).toBe(ROUTINE);
     expect(routineCompletePayloadSchema.parse(completion.payload)).toEqual({
       action: 'complete',

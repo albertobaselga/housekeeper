@@ -1,11 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import {
-    editWikiPage,
-    parseTermList,
-    queueWikiCommand,
-    type QueueOutcome
-  } from '$lib/wiki/commands';
+  import { editWikiPage, parseTermList } from '$lib/wiki/commands';
+  import { queueCommand, type QueueCommandResult } from '$lib/offline/queue-command';
   import { nextEditorTab, type EditorTab } from '$lib/wiki/editor-tabs';
   import MilkdownSurface from './MilkdownSurface.svelte';
 
@@ -31,7 +27,21 @@
     initialBody: string;
     initialTags?: string[];
     initialAliases?: string[];
-    onSaved: (outcome: QueueOutcome) => void;
+    /**
+     * Resultado VERAZ del encolado unificado más el borrador tal cual se
+     * envió: la página lo usa para pintar el contenido nuevo al instante
+     * (edición optimista) y reconciliarlo con el ACK del servidor.
+     */
+    onSaved: (
+      result: QueueCommandResult,
+      draft: {
+        operationId: string;
+        title: string;
+        bodyMarkdown: string;
+        tags: string[];
+        aliases: string[];
+      }
+    ) => void;
   } = $props();
 
   let title = $state(untrack(() => initialTitle));
@@ -73,19 +83,24 @@
       // del editor visual antes de construir el envelope.
       const flushed = surface?.currentMarkdown();
       if (typeof flushed === 'string') body = flushed;
-      const outcome = await queueWikiCommand(
-        editWikiPage({
-          householdId,
-          pageId,
-          baseRevision,
-          title,
-          bodyMarkdown: body,
-          summary,
-          tags: parseTermList(tags),
-          aliases: parseTermList(aliases)
-        })
-      );
-      onSaved(outcome);
+      const envelope = editWikiPage({
+        householdId,
+        pageId,
+        baseRevision,
+        title,
+        bodyMarkdown: body,
+        summary,
+        tags: parseTermList(tags),
+        aliases: parseTermList(aliases)
+      });
+      const result = await queueCommand(envelope);
+      onSaved(result, {
+        operationId: envelope.operationId,
+        title,
+        bodyMarkdown: body,
+        tags: parseTermList(tags),
+        aliases: parseTermList(aliases)
+      });
     } finally {
       saving = false;
     }

@@ -93,4 +93,29 @@ describe('visible sync states', () => {
     expect(deriveSyncState({ online: true, pendingCount: 0, conflict: true }).phase).toBe('conflict');
     expect(deriveSyncState({ online: true, pendingCount: 0, storageError: true }).phase).toBe('error');
   });
+
+  it('separa «pendiente de red» (ámbar) de «necesita tu decisión» (rojo con conteo)', () => {
+    // Pendiente de red: se resolverá solo, copy en clave de espera.
+    expect(deriveSyncState({ online: true, pendingCount: 1 })).toMatchObject({
+      phase: 'pending',
+      label: '1 cambio pendiente',
+      detail: 'Guardado en este dispositivo; falta confirmación del servidor.'
+    });
+    // Rechazado/conflicto: NO se reenviará solo; el conteo afina el copy.
+    expect(deriveSyncState({ online: true, pendingCount: 0, conflict: true, attentionCount: 1 })).toMatchObject({
+      phase: 'conflict',
+      label: 'Necesita tu decisión · 1',
+      detail: 'Hay 1 cambio rechazado o en conflicto que no se aplicará solo.'
+    });
+    expect(deriveSyncState({ online: true, pendingCount: 2, conflict: true, attentionCount: 3 })).toMatchObject({
+      phase: 'conflict',
+      label: 'Necesita tu decisión · 3',
+      detail: 'Hay 3 cambios rechazados o en conflicto que no se aplicarán solos.'
+    });
+    // Compatibilidad: conflict sin conteo sigue siendo rojo con copy genérico.
+    expect(deriveSyncState({ online: true, pendingCount: 0, conflict: true })).toMatchObject({
+      phase: 'conflict',
+      label: 'Necesita tu decisión'
+    });
+  });
 });
