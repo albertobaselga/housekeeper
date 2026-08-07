@@ -1,0 +1,171 @@
+import type {
+  CommandEnvelopeV1,
+  WikiPageCreatePayloadV1,
+  WikiPageEditPayloadV1,
+  WikiPageSetStatePayloadV1,
+  WikiSpaceCreatePayloadV1
+} from '@casa-clara/contracts';
+
+import { queueOutbox, listOutbox } from '$lib/offline/idb';
+import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
+import { flushOutbox, refreshSyncStatus } from '$lib/offline/sync';
+
+/**
+ * Constructores puros de envelopes para la wiki. Producen los payloads
+ * CONGELADOS del contrato; la validación zod vive en los tests y en el
+ * servidor, nunca en el bundle del navegador. `operationId`/`occurredAt`
+ * son inyectables para tests deterministas.
+ */
+
+interface EnvelopeOptions {
+  operationId?: string;
+  occurredAt?: string;
+}
+
+function trimmedOrUndefined(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/** "a, b , ,c" → ['a', 'b', 'c'] con el tope de 20 términos del contrato. */
+export function parseTermList(value: string): string[] {
+  return value
+    .split(',')
+    .map((term) => term.trim())
+    .filter((term) => term.length > 0)
+    .slice(0, 20);
+}
+
+function cleanTerms(terms: string[] | undefined): string[] | undefined {
+  const cleaned = terms?.map((term) => term.trim()).filter((term) => term.length > 0);
+  return cleaned && cleaned.length > 0 ? cleaned : undefined;
+}
+
+export function createWikiSpace(
+  input: { householdId: string; name: string; slug?: string; description?: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<WikiSpaceCreatePayloadV1> {
+  const slug = trimmedOrUndefined(input.slug);
+  const description = trimmedOrUndefined(input.description);
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'wiki_space',
+    payload: {
+      action: 'create',
+      name: input.name.trim(),
+      ...(slug ? { slug } : {}),
+      ...(description ? { description } : {})
+    } satisfies WikiSpaceCreatePayloadV1
+  }) as CommandEnvelopeV1<WikiSpaceCreatePayloadV1>;
+}
+
+export function createWikiPage(
+  input: {
+    householdId: string;
+    spaceId: string;
+    parentPageId?: string | null;
+    title: string;
+    bodyMarkdown: string;
+    tags?: string[];
+    aliases?: string[];
+    publish?: boolean;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<WikiPageCreatePayloadV1> {
+  const tags = cleanTerms(input.tags);
+  const aliases = cleanTerms(input.aliases);
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'wiki_page',
+    payload: {
+      action: 'create',
+      spaceId: input.spaceId,
+      ...(input.parentPageId ? { parentPageId: input.parentPageId } : {}),
+      title: input.title.trim(),
+      bodyMarkdown: input.bodyMarkdown,
+      ...(tags ? { tags } : {}),
+      ...(aliases ? { aliases } : {}),
+      ...(input.publish ? { publish: true } : {})
+    } satisfies WikiPageCreatePayloadV1
+  }) as CommandEnvelopeV1<WikiPageCreatePayloadV1>;
+}
+
+/**
+ * Nueva revisión de una página. `baseRevision` es la revisión mostrada al
+ * empezar la edición: viaja en el envelope (no en el payload) para que el
+ * servidor detecte conflictos y los resuelva una persona, nunca un merge.
+ */
+export function editWikiPage(
+  input: {
+    householdId: string;
+    pageId: string;
+    baseRevision: number;
+    title: string;
+    bodyMarkdown: string;
+    summary?: string;
+    tags?: string[];
+    aliases?: string[];
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<WikiPageEditPayloadV1> {
+  const summary = trimmedOrUndefined(input.summary);
+  const tags = cleanTerms(input.tags);
+  const aliases = cleanTerms(input.aliases);
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'wiki_page',
+    aggregateId: input.pageId,
+    baseRevision: input.baseRevision,
+    payload: {
+      action: 'edit',
+      pageId: input.pageId,
+      title: input.title.trim(),
+      bodyMarkdown: input.bodyMarkdown,
+      ...(summary ? { summary } : {}),
+      ...(tags ? { tags } : {}),
+      ...(aliases ? { aliases } : {})
+    } satisfies WikiPageEditPayloadV1
+  }) as CommandEnvelopeV1<WikiPageEditPayloadV1>;
+}
+
+export function setWikiPageState(
+  input: {
+    householdId: string;
+    pageId: string;
+    status?: 'draft' | 'published';
+    pinned?: boolean;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<WikiPageSetStatePayloadV1> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'wiki_page',
+    aggregateId: input.pageId,
+    payload: {
+      action: 'set_state',
+      pageId: input.pageId,
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.pinned !== undefined ? { pinned: input.pinned } : {})
+    } satisfies WikiPageSetStatePayloadV1
+  }) as CommandEnvelopeV1<WikiPageSetStatePayloadV1>;
+}
+
+export type QueueOutcome = 'synced' | 'queued';
+
+/**
+ * Encola el comando en el outbox (offline-first: siempre persiste primero) y
+ * dispara un flush inmediato hacia /api/v1/sync. Devuelve 'synced' si el
+ * servidor lo reconoció ya (el caller puede refrescar con `invalidateAll()`)
+ * o 'queued' si quedó pendiente de red.
+ */
+export async function queueWikiCommand(envelope: CommandEnvelopeV1): Promise<QueueOutcome> {
+  await queueOutbox(createOutboxRecord(envelope));
+  await refreshSyncStatus();
+  await flushOutbox();
+  const remaining = await listOutbox(envelope.householdId);
+  return remaining.some((record) => record.id === envelope.operationId) ? 'queued' : 'synced';
+}

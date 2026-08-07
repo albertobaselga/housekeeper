@@ -1,4 +1,12 @@
+import { loadWikiHome } from '$lib/server/wiki.server';
 import { getWikiFixture } from '$lib/server/fixtures.server';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = () => ({ wiki: getWikiFixture() });
+export const load: PageServerLoad = async ({ locals, params }) => {
+  const home = locals.user
+    ? await loadWikiHome({ id: locals.user.id }, params.householdId)
+    : null;
+  if (home) return { home, wiki: null };
+  // Sin base de datos (o sin membresía autorizada) la demo conserva la fixture.
+  return { home: null, wiki: getWikiFixture() };
+};
