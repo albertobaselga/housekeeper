@@ -85,7 +85,7 @@ export const settlementLines = [
       eyebrow: "Evento de trabajo extra · EW-109",
       title: "Domingo 23 de marzo",
       body: "Resuelta como compensación. No genera importe y suma un día al saldo de días a devolver.",
-      meta: ["Registrada por Ana", "Aprobada por Alberto", "Caduca el 23/06/2025"],
+      meta: ["Registrada por Ana", "Aprobada por Alberto", "Saldo permanente hasta su consumo"],
     },
   },
   {

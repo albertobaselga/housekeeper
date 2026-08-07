@@ -458,7 +458,7 @@ function renderPrimaryAction(isEmployee, isHelper) {
   }
   if (state.extraResolution) {
     const facts = getPendingExtraFacts();
-    return `<section class="card action-card"><div class="action-card-top"><span class="action-icon">${icon("check")}</span><div><h3>Jornada resuelta</h3><p>${state.extraResolution === "pay" ? `Se incluirán ${formatCurrency(facts.rate)} en la próxima liquidación abierta.` : `Se ha creado ${facts.compensationLabel} de descanso con aviso de caducidad.`}</p></div></div><button class="button secondary full" data-action="open-work-tab">Ver jornadas</button></section>`;
+    return `<section class="card action-card"><div class="action-card-top"><span class="action-icon">${icon("check")}</span><div><h3>Jornada resuelta</h3><p>${state.extraResolution === "pay" ? `Se incluirán ${formatCurrency(facts.rate)} en la próxima liquidación abierta.` : `Se ha creado ${facts.compensationLabel} de descanso permanente hasta su consumo.`}</p></div></div><button class="button secondary full" data-action="open-work-tab">Ver jornadas</button></section>`;
   }
   return `<section class="card action-card"><div class="action-card-top"><span class="action-icon">${icon("alert")}</span><div><h3>1 jornada por revisar</h3><p>Ana ha registrado trabajo en una libranza. Confirma cómo debe resolverse.</p></div></div><button class="button primary full" data-action="open-extra-review">Revisar jornada</button></section>`;
 }
@@ -641,7 +641,7 @@ function renderWorkTab() {
       <section class="card">
         <div class="card-header"><div><h2 class="card-title">Jornadas extra de marzo</h2><p class="card-kicker">Clasificadas según el acuerdo vigente en cada fecha</p></div><span class="chip success">3 resueltas</span></div>
         <div class="history-row"><span class="history-marker">${icon("check")}</span><div class="history-copy"><strong>Domingo 9 de marzo · libranza trabajada</strong><span>Registrada por Ana · aprobada por Alberto · resuelta como pago</span></div><span class="history-amount">+70,00 €</span></div>
-        <div class="history-row"><span class="history-marker">${icon("sun")}</span><div class="history-copy"><strong>Domingo 23 de marzo · libranza trabajada</strong><span>Compensada con 1 día libre · caduca el 23 de junio</span></div><span class="history-amount">+1 día</span></div>
+      <div class="history-row"><span class="history-marker">${icon("sun")}</span><div class="history-copy"><strong>Domingo 23 de marzo · libranza trabajada</strong><span>Compensada con 1 día libre · saldo permanente hasta su consumo</span></div><span class="history-amount">+1 día</span></div>
         <div class="history-row"><span class="history-marker">${icon("clock")}</span><div class="history-copy"><strong>Horas extraordinarias · 12 y 18 de marzo</strong><span>3 horas confirmadas · tarifa congelada de 12,00 €/h</span></div><span class="history-amount">+36,00 €</span></div>
       </section>
       <div class="alert info">${icon("info")}<div><strong>Confirmación semanal, no fichaje</strong><p>Ana registra lo que ocurrió y la familia confirma. La auto-confirmación por silencio y sus avisos formarían parte del backend de producción.</p></div></div>
@@ -746,10 +746,10 @@ function renderBalancesTab() {
       <div class="card-header"><div><h2 class="card-title">Movimientos de saldos</h2><p class="card-kicker">Libro semilla de marzo; las tarjetas no se recalculan en esta demo</p></div><button class="button small secondary" data-action="export-balances">${icon("download")}CSV</button></div>
       <div class="history-row"><span class="history-marker">${icon("sun")}</span><div class="history-copy"><strong>Devengo de vacaciones · marzo</strong><span>Asiento automático · 31 mar 2025</span></div><span class="history-amount">+2,5 días</span></div>
       <div class="history-row"><span class="history-marker">${icon("calendar")}</span><div class="history-copy"><strong>Vacaciones disfrutadas</strong><span>Solicitud aprobada · 3–4 mar 2025</span></div><span class="history-amount">−2 días</span></div>
-      <div class="history-row"><span class="history-marker">${icon("clock")}</span><div class="history-copy"><strong>Libranza trabajada · compensación</strong><span>Evento EW-109 · caduca el 23 jun 2025</span></div><span class="history-amount">+1 día</span></div>
+      <div class="history-row"><span class="history-marker">${icon("clock")}</span><div class="history-copy"><strong>Libranza trabajada · compensación</strong><span>Evento EW-109 · sin caducidad</span></div><span class="history-amount">+1 día</span></div>
       <div class="history-row"><span class="history-marker">${icon("wallet")}</span><div class="history-copy"><strong>Cuota de anticipo · marzo</strong><span>Plan AD-12 · saldo anterior 300,00 €</span></div><span class="history-amount">−100,00 €</span></div>
     </section>
-    <div class="alert warning mt-16">${icon("alert")}<div><strong>Dato semilla: este día caducaba el 23 de junio de 2025</strong><p>En producción se avisaría con 30 días de antelación y cada cambio generaría un asiento append-only.</p></div></div>`;
+    <div class="alert warning mt-16">${icon("alert")}<div><strong>El saldo de compensación no caduca</strong><p>Permanece hasta su consumo o hasta un ajuste explícito, y cada cambio genera un asiento append-only.</p></div></div>`;
 }
 
 function renderMenu() {
@@ -1324,7 +1324,7 @@ function openExtraReview() {
   showModal({
     title: facts.classificationLabel,
     subtitle: `${facts.dateLabel} · ${facts.timeLabel} · registrada por ${escapeHtml(state.pendingExtra.registeredBy || "Ana")}`,
-    body: `<div class="origin-intro"><div class="eyebrow">Clasificación automática de demostración</div><h3>${facts.quantityLabel} · ${facts.classificationLabel.toLocaleLowerCase("es")}</h3><p>El prototipo cruza la fecha con el patrón semanal del acuerdo vigente. Nota registrada: ${escapeHtml(state.pendingExtra.note || "sin nota")}</p></div><div class="section-heading"><div><h2>¿Cómo debe resolverse?</h2><p>La tarifa se congelará ahora y quedará vinculada a este evento.</p></div></div><div class="stack-8"><button class="card more-card" data-action="choose-extra-resolution" data-resolution="pay"><span class="space-icon">${icon("wallet")}</span><span><h2>Pagar ${formatCurrency(facts.rate)}</h2><p>Quedará preparado para la próxima liquidación abierta</p></span>${icon("chevron")}</button><button class="card more-card" data-action="choose-extra-resolution" data-resolution="compensation"><span class="space-icon">${icon("sun")}</span><span><h2>Compensar con ${facts.compensationLabel}</h2><p>Creará un apunte local con caducidad y aviso previo</p></span>${icon("chevron")}</button></div>`,
+    body: `<div class="origin-intro"><div class="eyebrow">Clasificación automática de demostración</div><h3>${facts.quantityLabel} · ${facts.classificationLabel.toLocaleLowerCase("es")}</h3><p>El prototipo cruza la fecha con el patrón semanal del acuerdo vigente. Nota registrada: ${escapeHtml(state.pendingExtra.note || "sin nota")}</p></div><div class="section-heading"><div><h2>¿Cómo debe resolverse?</h2><p>La tarifa se congelará ahora y quedará vinculada a este evento.</p></div></div><div class="stack-8"><button class="card more-card" data-action="choose-extra-resolution" data-resolution="pay"><span class="space-icon">${icon("wallet")}</span><span><h2>Pagar ${formatCurrency(facts.rate)}</h2><p>Quedará preparado para la próxima liquidación abierta</p></span>${icon("chevron")}</button><button class="card more-card" data-action="choose-extra-resolution" data-resolution="compensation"><span class="space-icon">${icon("sun")}</span><span><h2>Compensar con ${facts.compensationLabel}</h2><p>Creará un saldo permanente hasta su consumo</p></span>${icon("chevron")}</button></div>`,
     footer: '<button class="button secondary" data-action="close-modal">Resolver más tarde</button>',
   });
 }
@@ -1704,7 +1704,7 @@ function completeExtraResolution(resolution) {
   saveState();
   closeModal();
   renderRoute();
-  showToast(resolution === "pay" ? "Resuelta como pago" : "Resuelta como descanso", resolution === "pay" ? `${formatCurrency(facts.rate)} quedan preparados para la próxima liquidación abierta.` : `Se ha creado ${facts.compensationLabel} local con aviso de caducidad.`);
+  showToast(resolution === "pay" ? "Resuelta como pago" : "Resuelta como descanso", resolution === "pay" ? `${formatCurrency(facts.rate)} quedan preparados para la próxima liquidación abierta.` : `Se ha creado ${facts.compensationLabel} permanente hasta su consumo.`);
 }
 
 function completeReceiptConfirmation() {

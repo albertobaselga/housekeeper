@@ -48,7 +48,7 @@
 |---:|:---:|---|
 | 1 | Parcial | Marzo permanece fijo al editar el acuerdo, pero no hay motor temporal general. |
 | 2 | Parcial | La línea semilla 09/03 tiene tarifa y origen navegable; nuevas extras no alimentan la liquidación. |
-| 3 | Parcial | Existe el ejemplo 0 €/+1 día; saldo, caducidad y aviso no nacen de un libro real. |
+| 3 adaptado | Parcial | Existe el ejemplo 0 €/+1 día permanente; el saldo aún no nace de un libro real en la demo heredada. |
 | 4 | Parcial | La excepción pendiente no desaparece localmente; faltan aprobación y máquina de estados completas. |
 | 5 | No | Hoy muestra una liquidación histórica, no devengo proyectado del mes en curso. |
 | 6 | No | No hay cierre real, vencimiento generado, evento ni aviso D-3. |
