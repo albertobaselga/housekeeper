@@ -191,6 +191,8 @@ export interface ExpenseSubmitPayloadV1 {
   incurredOn: ISODate;
   description: string;
   amountCents: MoneyCents;
+  /** Objeto ya subido y escaneado (ruta de adjuntos) que actúa de justificante. */
+  receiptStorageObjectId?: UUID;
 }
 
 /** `aggregateType: "time_entry"` — la empleada envía su semana con sus entradas. */

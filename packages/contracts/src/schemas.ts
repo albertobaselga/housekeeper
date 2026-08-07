@@ -83,6 +83,7 @@ export const expenseSubmitPayloadSchema = z.object({
   incurredOn: isoDateSchema,
   description: z.string().trim().min(1).max(500),
   amountCents: moneyCentsSchema.refine((value) => BigInt(value) > 0n, "El importe debe ser positivo"),
+  receiptStorageObjectId: uuidSchema.optional(),
 });
 
 const isoTimeSchema = z.string().regex(/^\d{2}:\d{2}$/);
