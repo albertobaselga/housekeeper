@@ -36,4 +36,6 @@ export interface AppContext {
   criticalSnapshot: CriticalSnapshotV1;
   /** Clave pública Ed25519 (raw, base64url) para verificar snapshots offline. */
   snapshotPublicKey: string;
+  /** Entorno declarado solo-sintético: el AppShell muestra un banner discreto. */
+  synthetic?: boolean;
 }

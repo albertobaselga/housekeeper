@@ -22,7 +22,8 @@ export const load: LayoutServerLoad = ({ locals, params }) => {
     locale: 'es-ES',
     timeZone: 'Europe/Madrid',
     criticalSnapshot: buildCriticalSnapshot(household.id, locals.user.membershipId),
-    snapshotPublicKey: getSnapshotKeys().publicKeyRaw
+    snapshotPublicKey: getSnapshotKeys().publicKeyRaw,
+    synthetic: locals.syntheticOnly
   };
   return { context };
 };

@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 
-import { AuthorizationError, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { mondayOf, weekDays, dayLabel } from '$lib/food/dates';
 import { getContactsFixture } from './fixtures.server';
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:handover');
 
 export type HandoverAudience = 'helper' | 'family';
 
@@ -23,7 +25,9 @@ export const HANDOVER_VERSION = 1;
 const ALLOWED_ENTRIES: readonly RegExp[] = [
   /^manifest\.json$/,
   /^wiki\/[a-z0-9]+(?:-[a-z0-9]+)*\/_space\.md$/,
-  /^wiki\/[a-z0-9]+(?:-[a-z0-9]+)*\/[a-z0-9]+(?:-[a-z0-9]+)*\.md$/,
+  // Páginas wiki a cualquier profundidad: la jerarquía viaja como carpetas
+  // (padre = carpeta con index.md), el formato exacto del importador.
+  /^wiki\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)+\.md$/,
   /^rutinas\.md$/,
   /^menu-semana\.md$/,
   /^contactos\.md$/
@@ -66,6 +70,8 @@ function yamlList(values: readonly string[]): string {
 }
 
 interface WikiExportRow {
+  pageId: string;
+  parentPageId: string | null;
   spaceSlug: string;
   spaceName: string;
   spaceDescription: string;
@@ -77,17 +83,55 @@ interface WikiExportRow {
 }
 
 /**
- * Página wiki como Markdown con front-matter compatible con el importador
- * (packages/db/scripts/wiki-import.mjs): claves title/slug/tags/aliases; el
- * espacio viaja en la ruta `wiki/<espacio>/` y en el `_space.md` de la carpeta,
- * exactamente donde el importador lo espera (round-trip sin pérdidas).
+ * Rutas del árbol wiki en el formato EXACTO del importador
+ * (packages/db/scripts/wiki-import.mjs): una página con hijas se convierte en
+ * carpeta `<slug>/` con su contenido en `index.md`, y las hijas cuelgan dentro
+ * (a cualquier profundidad); una hoja es `<slug>.md`. El slug del front-matter
+ * manda sobre el nombre de fichero, así que el `index.md` conserva su slug
+ * real. Una página cuyo ancestro no se exporta (borrador/archivado) se ancla a
+ * su ancestro exportado más cercano o a la raíz del espacio.
+ */
+function buildWikiPaths(rows: readonly WikiExportRow[]): Map<string, string> {
+  const rowById = new Map(rows.map((row) => [row.pageId, row]));
+  const parents = new Set(
+    rows
+      .map((row) => row.parentPageId)
+      .filter((id): id is string => id !== null && rowById.has(id))
+  );
+  const paths = new Map<string, string>();
+  for (const row of rows) {
+    const segments: string[] = [];
+    const visited = new Set<string>([row.pageId]);
+    let ancestor = row.parentPageId ? rowById.get(row.parentPageId) : undefined;
+    while (ancestor && !visited.has(ancestor.pageId)) {
+      visited.add(ancestor.pageId);
+      segments.unshift(ancestor.slug);
+      ancestor = ancestor.parentPageId ? rowById.get(ancestor.parentPageId) : undefined;
+    }
+    const dir = [`wiki/${row.spaceSlug}`, ...segments].join('/');
+    paths.set(
+      row.pageId,
+      parents.has(row.pageId) ? `${dir}/${row.slug}/index.md` : `${dir}/${row.slug}.md`
+    );
+  }
+  return paths;
+}
+
+/**
+ * Página wiki como Markdown con front-matter compatible con el importador:
+ * claves title/slug/tags/aliases; el espacio viaja en la ruta `wiki/<espacio>/`
+ * y en el `_space.md` de la carpeta, y la jerarquía padre→hija en la estructura
+ * de carpetas (round-trip sin pérdidas).
  */
 function renderWikiPage(row: WikiExportRow): string {
   const lines = ['---', `title: ${yamlScalar(row.title)}`, `slug: ${yamlScalar(row.slug)}`];
   if (row.tags.length > 0) lines.push(`tags: ${yamlList(row.tags)}`);
   if (row.aliases.length > 0) lines.push(`aliases: ${yamlList(row.aliases)}`);
   lines.push('---', '');
-  return `${lines.join('\n')}${row.bodyMarkdown}\n`;
+  // Una sola nueva línea final: así un export→import→export repetido es
+  // estable (el hash de contenido del importador no cambia entre ciclos).
+  const body = row.bodyMarkdown.endsWith('\n') ? row.bodyMarkdown : `${row.bodyMarkdown}\n`;
+  return `${lines.join('\n')}${body}`;
 }
 
 function renderSpaceFile(name: string, description: string): string {
@@ -203,7 +247,9 @@ export async function buildHandoverExport(
       const householdName = household.rows[0]?.name ?? 'Hogar';
 
       const wikiResult = await client.query<WikiExportRow>(
-        `select space.slug as "spaceSlug",
+        `select page.id as "pageId",
+                page.parent_page_id as "parentPageId",
+                space.slug as "spaceSlug",
                 space.name as "spaceName",
                 space.description as "spaceDescription",
                 page.current_slug as "slug",
@@ -270,12 +316,13 @@ export async function buildHandoverExport(
       };
 
       const seenSpaces = new Set<string>();
+      const wikiPaths = buildWikiPaths(wikiResult.rows);
       for (const row of wikiResult.rows) {
         if (!seenSpaces.has(row.spaceSlug)) {
           seenSpaces.add(row.spaceSlug);
           put(`wiki/${row.spaceSlug}/_space.md`, renderSpaceFile(row.spaceName, row.spaceDescription));
         }
-        put(`wiki/${row.spaceSlug}/${row.slug}.md`, renderWikiPage(row));
+        put(wikiPaths.get(row.pageId)!, renderWikiPage(row));
       }
       put('rutinas.md', renderRoutines(routines, audience));
       put('menu-semana.md', renderMenuWeek(menuResult.rows, days));
@@ -303,7 +350,7 @@ export async function buildHandoverExport(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('handover export unavailable', cause);
+      log.error('handover export unavailable', { code: errorCode(cause) });
     }
     return null;
   }
@@ -329,7 +376,7 @@ export async function canDownloadHandover(
     );
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('handover gate unavailable', cause);
+      log.error('handover gate unavailable', { code: errorCode(cause) });
     }
     return false;
   }

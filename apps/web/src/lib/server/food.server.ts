@@ -1,11 +1,13 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { addQuantities, fromHundredths, scaleQuantity, toHundredths } from '$lib/food/quantities';
 import { weekDays } from '$lib/food/dates';
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:food');
 
 const FAMILY_ROLES: readonly Role[] = ['family_admin', 'family_member'];
 const SHOPPING_WRITER_ROLES: readonly Role[] = ['family_admin', 'family_member', 'employee_live_in'];
@@ -419,7 +421,7 @@ export async function loadMenuWeek(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('menu week unavailable', cause);
+      log.error('menu week unavailable', { code: errorCode(cause) });
     }
     return null;
   }
@@ -471,7 +473,7 @@ export async function loadRecipe(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('recipe unavailable', cause);
+      log.error('recipe unavailable', { code: errorCode(cause) });
     }
     return null;
   }
@@ -668,7 +670,7 @@ export async function loadShoppingList(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('shopping list unavailable', cause);
+      log.error('shopping list unavailable', { code: errorCode(cause) });
     }
     return null;
   }
@@ -798,7 +800,7 @@ export async function loadFoodCatalog(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('food catalog unavailable', cause);
+      log.error('food catalog unavailable', { code: errorCode(cause) });
     }
     return null;
   }
@@ -873,7 +875,7 @@ export async function loadRoutines(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('routines unavailable', cause);
+      log.error('routines unavailable', { code: errorCode(cause) });
     }
     return null;
   }

@@ -5,6 +5,8 @@ declare global {
     interface Locals {
       session: Session | null;
       user: DemoUser | null;
+      /** ALLOW_SYNTHETIC_DATA_ONLY === 'true': entorno declarado solo-sintético. */
+      syntheticOnly: boolean;
     }
 
     interface Error {

@@ -24,5 +24,8 @@ export default defineConfig({
     globalSetup: ["./test-support/global-setup.mjs"],
     fileParallelism: false,
     sequence: { sequencer: AlphabeticalSequencer },
+    // Evidencia JUnit para CI (assert-junit-nonempty.py) sin tocar la salida normal.
+    reporters: ["default", "junit"],
+    outputFile: { junit: "../../artifacts/unit/server.xml" },
   },
 });

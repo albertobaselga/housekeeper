@@ -34,6 +34,14 @@ if (process.env.ENABLE_DEMO_PASSWORD_AUTH !== 'true') {
   throw new Error('Las semillas demo requieren ENABLE_DEMO_PASSWORD_AUTH=true');
 }
 
+// Control 9 del baseline: las cuentas demo solo se siembran en entornos
+// declarados solo-sintéticos; en cualquier otro entorno esto es un incidente.
+if (process.env.ALLOW_SYNTHETIC_DATA_ONLY !== 'true') {
+  throw new Error(
+    'Las semillas demo requieren ALLOW_SYNTHETIC_DATA_ONLY=true: este entorno debe declararse solo-sintético'
+  );
+}
+
 const authPool = new pg.Pool({ connectionString: requireEnv('DATABASE_AUTH_URL'), max: 2 });
 const appPool = new pg.Pool({ connectionString: requireEnv('SEED_DATABASE_URL'), max: 2 });
 

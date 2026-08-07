@@ -30,6 +30,8 @@ jobs:
         run: scripts/ci/run-tests-nonempty.sh pnpm test:e2e
       - name: Run non-empty axe suite
         run: scripts/ci/run-tests-nonempty.sh pnpm test:a11y
+      - name: Assert JUnit e2e evidence is non-empty
+        run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/e2e/*.xml'
       - name: Upload browser evidence
         if: always()
         uses: actions/upload-artifact@v4

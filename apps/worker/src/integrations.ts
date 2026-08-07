@@ -65,12 +65,44 @@ export async function putPrivateObject(
   await client.send(new PutObjectCommand({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }));
 }
 
-export async function sendEmail(
-  config: WorkerConfig["smtp"],
-  input: { to: string; subject: string; text: string },
-): Promise<void> {
+export interface OutgoingEmail {
+  to: string;
+  subject: string;
+  text: string;
+}
+
+/** Dominios de prueba admitidos cuando el entorno es solo-sintético. */
+export const SYNTHETIC_EMAIL_DOMAINS = [".demo", ".test", ".example", ".invalid"] as const;
+
+/** Control 9 del baseline: ALLOW_SYNTHETIC_DATA_ONLY=true marca el entorno. */
+export function isSyntheticOnly(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.ALLOW_SYNTHETIC_DATA_ONLY === "true";
+}
+
+/**
+ * Política de correo en entorno sintético: el asunto queda marcado con
+ * [SINTÉTICO] y solo se admiten destinatarios cuyo dominio termine en un TLD
+ * reservado de prueba (.demo/.test/.example/.invalid, RFC 2606/6761). Un
+ * destinatario real se rechaza con un error claro que NO incluye la dirección.
+ * Con el flag apagado la entrada pasa intacta.
+ */
+export function applySyntheticEmailPolicy(input: OutgoingEmail, syntheticOnly: boolean): OutgoingEmail {
+  if (!syntheticOnly) return input;
+  const at = input.to.lastIndexOf("@");
+  const domain = at >= 0 ? input.to.slice(at + 1).trim().toLowerCase() : "";
+  if (domain === "" || !SYNTHETIC_EMAIL_DOMAINS.some((tld) => domain.endsWith(tld))) {
+    throw new Error(
+      "Entorno solo-sintético (ALLOW_SYNTHETIC_DATA_ONLY=true): destinatario rechazado; " +
+        `solo se admiten dominios de prueba (${SYNTHETIC_EMAIL_DOMAINS.join(", ")})`,
+    );
+  }
+  return { ...input, subject: `[SINTÉTICO] ${input.subject}` };
+}
+
+export async function sendEmail(config: WorkerConfig["smtp"], input: OutgoingEmail): Promise<void> {
+  const guarded = applySyntheticEmailPolicy(input, isSyntheticOnly());
   const transport = nodemailer.createTransport({ host: config.host, port: config.port, secure: false });
-  await transport.sendMail({ from: config.from, ...input });
+  await transport.sendMail({ from: config.from, ...guarded });
 }
 
 export async function sendWebPush(input: {

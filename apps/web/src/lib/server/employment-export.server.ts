@@ -4,7 +4,7 @@ import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-import { AuthorizationError, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
 import type {
   AdvanceRow,
@@ -16,6 +16,8 @@ import type {
   WeeklyReportRow
 } from '$lib/employment/model';
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:employment-export');
 
 export const EMPLOYMENT_EXPORT_VERSION = 1;
 
@@ -728,7 +730,7 @@ export async function buildEmploymentExport(
     });
   } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      console.error('employment export unavailable', cause);
+      log.error('employment export unavailable', { code: errorCode(cause) });
     }
     return null;
   }
