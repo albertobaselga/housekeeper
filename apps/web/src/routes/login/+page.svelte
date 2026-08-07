@@ -22,6 +22,19 @@
       <p class="form-error" role="alert">{form.message}</p>
     {/if}
 
+    {#if data.mode === 'magic-link'}
+      {#if form?.sent}
+        <p class="demo-note" role="status"><strong>Enlace enviado.</strong> Si el correo pertenece a este hogar, recibirás un enlace de acceso válido durante 10 minutos.</p>
+      {:else}
+        <form method="POST" action="?/magiclink" class="magic-form" use:enhance>
+          <label for="magic-email">Correo del hogar</label>
+          <input id="magic-email" name="email" type="email" autocomplete="email" required placeholder="tu@correo.es" />
+          <input type="hidden" name="next" value={data.next ?? ''} />
+          <button class="account-card" type="submit"><span class="account-copy"><strong>Enviarme un enlace de acceso</strong><span>Sin contraseñas: el enlace caduca en 10 minutos.</span></span><span class="account-arrow" aria-hidden="true">→</span></button>
+        </form>
+      {/if}
+    {/if}
+
     <div class="account-grid" aria-label="Cuentas demo">
       {#each data.accounts as account}
         <form method="POST" use:enhance={() => {

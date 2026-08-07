@@ -8,7 +8,10 @@ import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = ({ locals, params }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  const household = getHousehold(params.householdId);
+  const household =
+    getHousehold(params.householdId) ??
+    locals.user.households?.find((candidate) => candidate.id === params.householdId) ??
+    null;
   if (!household || !locals.user.householdIds.includes(household.id)) error(404, 'Hogar no encontrado');
 
   const context: AppContext = {

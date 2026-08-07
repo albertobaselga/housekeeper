@@ -9,6 +9,8 @@ export interface DemoUser {
   email: string;
   role: Role;
   householdIds: string[];
+  /** Resúmenes de hogar leídos de la base de datos en modo de autenticación real. */
+  households?: HouseholdSummary[];
 }
 
 export interface Session {

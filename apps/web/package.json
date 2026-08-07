@@ -8,6 +8,7 @@
     "build": "vite build",
     "verify:bundle": "node scripts/verify-today-bundle.mjs",
     "preview": "vite preview",
+    "seed:demo": "node scripts/seed-demo-users.mjs",
     "start": "node build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -18,12 +19,15 @@
     "@casa-clara/contracts": "workspace:*",
     "@casa-clara/domain": "workspace:*",
     "@casa-clara/server": "workspace:*",
+    "better-auth": "1.6.26",
+    "nodemailer": "9.0.4",
     "pg": "8.22.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "5.5.7",
     "@sveltejs/kit": "2.70.2",
     "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "@types/nodemailer": "8.0.1",
     "@types/pg": "8.20.4",
     "fake-indexeddb": "6.2.5",
     "svelte": "5.56.8",
