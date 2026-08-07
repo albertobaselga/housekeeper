@@ -457,8 +457,40 @@
   .wiki-article footer { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: .8rem; color: var(--ink-faint); font-size: .7rem; }
   .editor-panel { display: grid; gap: .65rem; margin-top: 1rem; }
   .editor-panel label { font-size: .78rem; font-weight: 750; }
-  .editor-panel textarea { width: 100%; resize: vertical; border: 1px solid var(--line-strong); border-radius: .7rem; background: white; padding: .8rem; color: var(--ink); line-height: 1.55; }
+  .editor-panel textarea, .editor-panel input[type="text"] { width: 100%; resize: vertical; border: 1px solid var(--line-strong); border-radius: .7rem; background: white; padding: .8rem; color: var(--ink); line-height: 1.55; }
   .file-field { display: grid; gap: .35rem; border: 1px dashed var(--line-strong); border-radius: .7rem; padding: .75rem; }
+
+  .wiki-pinned { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: .6rem; }
+  .wiki-pinned > a { display: grid; gap: .2rem; border: 1px solid var(--line); border-radius: .8rem; background: var(--surface); padding: .75rem; text-decoration: none; }
+  .wiki-pinned > a:hover { border-color: var(--primary); }
+  .wiki-pinned small { color: var(--accent); font-size: .66rem; font-weight: 800; text-transform: uppercase; }
+  .wiki-pinned span { color: var(--ink-soft); font-size: .7rem; }
+  .wiki-space { margin-top: 1rem; }
+  .wiki-space h3 { font-size: .9rem; }
+  .wiki-tree { display: grid; gap: .35rem; margin: .5rem 0 0; padding: 0; list-style: none; }
+  .wiki-tree .wiki-tree { margin-left: 1rem; border-left: 1px solid var(--line); padding-left: .75rem; }
+  .wiki-node-row { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
+  .wiki-node-row > a { display: grid; text-decoration: none; }
+  .wiki-node-row > a small { color: var(--ink-soft); font-size: .68rem; }
+  .wiki-recent { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
+  .wiki-recent a { display: grid; text-decoration: none; }
+  .wiki-recent small { color: var(--ink-soft); font-size: .68rem; }
+  .wiki-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
+  .wiki-markdown { display: grid; gap: .8rem; margin-top: .5rem; line-height: 1.6; }
+  .wiki-markdown ul, .wiki-markdown ol { margin: 0; padding-left: 1.3rem; }
+  .wiki-markdown code { border-radius: .3rem; background: var(--primary-pale, var(--surface)); padding: .05rem .3rem; font-size: .85em; }
+  .wiki-terms { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: 1.2rem; }
+  .wiki-terms .status-chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); }
+  .wiki-history summary { cursor: pointer; font-weight: 750; }
+  .wiki-history h3 { margin-top: 1rem; font-size: .8rem; }
+  .wiki-revisions { display: grid; gap: .45rem; margin: .8rem 0 0; padding: 0; list-style: none; }
+  .wiki-revisions li { display: grid; border-top: 1px solid var(--line); padding-top: .45rem; font-size: .8rem; }
+  .wiki-revisions span, .wiki-revisions small { color: var(--ink-soft); font-size: .72rem; }
+  .wiki-diff { overflow-x: auto; margin-top: .6rem; border: 1px solid var(--line); border-radius: .7rem; padding: .7rem; font-size: .74rem; line-height: 1.5; }
+  .wiki-diff span { display: block; white-space: pre-wrap; }
+  .wiki-diff span.added { background: var(--success-soft); color: var(--success); }
+  .wiki-diff span.removed { background: var(--warning-soft); color: var(--warning); text-decoration: line-through; }
+  .inline-check { display: flex; align-items: center; gap: .45rem; font-size: .78rem; font-weight: 750; }
 
   .search-page { max-width: 58rem; }
   .search-form { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: .65rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: .55rem; box-shadow: var(--shadow-sm); }
@@ -473,6 +505,8 @@
   .search-results > a:hover { border-color: var(--primary); }
   .search-results > a > span:nth-child(2) { display: grid; }
   .result-type { color: var(--accent); font-size: .68rem; font-weight: 800; text-transform: uppercase; }
+  .search-results h3 { margin-top: .8rem; font-size: .8rem; }
+  .search-results mark { border-radius: .25rem; background: var(--warning-soft); color: inherit; padding: 0 .1rem; }
 
   .routine-progress { display: grid; grid-template-columns: 1fr minmax(12rem, 1.5fr) auto; align-items: center; gap: 1rem; margin-bottom: 1rem; }
   .routine-progress progress { width: 100%; height: .55rem; overflow: hidden; border: 0; border-radius: 999px; background: var(--primary-soft); }

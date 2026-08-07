@@ -1,61 +1,80 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
-  import { queueOutbox, saveOfflineBlob } from '$lib/offline/idb';
-  import { refreshSyncStatus } from '$lib/offline/sync';
+  import {
+    editWikiPage,
+    parseTermList,
+    queueWikiCommand,
+    type QueueOutcome
+  } from '$lib/wiki/commands';
 
+  // Editor route-lazy: solo se importa dinámicamente desde la página de wiki.
+  // Al guardar construye el envelope `edit` del contrato con baseRevision =
+  // la revisión mostrada al abrir el editor, y lo encola offline-first.
   let {
     householdId,
     pageId,
-    initialValue,
+    baseRevision,
+    initialTitle,
+    initialBody,
+    initialTags = [],
+    initialAliases = [],
     onSaved
   }: {
     householdId: string;
     pageId: string;
-    initialValue: string;
-    onSaved: () => void;
+    baseRevision: number;
+    initialTitle: string;
+    initialBody: string;
+    initialTags?: string[];
+    initialAliases?: string[];
+    onSaved: (outcome: QueueOutcome) => void;
   } = $props();
 
-  let value = $state(untrack(() => initialValue));
-  let attachment = $state<File | null>(null);
+  let title = $state(untrack(() => initialTitle));
+  let body = $state(untrack(() => initialBody));
+  let summary = $state('');
+  let tags = $state(untrack(() => initialTags.join(', ')));
+  let aliases = $state(untrack(() => initialAliases.join(', ')));
   let saving = $state(false);
 
   async function save(): Promise<void> {
     saving = true;
-    const operationId = crypto.randomUUID();
-    let blobId: string | null = null;
-
-    if (attachment) {
-      blobId = crypto.randomUUID();
-      await saveOfflineBlob({
-        id: blobId,
-        householdId,
-        contentType: attachment.type || 'application/octet-stream',
-        size: attachment.size,
-        createdAt: new Date().toISOString(),
-        blob: attachment
-      });
+    try {
+      const outcome = await queueWikiCommand(
+        editWikiPage({
+          householdId,
+          pageId,
+          baseRevision,
+          title,
+          bodyMarkdown: body,
+          summary,
+          tags: parseTermList(tags),
+          aliases: parseTermList(aliases)
+        })
+      );
+      onSaved(outcome);
+    } finally {
+      saving = false;
     }
-
-    await queueOutbox(createOutboxRecord(createCommandEnvelope({
-      operationId,
-      householdId,
-      aggregateType: 'wiki_page',
-      payload: { pageId, body: value, blobId }
-    })));
-    await refreshSyncStatus();
-    saving = false;
-    onSaved();
   }
 </script>
 
 <div class="editor-panel">
-  <label for="wiki-body">Contenido</label>
-  <textarea id="wiki-body" rows="10" bind:value></textarea>
-  <label class="file-field" for="wiki-attachment">
-    <span>Adjunto opcional</span>
-    <input id="wiki-attachment" type="file" onchange={(event) => attachment = event.currentTarget.files?.[0] ?? null} />
-    <small>Se conserva en el almacén local de blobs hasta que el servidor confirme el cambio.</small>
-  </label>
-  <button class="button primary" type="button" disabled={saving || !value.trim()} onclick={() => void save()}>{saving ? 'Guardando…' : 'Guardar en este dispositivo'}</button>
+  <label for="wiki-title">Título</label>
+  <input id="wiki-title" type="text" bind:value={title} maxlength="200" />
+  <label for="wiki-body">Contenido (Markdown)</label>
+  <textarea id="wiki-body" rows="12" bind:value={body}></textarea>
+  <label for="wiki-summary">Resumen del cambio</label>
+  <input id="wiki-summary" type="text" bind:value={summary} maxlength="500" placeholder="Qué has cambiado y por qué" />
+  <label for="wiki-tags">Etiquetas (separadas por comas)</label>
+  <input id="wiki-tags" type="text" bind:value={tags} />
+  <label for="wiki-aliases">Alias de búsqueda (separados por comas)</label>
+  <input id="wiki-aliases" type="text" bind:value={aliases} />
+  <p class="audit-note">Editas sobre la revisión {baseRevision}. Si alguien guardó otra más nueva, el servidor pedirá resolverlo a mano.</p>
+  <button
+    class="button primary"
+    type="button"
+    disabled={saving || !title.trim() || !body.trim()}
+    onclick={() => void save()}
+  >{saving ? 'Guardando…' : 'Guardar cambios'}</button>
 </div>
