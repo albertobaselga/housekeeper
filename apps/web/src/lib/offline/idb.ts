@@ -182,3 +182,19 @@ export async function readOfflineBlob(id: string, databaseName?: string): Promis
     databaseName
   )) ?? null;
 }
+
+/** Blobs pendientes de subir, en orden de captura (createdAt ascendente). */
+export async function listOfflineBlobs(householdId?: string, databaseName?: string): Promise<OfflineBlobRecord[]> {
+  const records = await withStore<OfflineBlobRecord[]>(
+    OFFLINE_STORES.blobs,
+    'readonly',
+    (store) => (householdId ? store.index('householdId').getAll(householdId) : store.getAll()),
+    databaseName
+  );
+  return records.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+}
+
+/** Borra un blob SOLO tras el 2xx del servidor: hasta entonces vive local. */
+export async function deleteOfflineBlob(id: string, databaseName?: string): Promise<void> {
+  await withStore(OFFLINE_STORES.blobs, 'readwrite', (store) => store.delete(id), databaseName);
+}
