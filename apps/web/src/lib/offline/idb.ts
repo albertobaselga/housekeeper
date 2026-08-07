@@ -132,9 +132,12 @@ export async function acknowledgeOutbox(
   return { clearedIds, pendingIds };
 }
 
+/** Actualización por registro: id más el código de error del ACK, si viajó. */
+export type OutboxStatusUpdate = string | { id: string; errorCode?: string };
+
 /** Marca registros de outbox que requieren resolución humana (conflict/rejected). */
 export async function updateOutboxStatuses(
-  ids: string[],
+  ids: OutboxStatusUpdate[],
   status: OutboxRecord['status'],
   databaseName?: string
 ): Promise<void> {
@@ -143,9 +146,10 @@ export async function updateOutboxStatuses(
   try {
     const transaction = database.transaction(OFFLINE_STORES.outbox, 'readwrite');
     const store = transaction.objectStore(OFFLINE_STORES.outbox);
-    for (const id of ids) {
+    for (const update of ids) {
+      const { id, errorCode } = typeof update === 'string' ? { id: update, errorCode: undefined } : update;
       const record = await requestResult<OutboxRecord | undefined>(store.get(id));
-      if (record) store.put({ ...record, status });
+      if (record) store.put({ ...record, status, ...(errorCode ? { lastErrorCode: errorCode } : {}) });
     }
     await new Promise<void>((resolve, reject) => {
       transaction.oncomplete = () => resolve();
@@ -155,6 +159,14 @@ export async function updateOutboxStatuses(
   } finally {
     database.close();
   }
+}
+
+/**
+ * Borra un registro del outbox por decisión explícita del usuario (descartar
+ * un conflict/rejected o sustituirlo por una copia con operationId nuevo).
+ */
+export async function discardOutboxRecord(id: string, databaseName?: string): Promise<void> {
+  await withStore(OFFLINE_STORES.outbox, 'readwrite', (store) => store.delete(id), databaseName);
 }
 
 export async function saveOfflineBlob(record: OfflineBlobRecord, databaseName?: string): Promise<void> {

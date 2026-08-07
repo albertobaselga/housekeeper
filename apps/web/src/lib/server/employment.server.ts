@@ -10,6 +10,7 @@ import {
   buildPendingExpenseViews,
   buildPendingExtraViews,
   buildSettlementViews,
+  buildWeeklyReportViews,
   currentPeriod,
   type AdvanceRow,
   type AgreementVersionRow,
@@ -21,7 +22,8 @@ import {
   type PendingExtraWorkRow,
   type ResolvedExtraWorkRow,
   type SettlementLineRow,
-  type SettlementRow
+  type SettlementRow,
+  type WeeklyReportRow
 } from '$lib/employment/model';
 import { getDatabasePool } from './db.server';
 
@@ -83,6 +85,7 @@ export async function loadEmploymentOverview(
           settlements: [],
           pendingExtras: [],
           pendingExpenses: [],
+          recentReports: [],
           balances: { compensation: [], advances: [] }
         } satisfies EmploymentOverview;
       }
@@ -187,6 +190,22 @@ export async function loadEmploymentOverview(
         [householdId, agreement.id]
       );
 
+      // Partes semanales recientes (últimas 6 semanas enviadas): permiten
+      // mostrar su estado y evitar reenviar una semana ya reportada.
+      const weeklyReports = await client.query<WeeklyReportRow>(
+        `select id,
+                week_starts_on::text as "weekStartsOn",
+                week_ends_on::text as "weekEndsOn",
+                status::text as "status",
+                auto_confirmed as "autoConfirmed",
+                dispute_reason as "disputeReason"
+           from app.weekly_time_reports
+          where household_id = $1 and agreement_id = $2
+          order by week_starts_on desc
+          limit 6`,
+        [householdId, agreement.id]
+      );
+
       const compensation = await client.query<CompensationBalanceRow>(
         `select account_id as "accountId",
                 balance_type::text as "balanceType",
@@ -278,6 +297,7 @@ export async function loadEmploymentOverview(
         settlements: buildSettlementViews(settlements.rows, lineRows, paymentRows),
         pendingExtras: buildPendingExtraViews(pendingExtras.rows),
         pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows),
+        recentReports: buildWeeklyReportViews(weeklyReports.rows),
         balances: {
           compensation: buildCompensationBalanceViews(compensation.rows),
           advances: buildAdvanceBalanceViews(advances.rows)

@@ -43,6 +43,8 @@ export interface OutboxRecord {
   createdAt: string;
   attempts: number;
   status: OutboxStatus;
+  /** Código de error del último ACK conflict/rejected del servidor, si lo hubo. */
+  lastErrorCode?: string;
 }
 
 export interface OfflineBlobRecord {
