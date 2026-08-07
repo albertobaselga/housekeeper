@@ -179,6 +179,9 @@ importers:
       '@casa-clara/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@casa-clara/domain':
+        specifier: workspace:*
+        version: link:../domain
       pg:
         specifier: 8.22.0
         version: 8.22.0

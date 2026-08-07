@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@casa-clara/contracts": "workspace:*",
+    "@casa-clara/domain": "workspace:*",
     "pg": "8.22.0"
   },
   "devDependencies": {
