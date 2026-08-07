@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#21483a" />
+    <meta name="description" content="Casa Clara: acuerdos, cuidados y el día a día del hogar en un solo lugar." />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <title>Casa Clara</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content" hidden>Saltar al contenido</a>
+
+    <main id="auth-gate" class="auth-gate" aria-labelledby="auth-title">
+      <section class="auth-card">
+        <div class="auth-brand" aria-hidden="true">
+          <span class="brand-mark"><svg viewBox="0 0 48 48"><path d="M8 23.2 24 9l16 14.2v15.3a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V23.2Z"/><path d="M18 40.5v-12h12v12"/><path d="M19 19.5c2.6-2.3 7.4-2.3 10 0"/></svg></span>
+        </div>
+        <div class="eyebrow"><span class="eyebrow-dot"></span>Entorno local de demostración</div>
+        <h1 id="auth-title">Entrar en Casa Clara</h1>
+        <p>Usa una de las cuentas definidas en <code>.env</code> para comprobar sus permisos.</p>
+        <form id="demo-login-form" class="auth-form">
+          <label class="field"><span>Correo</span><input class="input" name="email" type="email" autocomplete="username" required autofocus></label>
+          <label class="field"><span>Contraseña</span><input class="input" name="password" type="password" autocomplete="current-password" required></label>
+          <p id="auth-error" class="auth-error" role="alert" aria-live="polite" hidden></p>
+          <button id="auth-submit" class="button primary full" type="submit">Entrar</button>
+        </form>
+        <div class="auth-accounts">
+          <h2>Cuentas disponibles</h2>
+          <p>Selecciona un correo; las contraseñas están en el archivo local <code>.env</code>.</p>
+          <div id="demo-account-list" class="auth-account-list" aria-live="polite"><span class="muted">Cargando cuentas…</span></div>
+        </div>
+        <p class="auth-note">Solo para datos ficticios. Estas sesiones locales no sustituyen enlace mágico, passkey ni RLS.</p>
+      </section>
+    </main>
+
+    <div id="offline-banner" class="offline-banner" role="status" hidden>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4.9 4.9 19.1 19.1M8.5 8.5A7.6 7.6 0 0 1 20 10.4M3.2 10.4a11.7 11.7 0 0 1 2.2-3.1M6.7 14a7.4 7.4 0 0 1 6.4-1.5M10 17.4a3.3 3.3 0 0 1 4 0M12 21h.01" /></svg>
+      <span>Sin conexión: contenido cacheado disponible; cambios compatibles pendientes en este dispositivo.</span>
+    </div>
+
+    <div class="app-shell" hidden>
+      <aside class="sidebar" aria-label="Navegación principal">
+        <button class="brand" data-route="today" aria-label="Casa Clara, ir a Hoy">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48"><path d="M8 23.2 24 9l16 14.2v15.3a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V23.2Z"/><path d="M18 40.5v-12h12v12"/><path d="M19 19.5c2.6-2.3 7.4-2.3 10 0"/></svg>
+          </span>
+          <span><strong>Casa Clara</strong><small>Familia Roble</small></span>
+        </button>
+
+        <nav class="side-nav">
+          <button class="nav-item is-active" data-route="today">
+            <span class="nav-icon" data-icon="sun"></span><span>Hoy</span>
+          </button>
+          <button class="nav-item" data-route="employment" data-module="employment">
+            <span class="nav-icon" data-icon="wallet"></span><span>Acuerdos y pagos</span>
+            <span class="nav-dot" aria-label="1 pendiente"></span>
+          </button>
+          <button class="nav-item" data-route="menu" data-module="menu">
+            <span class="nav-icon" data-icon="utensils"></span><span>Menú</span>
+          </button>
+          <button class="nav-item" data-route="wiki" data-module="wiki">
+            <span class="nav-icon" data-icon="book"></span><span>Wiki de la casa</span>
+          </button>
+          <button class="nav-item" data-route="calendar" data-module="calendar">
+            <span class="nav-icon" data-icon="calendar"></span><span>Calendario</span>
+          </button>
+          <button class="nav-item" data-route="contacts">
+            <span class="nav-icon" data-icon="phone"></span><span>Contactos</span>
+          </button>
+        </nav>
+
+        <div class="side-bottom">
+          <button class="emergency-link" data-route="emergency">
+            <span class="nav-icon" data-icon="shield"></span>
+            <span><strong>Emergencias</strong><small>Disponible sin conexión</small></span>
+          </button>
+          <button id="role-switcher" class="profile-button" aria-label="Abrir menú de cuenta" aria-haspopup="menu" aria-expanded="false">
+            <span class="avatar" id="profile-avatar">A</span>
+            <span class="profile-copy"><strong id="profile-name">Alberto</strong><small id="profile-role">Administrador familiar</small></span>
+            <span class="nav-icon chevron" data-icon="chevron"></span>
+          </button>
+        </div>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <button class="mobile-brand" data-route="today" aria-label="Ir a Hoy">
+            <span class="brand-mark small" aria-hidden="true">
+              <svg viewBox="0 0 48 48"><path d="M8 23.2 24 9l16 14.2v15.3a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V23.2Z"/><path d="M18 40.5v-12h12v12"/><path d="M19 19.5c2.6-2.3 7.4-2.3 10 0"/></svg>
+            </span>
+            <span>Casa Clara</span>
+          </button>
+
+          <button id="global-search-trigger" class="global-search" data-module="search" aria-label="Abrir buscador global">
+            <span class="nav-icon" data-icon="search"></span>
+            <span>Buscar en toda la casa…</span>
+            <kbd>⌘ K</kbd>
+          </button>
+
+          <div class="topbar-actions">
+            <span id="sync-state" class="sync-state" role="status" aria-live="polite"><i aria-hidden="true"></i><span>Sin cambios pendientes</span></span>
+            <button class="icon-button" id="notifications-button" aria-label="Notificaciones de demostración" aria-haspopup="dialog" aria-expanded="false">
+              <span class="nav-icon" data-icon="bell"></span><span class="notification-count" aria-hidden="true">2</span>
+            </button>
+            <button class="top-avatar" id="mobile-role-switcher" aria-label="Abrir menú de cuenta" aria-haspopup="menu" aria-expanded="false"><span id="mobile-avatar">A</span></button>
+          </div>
+        </header>
+
+        <main id="main-content" tabindex="-1"></main>
+      </div>
+    </div>
+
+    <nav class="bottom-nav" aria-label="Navegación móvil" hidden>
+      <button class="is-active" data-route="today"><span class="nav-icon" data-icon="sun"></span><span>Hoy</span></button>
+      <button data-route="employment" data-module="employment"><span class="nav-icon" data-icon="wallet"></span><span>Pagos</span></button>
+      <button data-route="menu" data-module="menu"><span class="nav-icon" data-icon="utensils"></span><span>Menú</span></button>
+      <button data-route="wiki" data-module="wiki"><span class="nav-icon" data-icon="book"></span><span>Wiki</span></button>
+      <button data-route="more"><span class="nav-icon" data-icon="grid"></span><span>Más</span></button>
+    </nav>
+
+    <button id="mobile-search-fab" class="search-fab" data-module="search" aria-label="Buscar" hidden>
+      <span class="nav-icon" data-icon="search"></span>
+    </button>
+
+    <div id="popover-layer"></div>
+    <div id="modal-layer"></div>
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
