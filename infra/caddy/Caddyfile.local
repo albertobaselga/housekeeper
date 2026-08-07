@@ -8,6 +8,7 @@
 
 	@health path /healthz
 	respond @health 200
+	respond /api/metrics 404
 
 	header {
 		-Server

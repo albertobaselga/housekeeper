@@ -13,6 +13,7 @@ http://{$STAGING_HOST:staging.casaclara.test}:8081 {
 https://{$STAGING_HOST:staging.casaclara.test}:8443 {
 	tls internal
 	encode zstd gzip
+	respond /api/metrics 404
 
 	header {
 		-Server
