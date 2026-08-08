@@ -10,12 +10,17 @@ import {
   buildPendingExpenseViews,
   buildPendingExtraViews,
   buildSettlementViews,
+  buildVacationView,
+  annualVacationDaysInForce,
+  currentLocalDate,
   currentPeriod,
+  currentVacationYear,
   formatCents,
   formatMinutes,
   parseCents,
   periodLabel,
   sourceAnchor,
+  vacationRangeLabel,
   type AgreementVersionRow,
   type SettlementLineRow,
   type SettlementRow
@@ -31,6 +36,7 @@ const VERSIONS: AgreementVersionRow[] = [
     workedRestDayRateCents: '7000',
     workedRestDayCreditMinutes: 1440,
     contractedWeeklyMinutes: 2400,
+    annualVacationDays: 30,
     reason: 'Acuerdo inicial'
   },
   {
@@ -42,6 +48,7 @@ const VERSIONS: AgreementVersionRow[] = [
     workedRestDayRateCents: '8000',
     workedRestDayCreditMinutes: 1440,
     contractedWeeklyMinutes: 2400,
+    annualVacationDays: 32,
     reason: 'Subida pactada'
   }
 ];
@@ -95,6 +102,174 @@ describe('versiones del acuerdo', () => {
 
     const later = buildAgreementVersionViews(VERSIONS, '2026-08-01');
     expect(later.map((view) => view.state)).toEqual(['historica', 'vigente']);
+  });
+
+  it('enseña el derecho de vacaciones de cada versión y marca cuándo cambió', () => {
+    const views = buildAgreementVersionViews(VERSIONS, '2025-03-01');
+    expect(views[0]!.vacationDaysLabel).toBe('30 días naturales al año');
+    // La primera versión no cambia nada: no hay diferencia que enseñar.
+    expect(views[0]!.vacationDiffLabel).toBeNull();
+    expect(views[1]!.vacationDiffLabel).toBe('+2 días');
+  });
+
+  it('el derecho en vigor es el de la última versión ya aplicada', () => {
+    expect(annualVacationDaysInForce(VERSIONS, '2025-03-01')).toBe(30);
+    expect(annualVacationDaysInForce(VERSIONS, '2025-04-01')).toBe(32);
+    // Antes de la primera versión se cae a la primera, no a cero: cero mentiría.
+    expect(annualVacationDaysInForce(VERSIONS, '2024-01-01')).toBe(30);
+    expect(annualVacationDaysInForce([], '2025-04-01')).toBe(0);
+  });
+});
+
+describe('vacaciones del año en curso', () => {
+  const PERIODS = [
+    {
+      id: 'p1',
+      startsOn: '2026-08-01',
+      endsOn: '2026-08-15',
+      calendarDays: 15,
+      note: 'Quincena de agosto',
+      status: 'recorded' as const,
+      voidReason: null
+    },
+    {
+      id: 'p2',
+      startsOn: '2026-03-02',
+      endsOn: '2026-03-06',
+      calendarDays: 5,
+      note: 'Apuntado por error',
+      status: 'voided' as const,
+      voidReason: 'Las fechas eran otras'
+    }
+  ];
+
+  it('resume el saldo en lenguaje llano y no cuenta lo anulado', () => {
+    const view = buildVacationView({
+      year: 2026,
+      annualVacationDays: 30,
+      agreementStartsOn: '2020-01-01',
+      agreementEndsOn: null,
+      periods: PERIODS
+    });
+    expect(view.takenDays).toBe(15);
+    expect(view.remainingDays).toBe(15);
+    expect(view.summaryLabel).toBe('15 de 30 días disfrutados · quedan 15');
+    expect(view.prorationNote).toBeNull();
+    // Lo anulado se LISTA (para entender por qué el saldo es el que es) pero
+    // no suma.
+    expect(view.periods.map((period) => period.voided)).toEqual([false, true]);
+    expect(view.periods[1]!.voidReason).toBe('Las fechas eran otras');
+  });
+
+  it('ordena del más reciente al más antiguo y nombra bien un solo día', () => {
+    const view = buildVacationView({
+      year: 2026,
+      annualVacationDays: 30,
+      agreementStartsOn: '2020-01-01',
+      agreementEndsOn: null,
+      periods: [
+        ...PERIODS,
+        {
+          id: 'p3',
+          startsOn: '2026-12-24',
+          endsOn: '2026-12-24',
+          calendarDays: 1,
+          note: '',
+          status: 'recorded' as const,
+          voidReason: null
+        }
+      ]
+    });
+    expect(view.periods.map((period) => period.id)).toEqual(['p3', 'p1', 'p2']);
+    expect(view.periods[0]!.rangeLabel).toBe('El 24 dic 2026');
+    expect(view.periods[0]!.daysLabel).toBe('1 día');
+    // Dentro del mismo mes el rango no repite mes ni año.
+    expect(view.periods[1]!.rangeLabel).toBe('Del 1 al 15 ago 2026');
+  });
+
+  it('el rango no repite lo que ya ha dicho', () => {
+    expect(vacationRangeLabel('2026-08-03', '2026-08-03')).toBe('El 3 ago 2026');
+    expect(vacationRangeLabel('2026-11-02', '2026-11-08')).toBe('Del 2 al 8 nov 2026');
+    expect(vacationRangeLabel('2026-11-20', '2026-12-05')).toBe('Del 20 nov al 5 dic 2026');
+    // Cruzando el fin de año sí hacen falta los dos años.
+    expect(vacationRangeLabel('2026-12-24', '2027-01-05')).toBe('Del 24 dic 2026 al 5 ene 2027');
+  });
+
+  it('el exceso se dice, no se esconde', () => {
+    const view = buildVacationView({
+      year: 2026,
+      annualVacationDays: 30,
+      agreementStartsOn: '2020-01-01',
+      agreementEndsOn: null,
+      periods: [
+        {
+          id: 'p1',
+          startsOn: '2026-06-01',
+          endsOn: '2026-07-05',
+          calendarDays: 35,
+          note: '',
+          status: 'recorded' as const,
+          voidReason: null
+        }
+      ]
+    });
+    expect(view.remainingDays).toBe(-5);
+    expect(view.summaryLabel).toBe('35 de 30 días disfrutados · 5 días de más');
+  });
+
+  it('explica el prorrateo del primer año en vez de enseñar 30 a secas', () => {
+    const view = buildVacationView({
+      year: 2026,
+      annualVacationDays: 30,
+      agreementStartsOn: '2026-02-03',
+      agreementEndsOn: null,
+      periods: []
+    });
+    expect(view.prorated).toBe(true);
+    expect(view.entitledDays).toBe(28);
+    expect(view.summaryLabel).toBe('0 de 28 días disfrutados · quedan 28');
+    expect(view.prorationNote).toBe(
+      'El acuerdo cubre 332 días de 2026, así que de los 30 días del año le tocan 28 en 2026.'
+    );
+  });
+
+  it('un periodo a caballo del fin de año solo gasta sus días de este año', () => {
+    const periods = [
+      {
+        id: 'p1',
+        startsOn: '2026-12-24',
+        endsOn: '2027-01-05',
+        calendarDays: 13,
+        note: '',
+        status: 'recorded' as const,
+        voidReason: null
+      }
+    ];
+    expect(
+      buildVacationView({
+        year: 2026,
+        annualVacationDays: 30,
+        agreementStartsOn: '2020-01-01',
+        agreementEndsOn: null,
+        periods
+      }).takenDays
+    ).toBe(8);
+    expect(
+      buildVacationView({
+        year: 2027,
+        annualVacationDays: 30,
+        agreementStartsOn: '2020-01-01',
+        agreementEndsOn: null,
+        periods
+      }).takenDays
+    ).toBe(5);
+  });
+
+  it('el año natural se lee en la zona del hogar, no en la del proceso', () => {
+    // 31 de diciembre a las 23:30 UTC ya es 1 de enero en Madrid.
+    expect(currentVacationYear(new Date('2026-12-31T23:30:00Z'))).toBe(2027);
+    expect(currentLocalDate(new Date('2026-12-31T23:30:00Z'))).toBe('2027-01-01');
+    expect(currentVacationYear(new Date('2026-06-15T10:00:00Z'))).toBe(2026);
   });
 });
 

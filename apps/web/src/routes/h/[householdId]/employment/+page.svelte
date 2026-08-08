@@ -5,6 +5,7 @@
   import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
+  import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
   import WeeklyReportCard from '$lib/components/employment/WeeklyReportCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
@@ -42,6 +43,10 @@
   const canDownloadExport = $derived(isOwnAgreement && context.role === 'employee_live_in');
   const canCloseSettlement = $derived(agreement !== null && can(context.role, 'settlement.close'));
   const canRecordPayment = $derived(agreement !== null && can(context.role, 'payment.register'));
+  // Los días los apunta la familia administradora (no hay flujo de solicitud);
+  // la empleada ve su saldo y sus periodos sin poder escribir, respaldado por
+  // la política `vacation_periods_admin_write`.
+  const canRecordVacation = $derived(agreement !== null && can(context.role, 'leave.approve'));
 
   // P1-6 (revisión UX v3): RLS solo enseña importes (versiones del acuerdo,
   // devengo, liquidaciones, saldos) a quien administra y a la propia empleada.
@@ -226,6 +231,18 @@
             </article>
           {/if}
 
+          <!-- Vacaciones del año en curso: saldo, lo apuntado y el formulario
+               de la familia. Va con el resto del expediente porque quien mira
+               «cuántos días quedan» está mirando lo pactado, no la nómina. -->
+          {#if agreement && overview.vacations}
+            <VacationsCard
+              householdId={overview.householdId}
+              agreementId={agreement.id}
+              vacations={overview.vacations}
+              canRecord={canRecordVacation}
+            />
+          {/if}
+
           {#if !pendingFirst}{@render pendingDecisionCards()}{/if}
 
           {#if !seesAmounts}
@@ -254,13 +271,14 @@
                 <div id={`version-${version.id}`}>
                   <span>
                     <strong>v{version.versionNumber} · desde el {version.effectiveFromLabel}</strong>
-                    <small>{version.reason} · {version.overtimeRateLabel} extra · {version.workedRestDayRateLabel} descanso trabajado</small>
+                    <small>{version.reason} · {version.overtimeRateLabel} extra · {version.workedRestDayRateLabel} descanso trabajado · {version.vacationDaysLabel} de vacaciones</small>
                   </span>
                   <span>
                     <strong>{version.salaryLabel}</strong>
                     <small>
                       {#if version.state === 'vigente'}Vigente{:else if version.state === 'futura'}Entra en vigor{:else}Histórica{/if}
                       {#if version.salaryDiffLabel}&nbsp;· {version.salaryDiffLabel}{/if}
+                      {#if version.vacationDiffLabel}&nbsp;· {version.vacationDiffLabel} de vacaciones{/if}
                     </small>
                   </span>
                 </div>

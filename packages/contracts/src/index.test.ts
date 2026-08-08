@@ -8,7 +8,11 @@ import {
   isRole,
   type CriticalSnapshotV1,
 } from "./index.js";
-import { commandEnvelopeSchema } from "./schemas.js";
+import {
+  agreementCommandPayloadSchema,
+  commandEnvelopeSchema,
+  vacationCommandPayloadSchema,
+} from "./schemas.js";
 
 const snapshot = (generatedAt: string, expiresAt: string): CriticalSnapshotV1 => ({
   apiVersion: API_VERSION,
@@ -61,6 +65,56 @@ describe("contratos públicos", () => {
       occurredAt: "2026-08-07T10:00:00+02:00",
       payload: { amountCents: "4730" },
     }).success).toBe(true);
+  });
+
+  it("acepta un periodo de vacaciones bien formado y rechaza el que acaba antes de empezar", () => {
+    const base = {
+      action: "record" as const,
+      agreementId: "12000000-0000-4000-8000-000000000001",
+      note: "Quincena de agosto",
+    };
+    expect(
+      vacationCommandPayloadSchema.safeParse({ ...base, startsOn: "2026-08-01", endsOn: "2026-08-15" })
+        .success,
+    ).toBe(true);
+    // Un solo día es un periodo válido: el descanso de un día también se apunta.
+    expect(
+      vacationCommandPayloadSchema.safeParse({ ...base, startsOn: "2026-08-01", endsOn: "2026-08-01" })
+        .success,
+    ).toBe(true);
+    expect(
+      vacationCommandPayloadSchema.safeParse({ ...base, startsOn: "2026-08-15", endsOn: "2026-08-01" })
+        .success,
+    ).toBe(false);
+    // Más de un año seguido no es un periodo de vacaciones: es un dedazo.
+    expect(
+      vacationCommandPayloadSchema.safeParse({ ...base, startsOn: "2026-01-01", endsOn: "2027-06-01" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("exige motivo para anular un periodo apuntado", () => {
+    const base = {
+      action: "void" as const,
+      vacationPeriodId: "da100000-0000-4000-8000-000000000001",
+    };
+    expect(vacationCommandPayloadSchema.safeParse({ ...base, reason: "Fechas mal" }).success).toBe(true);
+    expect(vacationCommandPayloadSchema.safeParse({ ...base, reason: "   " }).success).toBe(false);
+    expect(vacationCommandPayloadSchema.safeParse(base).success).toBe(false);
+  });
+
+  it("acota el derecho anual de vacaciones a días naturales enteros de un año", () => {
+    const base = {
+      action: "set_vacation_entitlement" as const,
+      agreementId: "12000000-0000-4000-8000-000000000001",
+      effectiveFrom: "2026-09-01",
+      reason: "Convenio del hogar",
+    };
+    expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: 30 }).success).toBe(true);
+    expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: 0 }).success).toBe(true);
+    expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: 366 }).success).toBe(false);
+    expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: -1 }).success).toBe(false);
+    expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: 22.5 }).success).toBe(false);
   });
 
   it("rechaza snapshots con concesiones superiores a 24 horas", () => {

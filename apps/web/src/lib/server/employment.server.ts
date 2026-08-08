@@ -10,8 +10,12 @@ import {
   buildPendingExpenseViews,
   buildPendingExtraViews,
   buildSettlementViews,
+  buildVacationView,
   buildWeeklyReportViews,
+  annualVacationDaysInForce,
+  currentLocalDate,
   currentPeriod,
+  currentVacationYear,
   type AdvanceRow,
   type AgreementVersionRow,
   type ApprovedExpenseRow,
@@ -23,6 +27,7 @@ import {
   type ResolvedExtraWorkRow,
   type SettlementLineRow,
   type SettlementRow,
+  type VacationPeriodRow,
   type WeeklyReportRow
 } from '$lib/employment/model';
 import { getDatabasePool } from './db.server';
@@ -88,6 +93,7 @@ export async function loadEmploymentOverview(
           pendingExtras: [],
           pendingExpenses: [],
           recentReports: [],
+          vacations: null,
           balances: { compensation: [], advances: [] }
         } satisfies EmploymentOverview;
       }
@@ -101,11 +107,32 @@ export async function loadEmploymentOverview(
                 worked_rest_day_rate_cents as "workedRestDayRateCents",
                 worked_rest_day_credit_minutes as "workedRestDayCreditMinutes",
                 contracted_weekly_minutes as "contractedWeeklyMinutes",
+                annual_vacation_days as "annualVacationDays",
                 reason
            from app.agreement_versions
           where household_id = $1 and agreement_id = $2
           order by version_number`,
         [householdId, agreement.id]
+      );
+
+      // Vacaciones del año natural en curso. Se piden los periodos que TOCAN el
+      // año, no los que empiezan en él: uno del 24 de diciembre al 5 de enero
+      // gasta días de los dos, y el motor de dominio reparte cuáles son de cada
+      // uno. Los anulados vienen también: se listan tachados, sin contar.
+      const vacationYear = currentVacationYear(now);
+      const vacationPeriods = await client.query<VacationPeriodRow>(
+        `select id,
+                starts_on::text as "startsOn",
+                ends_on::text as "endsOn",
+                calendar_days as "calendarDays",
+                note,
+                status::text as "status",
+                void_reason as "voidReason"
+           from app.vacation_periods
+          where household_id = $1 and agreement_id = $2
+            and starts_on <= $4 and ends_on >= $3
+          order by starts_on desc`,
+        [householdId, agreement.id, `${vacationYear}-01-01`, `${vacationYear}-12-31`]
       );
 
       const extras = await client.query<ResolvedExtraWorkRow>(
@@ -325,6 +352,21 @@ export async function loadEmploymentOverview(
         pendingExtras: buildPendingExtraViews(pendingExtras.rows),
         pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows),
         recentReports: buildWeeklyReportViews(weeklyReports.rows),
+        // Sin versiones visibles no hay derecho que enseñar: RLS ya decidió que
+        // esta persona no ve los términos, y un saldo sobre cero días mentiría.
+        vacations:
+          versions.rows.length === 0
+            ? null
+            : buildVacationView({
+                year: vacationYear,
+                annualVacationDays: annualVacationDaysInForce(
+                  versions.rows,
+                  currentLocalDate(now)
+                ),
+                agreementStartsOn: agreement.startsOn,
+                agreementEndsOn: agreement.endsOn,
+                periods: vacationPeriods.rows
+              }),
         balances: {
           compensation: buildCompensationBalanceViews(compensation.rows),
           advances: buildAdvanceBalanceViews(advances.rows)

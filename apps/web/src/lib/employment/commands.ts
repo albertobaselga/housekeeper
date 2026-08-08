@@ -1,4 +1,5 @@
 import type {
+  AgreementSetVacationEntitlementPayloadV1,
   CommandEnvelopeV1,
   ExpenseResolvePayloadV1,
   ExpenseSubmitPayloadV1,
@@ -10,6 +11,8 @@ import type {
   SettlementClosePayloadV1,
   SettlementOpenPayloadV1,
   SettlementReceiptConfirmPayloadV1,
+  VacationRecordPayloadV1,
+  VacationVoidPayloadV1,
   WeeklyReportSubmitPayloadV1
 } from '@casa-clara/contracts';
 
@@ -285,6 +288,73 @@ export function resolveExpense(
       reason: input.reason.trim()
     } satisfies ExpenseResolvePayloadV1
   }) as CommandEnvelopeV1<ExpenseResolvePayloadV1>;
+}
+
+export function recordVacation(
+  input: {
+    householdId: string;
+    agreementId: string;
+    startsOn: string;
+    endsOn: string;
+    note?: string;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<VacationRecordPayloadV1> {
+  const note = trimmedOrUndefined(input.note);
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'leave_request',
+    payload: {
+      action: 'record',
+      agreementId: input.agreementId,
+      startsOn: input.startsOn,
+      endsOn: input.endsOn,
+      ...(note ? { note } : {})
+    } satisfies VacationRecordPayloadV1
+  }) as CommandEnvelopeV1<VacationRecordPayloadV1>;
+}
+
+export function voidVacation(
+  input: { householdId: string; vacationPeriodId: string; reason: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<VacationVoidPayloadV1> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'leave_request',
+    aggregateId: input.vacationPeriodId,
+    payload: {
+      action: 'void',
+      vacationPeriodId: input.vacationPeriodId,
+      reason: input.reason.trim()
+    } satisfies VacationVoidPayloadV1
+  }) as CommandEnvelopeV1<VacationVoidPayloadV1>;
+}
+
+export function setVacationEntitlement(
+  input: {
+    householdId: string;
+    agreementId: string;
+    annualVacationDays: number;
+    effectiveFrom: string;
+    reason: string;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<AgreementSetVacationEntitlementPayloadV1> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'agreement',
+    aggregateId: input.agreementId,
+    payload: {
+      action: 'set_vacation_entitlement',
+      agreementId: input.agreementId,
+      annualVacationDays: input.annualVacationDays,
+      effectiveFrom: input.effectiveFrom,
+      reason: input.reason.trim()
+    } satisfies AgreementSetVacationEntitlementPayloadV1
+  }) as CommandEnvelopeV1<AgreementSetVacationEntitlementPayloadV1>;
 }
 
 export type { QueueOutcome };
