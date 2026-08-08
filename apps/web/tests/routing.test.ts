@@ -35,9 +35,34 @@ describe('household route contract', () => {
     });
   });
 
+  it('autoriza cada ruta hija declarada con su propia regla, no con la del padre', () => {
+    // Pactar condiciones es escribir el acuerdo: solo quien administra.
+    expect(guardForPath('/h/casa-roble/employment/acuerdo')).toEqual({
+      householdId: 'casa-roble',
+      module: 'employment',
+      capability: 'agreement.write',
+      known: true
+    });
+    // Leerlas es otra cosa, y por eso pide otra capacidad.
+    expect(guardForPath('/h/casa-roble/employment/condiciones')).toEqual({
+      householdId: 'casa-roble',
+      module: 'employment',
+      capability: 'agreement.read',
+      known: true
+    });
+    // Ninguna de las dos hereda `settlement.read`, la del módulo padre.
+    expect(MODULE_CAPABILITY.employment).toBe('settlement.read');
+  });
+
   it('fails closed for unknown or unsupported child paths', () => {
     expect(guardForPath('/h/casa-roble/admin')).toMatchObject({ known: false, capability: null });
     expect(guardForPath('/h/casa-roble/today/private')).toMatchObject({ known: false, capability: null });
+    // Una ruta hija que nadie declaró no existe, aunque su padre sí.
+    expect(guardForPath('/h/casa-roble/employment/inventada')).toMatchObject({
+      known: false,
+      capability: null
+    });
+    expect(guardForPath('/h/casa-roble/employment/acuerdo/mas')).toMatchObject({ known: false });
     expect(guardForPath('/h/%E0%A4%A/today')).toMatchObject({ known: false });
     expect(guardForPath('/login')).toBeNull();
   });

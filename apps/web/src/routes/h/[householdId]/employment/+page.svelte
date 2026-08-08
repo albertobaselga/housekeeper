@@ -171,6 +171,7 @@
             householdId={overview.householdId}
             agreementId={agreement.id}
             extras={overview.pendingExtras}
+            types={overview.registrableTypes}
             ownMembershipId={context.user.membershipId}
             canRegister={canRegisterExtra}
             canConfirm={canConfirmWork}
@@ -224,6 +225,15 @@
                   {/each}
                 </div>
                 <div class="ledger-total"><span>Total previsto del mes</span><strong>{overview.accrual.transferTotalLabel}</strong></div>
+                <!-- Debajo del total, nunca dentro: lo que la casa paga por su
+                     cuenta consta como condición y no se transfiere. Meterlo
+                     entre las líneas haría que la cuenta mintiera. -->
+                {#if overview.accrual.householdPaidSupplements.length > 0}
+                  <p class="audit-note">
+                    Además, la casa paga aparte:
+                    {#each overview.accrual.householdPaidSupplements as supplement, index (supplement.id)}{index > 0 ? ', ' : ''}{supplement.label} ({supplement.amountLabel}){/each}. No entra en la transferencia.
+                  </p>
+                {/if}
               {:else}
                 <p class="audit-note">El acuerdo todavía no está en vigor este mes.</p>
               {/if}
@@ -259,6 +269,19 @@
           {/if}
 
           {#if seesAmounts}
+          <!--
+            Dos rutas propias, no dos secciones más: cada una vive en su trozo
+            de JavaScript y así ni el editor de condiciones ni la vista de
+            contrato engordan el grafo inicial de Hoy.
+          -->
+          <nav class="action-row">
+            {#if isOwnAgreement}
+              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/condiciones`}>Ver mis condiciones</a>
+            {/if}
+            {#if canCloseSettlement}
+              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/acuerdo`}>Administrar el acuerdo</a>
+            {/if}
+          </nav>
           <article class="card">
             <div class="section-heading">
               <div><p class="eyebrow">Acuerdo</p><h2>Versiones y cambios de salario</h2></div>
@@ -271,7 +294,12 @@
                 <div id={`version-${version.id}`}>
                   <span>
                     <strong>v{version.versionNumber} · desde el {version.effectiveFromLabel}</strong>
-                    <small>{version.reason} · {version.overtimeRateLabel} extra · {version.workedRestDayRateLabel} descanso trabajado · {version.vacationDaysLabel} de vacaciones</small>
+                    <!--
+                      Los conceptos vienen del catálogo YA filtrado por la RLS:
+                      lo que no aplica a quien mira no llegó hasta aquí, así que
+                      no hay nada que esconder en la plantilla.
+                    -->
+                    <small>{version.reason} · {version.vacationDaysLabel} de vacaciones{#each version.concepts as concept (concept.id)}{#if concept.rateLabel} · {concept.name} {concept.rateLabel}{/if}{/each}{#each version.supplements as supplement (supplement.id)}{#if supplement.amountLabel} · {supplement.name} {supplement.amountLabel}{supplement.addsToPay ? '' : ' (lo paga la casa)'}{/if}{/each}</small>
                   </span>
                   <span>
                     <strong>{version.salaryLabel}</strong>

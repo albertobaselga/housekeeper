@@ -111,6 +111,12 @@ export const weeklyReportSubmitPayloadSchema = z.object({
 export const extraWorkRegisterPayloadSchema = z.object({
   action: z.literal("register"),
   agreementId: uuidSchema,
+  /**
+   * Concepto del catálogo de la versión vigente el día trabajado. Opcional solo
+   * por compatibilidad con los hechos anteriores a 0021; cuando viaja, es él
+   * quien manda y `kind` se deriva de su unidad en el servidor.
+   */
+  extraWorkTypeId: uuidSchema.optional(),
   kind: z.enum(["overtime", "worked_rest_day"]),
   workedOn: isoDateSchema,
   durationMinutes: z.number().int().min(1).max(24 * 60),
@@ -207,6 +213,80 @@ export const agreementSetVacationEntitlementPayloadSchema = z.object({
 export const agreementCommandPayloadSchema = z.discriminatedUnion("action", [
   agreementSetVacationEntitlementPayloadSchema,
 ]);
+
+/**
+ * Catálogo de condiciones de UNA versión del acuerdo (migración 0021).
+ *
+ * No viaja por la cola offline. El alta y la edición del acuerdo son actos
+ * administrativos deliberados: se hacen contra el servidor o no se hacen, igual
+ * que el cambio de contraseña de `settings`. Estos esquemas los usa la form
+ * action de la pantalla de administración, que es quien los valida antes de
+ * apilar la versión.
+ */
+export const extraWorkTypeInputSchema = z
+  .object({
+    code: z.string().regex(/^[a-z][a-z0-9_]{1,38}[a-z0-9]$/),
+    name: z.string().trim().min(1).max(80),
+    unit: z.enum(["per_hour", "per_shift", "fixed_amount"]),
+    /** null = pactado sin tarifa. La empleada no lo verá. */
+    rateCents: moneyCentsSchema.nullable(),
+    referenceMinutes: z.number().int().min(1).max(10080).nullable(),
+    active: z.boolean(),
+  })
+  .refine((value) => value.rateCents === null || BigInt(value.rateCents) >= 0n, {
+    message: "Una tarifa no puede ser negativa",
+    path: ["rateCents"],
+  })
+  .refine((value) => value.unit !== "per_hour" || value.referenceMinutes === null, {
+    message: "Una tarifa por hora no lleva duración de referencia",
+    path: ["referenceMinutes"],
+  })
+  .refine((value) => value.unit !== "per_shift" || value.referenceMinutes !== null, {
+    message: "Una jornada necesita decir de cuántas horas es",
+    path: ["referenceMinutes"],
+  });
+
+export const recurringSupplementInputSchema = z
+  .object({
+    code: z.string().regex(/^[a-z][a-z0-9_]{1,38}[a-z0-9]$/),
+    name: z.string().trim().min(1).max(80),
+    amountCents: moneyCentsSchema.nullable(),
+    periodicity: z.literal("monthly"),
+    /** true: suma a la transferencia. false: lo paga la casa aparte. */
+    addsToPay: z.boolean(),
+    startsOn: isoDateSchema.nullable(),
+    endsOn: isoDateSchema.nullable(),
+    active: z.boolean(),
+  })
+  .refine((value) => value.amountCents === null || BigInt(value.amountCents) >= 0n, {
+    message: "Un complemento no puede tener importe negativo",
+    path: ["amountCents"],
+  })
+  .refine(
+    (value) => value.startsOn === null || value.endsOn === null || value.endsOn >= value.startsOn,
+    { message: "La vigencia no puede acabar antes de empezar", path: ["endsOn"] },
+  );
+
+/** Términos completos de una versión: nunca se editan, siempre se apilan. */
+export const agreementTermsInputSchema = z.object({
+  effectiveFrom: isoDateSchema,
+  monthlySalaryCents: moneyCentsSchema.refine(
+    (value) => BigInt(value) >= 0n,
+    "El salario no puede ser negativo",
+  ),
+  contractedWeeklyMinutes: z.number().int().min(1).max(7 * 24 * 60),
+  annualVacationDays: z.number().int().min(0).max(365),
+  reason: z.string().trim().min(1).max(500),
+  extraWorkTypes: z.array(extraWorkTypeInputSchema).max(30),
+  supplements: z.array(recurringSupplementInputSchema).max(30),
+});
+
+/** Alta del acuerdo: la relación laboral y su primera versión, a la vez. */
+export const agreementCreateInputSchema = z.object({
+  employeeMembershipId: uuidSchema,
+  startsOn: isoDateSchema,
+  terms: agreementTermsInputSchema,
+});
 
 export const settlementOpenPayloadSchema = z.object({
   action: z.literal("open"),

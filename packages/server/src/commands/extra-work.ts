@@ -4,21 +4,40 @@ import type { UUID } from "@casa-clara/contracts";
 import { extraWorkCommandPayloadSchema } from "@casa-clara/contracts/schemas";
 import {
   transitionExtraWork,
+  valueExtraWork,
   type ExtraWorkEvent as DomainExtraWorkEvent,
   type ExtraWorkStatus,
 } from "@casa-clara/domain";
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";
-import { loadAgreementVersions, requireAgreement, versionInForceOn } from "./shared.js";
+import {
+  loadAgreementVersions,
+  loadExtraWorkType,
+  requireAgreement,
+  versionInForceOn,
+  type CataloguedExtraWorkType,
+} from "./shared.js";
 
 type RegisterPayload = {
   agreementId: UUID;
+  extraWorkTypeId?: UUID | undefined;
   kind: "overtime" | "worked_rest_day";
   workedOn: string;
   durationMinutes: number;
   note?: string | undefined;
 };
+
+/**
+ * `kind` sobrevive a 0021 como clasificación GRUESA —trabajo medido en horas
+ * frente a trabajo medido en jornadas o supuestos— porque de ella cuelgan el
+ * enum de 0002, las etiquetas del histórico y el exportador. Cuando el hecho
+ * nombra un concepto del catálogo, `kind` se deriva de su unidad y NO se hace
+ * caso de lo que mandara el cliente: el concepto es la verdad.
+ */
+function kindForUnit(unit: CataloguedExtraWorkType["unit"]): "overtime" | "worked_rest_day" {
+  return unit === "per_hour" ? "overtime" : "worked_rest_day";
+}
 
 type ResolvePayload = {
   extraWorkEventId: UUID;
@@ -35,6 +54,7 @@ type ExtraWorkEventRow = {
   id: string;
   agreement_id: string;
   employee_membership_id: string;
+  extra_work_type_id: string | null;
   kind: "overtime" | "worked_rest_day";
   worked_on: string;
   duration_minutes: number;
@@ -96,7 +116,8 @@ async function requireExtraWorkEvent(
   lockRow: boolean,
 ): Promise<ExtraWorkEventRow> {
   const loaded = await client.query<ExtraWorkEventRow>(
-    `select id, agreement_id, employee_membership_id, kind, worked_on::text as worked_on,
+    `select id, agreement_id, employee_membership_id, extra_work_type_id, kind,
+            worked_on::text as worked_on,
             duration_minutes, status, requested_by_membership_id
        from app.extra_work_events
       where household_id = $1 and id = $2
@@ -136,17 +157,42 @@ async function registerExtraWork(
   }
   const origin = membership.role === "employee_live_in" ? "employee_report" : "family_request";
 
+  // El concepto manda: si el hecho lo nombra, se comprueba que sea de ESTE
+  // acuerdo y de la versión vigente el día trabajado, y `kind` sale de su
+  // unidad. Sin concepto se conserva el camino de 0002, que es el único que
+  // tienen los hechos anteriores al catálogo.
+  let kind = payload.kind;
+  if (payload.extraWorkTypeId) {
+    const type = await loadExtraWorkType(client, householdId, payload.extraWorkTypeId);
+    if (type.agreementId !== payload.agreementId) {
+      throw new CommandRejectedError(
+        "extra_work_type_not_available",
+        "Ese tipo de trabajo extra pertenece a otro acuerdo",
+      );
+    }
+    const versions = await loadAgreementVersions(client, householdId, payload.agreementId);
+    const inForce = versionInForceOn(versions, payload.workedOn);
+    if (inForce.id !== type.agreementVersionId) {
+      throw new CommandRejectedError(
+        "extra_work_type_not_in_force",
+        `Ese tipo de trabajo extra no estaba pactado el ${payload.workedOn}`,
+      );
+    }
+    kind = kindForUnit(type.unit);
+  }
+
   const inserted = await client.query<{ id: string }>(
     `insert into app.extra_work_events
-       (household_id, agreement_id, employee_membership_id, kind, worked_on,
+       (household_id, agreement_id, employee_membership_id, extra_work_type_id, kind, worked_on,
         duration_minutes, note, origin, status, requested_by_membership_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, 'requested', $9)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'requested', $10)
      returning id`,
     [
       householdId,
       payload.agreementId,
       agreement.employeeMembershipId,
-      payload.kind,
+      payload.extraWorkTypeId ?? null,
+      kind,
       payload.workedOn,
       payload.durationMinutes,
       payload.note ?? "",
@@ -321,7 +367,25 @@ async function resolveExtraWork(
   let unitRateCents: bigint;
   let amountCents: bigint;
   let creditMinutes: number;
-  if (payload.resolution === "money") {
+  if (event.extra_work_type_id) {
+    // Camino del catálogo: el motor puro valora el hecho con la tarifa de SU
+    // concepto, y el disparador de 0021 comprueba después que lo congelado sea
+    // exactamente esa tarifa y esa versión. Ni el servidor ni la interfaz
+    // pueden inventarse un importe.
+    const type = await loadExtraWorkType(client, householdId, event.extra_work_type_id as UUID);
+    if (type.agreementVersionId !== version.id) {
+      throw new CommandRejectedError(
+        "extra_work_type_not_in_force",
+        `El concepto de esta jornada no es el pactado el ${event.worked_on}`,
+      );
+    }
+    const valued = valueExtraWork(type, event.duration_minutes);
+    unitRateCents = valued.unitRateCents;
+    amountCents = payload.resolution === "money" ? valued.amountCents : 0n;
+    creditMinutes = payload.resolution === "money" ? 0 : valued.creditMinutes;
+  } else if (payload.resolution === "money") {
+    // Hechos anteriores al catálogo: siguen valiéndose por las columnas de
+    // 0002, que es como se valoraron sus hermanos ya liquidados.
     if (event.kind === "overtime") {
       unitRateCents = version.overtimeHourlyRateCents;
       // Céntimos exactos en bigint: tarifa/hora * minutos / 60 con redondeo

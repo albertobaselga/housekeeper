@@ -9,7 +9,11 @@ import {
   type CommandAckV1,
   type CommandEnvelopeV1,
 } from "@casa-clara/contracts";
-import { calculateSettlement, type AgreementVersion } from "@casa-clara/domain";
+import {
+  calculateSettlement,
+  type AgreementVersion,
+  type RecurringSupplement,
+} from "@casa-clara/domain";
 
 import { employmentCommandHandlers } from "./commands/employment.js";
 import { processSyncBatch } from "./sync.js";
@@ -39,6 +43,48 @@ const ROBLE_VERSIONS: AgreementVersion[] = [
     monthlySalaryCents: 140_000n,
   },
   { id: AGREEMENT_V2, validFrom: "2025-04-01", validTo: null, monthlySalaryCents: 150_000n },
+];
+
+const SUPPLEMENT_SENIORITY = "14000000-0000-4000-8000-000000000001";
+const SUPPLEMENT_HEALTH_INSURANCE = "14000000-0000-4000-8000-000000000002";
+
+// Complementos de la v2 en las fixtures. La antigüedad es dinero para ella y
+// suma; el seguro médico lo paga la casa por su cuenta y NO puede tocar el
+// total, por mucho que la empleada tenga derecho a verlo en sus condiciones.
+const ROBLE_SUPPLEMENTS: RecurringSupplement[] = [
+  {
+    id: SUPPLEMENT_SENIORITY,
+    code: "antiguedad",
+    name: "Complemento de antigüedad",
+    amountCents: 3_000n,
+    periodicity: "monthly",
+    addsToPay: true,
+    startsOn: null,
+    endsOn: null,
+    active: true,
+  },
+  {
+    id: SUPPLEMENT_HEALTH_INSURANCE,
+    code: "seguro_medico",
+    name: "Seguro médico privado",
+    amountCents: 4_500n,
+    periodicity: "monthly",
+    addsToPay: false,
+    startsOn: null,
+    endsOn: null,
+    active: true,
+  },
+  {
+    id: "14000000-0000-4000-8000-000000000003",
+    code: "plus_transporte",
+    name: "Plus de transporte",
+    amountCents: 2_000n,
+    periodicity: "monthly",
+    addsToPay: true,
+    startsOn: null,
+    endsOn: null,
+    active: false,
+  },
 ];
 
 function envelope(
@@ -361,9 +407,15 @@ describe.runIf(Boolean(adminUrl))("expediente laboral y pago de abril sobre Post
       unpaidAbsences: [],
       adjustments: [],
       expenses: [{ id: aprilExpenseId, label: "Compra de farmacia de abril", amountCents: 2350n }],
+      supplements: ROBLE_SUPPLEMENTS,
     });
     expectedTransferTotal = projection.transferTotalCents;
-    expect(expectedTransferTotal).toBe(154_450n);
+    // 154450 de antes + 3000 de antigüedad. El seguro médico son otros 4500 que
+    // la casa paga por su cuenta: consta en el recibo, no en la transferencia.
+    expect(expectedTransferTotal).toBe(157_450n);
+    expect(projection.householdPaidSupplements).toEqual([
+      { id: SUPPLEMENT_HEALTH_INSURANCE, label: "Seguro médico privado", amountCents: 4_500n },
+    ]);
 
     const settlement = await adminPool.query(
       `select status, salary_total_cents::text as salary, reimbursement_total_cents::text as reimbursement,
@@ -381,26 +433,39 @@ describe.runIf(Boolean(adminUrl))("expediente laboral y pago de abril sobre Post
 
     const lines = await adminPool.query(
       `select line_number, section, kind, amount_cents::text as amount,
-              agreement_version_id, extra_work_event_id, advance_ledger_entry_id, expense_id
+              agreement_version_id, extra_work_event_id, advance_ledger_entry_id, expense_id,
+              recurring_supplement_id
          from app.settlement_lines where settlement_id = $1 order by line_number`,
       [settlementId],
     );
+    // Cinco líneas, y solo UNA de complemento: el seguro médico no aparece
+    // aquí por diseño. Lo que la casa paga aparte consta en las condiciones,
+    // nunca como línea de una cuenta que se suma.
     expect(lines.rows).toEqual([
       {
         line_number: 1, section: "salary", kind: "base_salary", amount: "150000",
-        agreement_version_id: AGREEMENT_V2, extra_work_event_id: null, advance_ledger_entry_id: null, expense_id: null,
+        agreement_version_id: AGREEMENT_V2, extra_work_event_id: null, advance_ledger_entry_id: null,
+        expense_id: null, recurring_supplement_id: null,
       },
       {
         line_number: 2, section: "salary", kind: "extra_work", amount: "2100",
-        agreement_version_id: null, extra_work_event_id: overtimeEventId, advance_ledger_entry_id: null, expense_id: null,
+        agreement_version_id: null, extra_work_event_id: overtimeEventId, advance_ledger_entry_id: null,
+        expense_id: null, recurring_supplement_id: null,
       },
       {
         line_number: 3, section: "salary", kind: "time_off_compensation", amount: "0",
-        agreement_version_id: null, extra_work_event_id: restDayEventId, advance_ledger_entry_id: null, expense_id: null,
+        agreement_version_id: null, extra_work_event_id: restDayEventId, advance_ledger_entry_id: null,
+        expense_id: null, recurring_supplement_id: null,
       },
       {
-        line_number: 4, section: "reimbursement", kind: "expense_reimbursement", amount: "2350",
-        agreement_version_id: null, extra_work_event_id: null, advance_ledger_entry_id: null, expense_id: aprilExpenseId,
+        line_number: 4, section: "salary", kind: "supplement", amount: "3000",
+        agreement_version_id: null, extra_work_event_id: null, advance_ledger_entry_id: null,
+        expense_id: null, recurring_supplement_id: SUPPLEMENT_SENIORITY,
+      },
+      {
+        line_number: 5, section: "reimbursement", kind: "expense_reimbursement", amount: "2350",
+        agreement_version_id: null, extra_work_event_id: null, advance_ledger_entry_id: null,
+        expense_id: aprilExpenseId, recurring_supplement_id: null,
       },
     ]);
 
@@ -415,11 +480,11 @@ describe.runIf(Boolean(adminUrl))("expediente laboral y pago de abril sobre Post
     const receipt = job.rows[0]?.payload?.receipt;
     expect(receipt).toMatchObject({
       period: "2025-04",
-      salaryTotalCents: "152100",
+      salaryTotalCents: "155100",
       reimbursementTotalCents: "2350",
-      transferTotalCents: "154450",
+      transferTotalCents: "157450",
     });
-    expect(receipt.lines).toHaveLength(4);
+    expect(receipt.lines).toHaveLength(5);
   });
 
   it("un segundo cierre replica como duplicate y uno nuevo se rechaza", async () => {
@@ -464,12 +529,12 @@ describe.runIf(Boolean(adminUrl))("expediente laboral y pago de abril sobre Post
     );
     expect(early).toMatchObject({ status: "rejected", errorCode: "settlement_not_fully_paid" });
 
-    // Pendiente = 154450 - 100000 = 54450; un céntimo más se rechaza.
+    // Pendiente = 157450 - 100000 = 57450; un céntimo más se rechaza.
     const excessive = await run(
       ADMIN,
       envelope("payment", {
         settlementId,
-        amountCents: "54451",
+        amountCents: "57451",
         method: "bank_transfer",
         valueOn: "2025-05-03",
       }),
@@ -480,7 +545,7 @@ describe.runIf(Boolean(adminUrl))("expediente laboral y pago de abril sobre Post
       ADMIN,
       envelope("payment", {
         settlementId,
-        amountCents: "54450",
+        amountCents: "57450",
         method: "bank_transfer",
         valueOn: "2025-05-03",
         reference: "Transferencia abril 2/2",

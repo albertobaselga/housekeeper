@@ -6,14 +6,18 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
-import type {
-  AdvanceRow,
-  AgreementVersionRow,
-  CompensationBalanceRow,
-  PaymentRow,
-  SettlementLineRow,
-  SettlementRow,
-  WeeklyReportRow
+import {
+  buildExtraWorkTypeView,
+  buildSupplementView,
+  type AdvanceRow,
+  type AgreementVersionRow,
+  type CompensationBalanceRow,
+  type ExtraWorkTypeRow,
+  type PaymentRow,
+  type RecurringSupplementRow,
+  type SettlementLineRow,
+  type SettlementRow,
+  type WeeklyReportRow
 } from '$lib/employment/model';
 import { getDatabasePool } from './db.server';
 
@@ -360,6 +364,14 @@ interface SummaryInput {
   employeeName: string;
   generatedAt: Date;
   currentVersion: AgreementVersionRow | null;
+  /**
+   * Conceptos vigentes tal como la RLS se los devolvió a QUIEN exporta. La
+   * empleada se descarga su propio expediente: si aquí se imprimieran las
+   * columnas reliquia de 0002, su PDF llevaría una tarifa horaria que en su
+   * acuerdo está desactivada. Se imprime el catálogo o no se imprime nada.
+   */
+  currentTypes: readonly ExtraWorkTypeRow[];
+  currentSupplements: readonly RecurringSupplementRow[];
   agreement: AgreementExportRow | null;
   settlements: readonly SettlementRow[];
   compensation: readonly CompensationBalanceRow[];
@@ -415,9 +427,21 @@ async function renderSummaryPdf(input: SummaryInput): Promise<Uint8Array> {
   if (input.agreement && input.currentVersion) {
     row('Inicio del acuerdo', input.agreement.startsOn);
     row('Salario mensual', euroLabel(input.currentVersion.monthlySalaryCents));
-    row('Hora extra', euroLabel(input.currentVersion.overtimeHourlyRateCents));
-    row('Día de descanso trabajado', euroLabel(input.currentVersion.workedRestDayRateCents));
     row('Jornada semanal contratada', `${input.currentVersion.contractedWeeklyMinutes} min`);
+    row('Vacaciones al año', `${input.currentVersion.annualVacationDays} días naturales`);
+    for (const type of input.currentTypes) {
+      const view = buildExtraWorkTypeView(type);
+      if (!view.available || view.rateLabel === null) continue;
+      row(view.name, view.rateLabel);
+    }
+    for (const supplement of input.currentSupplements) {
+      const view = buildSupplementView(supplement);
+      if (!view.active || view.amountLabel === null) continue;
+      row(
+        view.addsToPay ? view.name : `${view.name} (lo paga la casa)`,
+        view.amountLabel
+      );
+    }
   } else {
     page.drawText('Sin acuerdo vigente visible.', { x: 48, y, size: 10, font: regular });
     y -= 16;
@@ -517,14 +541,45 @@ export async function buildEmploymentExport(
                     version_number as "versionNumber",
                     effective_from::text as "effectiveFrom",
                     monthly_salary_cents as "monthlySalaryCents",
-                    overtime_hourly_rate_cents as "overtimeHourlyRateCents",
-                    worked_rest_day_rate_cents as "workedRestDayRateCents",
-                    worked_rest_day_credit_minutes as "workedRestDayCreditMinutes",
                     contracted_weekly_minutes as "contractedWeeklyMinutes",
+                    annual_vacation_days as "annualVacationDays",
                     reason
                from app.agreement_versions
               where household_id = $1 and agreement_id = any($2::uuid[])
               order by effective_from, version_number`,
+            [householdId, agreementIds]
+          )
+        : empty;
+
+      const extraWorkTypes = agreementIds.length
+        ? await client.query<ExtraWorkTypeRow>(
+            `select id,
+                    agreement_version_id as "agreementVersionId",
+                    code, name, unit::text as "unit",
+                    rate_cents::text as "rateCents",
+                    reference_minutes as "referenceMinutes",
+                    active
+               from app.extra_work_types
+              where household_id = $1 and agreement_id = any($2::uuid[])
+              order by sort_order, code`,
+            [householdId, agreementIds]
+          )
+        : empty;
+
+      const supplements = agreementIds.length
+        ? await client.query<RecurringSupplementRow>(
+            `select id,
+                    agreement_version_id as "agreementVersionId",
+                    code, name,
+                    amount_cents::text as "amountCents",
+                    periodicity::text as "periodicity",
+                    adds_to_pay as "addsToPay",
+                    starts_on::text as "startsOn",
+                    ends_on::text as "endsOn",
+                    active
+               from app.recurring_supplements
+              where household_id = $1 and agreement_id = any($2::uuid[])
+              order by sort_order, code`,
             [householdId, agreementIds]
           )
         : empty;
@@ -701,6 +756,14 @@ export async function buildEmploymentExport(
           employeeName: profile.rows[0]?.name ?? 'Empleada',
           generatedAt,
           currentVersion,
+          currentTypes: currentVersion
+            ? extraWorkTypes.rows.filter(
+                (row) => row.agreementVersionId === currentVersion.id
+              )
+            : [],
+          currentSupplements: currentVersion
+            ? supplements.rows.filter((row) => row.agreementVersionId === currentVersion.id)
+            : [],
           agreement: activeAgreement,
           settlements: settlements.rows,
           compensation: compensation.rows,

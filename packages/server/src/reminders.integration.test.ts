@@ -149,14 +149,16 @@ describe.runIf(Boolean(adminUrl))("recordatorios y auto-confirmación sobre Post
          from app_private.settlement_reminder_state($1, $2)`,
       [ROBLE_HOUSEHOLD, settlementId],
     );
-    // Mayo sin hechos extra bajo el acuerdo v2: solo salario base, todo pendiente.
+    // Mayo sin hechos extra bajo el acuerdo v2: salario base (150000) más el
+    // complemento de antigüedad (3000), todo pendiente. El seguro médico de la
+    // v2 no está aquí: lo paga la casa por su cuenta.
     expect(state.rows).toEqual([
       {
         due_on: DUE_ON,
         period_start: PERIOD_START,
         period_end: PERIOD_END,
         status: "closed",
-        pending_cents: "150000",
+        pending_cents: "153000",
         receipt_confirmed: false,
         employee_email: EMPLOYEE_EMAIL,
         admin_emails: [ADMIN_EMAIL],

@@ -38,3 +38,19 @@ test('la empleada ve su expediente pero no la configuración de accesos', async 
   const denied = await page.goto(`/h/${HOUSEHOLD}/settings`);
   expect(denied?.status()).toBe(403);
 });
+
+test('leer las condiciones y pactarlas piden permisos distintos', async ({ page }) => {
+  await loginAs(page, 'employee');
+  // Sus condiciones son suyas: puede leerlas.
+  const own = await page.goto(`/h/${HOUSEHOLD}/employment/condiciones`);
+  expect(own?.status()).toBe(200);
+  // Pactarlas es escribir el acuerdo, y eso no es de ella.
+  const denied = await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo`);
+  expect(denied?.status()).toBe(403);
+});
+
+test('el apoyo no alcanza ni las condiciones del acuerdo', async ({ page }) => {
+  await loginAs(page, 'helper');
+  const denied = await page.goto(`/h/${HOUSEHOLD}/employment/condiciones`);
+  expect(denied?.status()).toBe(403);
+});

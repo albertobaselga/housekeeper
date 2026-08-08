@@ -32,9 +32,6 @@ const VERSIONS: AgreementVersionRow[] = [
     versionNumber: 1,
     effectiveFrom: '2025-02-03',
     monthlySalaryCents: '140000',
-    overtimeHourlyRateCents: '1200',
-    workedRestDayRateCents: '7000',
-    workedRestDayCreditMinutes: 1440,
     contractedWeeklyMinutes: 2400,
     annualVacationDays: 30,
     reason: 'Acuerdo inicial'
@@ -44,9 +41,6 @@ const VERSIONS: AgreementVersionRow[] = [
     versionNumber: 2,
     effectiveFrom: '2025-04-01',
     monthlySalaryCents: '150000',
-    overtimeHourlyRateCents: '1400',
-    workedRestDayRateCents: '8000',
-    workedRestDayCreditMinutes: 1440,
     contractedWeeklyMinutes: 2400,
     annualVacationDays: 32,
     reason: 'Subida pactada'
@@ -282,6 +276,7 @@ describe('devengo del periodo en curso', () => {
         {
           id: 'e1',
           kind: 'overtime',
+          typeName: null,
           workedOn: '2026-08-03',
           durationMinutes: 120,
           note: 'Cena tardía',
@@ -293,6 +288,7 @@ describe('devengo del periodo en curso', () => {
         {
           id: 'e2',
           kind: 'worked_rest_day',
+          typeName: null,
           workedOn: '2026-08-09',
           durationMinutes: 480,
           note: '',
@@ -465,9 +461,9 @@ describe('liquidaciones y saldos', () => {
 describe('trabajo y gastos pendientes de acción', () => {
   it('marca qué acción admite cada jornada extra según su estado', () => {
     const views = buildPendingExtraViews([
-      { id: 'e1', kind: 'overtime', workedOn: '2026-08-05', durationMinutes: 90, note: '', status: 'requested', employeeMembershipId: 'm1' },
-      { id: 'e2', kind: 'worked_rest_day', workedOn: '2026-08-09', durationMinutes: 480, note: 'Domingo', status: 'accepted', employeeMembershipId: 'm1' },
-      { id: 'e3', kind: 'overtime', workedOn: '2026-08-10', durationMinutes: 45, note: '', status: 'performed_pending_resolution', employeeMembershipId: 'm1' }
+      { id: 'e1', kind: 'overtime', typeName: null, workedOn: '2026-08-05', durationMinutes: 90, note: '', status: 'requested', employeeMembershipId: 'm1' },
+      { id: 'e2', kind: 'worked_rest_day', typeName: null, workedOn: '2026-08-09', durationMinutes: 480, note: 'Domingo', status: 'accepted', employeeMembershipId: 'm1' },
+      { id: 'e3', kind: 'overtime', typeName: null, workedOn: '2026-08-10', durationMinutes: 45, note: '', status: 'performed_pending_resolution', employeeMembershipId: 'm1' }
     ]);
     expect(views.map((view) => [view.acceptable, view.performable, view.resolvable])).toEqual([
       [true, true, false],
