@@ -289,9 +289,11 @@ describe.runIf(Boolean(adminUrl))('subida de adjuntos bajo RLS con antivirus iny
         throw new Error('minio caído');
       }
     };
+    // El fallo del almacén se tipa (503 honesto, no 500 mudo): la persona lee
+    // que su foto sigue en el dispositivo y la causa cruda queda en el log.
     await expect(
       uploadAttachment(ADMIN_USER, FIXTURE_HOUSEHOLD, { bytes: jpegBytes(6), mediaType: 'image/jpeg' }, deps, appPool)
-    ).rejects.toThrow('minio caído');
+    ).rejects.toMatchObject({ name: 'AttachmentError', code: 'attachment_storage_unavailable' });
     expect(await storageObjectCount()).toBe(before);
   });
 
