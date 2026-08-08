@@ -1,5 +1,6 @@
 import {
   calculateSettlement,
+  vacationYearBalance,
   type AgreementVersion as DomainAgreementVersion,
   type MonetaryInput,
   type SettledExtraWork,
@@ -104,7 +105,19 @@ export interface AgreementVersionRow {
   workedRestDayRateCents: string;
   workedRestDayCreditMinutes: number;
   contractedWeeklyMinutes: number;
+  /** Días naturales de vacaciones al año pactados en esta versión. */
+  annualVacationDays: number;
   reason: string;
+}
+
+export interface VacationPeriodRow {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  calendarDays: number;
+  note: string;
+  status: 'recorded' | 'voided';
+  voidReason: string | null;
 }
 
 export interface ResolvedExtraWorkRow {
@@ -231,6 +244,11 @@ export interface AgreementVersionView {
   overtimeRateLabel: string;
   workedRestDayRateLabel: string;
   weeklyHoursLabel: string;
+  /** «30 días naturales al año». */
+  vacationDaysLabel: string;
+  annualVacationDays: number;
+  /** «+2 días» si esta versión cambió el derecho; null si no lo tocó. */
+  vacationDiffLabel: string | null;
   reason: string;
   state: AgreementVersionState;
   /** Diferencia salarial frente a la versión anterior, en céntimos con signo. */
@@ -333,6 +351,38 @@ export interface CompensationBalanceView {
   detail: string;
 }
 
+export interface VacationPeriodView {
+  id: string;
+  startsOn: string;
+  endsOn: string;
+  /** «Del 1 al 15 de agosto de 2026», o «El 3 de agosto de 2026» si es un día. */
+  rangeLabel: string;
+  calendarDays: number;
+  /** «15 días». */
+  daysLabel: string;
+  note: string;
+  voided: boolean;
+  voidReason: string | null;
+}
+
+export interface VacationView {
+  year: number;
+  /** Derecho de este año, ya prorrateado si el acuerdo no lo cubre entero. */
+  entitledDays: number;
+  /** Derecho anual completo pactado, para poder explicar el prorrateo. */
+  annualVacationDays: number;
+  takenDays: number;
+  /** Negativo si se pasó; la interfaz lo enseña, no lo esconde. */
+  remainingDays: number;
+  prorated: boolean;
+  /** «15 de 30 días disfrutados · quedan 15». */
+  summaryLabel: string;
+  /** Explicación del prorrateo, o null si el acuerdo cubre el año entero. */
+  prorationNote: string | null;
+  /** Periodos del año, del más reciente al más antiguo, anulados incluidos. */
+  periods: VacationPeriodView[];
+}
+
 export interface AdvanceBalanceView {
   advanceId: string;
   status: string;
@@ -406,6 +456,8 @@ export interface EmploymentOverview {
   pendingExpenses: PendingExpenseView[];
   /** Partes semanales recientes (máx. 6 semanas), del más nuevo al más viejo. */
   recentReports: WeeklyReportView[];
+  /** Vacaciones del año natural en curso; null si no hay acuerdo visible. */
+  vacations: VacationView | null;
   balances: {
     compensation: CompensationBalanceView[];
     advances: AdvanceBalanceView[];
@@ -485,6 +537,14 @@ export function buildAgreementVersionViews(
       overtimeRateLabel: `${formatCents(row.overtimeHourlyRateCents)}/h`,
       workedRestDayRateLabel: `${formatCents(row.workedRestDayRateCents)}/día`,
       weeklyHoursLabel: formatMinutes(row.contractedWeeklyMinutes) + '/semana',
+      vacationDaysLabel: `${row.annualVacationDays} ${
+        row.annualVacationDays === 1 ? 'día natural' : 'días naturales'
+      } al año`,
+      annualVacationDays: row.annualVacationDays,
+      vacationDiffLabel:
+        previous === undefined || previous.annualVacationDays === row.annualVacationDays
+          ? null
+          : formatDayDiff(row.annualVacationDays - previous.annualVacationDays),
       reason: row.reason,
       state,
       salaryDiffCents: diff === null ? null : diff.toString(),
@@ -794,6 +854,125 @@ export function buildCompensationBalanceViews(
     permanent: true,
     detail: 'Crédito permanente · sin caducidad'
   }));
+}
+
+/** Año natural en curso en la zona horaria del hogar. */
+export function currentVacationYear(now = new Date(), timeZone = 'Europe/Madrid'): number {
+  const year = new Intl.DateTimeFormat('es-ES', { timeZone, year: 'numeric' })
+    .formatToParts(now)
+    .find((part) => part.type === 'year')?.value;
+  return Number(year ?? now.getUTCFullYear());
+}
+
+/** Fecha de hoy `YYYY-MM-DD` en la zona horaria del hogar, no en la del proceso. */
+export function currentLocalDate(now = new Date(), timeZone = 'Europe/Madrid'): string {
+  const parts = new Intl.DateTimeFormat('es-ES', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(now);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? '01';
+  return `${value('year').padStart(4, '0')}-${value('month')}-${value('day')}`;
+}
+
+/**
+ * Derecho anual que rige el año que se está mirando.
+ *
+ * Si el derecho cambió a mitad de año hay dos respuestas defendibles y ninguna
+ * es «la buena»; se elige la ÚLTIMA versión ya en vigor dentro del año, porque
+ * es lo que el hogar pactó de más reciente y sigue siendo verdad hoy. El cambio
+ * no se esconde: la tarjeta de versiones lo enseña con su fecha y su motivo.
+ */
+export function annualVacationDaysInForce(
+  rows: readonly AgreementVersionRow[],
+  onDate: string
+): number {
+  const ordered = [...rows].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  const inForce = ordered.filter((row) => row.effectiveFrom <= onDate).at(-1);
+  return (inForce ?? ordered[0])?.annualVacationDays ?? 0;
+}
+
+function dayCountLabel(days: number): string {
+  return `${days} ${Math.abs(days) === 1 ? 'día' : 'días'}`;
+}
+
+function formatDayDiff(days: number): string {
+  return `${days > 0 ? '+' : '−'}${dayCountLabel(Math.abs(days))}`;
+}
+
+/** «15 días» / «1 día», con el plural correcto. */
+export function vacationDaysLabel(days: number): string {
+  return dayCountLabel(days);
+}
+
+/** «Del 1 al 15 de agosto de 2026»; un solo día se dice «El 3 de agosto de 2026». */
+export function vacationRangeLabel(startsOn: string, endsOn: string): string {
+  if (startsOn === endsOn) return `El ${dateLabel(startsOn)}`;
+  return `Del ${dateLabel(startsOn)} al ${dateLabel(endsOn)}`;
+}
+
+/**
+ * Bloque de vacaciones del año natural en curso.
+ *
+ * El saldo lo calcula el motor puro del dominio (`vacationYearBalance`), que es
+ * quien sabe prorratear el primer año y repartir un periodo que cruza el 31 de
+ * diciembre. Aquí solo se ponen las palabras.
+ *
+ * Los periodos ANULADOS se listan pero no cuentan: verlos tachados es lo que
+ * convierte «me faltan días» en «ah, aquello se anuló el martes».
+ */
+export function buildVacationView(input: {
+  year: number;
+  annualVacationDays: number;
+  agreementStartsOn: string;
+  agreementEndsOn: string | null;
+  periods: readonly VacationPeriodRow[];
+}): VacationView {
+  const balance = vacationYearBalance({
+    year: input.year,
+    annualVacationDays: input.annualVacationDays,
+    agreementStartsOn: input.agreementStartsOn,
+    agreementEndsOn: input.agreementEndsOn,
+    periods: input.periods
+      .filter((row) => row.status === 'recorded')
+      .map((row) => ({ startsOn: row.startsOn, endsOn: row.endsOn }))
+  });
+
+  // «quedan 15» a secas: la unidad ya la ha dicho «de 30 días disfrutados» y
+  // repetirla tres veces en un renglón lo vuelve ilegible. El exceso sí lleva
+  // unidad, porque «5 de más» a secas no se entiende de qué son.
+  const remaining =
+    balance.remainingDays < 0
+      ? `${dayCountLabel(-balance.remainingDays)} de más`
+      : `quedan ${balance.remainingDays}`;
+
+  return {
+    year: balance.year,
+    entitledDays: balance.entitledDays,
+    annualVacationDays: balance.annualVacationDays,
+    takenDays: balance.takenDays,
+    remainingDays: balance.remainingDays,
+    prorated: balance.prorated,
+    summaryLabel: `${balance.takenDays} de ${balance.entitledDays} días disfrutados · ${remaining}`,
+    prorationNote: balance.prorated
+      ? `El acuerdo cubre ${dayCountLabel(balance.coveredDays)} de ${input.year}, así que de los ` +
+        `${balance.annualVacationDays} días del año le tocan ${balance.entitledDays} en ${input.year}.`
+      : null,
+    periods: [...input.periods]
+      .sort((left, right) => right.startsOn.localeCompare(left.startsOn))
+      .map((row) => ({
+        id: row.id,
+        startsOn: row.startsOn,
+        endsOn: row.endsOn,
+        rangeLabel: vacationRangeLabel(row.startsOn, row.endsOn),
+        calendarDays: row.calendarDays,
+        daysLabel: dayCountLabel(row.calendarDays),
+        note: row.note,
+        voided: row.status === 'voided',
+        voidReason: row.voidReason
+      }))
+  };
 }
 
 export function buildAdvanceBalanceViews(rows: readonly AdvanceRow[]): AdvanceBalanceView[] {

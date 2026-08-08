@@ -138,6 +138,99 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(kinds).toEqual(['base_salary', 'advance_deduction']);
   });
 
+  it('la empleada ve su saldo de vacaciones del año en curso, con lo anulado listado pero sin contar', async () => {
+    const admin = new pg.Client({ connectionString: adminUrl });
+    await admin.connect();
+    try {
+      await admin.query('set row_security = off');
+      await admin.query(
+        `insert into app.vacation_periods
+           (id, household_id, agreement_id, employee_membership_id, starts_on, ends_on, note,
+            recorded_by_membership_id)
+         values
+           ('ea100000-0000-4000-8000-000000000001', $1, $2, $3, '2026-08-01', '2026-08-15',
+            'Quincena de agosto', $4),
+           ('ea100000-0000-4000-8000-000000000002', $1, $2, $3, '2026-04-06', '2026-04-10',
+            'Apuntado por error', $4),
+           -- A caballo del fin de año: solo sus ocho días de 2026 cuentan aquí.
+           ('ea100000-0000-4000-8000-000000000003', $1, $2, $3, '2026-12-24', '2027-01-05',
+            'Navidad', $4)`,
+        [
+          FIXTURE_HOUSEHOLD,
+          '12000000-0000-4000-8000-000000000001',
+          '11000000-0000-4000-8000-000000000003',
+          '11000000-0000-4000-8000-000000000001'
+        ]
+      );
+      await admin.query(
+        `update app.vacation_periods
+            set status = 'voided', voided_by_membership_id = $1,
+                voided_at = now(), void_reason = 'Las fechas eran otras'
+          where id = 'ea100000-0000-4000-8000-000000000002'`,
+        ['11000000-0000-4000-8000-000000000001']
+      );
+    } finally {
+      await admin.end();
+    }
+
+    const overview = await loadEmploymentOverview(
+      { id: 'fixture:roble:employee' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+
+    const vacations = overview!.vacations;
+    expect(vacations).not.toBeNull();
+    expect(vacations!.year).toBe(2026);
+    // El acuerdo empezó en 2025, así que 2026 va entero: sin prorrateo.
+    expect(vacations!.prorated).toBe(false);
+    expect(vacations!.entitledDays).toBe(30);
+    // 15 de agosto + 8 de la Navidad que caen en 2026; los 5 anulados, no.
+    expect(vacations!.takenDays).toBe(23);
+    expect(vacations!.remainingDays).toBe(7);
+    expect(vacations!.summaryLabel).toBe('23 de 30 días disfrutados · quedan 7');
+
+    // Los tres periodos se listan, el anulado con su motivo, del más reciente
+    // al más antiguo.
+    expect(vacations!.periods.map((period) => period.id)).toEqual([
+      'ea100000-0000-4000-8000-000000000003',
+      'ea100000-0000-4000-8000-000000000001',
+      'ea100000-0000-4000-8000-000000000002'
+    ]);
+    expect(vacations!.periods[2]).toMatchObject({
+      voided: true,
+      voidReason: 'Las fechas eran otras'
+    });
+
+    // El derecho vive en la versión del acuerdo y se enseña en su historial.
+    expect(overview!.versions.map((version) => version.annualVacationDays)).toEqual([30, 30]);
+    expect(overview!.versions[0]!.vacationDaysLabel).toBe('30 días naturales al año');
+  });
+
+  it('la familia no administradora ve las vacaciones; el apoyo, ni el saldo', async () => {
+    // Los días son organización de la casa, no importes: por eso family_member
+    // los lee (política `vacation_periods_read` con include_family_member).
+    const member = await loadEmploymentOverview(
+      { id: 'fixture:roble:family' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    // …pero NO ve las versiones del acuerdo (ahí van los importes), así que sin
+    // derecho conocido no se le pinta un saldo inventado.
+    expect(member!.versions).toEqual([]);
+    expect(member!.vacations).toBeNull();
+
+    const helper = await loadEmploymentOverview(
+      { id: 'fixture:roble:helper' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    expect(helper!.vacations).toBeNull();
+  });
+
   it('el rol helper no ve datos laborales y el modelo degrada limpiamente', async () => {
     const overview = await loadEmploymentOverview(
       { id: 'fixture:roble:helper' },
@@ -154,6 +247,7 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview!.pendingExtras).toEqual([]);
     expect(overview!.pendingExpenses).toEqual([]);
     expect(overview!.recentReports).toEqual([]);
+    expect(overview!.vacations).toBeNull();
     expect(overview!.balances).toEqual({ compensation: [], advances: [] });
   });
 

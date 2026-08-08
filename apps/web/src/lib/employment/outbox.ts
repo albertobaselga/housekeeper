@@ -14,7 +14,9 @@ export const EMPLOYMENT_AGGREGATES: readonly AggregateType[] = [
   'extra_work',
   'settlement',
   'payment',
-  'expense'
+  'expense',
+  'leave_request',
+  'agreement'
 ];
 
 /** Registros que la sección "Cambios sin sincronizar" debe listar. */
@@ -84,6 +86,17 @@ export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
     }
     case 'expense':
       return action === 'resolve' ? 'Decisión sobre un gasto' : 'Gasto enviado';
+    case 'leave_request': {
+      if (action === 'void') return 'Anulación de un periodo de vacaciones';
+      const startsOn = payloadField(envelope, 'startsOn');
+      return startsOn
+        ? `Vacaciones apuntadas desde el ${dateLabel(startsOn)}`
+        : 'Vacaciones apuntadas';
+    }
+    case 'agreement':
+      return action === 'set_vacation_entitlement'
+        ? 'Cambio de los días de vacaciones del acuerdo'
+        : 'Cambio en el acuerdo';
     default:
       return 'Cambio pendiente';
   }
