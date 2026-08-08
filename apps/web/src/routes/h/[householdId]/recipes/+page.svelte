@@ -555,7 +555,15 @@
               <!-- P1-7: el alta normal es solo el nombre. La matriz de 14
                    alérgenos es una decisión demasiado grande para «apuntar que
                    Leo no toma leche», así que solo aparece si se abre. -->
-              <details class="diner-allergens" bind:open={dinerAllergensOpen}>
+              <!-- `open` de una sola dirección + `ontoggle` en vez de
+                   `bind:open`: el binding genérico de propiedad de Svelte es
+                   runtime compartido y entraba en el bundle inicial de Hoy
+                   (presupuesto ≤ 120 kB) para una pantalla que Hoy no abre. -->
+              <details
+                class="diner-allergens"
+                open={dinerAllergensOpen}
+                ontoggle={(event) => (dinerAllergensOpen = event.currentTarget.open)}
+              >
                 <summary>
                   ¿Tiene alergias o restricciones?
                   {#if dinerFlagCount > 0}

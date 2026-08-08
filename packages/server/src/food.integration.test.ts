@@ -623,7 +623,7 @@ describe.runIf(Boolean(adminUrl))("comida, menú y compra sobre Postgres real", 
       buildShoppingBoard(client, ROBLE_HOUSEHOLD, PACKAGE_WEEK),
     );
     const arroz = lineNamed(board.sections, "Arroz bomba IT");
-    expect(arroz.packaging).toEqual({ size: "500.00", unit: "g" });
+    expect(arroz.packaging).toEqual({ size: "500", unit: "g" });
     // 100 g de arroz → un paquete de 500 g basta.
     expect(arroz.parts[0]).toMatchObject({ unit: "g", quantity: "100", packages: 1 });
     expect(lineNamed(board.sections, "Harina de trigo IT").parts[0]).toMatchObject({ packages: null });

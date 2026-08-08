@@ -264,9 +264,11 @@ export async function buildShoppingBoard(
     if (!foodByName.has(key)) foodByName.set(key, row);
   }
 
+  // `numeric(10,2)` llega como "500.00": se normaliza a "500" para que la
+  // interfaz no tenga que decidir cómo se escribe medio kilo.
   const packagingOf = (food: FoodRow | undefined): { size: string; unit: string } | null =>
     food?.package_size && food.package_unit
-      ? { size: food.package_size, unit: food.package_unit }
+      ? { size: formatHundredths(toHundredths(food.package_size)), unit: food.package_unit }
       : null;
 
   const houseLines = new Map<string, LineAccumulator>();
