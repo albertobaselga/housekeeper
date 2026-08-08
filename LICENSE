@@ -1,0 +1,35 @@
+Casa Clara — Todos los derechos reservados
+===========================================
+
+Copyright (c) 2026 <TITULAR DE LOS DERECHOS>
+
+Todos los derechos reservados.
+
+Este software y su documentación son propiedad exclusiva del titular de los
+derechos. No se concede ninguna licencia, expresa o implícita, para usar,
+copiar, modificar, fusionar, publicar, distribuir, sublicenciar ni vender
+copias de este software ni de ninguna parte de él, salvo autorización previa y
+por escrito del titular.
+
+El repositorio es privado. Que una persona tenga acceso de lectura al
+repositorio —por colaboración, revisión o cualquier otro motivo— no le otorga
+ningún derecho sobre el código más allá de leerlo dentro de ese contexto.
+
+EL SOFTWARE SE PROPORCIONA «TAL CUAL», SIN GARANTÍA DE NINGÚN TIPO, EXPRESA O
+IMPLÍCITA, INCLUIDAS ENTRE OTRAS LAS GARANTÍAS DE COMERCIABILIDAD, IDONEIDAD
+PARA UN FIN DETERMINADO Y NO INFRACCIÓN. EN NINGÚN CASO EL TITULAR SERÁ
+RESPONSABLE DE NINGUNA RECLAMACIÓN, DAÑO U OTRA RESPONSABILIDAD, YA SEA EN UNA
+ACCIÓN CONTRACTUAL, EXTRACONTRACTUAL O DE OTRO TIPO, DERIVADA DE O RELACIONADA
+CON EL SOFTWARE O SU USO.
+
+---
+
+Nota sobre dependencias de terceros: las bibliotecas instaladas desde el
+registro npm conservan sus propias licencias, que no se ven afectadas por este
+aviso.
+
+Nota para el titular: sustituye `<TITULAR DE LOS DERECHOS>` por tu nombre o el
+de la entidad titular antes de compartir el repositorio con nadie. Si en algún
+momento decides abrir el código, este fichero es lo primero que hay que
+reemplazar (por ejemplo, por AGPL-3.0 o MIT) — y hazlo con una decisión
+explícita, no por omisión.
