@@ -152,12 +152,6 @@ COMMENT ON COLUMN app.recurring_supplements.adds_to_pay IS
 CREATE INDEX recurring_supplements_version_idx
   ON app.recurring_supplements (household_id, agreement_version_id, sort_order);
 
--- Los complementos que suman necesitan su propia clase de línea en la
--- liquidación. Reutilizar 'adjustment' los haría pasar por correcciones
--- manuales en el recibo, que es exactamente lo que no son: son condiciones
--- pactadas que se repiten cada mes.
-ALTER TYPE app.settlement_line_kind ADD VALUE IF NOT EXISTS 'supplement';
-
 -- ── 4. Inmutabilidad ────────────────────────────────────────────────────────
 /*
  * El catálogo hereda la inmutabilidad de la versión que lo contiene. No hay
@@ -319,7 +313,75 @@ CREATE TRIGGER extra_work_events_type_freeze
 BEFORE INSERT OR UPDATE ON app.extra_work_events
 FOR EACH ROW EXECUTE FUNCTION app.enforce_extra_work_type_freeze();
 
--- ── 7. RLS ──────────────────────────────────────────────────────────────────
+-- ── 7. El complemento que suma es una línea de la liquidación ───────────────
+/*
+ * Reutilizar 'adjustment' haría pasar los complementos por correcciones
+ * manuales en el recibo, que es justo lo que no son: son condiciones pactadas
+ * que se repiten cada mes. Necesitan su propia clase de línea y su propia
+ * referencia de procedencia, para que la línea del recibo apunte a la condición
+ * que la justifica igual que la de salario apunta a la versión del acuerdo.
+ *
+ * Los complementos que NO suman no llegan aquí: no son línea de nada, porque
+ * ninguna cantidad que la casa paga por su cuenta debe poder colarse en un
+ * total. Constan en las condiciones de contrato y en la proyección del mes,
+ * fuera de `lines`.
+ */
+ALTER TYPE app.settlement_line_kind ADD VALUE IF NOT EXISTS 'supplement';
+
+ALTER TABLE app.settlement_lines
+  ADD COLUMN recurring_supplement_id uuid;
+
+ALTER TABLE app.settlement_lines
+  ADD CONSTRAINT settlement_lines_supplement_fkey
+  FOREIGN KEY (household_id, recurring_supplement_id)
+  REFERENCES app.recurring_supplements(household_id, id) ON DELETE RESTRICT;
+
+COMMENT ON COLUMN app.settlement_lines.recurring_supplement_id IS
+  'Condición pactada que justifica una línea de complemento, como agreement_version_id justifica la de salario.';
+
+/*
+ * Las dos comprobaciones de 0003 que enumeraban las clases tienen que admitir
+ * la nueva. Se reescriben CON NOMBRE —las de 0003 son anónimas y se llamaban
+ * `settlement_lines_check` y `..._check3`— para que la próxima migración que
+ * las toque no tenga que adivinar cómo las bautizó Postgres.
+ *
+ * La rama nueva NO nombra el valor 'supplement' del enum: `ALTER TYPE ... ADD
+ * VALUE` prohíbe usar el valor recién añadido en la misma transacción. Se
+ * identifica por exclusión de las seis clases anteriores, que es además la
+ * forma honesta de decirlo: una línea que no es ninguna de ellas y lleva una
+ * condición recurrente detrás.
+ */
+ALTER TABLE app.settlement_lines DROP CONSTRAINT settlement_lines_check;
+ALTER TABLE app.settlement_lines ADD CONSTRAINT settlement_lines_provenance_by_kind CHECK (
+  (kind = 'base_salary' AND agreement_version_id IS NOT NULL
+    AND extra_work_event_id IS NULL AND advance_ledger_entry_id IS NULL AND expense_id IS NULL
+    AND recurring_supplement_id IS NULL)
+  OR (kind IN ('extra_work', 'time_off_compensation') AND extra_work_event_id IS NOT NULL
+    AND advance_ledger_entry_id IS NULL AND expense_id IS NULL
+    AND recurring_supplement_id IS NULL)
+  OR (kind = 'advance_deduction' AND advance_ledger_entry_id IS NOT NULL
+    AND agreement_version_id IS NULL AND extra_work_event_id IS NULL AND expense_id IS NULL
+    AND recurring_supplement_id IS NULL)
+  OR (kind = 'expense_reimbursement' AND expense_id IS NOT NULL
+    AND agreement_version_id IS NULL AND extra_work_event_id IS NULL
+    AND advance_ledger_entry_id IS NULL AND recurring_supplement_id IS NULL)
+  OR (kind = 'adjustment' AND agreement_version_id IS NULL AND extra_work_event_id IS NULL
+    AND advance_ledger_entry_id IS NULL AND expense_id IS NULL
+    AND recurring_supplement_id IS NULL)
+  OR (kind NOT IN ('base_salary', 'extra_work', 'time_off_compensation', 'advance_deduction',
+                   'expense_reimbursement', 'adjustment')
+    AND recurring_supplement_id IS NOT NULL
+    AND agreement_version_id IS NULL AND extra_work_event_id IS NULL
+    AND advance_ledger_entry_id IS NULL AND expense_id IS NULL)
+);
+
+ALTER TABLE app.settlement_lines DROP CONSTRAINT settlement_lines_check3;
+ALTER TABLE app.settlement_lines ADD CONSTRAINT settlement_lines_non_negative_credits CHECK (
+  (kind NOT IN ('base_salary', 'extra_work', 'expense_reimbursement') AND recurring_supplement_id IS NULL)
+  OR amount_cents >= 0
+);
+
+-- ── 8. RLS ──────────────────────────────────────────────────────────────────
 ALTER TABLE app.extra_work_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE app.extra_work_types FORCE ROW LEVEL SECURITY;
 ALTER TABLE app.recurring_supplements ENABLE ROW LEVEL SECURITY;
@@ -392,7 +454,7 @@ CREATE POLICY recurring_supplements_employee_read ON app.recurring_supplements
 GRANT SELECT, INSERT ON app.extra_work_types TO casa_clara_app;
 GRANT SELECT, INSERT ON app.recurring_supplements TO casa_clara_app;
 
--- ── 8. Migración del modelo de 0002 al catálogo ─────────────────────────────
+-- ── 9. Migración del modelo de 0002 al catálogo ─────────────────────────────
 /*
  * Cada versión de acuerdo que ya existe estrena los dos tipos equivalentes a
  * las columnas de 0002, con SUS tarifas: la v1 conserva las suyas y la v2 las

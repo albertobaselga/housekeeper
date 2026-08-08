@@ -11,7 +11,12 @@ import {
 import { canonicalSha256 } from "../canonical-json.js";
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";
-import { loadAgreementVersions, requireAgreement } from "./shared.js";
+import {
+  loadAgreementVersions,
+  loadRecurringSupplements,
+  requireAgreement,
+  versionInForceOn,
+} from "./shared.js";
 
 interface OpenPayload {
   agreementId: UUID;
@@ -78,6 +83,7 @@ interface SettlementLineRow {
     | "base_salary"
     | "extra_work"
     | "time_off_compensation"
+    | "supplement"
     | "advance_deduction"
     | "expense_reimbursement";
   occurredOn: string;
@@ -87,6 +93,7 @@ interface SettlementLineRow {
   extraWorkEventId: UUID | null;
   advanceLedgerEntryId: UUID | null;
   expenseId: UUID | null;
+  recurringSupplementId: UUID | null;
   provenance: Record<string, unknown>;
 }
 
@@ -139,6 +146,7 @@ async function closeSettlement(
   const extraRows = await client.query<{
     id: string;
     kind: "overtime" | "worked_rest_day";
+    type_name: string | null;
     worked_on: string;
     duration_minutes: number;
     resolution: "money" | "time_off";
@@ -146,7 +154,11 @@ async function closeSettlement(
     frozen_amount_cents: string;
     balance_minutes: number;
   }>(
-    `select id, kind, worked_on::text as worked_on, duration_minutes, resolution,
+    `select id, kind,
+            (select catalogued.name from app.extra_work_types as catalogued
+              where catalogued.household_id = extra_work_events.household_id
+                and catalogued.id = extra_work_events.extra_work_type_id) as type_name,
+            worked_on::text as worked_on, duration_minutes, resolution,
             frozen_unit_rate_cents::text as frozen_unit_rate_cents,
             frozen_amount_cents::text as frozen_amount_cents, balance_minutes
        from app.extra_work_events
@@ -158,8 +170,12 @@ async function closeSettlement(
   const extraWork: SettledExtraWork[] = extraRows.rows.map((row) => ({
     id: row.id,
     workedOn: row.worked_on,
-    label:
-      row.kind === "overtime"
+    // El nombre del catálogo cuando el hecho nombra su concepto: en el recibo
+    // debe leerse «Noche de guardia», no «Festivo trabajado». Las dos etiquetas
+    // de 0002 quedan para el histórico sin concepto.
+    label: row.type_name
+      ? `${row.type_name} del ${row.worked_on}`
+      : row.kind === "overtime"
         ? `Horas extra del ${row.worked_on}`
         : `Festivo trabajado el ${row.worked_on}`,
     resolution: row.resolution,
@@ -202,6 +218,13 @@ async function closeSettlement(
   }));
   const expenseById = new Map(expenseRows.rows.map((row) => [row.id, row]));
 
+  // Complementos de la versión vigente el primer día del mes: la misma versión
+  // que pone el salario base. `calculateSettlement` deja fuera del total los que
+  // paga la casa por su cuenta.
+  const versionForPeriod = versionInForceOn(versions, bounds.first);
+  const supplements = await loadRecurringSupplements(client, householdId, versionForPeriod.id);
+  const supplementById = new Map(supplements.map((row) => [row.id, row]));
+
   const projection = calculateSettlement({
     period,
     agreementVersions: versions,
@@ -211,6 +234,7 @@ async function closeSettlement(
     unpaidAbsences: [],
     adjustments: [],
     expenses,
+    supplements,
   });
 
   const dbLines: SettlementLineRow[] = projection.lines.map((line, index) => {
@@ -222,6 +246,7 @@ async function closeSettlement(
       extraWorkEventId: null,
       advanceLedgerEntryId: null,
       expenseId: null,
+      recurringSupplementId: null,
       provenance: {
         engineLineId: line.id,
         sourceType: line.sourceType,
@@ -248,6 +273,17 @@ async function closeSettlement(
           section: "salary",
           occurredOn: fact.worked_on,
           extraWorkEventId: fact.id,
+        };
+      }
+      case "supplement": {
+        const fact = supplementById.get(line.sourceId);
+        if (!fact) throw new Error(`Complemento sin condición de origen: ${line.sourceId}`);
+        return {
+          ...base,
+          kind: "supplement",
+          section: "salary",
+          occurredOn: settlement.period_start,
+          recurringSupplementId: fact.id as UUID,
         };
       }
       case "advance_deduction": {
@@ -282,8 +318,9 @@ async function closeSettlement(
       `insert into app.settlement_lines
          (household_id, settlement_id, agreement_id, employee_membership_id, line_number,
           section, kind, occurred_on, concept, amount_cents,
-          agreement_version_id, extra_work_event_id, advance_ledger_entry_id, expense_id, provenance)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb)`,
+          agreement_version_id, extra_work_event_id, advance_ledger_entry_id, expense_id,
+          recurring_supplement_id, provenance)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)`,
       [
         householdId,
         settlement.id,
@@ -299,6 +336,7 @@ async function closeSettlement(
         line.extraWorkEventId,
         line.advanceLedgerEntryId,
         line.expenseId,
+        line.recurringSupplementId,
         JSON.stringify(line.provenance),
       ],
     );
