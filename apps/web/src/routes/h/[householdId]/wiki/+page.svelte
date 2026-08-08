@@ -83,22 +83,15 @@
     flushComposerBody();
     if (!composerTitle.trim() || !composerBody.trim()) return;
 
-    // Sin apartados todavía: se crea «General» solo, sin pedir nada más.
-    let spaceId = composerSpaceId || defaultSpaceId;
-    if (!spaceId) {
-      const outcome = await dispatch(
-        createWikiSpace({ householdId: home.householdId, name: 'General', description: 'Notas generales de la casa' })
-      );
-      if (outcome !== 'synced') return;
-      spaceId = home.spaces.find((space) => space.name === 'General')?.id ?? '';
-      if (!spaceId) return;
-      composerSpaceId = spaceId;
-    }
+    // Sin apartados todavía: la nota viaja con el apartado «General» POR SLUG y
+    // el servidor lo da de alta al aplicarla. Nada de esperar un identificador
+    // que llegaba con el ACK: esto funciona igual sin conexión.
+    const spaceId = composerSpaceId || defaultSpaceId;
 
     const outcome = await dispatch(
       createWikiPage({
         householdId: home.householdId,
-        spaceId,
+        ...(spaceId ? { spaceId } : { spaceSlug: 'general', spaceName: 'General' }),
         title: composerTitle,
         bodyMarkdown: composerBody,
         tags: parseTermList(composerTags),
@@ -287,7 +280,7 @@
               </select>
             </label>
           {:else}
-            <p class="audit-note">Se guardará en el apartado «General», que se crea solo. Necesita conexión la primera vez.</p>
+            <p class="audit-note">Se guardará en el apartado «General», que se crea solo. Funciona también sin conexión.</p>
           {/if}
 
           <details class="wiki-advanced">

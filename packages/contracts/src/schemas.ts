@@ -199,7 +199,16 @@ export const wikiSpaceCreatePayloadSchema = z.object({
 
 export const wikiPageCreatePayloadSchema = z.object({
   action: z.literal("create"),
-  spaceId: uuidSchema,
+  /** Apartado existente. Alternativa: `spaceSlug` (alta implícita, ver abajo). */
+  spaceId: uuidSchema.optional(),
+  /**
+   * Apartado por slug: si no existe en el hogar, el propio comando lo crea
+   * (solo familia). Permite escribir la PRIMERA instrucción sin conexión, sin
+   * esperar a que el identificador del apartado llegue con el ACK.
+   */
+  spaceSlug: wikiSlugSchema.optional(),
+  /** Nombre legible del apartado cuando hay que crearlo; por defecto, el slug. */
+  spaceName: z.string().trim().min(1).max(120).optional(),
   parentPageId: uuidSchema.nullable().optional(),
   title: z.string().trim().min(1).max(200),
   bodyMarkdown: z.string().max(200_000),

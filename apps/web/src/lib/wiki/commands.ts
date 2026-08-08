@@ -118,10 +118,18 @@ export function cloneWikiTemplate(
   }) as CommandEnvelopeV1<WikiSpaceClonePayload>;
 }
 
+/**
+ * Nota nueva. El apartado va por identificador (`spaceId`) cuando ya existe o
+ * por slug (`spaceSlug` + `spaceName`) cuando el hogar todavía no lo tiene: en
+ * ese caso el propio comando lo da de alta en el servidor, así que la primera
+ * instrucción de la Guía se puede escribir SIN conexión.
+ */
 export function createWikiPage(
   input: {
     householdId: string;
-    spaceId: string;
+    spaceId?: string;
+    spaceSlug?: string;
+    spaceName?: string;
     parentPageId?: string | null;
     title: string;
     bodyMarkdown: string;
@@ -139,7 +147,12 @@ export function createWikiPage(
     aggregateType: 'wiki_page',
     payload: {
       action: 'create',
-      spaceId: input.spaceId,
+      ...(input.spaceId
+        ? { spaceId: input.spaceId }
+        : {
+            spaceSlug: input.spaceSlug ?? '',
+            ...(input.spaceName ? { spaceName: input.spaceName } : {})
+          }),
       ...(input.parentPageId ? { parentPageId: input.parentPageId } : {}),
       title: input.title.trim(),
       bodyMarkdown: input.bodyMarkdown,

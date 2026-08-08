@@ -241,6 +241,110 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
     });
   });
 
+  // Ola D-4: escribir la PRIMERA instrucción sin conexión. La nota puede
+  // nombrar su apartado por slug y el comando lo da de alta si falta, así que
+  // el cliente ya no necesita el identificador que llegaba con el ACK.
+  it("apartado por slug: se crea si falta, se reutiliza si existe y solo la familia lo estrena", async () => {
+    const createOp = randomUUID();
+    const created = await processSyncBatch(
+      appPool,
+      ADMIN,
+      [
+        pageEnvelope(createOp, {
+          action: "create",
+          spaceSlug: "cuaderno-de-casa",
+          spaceName: "Cuaderno de casa",
+          title: "Dónde está la llave del agua",
+          bodyMarkdown: "Bajo el fregadero, a la derecha.",
+          publish: true,
+        }),
+      ],
+      HANDLERS,
+    );
+    expect(created.acknowledgements[0]).toMatchObject({ operationId: createOp, status: "accepted", revision: 1 });
+
+    const space = await adminPool.query<{ id: string; name: string }>(
+      `select id, name from app.wiki_spaces where household_id = $1 and slug = 'cuaderno-de-casa'`,
+      [ROBLE_HOUSEHOLD],
+    );
+    expect(space.rows).toHaveLength(1);
+    expect(space.rows[0]?.name).toBe("Cuaderno de casa");
+
+    // Segunda nota con el mismo slug: reutiliza el apartado, no lo duplica.
+    const secondOp = randomUUID();
+    const second = await processSyncBatch(
+      appPool,
+      ADMIN,
+      [
+        pageEnvelope(secondOp, {
+          action: "create",
+          spaceSlug: "cuaderno-de-casa",
+          spaceName: "Cuaderno de casa",
+          title: "Cómo se cierra el gas",
+          bodyMarkdown: "La llave está junto a la cocina.",
+          publish: true,
+        }),
+      ],
+      HANDLERS,
+    );
+    expect(second.acknowledgements[0]).toMatchObject({ status: "accepted" });
+    const spacesAfter = await adminPool.query(
+      `select 1 from app.wiki_spaces where household_id = $1 and slug = 'cuaderno-de-casa'`,
+      [ROBLE_HOUSEHOLD],
+    );
+    expect(spacesAfter.rowCount).toBe(1);
+    const pages = await adminPool.query(
+      `select 1 from app.wiki_pages where household_id = $1 and space_id = $2`,
+      [ROBLE_HOUSEHOLD, space.rows[0]?.id],
+    );
+    expect(pages.rowCount).toBe(2);
+
+    // Los apartados siguen siendo de la familia: la empleada puede escribir
+    // EN uno que exista, pero no estrenar uno nuevo por esta vía.
+    const employeeOp = randomUUID();
+    const employeeExisting = await processSyncBatch(
+      appPool,
+      EMPLOYEE,
+      [
+        pageEnvelope(employeeOp, {
+          action: "create",
+          spaceSlug: "cuaderno-de-casa",
+          title: "Nota de la empleada",
+          bodyMarkdown: "Anotación.",
+        }),
+      ],
+      HANDLERS,
+    );
+    expect(employeeExisting.acknowledgements[0]).toMatchObject({ status: "accepted" });
+
+    const employeeNewOp = randomUUID();
+    const employeeNew = await processSyncBatch(
+      appPool,
+      EMPLOYEE,
+      [
+        pageEnvelope(employeeNewOp, {
+          action: "create",
+          spaceSlug: "apartado-de-la-empleada",
+          spaceName: "Apartado de la empleada",
+          title: "Otra nota",
+          bodyMarkdown: "Anotación.",
+        }),
+      ],
+      HANDLERS,
+    );
+    expect(employeeNew.acknowledgements[0]).toMatchObject({ status: "rejected", errorCode: "not_allowed" });
+
+    // Sin apartado por ninguna de las dos vías, el payload es inválido.
+    const emptyOp = randomUUID();
+    const empty = await processSyncBatch(
+      appPool,
+      ADMIN,
+      [pageEnvelope(emptyOp, { action: "create", title: "Sin apartado", bodyMarkdown: "Texto." })],
+      HANDLERS,
+    );
+    expect(empty.acknowledgements[0]).toMatchObject({ status: "rejected", errorCode: "invalid_payload" });
+  });
+
   it("helper y viewer no escriben; helper lee lo publicado pero no un borrador", async () => {
     const spaceId = await createSpace(ADMIN, "Visibilidad");
 
