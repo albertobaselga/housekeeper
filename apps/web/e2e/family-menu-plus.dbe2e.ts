@@ -86,8 +86,11 @@ test('usar la plantilla sobre una semana con contenido muestra el rechazo veraz'
   await templatesCard.getByLabel('Sobre el lunes').fill(APPLY_WEEK);
   await templatesCard.getByRole('button', { name: 'Usar plantilla' }).click();
 
-  await expect(page.locator('.form-error')).toContainText('No se pudo guardar');
-  await expect(page.locator('.form-error')).toContainText('solapa');
+  // Mensaje propio de esta acción (Ola C): más concreto que el genérico
+  // «No se pudo guardar: la semana se solapa…» del diccionario compartido.
+  await expect(page.locator('.form-error')).toContainText(
+    'Esa semana ya tiene comidas: elige una semana vacía o quítalas antes.'
+  );
 });
 
 test('Marta borra la plantilla con confirmación ligera', async ({ page }) => {

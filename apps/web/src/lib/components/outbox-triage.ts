@@ -110,7 +110,7 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
           return 'Cambio en la guía de la casa';
       }
     case 'membership':
-      return action === 'revoke' ? 'Revocación de un acceso' : 'Caducidad de un acceso';
+      return action === 'revoke' ? 'Retirada de un acceso' : 'Fecha límite de un acceso';
     default:
       return 'Cambio pendiente';
   }
@@ -131,7 +131,7 @@ const GENERIC_ERROR_LABELS: Record<string, string> = {
   space_not_found: 'El apartado de la guía ya no existe',
   membership_not_found: 'El acceso ya no existe',
   already_revoked: 'El acceso ya estaba revocado',
-  expiry_in_past: 'La caducidad quedaba en el pasado',
+  expiry_in_past: 'La fecha límite quedaba en el pasado',
   cannot_modify_self: 'No puedes cambiar tu propio acceso',
   operation_conflict: 'Otra operación llegó antes con otro contenido',
   constraint_violation: 'El servidor no pudo aplicar el cambio'

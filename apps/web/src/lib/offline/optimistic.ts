@@ -40,6 +40,13 @@ export interface OptimisticHooks {
   revert?: () => void;
   /** Datos frescos confirmados (corre tras el invalidate selectivo). */
   settle?: () => void;
+  /**
+   * Mensaje propio por `errorCode` para rejected/conflict cuando el
+   * diccionario compartido queda demasiado genérico para ESTA acción (p. ej.
+   * `week_overlap` al aplicar una plantilla). El texto sustituye a la nota
+   * completa; sigue siendo veraz, solo más concreto.
+   */
+  messageOverrides?: Readonly<Record<string, string>>;
 }
 
 interface TrackedOperation {
@@ -112,13 +119,21 @@ export class OptimisticActions {
       this.tracked.push({ operationId, hooks });
       this.status.set({ tone: 'pending', text: result.message });
     } else {
-      // rejected/conflict: reversión inmediata + causa veraz.
+      // rejected/conflict: reversión inmediata + causa veraz (con el mensaje
+      // propio de la acción si lo declaró para este código).
       hooks.revert?.();
-      this.status.set({ tone: 'error', text: result.message });
+      const override = result.errorCode ? hooks.messageOverrides?.[result.errorCode] : undefined;
+      this.status.set({ tone: 'error', text: override ?? result.message });
     }
   }
 
-  private failureFeedback(status: 'rejected' | 'conflict', errorCode: string | undefined): ActionFeedback {
+  private failureFeedback(
+    status: 'rejected' | 'conflict',
+    errorCode: string | undefined,
+    overrides?: Readonly<Record<string, string>>
+  ): ActionFeedback {
+    const override = errorCode ? overrides?.[errorCode] : undefined;
+    if (override) return { tone: 'error', text: override };
     const cause = describeErrorCode(errorCode);
     if (status === 'conflict') {
       return {
@@ -152,7 +167,11 @@ export class OptimisticActions {
           settled.push(operation.hooks);
         } else {
           operation.hooks.revert?.();
-          failure = this.failureFeedback(record.status as 'rejected' | 'conflict', record.lastErrorCode);
+          failure = this.failureFeedback(
+            record.status as 'rejected' | 'conflict',
+            record.lastErrorCode,
+            operation.hooks.messageOverrides
+          );
         }
       }
       this.tracked = remaining;

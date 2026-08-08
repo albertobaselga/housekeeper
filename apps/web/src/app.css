@@ -257,7 +257,13 @@
     box-shadow: var(--shadow-xs);
   }
   .global-search span:nth-child(2) { overflow: hidden; flex: 1; text-overflow: ellipsis; white-space: nowrap; }
-  .global-search kbd { border: 1px solid var(--line); border-radius: .35rem; background: var(--canvas); padding: .08rem .35rem; font-size: .68rem; }
+  /* P3-7: el atajo «⌘ K» solo se enseña donde suele haber teclado físico
+     (puntero fino con hover); en tablet y móvil es ruido. El atajo y el
+     overlay siguen funcionando igual aunque la pista no se pinte. */
+  .global-search kbd { display: none; border: 1px solid var(--line); border-radius: .35rem; background: var(--canvas); padding: .08rem .35rem; font-size: .68rem; }
+  @media (hover: hover) and (pointer: fine) {
+    .global-search kbd { display: inline-block; }
+  }
   .topbar-actions { position: absolute; right: clamp(1.15rem, 3vw, 2.5rem); display: flex; align-items: center; gap: .7rem; }
   .sync-pill { display: flex; align-items: center; gap: .4rem; padding: 0; color: var(--ink-faint); font-size: .72rem; }
   .sync-pill i { width: .47rem; height: .47rem; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 .2rem var(--success-soft); }
@@ -440,6 +446,12 @@
     font-size: 1rem;
   }
   .action-form .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; }
+  /* P2-2 rutinas: «Se repite cada [2] [semanas]» leído como frase única. */
+  .repeat-fieldset { display: grid; gap: .28rem; margin: 0; border: 0; padding: 0; }
+  .repeat-fieldset legend { padding: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  .repeat-phrase { display: flex; align-items: center; gap: .45rem; }
+  .repeat-phrase > span { color: var(--ink); font-size: 1rem; }
+  .repeat-phrase input { width: 4.5rem; }
   .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
   /* Apertura de liquidación: fecha de vencimiento junto al botón de cabecera. */
   .open-settlement-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; }

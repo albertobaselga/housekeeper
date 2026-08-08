@@ -79,6 +79,37 @@ describe('OptimisticActions: patrón wiki reutilizable', () => {
     expect(get(optimistic.status)?.text).not.toContain('se sincronizará');
   });
 
+  it('rejected con messageOverrides: la nota usa el mensaje propio de la acción', async () => {
+    const { optimistic } = actions({
+      outcome: 'rejected',
+      errorCode: 'week_overlap',
+      message: 'No se pudo guardar: La semana se solapa con otra ya registrada.'
+    });
+    const propio = 'Esa semana ya tiene comidas: elige una semana vacía o quítalas antes.';
+
+    await optimistic.run(envelopeFixture(`${OP}06`, '2026-08-07T08:00:00.000Z'), {
+      messageOverrides: { week_overlap: propio }
+    });
+
+    expect(get(optimistic.status)).toEqual({ tone: 'error', text: propio });
+  });
+
+  it('queued → rechazado tras el flush con messageOverrides: mismo mensaje propio', async () => {
+    const operationId = `${OP}07`;
+    const { optimistic } = actions(
+      { outcome: 'queued', message: 'Guardado en este dispositivo; se enviará al recuperar la conexión.' },
+      [recordFixture(operationId, 'rejected', 'week_overlap')]
+    );
+    const propio = 'Esa semana ya tiene comidas: elige una semana vacía o quítalas antes.';
+
+    await optimistic.run(envelopeFixture(operationId, '2026-08-07T08:00:00.000Z'), {
+      messageOverrides: { week_overlap: propio }
+    });
+    await optimistic.reconcile();
+
+    expect(get(optimistic.status)).toEqual({ tone: 'error', text: propio });
+  });
+
   it('queued: nota ámbar, el estado optimista se conserva y la reconciliación lo confirma', async () => {
     const message = 'Guardado en este dispositivo; se enviará al recuperar la conexión.';
     const { optimistic, invalidateFn } = actions({ outcome: 'queued', message });

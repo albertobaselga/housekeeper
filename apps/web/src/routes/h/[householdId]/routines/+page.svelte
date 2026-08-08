@@ -7,6 +7,7 @@
   import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
   import { refreshSyncStatus } from '$lib/offline/sync';
   import { OptimisticActions } from '$lib/offline/optimistic';
+  import { routineCadenceLabel, routineUnitLabel } from '$lib/food/cadence';
   import { nextRoutineDue } from '$lib/food/dates';
   import {
     completeRoutine,
@@ -26,12 +27,6 @@
     family: 'Familia',
     employee: 'Empleada',
     all: 'Toda la casa'
-  };
-  const FREQUENCY_LABEL: Record<RoutineFrequency, string> = {
-    daily: 'día(s)',
-    weekly: 'semana(s)',
-    monthly: 'mes(es)',
-    quarterly: 'trimestre(s)'
   };
   const DUE_LABEL = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
   // Hoy en la zona del hogar: default natural de «próxima fecha» en el alta.
@@ -164,7 +159,7 @@
               <span>
                 <strong>{routine.title}</strong>
                 <small>
-                  {AUDIENCE_LABEL[routine.audience]} · cada {routine.intervalCount} {FREQUENCY_LABEL[routine.frequency]}
+                  {AUDIENCE_LABEL[routine.audience]} · {routineCadenceLabel(routine.frequency, routine.intervalCount)}
                   · próxima: {DUE_LABEL.format(new Date(`${routine.nextDueOn}T00:00:00Z`))}
                 </small>
                 {#if routine.details}<small>{routine.details}</small>{/if}
@@ -205,24 +200,38 @@
           <label>Detalles
             <input type="text" autocomplete="off" enterkeyhint="next" bind:value={routineDetails} maxlength="1000" />
           </label>
-          <label>Audiencia
+          <label>¿Quién la hace?
             <select bind:value={routineAudience}>
               <option value="all">Toda la casa</option>
               <option value="family">Familia</option>
               <option value="employee">Empleada</option>
             </select>
           </label>
-          <label>Frecuencia
-            <select bind:value={routineFrequency}>
-              <option value="daily">Diaria</option>
-              <option value="weekly">Semanal</option>
-              <option value="monthly">Mensual</option>
-              <option value="quarterly">Trimestral</option>
-            </select>
-          </label>
-          <label>Cada cuántas (1–12)
-            <input type="number" inputmode="numeric" enterkeyhint="next" min="1" max="12" bind:value={routineInterval} required />
-          </label>
+          <!-- P2-2: la repetición se decide como una sola frase, no como tres
+               campos acoplados. Las etiquetas del desplegable concuerdan en
+               número con la cifra elegida («1 semana», «2 semanas»). -->
+          <fieldset class="repeat-fieldset">
+            <legend>Se repite</legend>
+            <div class="repeat-phrase">
+              <span aria-hidden="true">cada</span>
+              <input
+                type="number"
+                inputmode="numeric"
+                enterkeyhint="next"
+                min="1"
+                max="12"
+                bind:value={routineInterval}
+                aria-label="Se repite cada cuántas"
+                required
+              />
+              <select bind:value={routineFrequency} aria-label="Unidad de repetición">
+                <option value="daily">{routineUnitLabel('daily', routineInterval)}</option>
+                <option value="weekly">{routineUnitLabel('weekly', routineInterval)}</option>
+                <option value="monthly">{routineUnitLabel('monthly', routineInterval)}</option>
+                <option value="quarterly">{routineUnitLabel('quarterly', routineInterval)}</option>
+              </select>
+            </div>
+          </fieldset>
           <label>Próxima fecha
             <input type="date" bind:value={routineNextDue} required />
           </label>

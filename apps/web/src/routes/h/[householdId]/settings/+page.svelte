@@ -19,7 +19,8 @@
   $effect(() => optimistic.start());
 
   const DATE_LABEL = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
-  const CONFIRM_WORD = 'REVOCAR';
+  // P2-10: la palabra de confirmación acompaña al botón «Quitar el acceso».
+  const CONFIRM_WORD = 'QUITAR';
 
   function formatInstant(iso: string): string {
     return DATE_LABEL.format(new Date(iso));
@@ -77,7 +78,7 @@
 
   {#if access}
     <section class="card" aria-labelledby="access-title">
-      <div class="section-heading"><div><p class="eyebrow">Accesos del hogar</p><h2 id="access-title">Caducidad y revocación</h2></div></div>
+      <div class="section-heading"><div><p class="eyebrow">Accesos del hogar</p><h2 id="access-title">¿Hasta cuándo puede entrar cada persona?</h2></div></div>
       <ActionStatus status={actionStatus} />
       <ul class="wiki-recent">
         {#each access.memberships as member (member.id)}
@@ -87,17 +88,17 @@
                 <strong>{member.name}</strong>
                 <small>{ROLE_LABELS[member.role]} · en el hogar desde {formatInstant(member.startsAt)}</small>
                 {#if member.revokedAt}
-                  <small>Acceso revocado el {formatInstant(member.revokedAt)}</small>
+                  <small>Sin acceso desde el {formatInstant(member.revokedAt)}</small>
                 {:else if member.expiresAt}
-                  <small>Caduca el {formatInstant(member.expiresAt)}</small>
+                  <small>Puede entrar hasta el {formatInstant(member.expiresAt)}</small>
                 {/if}
               </span>
               {#if member.revokedAt}
-                <span class="status-chip warning">Revocado</span>
+                <span class="status-chip warning">Sin acceso</span>
               {:else if member.expiresAt && new Date(member.expiresAt).getTime() <= Date.now()}
-                <span class="status-chip warning">Caducado</span>
+                <span class="status-chip warning">Fecha límite pasada</span>
               {:else if member.expiresAt}
-                <span class="status-chip warning">Con caducidad</span>
+                <span class="status-chip warning">Con fecha límite</span>
               {:else}
                 <span class="status-chip success">Activo</span>
               {/if}
@@ -113,20 +114,20 @@
                   submitExpiry(member.id);
                 }}
               >
-                <label>Nueva caducidad
+                <label>Fecha límite del acceso
                   <input type="datetime-local" bind:value={expiryDrafts[member.id]} />
                 </label>
                 <div class="menu-slot-actions">
                   <button class="button secondary small-button" type="submit" disabled={busy || !expiryDrafts[member.id]}>
-                    Fijar caducidad
+                    Poner fecha límite
                   </button>
                   {#if member.expiresAt}
                     <button class="button secondary small-button" type="button" disabled={busy} onclick={() => clearExpiry(member.id)}>
-                      Quitar caducidad
+                      Quitar la fecha límite
                     </button>
                   {/if}
                   <button class="button secondary small-button" type="button" disabled={busy} onclick={() => askRevoke(member.id)}>
-                    {confirmingId === member.id ? 'Cancelar revocación' : 'Revocar acceso'}
+                    {confirmingId === member.id ? 'Cancelar' : 'Quitar el acceso'}
                   </button>
                 </div>
               </form>
@@ -139,9 +140,9 @@
                   }}
                 >
                   <p class="audit-note">
-                    La revocación es <strong>inmediata e irreversible desde esta pantalla</strong>: {member.name} perderá el
-                    acceso al hogar en su siguiente petición, también en los dispositivos donde ya tenga sesión. Escribe
-                    <strong>{CONFIRM_WORD}</strong> para confirmar.
+                    Quitar el acceso es <strong>inmediato y no se puede deshacer desde esta pantalla</strong>: {member.name}
+                    dejará de poder entrar en el hogar al momento, también en los dispositivos donde ya tenga la sesión
+                    abierta. Escribe <strong>{CONFIRM_WORD}</strong> para confirmar.
                   </p>
                   <label>Confirmación
                     <input type="text" bind:value={confirmText} placeholder={CONFIRM_WORD} autocomplete="off" enterkeyhint="done" />
@@ -152,7 +153,7 @@
                       type="submit"
                       disabled={busy || confirmText.trim().toLocaleUpperCase('es') !== CONFIRM_WORD}
                     >
-                      Revocar acceso ahora
+                      Quitar el acceso ahora
                     </button>
                   </div>
                 </form>
@@ -178,23 +179,40 @@
         <section class="card">
           <p class="eyebrow">Traspaso</p>
           <h2>Traspaso operativo de la casa</h2>
-          <p>Wiki publicada, rutinas, menú de la semana y contactos en un ZIP verificable. Nunca incluye el expediente laboral.</p>
+          <p>Todo lo necesario para que otra persona lleve la casa, en un único archivo comprimido.</p>
           <div class="handover-actions">
-            <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=helper`}>Descargar traspaso (apoyo)</a>
-            <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=family`}>Descargar traspaso (familia)</a>
+            <div class="handover-option">
+              <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=helper`}>Descargar traspaso (apoyo)</a>
+              <small>Incluye la guía publicada, las rutinas de toda la casa, el menú de la semana y los contactos.</small>
+            </div>
+            <div class="handover-option">
+              <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=family`}>Descargar traspaso (familia)</a>
+              <small>Lo mismo, con todas las rutinas (también las de la familia). El expediente laboral no se incluye nunca.</small>
+            </div>
           </div>
         </section>
       {/if}
-      <section class="card warning-card"><p class="eyebrow">Entorno de prueba</p><h2>Datos exclusivamente sintéticos</h2><p>Las sesiones viven en memoria y desaparecen al reiniciar el servidor. Esta interfaz no sustituye autenticación ni RLS de producción.</p></section>
+      <section class="card warning-card"><p class="eyebrow">Entorno de prueba</p><h2>Datos exclusivamente sintéticos</h2><p>Las sesiones viven en memoria y desaparecen al reiniciar el servidor. Cada hogar solo puede ver lo suyo, pero esta demo no sustituye a la versión final: no introduzcas datos reales.</p></section>
     </div>
   </div>
 </div>
 
 <style>
   .handover-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
+    display: grid;
+    gap: 0.85rem;
     margin-top: 0.75rem;
+  }
+
+  /* P2-11: cada descarga cuenta en una línea qué incluye su versión. */
+  .handover-option {
+    display: grid;
+    gap: 0.3rem;
+    justify-items: start;
+  }
+
+  .handover-option small {
+    color: var(--ink-soft);
+    font-size: 0.74rem;
   }
 </style>

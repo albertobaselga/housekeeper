@@ -8,6 +8,6 @@ test('en modo demo, Ajustes mantiene la maqueta y no renderiza la sección real 
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/settings`);
   await expect(page.getByRole('heading', { name: 'Accesos activos' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Caducidad y revocación' })).toHaveCount(0);
-  await expect(page.getByText('Revocar acceso')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '¿Hasta cuándo puede entrar cada persona?' })).toHaveCount(0);
+  await expect(page.getByText('Quitar el acceso')).toHaveCount(0);
 });

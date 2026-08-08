@@ -67,7 +67,7 @@ const ERROR_CODE_LABELS: Record<string, string> = {
 
   // Accesos y membresías
   already_revoked: 'El acceso ya estaba revocado',
-  expiry_in_past: 'La caducidad no puede estar en el pasado',
+  expiry_in_past: 'La fecha límite no puede estar en el pasado',
   membership_not_found: 'La membresía ya no existe',
   cannot_modify_self: 'No puedes cambiar tu propia membresía',
   group_not_found: 'El grupo ya no existe'
