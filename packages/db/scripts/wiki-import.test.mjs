@@ -11,7 +11,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { applyMigrations } from './migrate.mjs';
-import { importCorpus } from './wiki-import.mjs';
+import { importCorpus, summaryFromBody } from './wiki-import.mjs';
 
 const adminUrl = process.env.TEST_DATABASE_URL;
 const packageRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -33,6 +33,50 @@ const ALL_SLUGS = [
   'placa-de-induccion',
   'plantas-de-interior',
 ];
+
+// El subtítulo de la nota se deriva del cuerpo y se enseña tal cual: no
+// necesita base de datos para comprobarse.
+describe('resumen legible de una nota importada', () => {
+  it('toma la primera frase de la prosa y se salta el encabezado', () => {
+    expect(
+      summaryFromBody('# Placa de inducción\n\nSe desbloquea con el candado. Y algo más.\n')
+    ).toBe('Se desbloquea con el candado.');
+  });
+
+  it('no corta por un punto que no cierra frase', () => {
+    expect(summaryFromBody('Anexo D. Menú de la semana y comensales de la casa.')).toBe(
+      'Anexo D. Menú de la semana y comensales de la casa.'
+    );
+    expect(summaryFromBody('Añadir 1.5 kg de arroz al armario de la despensa.')).toBe(
+      'Añadir 1.5 kg de arroz al armario de la despensa.'
+    );
+  });
+
+  it('limpia énfasis, citas y enlaces sin dejar marcado a la vista', () => {
+    expect(
+      summaryFromBody('> **Pendiente:** falta el [modelo](wiki:horno) del horno del salón.')
+    ).toBe('Pendiente: falta el modelo del horno del salón.');
+  });
+
+  it('se salta bloques de código, tablas y separadores', () => {
+    expect(summaryFromBody('```\nrm -rf /\n```\n\n---\n\n| a | b |\n\nEsto sí se lee.')).toBe(
+      'Esto sí se lee.'
+    );
+  });
+
+  it('recorta las frases larguísimas en vez de soltar un párrafo', () => {
+    const summary = summaryFromBody(`${'palabra '.repeat(60)}final.`);
+    expect(summary.length).toBeLessThanOrEqual(180);
+    expect(summary.endsWith('…')).toBe(true);
+  });
+
+  it('acepta que la nota empiece por una lista y devuelve vacío si no hay prosa', () => {
+    expect(summaryFromBody('- Primer punto de la lista de la cocina.')).toBe(
+      'Primer punto de la lista de la cocina.'
+    );
+    expect(summaryFromBody('## Solo encabezados\n\n### Y nada más\n')).toBe('');
+  });
+});
 
 describe.runIf(Boolean(adminUrl))('importador por lotes de la wiki', () => {
   /** @type {pg.Client} */
@@ -143,7 +187,7 @@ describe.runIf(Boolean(adminUrl))('importador por lotes de la wiki', () => {
 
     // Front-matter variado: status, tags y aliases llegan a la revisión vigente.
     const placa = await client.query(
-      `select p.status, r.title, r.tags, r.aliases, r.summary
+      `select p.status, r.title, r.tags, r.aliases, r.summary, r.import_hash
          from app.wiki_pages p
          join app.wiki_revisions r on r.id = p.current_revision_id
         where p.current_slug = 'placa-de-induccion'`
@@ -151,7 +195,25 @@ describe.runIf(Boolean(adminUrl))('importador por lotes de la wiki', () => {
     expect(placa.rows[0].title).toBe('Placa de inducción');
     expect(placa.rows[0].aliases).toEqual(['vitro', 'vitrocerámica']);
     expect(placa.rows[0].tags).toEqual(['cocina', 'seguridad']);
-    expect(placa.rows[0].summary).toMatch(/^import:[0-9a-f]{12}$/);
+    // La marca de idempotencia vive en su columna y NO en el resumen: el
+    // resumen es lo que la vista de nota pinta como subtítulo.
+    expect(placa.rows[0].import_hash).toMatch(/^[0-9a-f]{12}$/);
+    expect(placa.rows[0].summary).toBe(
+      'Se desbloquea manteniendo pulsado el candado tres segundos.'
+    );
+
+    // Ninguna nota importada enseña jerga: ni marca del importador ni un
+    // encabezado Markdown suelto.
+    const summaries = await client.query(
+      `select r.summary
+         from app.wiki_pages p
+         join app.wiki_revisions r on r.id = p.current_revision_id`
+    );
+    for (const row of summaries.rows) {
+      expect(row.summary).not.toMatch(/^import:/);
+      expect(row.summary).not.toMatch(/^#/);
+      expect(row.summary.length).toBeLessThanOrEqual(180);
+    }
 
     const horno = await client.query(
       `select status from app.wiki_pages where current_slug = 'horno'`
@@ -220,6 +282,44 @@ describe.runIf(Boolean(adminUrl))('importador por lotes de la wiki', () => {
     );
     expect(revisions.rows).toEqual([{ current_slug: 'lavadora', n: 2 }]);
     expect(await count('wiki_page_slugs')).toBe(9);
+  });
+
+  it('una revisión con la marca vieja en el resumen se repara en la pasada siguiente', async () => {
+    // Estado anterior a la migración 0017: la marca del importador ocupaba el
+    // resumen, que es lo que la vista de nota pinta como subtítulo. Se simula
+    // silenciando el trigger append-only, igual que hace la migración.
+    await client.query('begin');
+    await client.query('set local row_security = off');
+    await client.query('alter table app.wiki_revisions disable trigger wiki_revisions_append_only');
+    await client.query(
+      `update app.wiki_revisions
+          set summary = 'import:' || import_hash, import_hash = ''
+        where page_id = (select id from app.wiki_pages where current_slug = 'cafetera')`
+    );
+    await client.query('alter table app.wiki_revisions enable trigger wiki_revisions_append_only');
+    await client.query('commit');
+
+    // La pasada realinea cafetera (y de paso lavadora, que el caso anterior
+    // dejó con el cuerpo de un corpus editado).
+    const report = await importCorpus(client, IMPORT_ARGS);
+    expect(report.errors).toEqual([]);
+    expect(report.pages.updated).toContain('cafetera');
+
+    const cafetera = await client.query(
+      `select r.revision_number, r.summary, r.import_hash
+         from app.wiki_pages p
+         join app.wiki_revisions r on r.id = p.current_revision_id
+        where p.current_slug = 'cafetera'`
+    );
+    expect(cafetera.rows[0].revision_number).toBe(2);
+    expect(cafetera.rows[0].summary).not.toMatch(/^import:/);
+    expect(cafetera.rows[0].summary.length).toBeGreaterThan(0);
+    expect(cafetera.rows[0].import_hash).toMatch(/^[0-9a-f]{12}$/);
+
+    // Reparada una vez, el importador vuelve a ser idempotente.
+    const again = await importCorpus(client, IMPORT_ARGS);
+    expect(again.revisions).toBe(0);
+    expect([...again.pages.skipped].sort()).toEqual(ALL_SLUGS);
   });
 
   it('un corpus inválido provoca rollback total e identifica el fichero culpable', async () => {

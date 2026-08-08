@@ -29,6 +29,17 @@ function isoAndLabel(value: Date): { iso: string; label: string } {
   return { iso: value.toISOString(), label: DATE_LABEL.format(value) };
 }
 
+/**
+ * Las versiones importadas antes de la migración 0017 llevan la marca técnica
+ * del importador («import:63b79e8c247a») en el resumen, y el resumen se pinta
+ * como subtítulo de la nota. La migración la retira de la base; este filtro
+ * garantiza que jamás llegue a la pantalla aunque se lea una base sin migrar.
+ */
+const IMPORT_MARKER = /^import:[0-9a-f]{12}$/;
+function shownSummary(value: string): string {
+  return IMPORT_MARKER.test(value.trim()) ? '' : value;
+}
+
 export interface WikiPageNode {
   id: string;
   slug: string;
@@ -441,7 +452,7 @@ export async function loadWikiPage(
           number: current.number,
           title: current.title,
           bodyMarkdown: current.bodyMarkdown,
-          summary: current.summary,
+          summary: shownSummary(current.summary),
           tags: current.tags,
           aliases: current.aliases
         },
@@ -449,7 +460,7 @@ export async function loadWikiPage(
           id: row.id,
           number: row.number,
           title: row.title,
-          summary: row.summary,
+          summary: shownSummary(row.summary),
           author: row.author,
           createdAt: row.createdAt.toISOString(),
           createdLabel: DATE_TIME_LABEL.format(row.createdAt)
@@ -509,7 +520,9 @@ export async function searchWikiPages(
              select page.id,
                     page.current_slug as slug,
                     revision.title,
-                    case when revision.summary <> '' then revision.summary
+                    case when revision.summary <> ''
+                          and revision.summary !~ '^import:[0-9a-f]{12}$'
+                         then revision.summary
                          else left(revision.body_markdown, 240) end as excerpt,
                     space.name as "spaceName",
                     page.status::text as status,
