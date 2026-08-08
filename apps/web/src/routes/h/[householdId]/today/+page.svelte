@@ -6,6 +6,7 @@
   const OutboxTriage = import('$lib/components/OutboxTriage.svelte').then((module) => module.default);
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import type { Capability } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { nextRoutineDue } from '$lib/food/dates';
@@ -16,6 +17,23 @@
   let { data }: { data: PageData } = $props();
   const context = useAppContext();
   const canToggle = context.capabilities.includes('routine.toggle');
+  const canConfirmMenu = context.capabilities.includes('menu.write');
+
+  // P2-15 (revisión UX v3): a quien tiene un acceso reducido (apoyo, acceso
+  // puntual) ninguna pantalla le contaba qué incluye. Una línea en Hoy lo dice.
+  const reducedAccess = !context.capabilities.includes('settlement.read');
+  const ACCESS_PARTS: ReadonlyArray<[Capability, string]> = [
+    ['menu.read', 'el menú'],
+    ['routine.read', 'las rutinas'],
+    ['calendar.read', 'el calendario'],
+    ['contact.read', 'los contactos'],
+    ['content.read', 'la guía de la casa']
+  ];
+  const accessSummary = ACCESS_PARTS.filter(([capability]) => context.capabilities.includes(capability))
+    .map(([, label]) => label)
+    .concat('las emergencias')
+    .join(', ')
+    .replace(/, ([^,]*)$/, ' y $1');
 
   const overview = $derived(data.overview);
 
@@ -95,6 +113,11 @@
       <span aria-hidden="true">+</span> Emergencias
     </a>
   {/snippet}
+  {#snippet accessNote()}
+    {#if reducedAccess}
+      <p class="audit-note">Tu acceso incluye {accessSummary}. El resto de la casa lo lleva la familia.</p>
+    {/if}
+  {/snippet}
   {#if overview}
     <PageHeader
       eyebrow={overview.dateLabel}
@@ -102,6 +125,7 @@
       description="Lo importante de hoy, sin ruido."
       actions={emergencyShortcut}
     />
+    {@render accessNote()}
 
     {#await OutboxTriage then Triage}<Triage householdId={overview.householdId} />{/await}
 
@@ -144,15 +168,17 @@
                   <small>{slot.mealLabel} · {slot.groupName}{slot.notes ? ` · ${slot.notes}` : ''}</small>
                 </span>
                 {#if slot.dish}
+                  <!-- P2-8: a quien no puede confirmar (p. ej. la empleada) el
+                       chip no le finge una tarea suya pendiente. -->
                   <span class="status-chip {slot.confirmed ? 'success' : 'warning'}">
-                    {slot.confirmed ? 'Confirmado' : 'Sin confirmar'}
+                    {slot.confirmed ? 'Confirmado' : canConfirmMenu ? 'Sin confirmar' : 'Pendiente de la familia'}
                   </span>
                 {/if}
               </div>
             {/each}
           </div>
         {:else}
-          <p class="audit-note">No hay huecos de menú asignados para hoy.</p>
+          <p class="audit-note">Hoy no hay nada planificado en el menú.</p>
         {/if}
       </article>
 
@@ -203,6 +229,7 @@
     </section>
   {:else if data.today}
     <PageHeader eyebrow={data.today.dateLabel} title={`${data.today.greeting}, ${context.user.name}`} description="Lo importante de hoy, sin ruido." actions={emergencyShortcut} />
+    {@render accessNote()}
 
     {#await OutboxTriage then Triage}<Triage householdId={context.household.id} />{/await}
 

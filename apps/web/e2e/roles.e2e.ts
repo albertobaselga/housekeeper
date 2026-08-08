@@ -16,7 +16,7 @@ test('el visor no puede abrir el expediente laboral por URL directa', async ({ p
   await loginAs(page, 'viewer');
   const response = await page.goto(`/h/${HOUSEHOLD}/employment`);
   expect(response?.status()).toBe(403);
-  await expect(page.locator('body')).toContainText('Tu rol no permite');
+  await expect(page.locator('body')).toContainText('no está incluida en tu acceso');
 });
 
 test('la persona de apoyo tampoco accede a datos laborales', async ({ page }) => {

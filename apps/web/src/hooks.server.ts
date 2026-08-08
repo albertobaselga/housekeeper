@@ -2,7 +2,6 @@ import { building } from '$app/environment';
 import { error, redirect, type Handle } from '@sveltejs/kit';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 
-import { can } from '$lib/auth/capabilities';
 import { guardForPath } from '$lib/auth/routing';
 import { resolveAppUser } from '$lib/server/app-user.server';
 import { getAuth } from '$lib/server/auth.server';
@@ -60,9 +59,10 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (!guard.householdId || !event.locals.user.householdIds.includes(guard.householdId)) {
       error(404, 'Hogar no encontrado');
     }
-    if (guard.capability && !can(event.locals.user.role, guard.capability)) {
-      error(403, 'Tu rol no permite abrir esta sección');
-    }
+    // El 403 por capacidad NO se lanza aquí: un error en el hook renderiza la
+    // página de fallo cruda de SvelteKit. La misma comprobación vive en el
+    // layout del hogar (+layout.server.ts), donde el error aterriza en
+    // +error.svelte con un mensaje amable y un enlace de vuelta a Hoy.
   }
 
   const response = await resolve(event);
