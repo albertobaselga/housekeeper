@@ -20,6 +20,7 @@ import {
   parseCents,
   periodLabel,
   sourceAnchor,
+  vacationRangeLabel,
   type AgreementVersionRow,
   type SettlementLineRow,
   type SettlementRow
@@ -182,7 +183,16 @@ describe('vacaciones del año en curso', () => {
     expect(view.periods.map((period) => period.id)).toEqual(['p3', 'p1', 'p2']);
     expect(view.periods[0]!.rangeLabel).toBe('El 24 dic 2026');
     expect(view.periods[0]!.daysLabel).toBe('1 día');
-    expect(view.periods[1]!.rangeLabel).toBe('Del 1 ago 2026 al 15 ago 2026');
+    // Dentro del mismo mes el rango no repite mes ni año.
+    expect(view.periods[1]!.rangeLabel).toBe('Del 1 al 15 ago 2026');
+  });
+
+  it('el rango no repite lo que ya ha dicho', () => {
+    expect(vacationRangeLabel('2026-08-03', '2026-08-03')).toBe('El 3 ago 2026');
+    expect(vacationRangeLabel('2026-11-02', '2026-11-08')).toBe('Del 2 al 8 nov 2026');
+    expect(vacationRangeLabel('2026-11-20', '2026-12-05')).toBe('Del 20 nov al 5 dic 2026');
+    // Cruzando el fin de año sí hacen falta los dos años.
+    expect(vacationRangeLabel('2026-12-24', '2027-01-05')).toBe('Del 24 dic 2026 al 5 ene 2027');
   });
 
   it('el exceso se dice, no se esconde', () => {

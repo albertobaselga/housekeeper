@@ -906,9 +906,22 @@ export function vacationDaysLabel(days: number): string {
   return dayCountLabel(days);
 }
 
-/** «Del 1 al 15 de agosto de 2026»; un solo día se dice «El 3 de agosto de 2026». */
+/**
+ * Rango de un periodo, sin repetir lo que ya se ha dicho: «Del 2 al 8 nov
+ * 2026» dentro del mismo mes, «Del 20 nov al 5 dic 2026» dentro del mismo año,
+ * y con los dos años completos solo cuando el periodo cruza el fin de año. Un
+ * día suelto se dice «El 3 ago 2026».
+ */
 export function vacationRangeLabel(startsOn: string, endsOn: string): string {
   if (startsOn === endsOn) return `El ${dateLabel(startsOn)}`;
+  const sameYear = startsOn.slice(0, 4) === endsOn.slice(0, 4);
+  const sameMonth = sameYear && startsOn.slice(5, 7) === endsOn.slice(5, 7);
+  if (sameMonth) return `Del ${Number(startsOn.slice(8, 10))} al ${dateLabel(endsOn)}`;
+  if (sameYear) {
+    // dateLabel devuelve «20 nov 2026»; aquí sobra el año del primer extremo.
+    const from = dateLabel(startsOn).replace(/ \d{4}$/, '');
+    return `Del ${from} al ${dateLabel(endsOn)}`;
+  }
   return `Del ${dateLabel(startsOn)} al ${dateLabel(endsOn)}`;
 }
 
