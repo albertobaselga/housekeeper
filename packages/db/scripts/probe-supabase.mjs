@@ -33,6 +33,9 @@ const adminUrl = process.env.PROBE_ADMIN_URL;
 const database = process.env.PROBE_DATABASE ?? 'casaclara_sb_probe';
 const role = process.env.PROBE_ROLE ?? 'sb_postgres';
 const extensionsSchema = process.env.PROBE_EXTENSIONS_SCHEMA ?? 'extensions';
+// Con `trust` local da igual, pero un clúster con autenticación por contraseña
+// (el servicio de CI) rechazaría a un rol sin ella.
+const rolePassword = process.env.PROBE_ROLE_PASSWORD ?? 'probe-owner-only';
 const keep = process.argv.includes('--keep');
 
 if (!adminUrl) {
@@ -47,7 +50,7 @@ if (!/^[a-z_][a-z0-9_]*$/.test(database) || !/^[a-z_][a-z0-9_]*$/.test(role)) {
 const probeUrl = (() => {
   const parsed = new URL(adminUrl);
   parsed.username = role;
-  parsed.password = '';
+  parsed.password = rolePassword;
   parsed.pathname = `/${database}`;
   return parsed.toString();
 })();
@@ -91,6 +94,7 @@ await withClient(adminUrl, async (admin) => {
        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = ${literal(role)}) THEN
          CREATE ROLE ${role} LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS NOREPLICATION;
        END IF;
+       ALTER ROLE ${role} PASSWORD ${literal(rolePassword)};
        -- Los tres roles que Supabase deja creados de fábrica. No deben interferir.
        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'anon') THEN
          CREATE ROLE anon NOLOGIN NOINHERIT;

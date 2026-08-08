@@ -100,3 +100,11 @@ jobs:
         run: scripts/ci/run-tests-nonempty.sh pnpm --filter @casa-clara/db test:import
       - name: Reapply migrations to prove idempotent runner behavior
         run: pnpm db:migrate
+      # El job de arriba corre con un propietario superusuario, así que por sí solo
+      # no volvería a detectar los bloqueantes de Postgres gestionado. La sonda
+      # instala el esquema entero otra vez sobre una base desechable con un rol
+      # NOSUPERUSER + NOBYPASSRLS y las extensiones fuera de `public`.
+      - name: Reproduce a Supabase-shaped install from scratch
+        env:
+          PROBE_ADMIN_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci
+        run: pnpm --filter @casa-clara/db probe:supabase
