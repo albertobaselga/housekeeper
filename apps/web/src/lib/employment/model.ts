@@ -96,18 +96,49 @@ function previousDay(iso: string): string {
 
 // --- Filas tal y como salen de Postgres (bigint = string) -------------------
 
+/**
+ * Sin `overtime_hourly_rate_cents` ni `worked_rest_day_rate_cents` a propósito.
+ * Esas columnas siguen en la base por compatibilidad (ver el pie de la
+ * migración 0021), pero NO se leen aquí: si viajaran en este objeto llegarían
+ * al JSON de la página, y con ellas la tarifa horaria de una empleada a la que
+ * no se le permiten horas. Las tarifas salen del catálogo, que la RLS filtra
+ * fila a fila según quién pregunta.
+ */
 export interface AgreementVersionRow {
   id: string;
   versionNumber: number;
   effectiveFrom: string;
   monthlySalaryCents: string;
-  overtimeHourlyRateCents: string;
-  workedRestDayRateCents: string;
-  workedRestDayCreditMinutes: number;
   contractedWeeklyMinutes: number;
   /** Días naturales de vacaciones al año pactados en esta versión. */
   annualVacationDays: number;
   reason: string;
+}
+
+export type ExtraWorkUnit = 'per_hour' | 'per_shift' | 'fixed_amount';
+
+export interface ExtraWorkTypeRow {
+  id: string;
+  agreementVersionId: string;
+  code: string;
+  name: string;
+  unit: ExtraWorkUnit;
+  rateCents: string | null;
+  referenceMinutes: number | null;
+  active: boolean;
+}
+
+export interface RecurringSupplementRow {
+  id: string;
+  agreementVersionId: string;
+  code: string;
+  name: string;
+  amountCents: string | null;
+  periodicity: 'monthly';
+  addsToPay: boolean;
+  startsOn: string | null;
+  endsOn: string | null;
+  active: boolean;
 }
 
 export interface VacationPeriodRow {
@@ -123,6 +154,8 @@ export interface VacationPeriodRow {
 export interface ResolvedExtraWorkRow {
   id: string;
   kind: 'overtime' | 'worked_rest_day';
+  /** Nombre del concepto catalogado; null en el histórico anterior a 0021. */
+  typeName: string | null;
   workedOn: string;
   durationMinutes: number;
   note: string;
@@ -157,6 +190,8 @@ export type PendingExtraWorkStatus =
 export interface PendingExtraWorkRow {
   id: string;
   kind: 'overtime' | 'worked_rest_day';
+  /** Nombre del concepto catalogado; null en el histórico anterior a 0021. */
+  typeName: string | null;
   workedOn: string;
   durationMinutes: number;
   note: string;
@@ -233,6 +268,57 @@ export interface PaymentRow {
 
 export type AgreementVersionState = 'vigente' | 'futura' | 'historica';
 
+export interface ExtraWorkTypeView {
+  id: string;
+  code: string;
+  name: string;
+  unit: ExtraWorkUnit;
+  /** «por hora», «por jornada», «importe fijo». */
+  unitLabel: string;
+  rateCents: string | null;
+  /** null cuando el concepto aún no tiene tarifa: no hay precio que enseñar. */
+  rateLabel: string | null;
+  referenceMinutes: number | null;
+  /** «jornada de 10 h», null si el concepto no pacta duración. */
+  referenceLabel: string | null;
+  active: boolean;
+  /** Activo y con tarifa: es lo que la empleada puede ver y registrar. */
+  available: boolean;
+}
+
+export interface SupplementView {
+  id: string;
+  code: string;
+  name: string;
+  amountCents: string | null;
+  amountLabel: string | null;
+  /** true: suma a la transferencia. false: lo paga la casa aparte. */
+  addsToPay: boolean;
+  active: boolean;
+  /** «desde el 1 sep 2026», «hasta el 31 dic 2026», null si rige toda la versión. */
+  validityLabel: string | null;
+}
+
+/**
+ * Las condiciones de contrato en lenguaje llano: lo que la empleada tiene que
+ * poder leer sin preguntar. Se construye SIEMPRE desde las filas que la RLS
+ * devolvió, nunca filtrando en la plantilla.
+ */
+export interface AgreementTermsView {
+  versionId: string;
+  versionNumber: number;
+  effectiveFromLabel: string;
+  salaryLabel: string;
+  weeklyHoursLabel: string;
+  vacationDaysLabel: string;
+  /** Trabajo extra que puede hacer, con su tarifa. Vacío = no puede hacer ninguno. */
+  extraWorkTypes: ExtraWorkTypeView[];
+  /** Complementos que le suman al mes. */
+  paidSupplements: SupplementView[];
+  /** Complementos que la casa paga por su cuenta; constan, no se transfieren. */
+  householdPaidSupplements: SupplementView[];
+}
+
 export interface AgreementVersionView {
   id: string;
   versionNumber: number;
@@ -241,8 +327,13 @@ export interface AgreementVersionView {
   effectiveTo: string | null;
   monthlySalaryCents: string;
   salaryLabel: string;
-  overtimeRateLabel: string;
-  workedRestDayRateLabel: string;
+  /**
+   * Conceptos catalogados en esta versión. Vienen de las filas que la RLS dejó
+   * salir, así que para la empleada solo contienen lo que le aplica: si en esta
+   * versión no se le permiten horas, la lista no trae ninguna tarifa horaria.
+   */
+  concepts: ExtraWorkTypeView[];
+  supplements: SupplementView[];
   weeklyHoursLabel: string;
   /** «30 días naturales al año». */
   vacationDaysLabel: string;
@@ -281,6 +372,12 @@ export interface AccrualView {
   transferTotalCents: string;
   transferTotalLabel: string;
   permanentCreditMinutes: number;
+  /**
+   * Lo que la casa abona por ella fuera de la transferencia. Va aparte de
+   * `lines` a propósito: ningún total lo incluye y la plantilla no puede
+   * sumarlo por descuido.
+   */
+  householdPaidSupplements: { id: string; label: string; amountLabel: string }[];
 }
 
 export interface SettlementLineView {
@@ -450,6 +547,17 @@ export interface EmploymentOverview {
     employeeMembershipId: string;
   } | null;
   versions: AgreementVersionView[];
+  /**
+   * Condiciones de la versión vigente hoy, en lenguaje llano. null si no hay
+   * ninguna vigente o si RLS no dejó ver ninguna versión.
+   */
+  terms: AgreementTermsView | null;
+  /**
+   * Conceptos con los que se puede registrar trabajo extra HOY. Para la
+   * empleada son exactamente los que le aplican, porque la RLS no le devolvió
+   * los demás; vacío = no se le permite registrar ninguno.
+   */
+  registrableTypes: ExtraWorkTypeView[];
   accrual: AccrualView | null;
   settlements: SettlementView[];
   pendingExtras: PendingExtraWorkView[];
@@ -511,9 +619,96 @@ export function sourceAnchor(sourceType: string, sourceId: string): string | nul
   }
 }
 
+const UNIT_LABELS: Record<ExtraWorkUnit, string> = {
+  per_hour: 'por hora',
+  per_shift: 'por jornada',
+  fixed_amount: 'importe fijo'
+};
+
+/**
+ * Etiqueta de tarifa según la unidad, para que nadie tenga que interpretar un
+ * número suelto: «14,00 €/h» no es lo mismo que «50,00 € por jornada».
+ * Devuelve null si no hay tarifa: un concepto sin precio no enseña ninguno.
+ */
+export function buildExtraWorkTypeView(row: ExtraWorkTypeRow): ExtraWorkTypeView {
+  const rateLabel =
+    row.rateCents === null
+      ? null
+      : row.unit === 'per_hour'
+        ? `${formatCents(row.rateCents)}/h`
+        : row.unit === 'per_shift'
+          ? `${formatCents(row.rateCents)} por jornada`
+          : `${formatCents(row.rateCents)} cada vez`;
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    unit: row.unit,
+    unitLabel: UNIT_LABELS[row.unit],
+    rateCents: row.rateCents,
+    rateLabel,
+    referenceMinutes: row.referenceMinutes,
+    referenceLabel:
+      row.referenceMinutes === null ? null : `jornada de ${formatMinutes(row.referenceMinutes)}`,
+    active: row.active,
+    available: row.active && row.rateCents !== null
+  };
+}
+
+export function buildSupplementView(row: RecurringSupplementRow): SupplementView {
+  const from = row.startsOn === null ? null : `desde el ${dateLabel(row.startsOn)}`;
+  const to = row.endsOn === null ? null : `hasta el ${dateLabel(row.endsOn)}`;
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    amountCents: row.amountCents,
+    amountLabel: row.amountCents === null ? null : `${formatCents(row.amountCents)} al mes`,
+    addsToPay: row.addsToPay,
+    active: row.active,
+    validityLabel: from && to ? `${from} ${to}` : (from ?? to)
+  };
+}
+
+/**
+ * Condiciones de la versión indicada. Lo que llega aquí ya pasó por la RLS: si
+ * la persona que preguntó es la empleada, `types` no contiene los conceptos
+ * desactivados ni los que no tienen tarifa, y por tanto tampoco los contiene el
+ * objeto que se serializa hacia el navegador.
+ */
+export function buildAgreementTermsView(input: {
+  version: AgreementVersionRow;
+  types: readonly ExtraWorkTypeRow[];
+  supplements: readonly RecurringSupplementRow[];
+}): AgreementTermsView {
+  const mine = input.types
+    .filter((row) => row.agreementVersionId === input.version.id)
+    .map(buildExtraWorkTypeView)
+    .filter((view) => view.available);
+  const supplements = input.supplements
+    .filter((row) => row.agreementVersionId === input.version.id && row.active)
+    .map(buildSupplementView)
+    .filter((view) => view.amountLabel !== null);
+  return {
+    versionId: input.version.id,
+    versionNumber: input.version.versionNumber,
+    effectiveFromLabel: dateLabel(input.version.effectiveFrom),
+    salaryLabel: formatCents(input.version.monthlySalaryCents),
+    weeklyHoursLabel: `${formatMinutes(input.version.contractedWeeklyMinutes)} a la semana`,
+    vacationDaysLabel: `${input.version.annualVacationDays} ${
+      input.version.annualVacationDays === 1 ? 'día natural' : 'días naturales'
+    } al año`,
+    extraWorkTypes: mine,
+    paidSupplements: supplements.filter((view) => view.addsToPay),
+    householdPaidSupplements: supplements.filter((view) => !view.addsToPay)
+  };
+}
+
 export function buildAgreementVersionViews(
   rows: readonly AgreementVersionRow[],
-  onDate: string
+  onDate: string,
+  types: readonly ExtraWorkTypeRow[] = [],
+  supplements: readonly RecurringSupplementRow[] = []
 ): AgreementVersionView[] {
   const ordered = [...rows].sort((a, b) => a.versionNumber - b.versionNumber);
   return ordered.map((row, index) => {
@@ -534,8 +729,12 @@ export function buildAgreementVersionViews(
       effectiveTo,
       monthlySalaryCents: row.monthlySalaryCents,
       salaryLabel: formatCents(row.monthlySalaryCents),
-      overtimeRateLabel: `${formatCents(row.overtimeHourlyRateCents)}/h`,
-      workedRestDayRateLabel: `${formatCents(row.workedRestDayRateCents)}/día`,
+      concepts: types
+        .filter((type) => type.agreementVersionId === row.id)
+        .map(buildExtraWorkTypeView),
+      supplements: supplements
+        .filter((supplement) => supplement.agreementVersionId === row.id)
+        .map(buildSupplementView),
       weeklyHoursLabel: formatMinutes(row.contractedWeeklyMinutes) + '/semana',
       vacationDaysLabel: `${row.annualVacationDays} ${
         row.annualVacationDays === 1 ? 'día natural' : 'días naturales'
@@ -589,6 +788,8 @@ export interface AccrualFacts {
   extras: readonly ResolvedExtraWorkRow[];
   advances: readonly AdvanceRow[];
   expenses: readonly ApprovedExpenseRow[];
+  /** Complementos de la versión vigente el primer día del periodo. */
+  supplements?: readonly RecurringSupplementRow[];
 }
 
 /**
@@ -599,18 +800,19 @@ export interface AccrualFacts {
 export function buildAccrual(facts: AccrualFacts): AccrualView | null {
   if (facts.versions.length === 0) return null;
 
-  const extraWork: SettledExtraWork[] = facts.extras.map((row) => ({
+  const extraWork: SettledExtraWork[] = facts.extras.map((row) => {
+    const concept = row.typeName ?? EXTRA_WORK_LABELS[row.kind];
+    return {
     id: row.id,
     workedOn: row.workedOn,
-    label: row.note.trim()
-      ? `${EXTRA_WORK_LABELS[row.kind]} · ${row.note.trim()}`
-      : EXTRA_WORK_LABELS[row.kind],
+    label: row.note.trim() ? `${concept} · ${row.note.trim()}` : concept,
     resolution: row.resolution,
     quantityLabel: formatMinutes(row.durationMinutes),
     frozenUnitRateCents: parseCents(row.frozenUnitRateCents),
     frozenAmountCents: parseCents(row.frozenAmountCents),
     permanentCreditMinutes: row.resolution === 'time_off' ? (row.balanceMinutes ?? 0) : 0
-  }));
+    };
+  });
 
   const advanceDeductions: MonetaryInput[] = facts.advances
     .filter((row) => row.status === 'active' && parseCents(row.outstandingCents) > 0n)
@@ -640,7 +842,18 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       advanceDeductions,
       unpaidAbsences: [],
       adjustments: [],
-      expenses
+      expenses,
+      supplements: (facts.supplements ?? []).map((row) => ({
+        id: row.id,
+        code: row.code,
+        name: row.name,
+        amountCents: row.amountCents === null ? null : parseCents(row.amountCents),
+        periodicity: row.periodicity,
+        addsToPay: row.addsToPay,
+        startsOn: row.startsOn,
+        endsOn: row.endsOn,
+        active: row.active
+      }))
     });
   } catch (cause) {
     if (cause instanceof RangeError) return null;
@@ -679,7 +892,12 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
     reimbursementLabel: formatCents(projection.reimbursementCents),
     transferTotalCents: projection.transferTotalCents.toString(),
     transferTotalLabel: formatCents(projection.transferTotalCents),
-    permanentCreditMinutes: projection.permanentCreditMinutes
+    permanentCreditMinutes: projection.permanentCreditMinutes,
+    householdPaidSupplements: projection.householdPaidSupplements.map((item) => ({
+      id: item.id,
+      label: item.label,
+      amountLabel: formatCents(item.amountCents)
+    }))
   };
 }
 
@@ -780,7 +998,9 @@ export function buildPendingExtraViews(
   return rows.map((row) => ({
     id: row.id,
     kind: row.kind,
-    kindLabel: EXTRA_WORK_LABELS[row.kind],
+    // El nombre del catálogo manda: una noche de guardia no es «Festivo o
+    // descanso trabajado» por mucho que su clasificación gruesa lo sea.
+    kindLabel: row.typeName ?? EXTRA_WORK_LABELS[row.kind],
     workedOn: row.workedOn,
     workedOnLabel: dateLabel(row.workedOn),
     durationMinutes: row.durationMinutes,

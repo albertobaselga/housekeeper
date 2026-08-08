@@ -79,6 +79,8 @@ export function registerExtra(
   input: {
     householdId: string;
     agreementId: string;
+    /** Concepto del catálogo; el servidor deriva de él la tarifa y `kind`. */
+    extraWorkTypeId?: string;
     kind: ExtraWorkRegisterPayloadV1['kind'];
     workedOn: string;
     durationMinutes: number;
@@ -94,6 +96,7 @@ export function registerExtra(
     payload: {
       action: 'register',
       agreementId: input.agreementId,
+      ...(input.extraWorkTypeId ? { extraWorkTypeId: input.extraWorkTypeId } : {}),
       kind: input.kind,
       workedOn: input.workedOn,
       durationMinutes: input.durationMinutes,

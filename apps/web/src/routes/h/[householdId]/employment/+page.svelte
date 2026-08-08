@@ -171,6 +171,7 @@
             householdId={overview.householdId}
             agreementId={agreement.id}
             extras={overview.pendingExtras}
+            types={overview.registrableTypes}
             ownMembershipId={context.user.membershipId}
             canRegister={canRegisterExtra}
             canConfirm={canConfirmWork}
@@ -271,7 +272,12 @@
                 <div id={`version-${version.id}`}>
                   <span>
                     <strong>v{version.versionNumber} · desde el {version.effectiveFromLabel}</strong>
-                    <small>{version.reason} · {version.overtimeRateLabel} extra · {version.workedRestDayRateLabel} descanso trabajado · {version.vacationDaysLabel} de vacaciones</small>
+                    <!--
+                      Los conceptos vienen del catálogo YA filtrado por la RLS:
+                      lo que no aplica a quien mira no llegó hasta aquí, así que
+                      no hay nada que esconder en la plantilla.
+                    -->
+                    <small>{version.reason} · {version.vacationDaysLabel} de vacaciones{#each version.concepts as concept (concept.id)}{#if concept.rateLabel} · {concept.name} {concept.rateLabel}{/if}{/each}{#each version.supplements as supplement (supplement.id)}{#if supplement.amountLabel} · {supplement.name} {supplement.amountLabel}{supplement.addsToPay ? '' : ' (lo paga la casa)'}{/if}{/each}</small>
                   </span>
                   <span>
                     <strong>{version.salaryLabel}</strong>

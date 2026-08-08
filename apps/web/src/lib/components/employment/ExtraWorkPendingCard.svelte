@@ -7,12 +7,18 @@
     registerExtra,
     resolveExtra
   } from '$lib/employment/commands';
-  import { dateLabel, formatMinutes, type PendingExtraWorkView } from '$lib/employment/model';
+  import {
+    dateLabel,
+    formatMinutes,
+    type ExtraWorkTypeView,
+    type PendingExtraWorkView
+  } from '$lib/employment/model';
 
   let {
     householdId,
     agreementId,
     extras,
+    types,
     ownMembershipId,
     canRegister,
     canConfirm
@@ -20,6 +26,12 @@
     householdId: string;
     agreementId: string;
     extras: PendingExtraWorkView[];
+    /**
+     * Conceptos con los que se puede registrar hoy. Llegan ya filtrados por la
+     * RLS: si esta empleada no tiene horas permitidas, aquí no hay ninguna
+     * opción por horas que elegir ni tarifa horaria que leer.
+     */
+    types: ExtraWorkTypeView[];
     ownMembershipId: string;
     canRegister: boolean;
     canConfirm: boolean;
@@ -41,7 +53,9 @@
   let resolveResolution = $state<'money' | 'time_off'>('money');
   let resolveReason = $state('');
 
-  let registerKind = $state<'overtime' | 'worked_rest_day'>('overtime');
+  // svelte-ignore state_referenced_locally -- el catálogo no cambia dentro de la página
+  let registerTypeId = $state<string>(types[0]?.id ?? '');
+  const registerType = $derived(types.find((type) => type.id === registerTypeId) ?? null);
   let registerDate = $state(new Date().toISOString().slice(0, 10));
   // P2-7 (revisión UX v3): la duración se pide en horas y minutos; el contrato
   // sigue viajando en minutos (durationMinutes) sin cambios.
@@ -53,10 +67,10 @@
     Math.trunc(Number(registerHours) || 0) * 60 + Math.trunc(Number(registerExtraMinutes) || 0)
   );
 
-  const KIND_LABEL: Record<'overtime' | 'worked_rest_day', string> = {
-    overtime: 'Horas extraordinarias',
-    worked_rest_day: 'Festivo o descanso trabajado'
-  };
+  // La duración solo la pone quien trabaja cuando el concepto se paga POR HORA.
+  // En una jornada o un importe fijo la duración es la pactada, y pedirla haría
+  // creer que cambia el importe.
+  const durationIsChosen = $derived(registerType?.unit === 'per_hour');
 
   // Alta optimista de jornadas: la fila nueva aparece YA como «Solicitada» y
   // se dedupe cuando los datos frescos la traen del servidor.
@@ -82,13 +96,18 @@
 
   function submitRegister(event: SubmitEvent): void {
     event.preventDefault();
-    if (!registerDate || registerMinutes < 1 || registerMinutes > 1440) return;
-    const minutes = registerMinutes;
+    const type = registerType;
+    if (!type || !registerDate) return;
+    // Para lo que no se paga por hora, la duración es la de referencia del
+    // concepto (y 1 minuto si no pactó ninguna: el contrato exige un positivo).
+    const minutes = durationIsChosen ? registerMinutes : (type.referenceMinutes ?? 1);
+    if (minutes < 1 || minutes > 1440) return;
     const note = registerNote.trim();
     const envelope = registerExtra({
       householdId,
       agreementId,
-      kind: registerKind,
+      extraWorkTypeId: type.id,
+      kind: type.unit === 'per_hour' ? 'overtime' : 'worked_rest_day',
       workedOn: registerDate,
       durationMinutes: minutes,
       note: registerNote
@@ -102,7 +121,7 @@
           ...optimisticExtras,
           {
             operationId: envelope.operationId,
-            kindLabel: KIND_LABEL[registerKind],
+            kindLabel: type.name,
             workedOnLabel: dateLabel(registerDate),
             durationLabel: formatMinutes(minutes),
             note
@@ -210,25 +229,33 @@
     {/each}
   </div>
 
-  {#if canRegister}
+  {#if canRegister && types.length === 0}
+    <div class="ledger-list"><div><span><strong>Sin trabajo extra disponible</strong><small>
+Este acuerdo no permite registrar trabajo extra por ahora. Cuando se pacte un concepto con su tarifa, aparecerá aquí.</small></span></div></div>
+  {:else if canRegister}
     <form class="action-form" onsubmit={submitRegister}>
       <h3>Registrar jornada extra</h3>
       <div class="form-grid">
         <label>Tipo
-          <select bind:value={registerKind}>
-            <option value="overtime">Horas extraordinarias</option>
-            <option value="worked_rest_day">Festivo o descanso trabajado</option>
+          <select bind:value={registerTypeId}>
+            {#each types as type (type.id)}
+              <option value={type.id}>{type.name}{type.rateLabel ? ` · ${type.rateLabel}` : ''}</option>
+            {/each}
           </select>
         </label>
         <label>Fecha
           <input type="date" bind:value={registerDate} required />
         </label>
-        <label>Horas
-          <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerHours} min="0" max="24" step="1" required />
-        </label>
-        <label>Y minutos
-          <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerExtraMinutes} min="0" max="59" step="1" required />
-        </label>
+        {#if durationIsChosen}
+          <label>Horas
+            <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerHours} min="0" max="24" step="1" required />
+          </label>
+          <label>Y minutos
+            <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerExtraMinutes} min="0" max="59" step="1" required />
+          </label>
+        {:else if registerType?.referenceLabel}
+          <p><small>{registerType.referenceLabel}, según lo pactado.</small></p>
+        {/if}
       </div>
       <label>Nota (opcional)
         <input type="text" autocomplete="off" enterkeyhint="done" bind:value={registerNote} maxlength="500" placeholder="Qué se trabajó y por qué" />

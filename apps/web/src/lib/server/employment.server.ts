@@ -5,7 +5,9 @@ import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction 
 import {
   buildAccrual,
   buildAdvanceBalanceViews,
+  buildAgreementTermsView,
   buildAgreementVersionViews,
+  buildExtraWorkTypeView,
   buildCompensationBalanceViews,
   buildPendingExpenseViews,
   buildPendingExtraViews,
@@ -21,7 +23,9 @@ import {
   type ApprovedExpenseRow,
   type CompensationBalanceRow,
   type EmploymentOverview,
+  type ExtraWorkTypeRow,
   type PaymentRow,
+  type RecurringSupplementRow,
   type PendingExpenseRow,
   type PendingExtraWorkRow,
   type ResolvedExtraWorkRow,
@@ -88,6 +92,8 @@ export async function loadEmploymentOverview(
           hasEmploymentData: false,
           agreement: null,
           versions: [],
+          terms: null,
+          registrableTypes: [],
           accrual: null,
           settlements: [],
           pendingExtras: [],
@@ -98,20 +104,56 @@ export async function loadEmploymentOverview(
         } satisfies EmploymentOverview;
       }
 
+      // Sin las columnas reliquia de tarifa: viajarían al navegador dentro del
+      // JSON de la página y con ellas la tarifa horaria de quien no tiene horas
+      // permitidas. Las tarifas se leen del catálogo, donde la RLS decide fila
+      // a fila qué sale de Postgres.
       const versions = await client.query<AgreementVersionRow>(
         `select id,
                 version_number as "versionNumber",
                 effective_from::text as "effectiveFrom",
                 monthly_salary_cents as "monthlySalaryCents",
-                overtime_hourly_rate_cents as "overtimeHourlyRateCents",
-                worked_rest_day_rate_cents as "workedRestDayRateCents",
-                worked_rest_day_credit_minutes as "workedRestDayCreditMinutes",
                 contracted_weekly_minutes as "contractedWeeklyMinutes",
                 annual_vacation_days as "annualVacationDays",
                 reason
            from app.agreement_versions
           where household_id = $1 and agreement_id = $2
           order by version_number`,
+        [householdId, agreement.id]
+      );
+
+      // Catálogo de TODAS las versiones visibles: el historial enseña cómo
+      // cambiaron las condiciones, no solo cómo están hoy. Para la empleada la
+      // RLS ya descartó lo desactivado y lo que no tiene tarifa.
+      const extraWorkTypes = await client.query<ExtraWorkTypeRow>(
+        `select id,
+                agreement_version_id as "agreementVersionId",
+                code,
+                name,
+                unit::text as "unit",
+                rate_cents::text as "rateCents",
+                reference_minutes as "referenceMinutes",
+                active
+           from app.extra_work_types
+          where household_id = $1 and agreement_id = $2
+          order by sort_order, code`,
+        [householdId, agreement.id]
+      );
+
+      const supplements = await client.query<RecurringSupplementRow>(
+        `select id,
+                agreement_version_id as "agreementVersionId",
+                code,
+                name,
+                amount_cents::text as "amountCents",
+                periodicity::text as "periodicity",
+                adds_to_pay as "addsToPay",
+                starts_on::text as "startsOn",
+                ends_on::text as "endsOn",
+                active
+           from app.recurring_supplements
+          where household_id = $1 and agreement_id = $2
+          order by sort_order, code`,
         [householdId, agreement.id]
       );
 
@@ -138,6 +180,9 @@ export async function loadEmploymentOverview(
       const extras = await client.query<ResolvedExtraWorkRow>(
         `select id,
                 kind::text as "kind",
+                (select catalogued.name from app.extra_work_types as catalogued
+                  where catalogued.household_id = extra_work_events.household_id
+                    and catalogued.id = extra_work_events.extra_work_type_id) as "typeName",
                 worked_on::text as "workedOn",
                 duration_minutes as "durationMinutes",
                 note,
@@ -159,6 +204,9 @@ export async function loadEmploymentOverview(
       const pendingExtras = await client.query<PendingExtraWorkRow>(
         `select id,
                 kind::text as "kind",
+                (select catalogued.name from app.extra_work_types as catalogued
+                  where catalogued.household_id = extra_work_events.household_id
+                    and catalogued.id = extra_work_events.extra_work_type_id) as "typeName",
                 worked_on::text as "workedOn",
                 duration_minutes as "durationMinutes",
                 note,
@@ -331,17 +379,51 @@ export async function loadEmploymentOverview(
         paymentRows = payments.rows;
       }
 
+      // Versión vigente HOY: la de mayor effective_from que no sea futura. Es la
+      // que decide qué puede registrar hoy y qué condiciones enseñarle.
+      const today = currentLocalDate(now);
+      const versionInForce =
+        [...versions.rows]
+          .filter((row) => row.effectiveFrom <= today)
+          .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom))
+          .at(-1) ?? null;
+      const terms = versionInForce
+        ? buildAgreementTermsView({
+            version: versionInForce,
+            types: extraWorkTypes.rows,
+            supplements: supplements.rows
+          })
+        : null;
+
       return {
         householdId,
         hasEmploymentData: true,
         agreement,
-        versions: buildAgreementVersionViews(versions.rows, first),
+        versions: buildAgreementVersionViews(
+          versions.rows,
+          first,
+          extraWorkTypes.rows,
+          supplements.rows
+        ),
+        terms,
+        // Se filtra por `available` además de por versión: quien administra ve
+        // el catálogo entero, pero tampoco él puede registrar trabajo de un
+        // concepto desactivado o sin tarifa (el disparador de 0021 lo rechaza).
+        registrableTypes: versionInForce
+          ? extraWorkTypes.rows
+              .filter((row) => row.agreementVersionId === versionInForce.id)
+              .map(buildExtraWorkTypeView)
+              .filter((view) => view.available)
+          : [],
         accrual: buildAccrual({
           period,
           versions: versions.rows,
           extras: extras.rows,
           advances: advances.rows,
-          expenses: expenses.rows
+          expenses: expenses.rows,
+          supplements: supplements.rows.filter(
+            (row) => row.agreementVersionId === (versionInForce?.id ?? '')
+          )
         }),
         settlements: buildSettlementViews(
           settlements.rows,
