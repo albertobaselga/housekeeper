@@ -22,12 +22,12 @@ Repositorio privado. Consulta [LICENSE](LICENSE): todos los derechos reservados.
 
 | Ruta | Contenido |
 |---|---|
-| `apps/web` | SvelteKit + TypeScript: shell PWA, capacidades por rol, IndexedDB (snapshot/outbox/blobs), `/api/v1` (sync, snapshot, ICS, adjuntos), Better Auth con enlace mágico |
+| `apps/web` | SvelteKit + TypeScript: shell PWA, capacidades por rol, IndexedDB (snapshot/outbox/blobs), `/api/v1` (sync, snapshot, ICS, adjuntos), Better Auth con usuario y contraseña |
 | `apps/worker` | Worker Node: cola `app_private.job_queue`, PDF determinista de justificantes, sincronización ICS, avisos por SMTP, almacenamiento S3 privado |
 | `packages/contracts` | Contratos públicos versionados (AppContext, CommandEnvelope, SyncResult, CriticalSnapshot…) con esquemas Zod |
 | `packages/domain` | Motor puro: liquidaciones en céntimos `bigint`, máquina de estados de jornadas extra |
 | `packages/server` | Primitivas de servidor: transacción autorizada bajo RLS, idempotencia append-only, lote de sync, firma Ed25519 |
-| `packages/db` | 17 migraciones PostgreSQL 18, fixtures de dos hogares, suites SQL de esquema/RLS e importador del manual |
+| `packages/db` | 19 migraciones PostgreSQL 18, fixtures de dos hogares, suites SQL de esquema/RLS e importador del manual |
 | `infra` | Compose local y de staging, Caddy, Dockerfiles, backups, observabilidad y presupuestos de calidad |
 | `scripts/ci` | Guardas anti-falso-verde que usan los workflows |
 | `docs` | Aceptación, ADR, runbooks, seguridad, UX y plan de despliegue |
@@ -108,15 +108,6 @@ Mailpit y ClamAV; perfiles opcionales `observability` y `backup`. El
 procedimiento de staging sintético está en
 [docs/runbooks/staging-synthetic.md](docs/runbooks/staging-synthetic.md).
 
-### Autenticación
-
-Better Auth con enlace mágico como método principal. La contraseña existe sólo
-para las cinco cuentas demo locales y únicamente con
-`ENABLE_DEMO_PASSWORD_AUTH=true`:
-
-```bash
-pnpm --filter @casa-clara/web seed:demo   # requiere DATABASE_AUTH_URL, SEED_DATABASE_URL y las credenciales DEMO_*
-```
 
 ## Cómo se ejecutan las suites
 
