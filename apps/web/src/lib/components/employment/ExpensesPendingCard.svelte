@@ -1,6 +1,8 @@
 <script lang="ts">
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { OptimisticActions } from '$lib/offline/optimistic';
+  import { saveOfflineBlob } from '$lib/offline/idb';
+  import type { OutboxPendingBlob } from '$lib/offline/schema';
   import { uploadAttachment, UploadAttachmentError } from '$lib/attachments/upload';
   import { parseEuroInput, resolveExpense, submitExpense } from '$lib/employment/commands';
   import { dateLabel, formatCents, type PendingExpenseView } from '$lib/employment/model';
@@ -55,13 +57,20 @@
     optimisticExpenses.filter((draft) => !expenses.some((expense) => expense.description === draft.description))
   );
 
-  // Justificante (AC-11): la subida de la foto es exclusivamente ONLINE; sin
-  // conexión el input se deshabilita y se explica con honestidad. El enlace
-  // offline foto→gasto (saveOfflineBlob + flushBlobs) es el siguiente paso.
+  // Justificante (AC-11): con conexión la foto viaja antes que el gasto. SIN
+  // conexión la foto se guarda en este dispositivo y el gasto ESPERA a que
+  // vuelva la red: entonces la foto se sube y su identificador entra en el
+  // mismo comando, así que el gasto nace ya con su justificante enlazado.
   const online = $derived($syncStatus.phase !== 'offline');
   let receiptInput = $state<HTMLInputElement | null>(null);
   let receiptNotice = $state<string | null>(null);
   let receiptAttached = $state(false);
+  /** La foto está guardada aquí y el gasto espera a la red para enlazarla. */
+  let receiptWaiting = $state(false);
+
+  /** Tipos que acepta la tubería de adjuntos del servidor. */
+  const RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  const RECEIPT_MAX_BYTES = 10 * 1024 * 1024;
 
   async function submitNewExpense(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -76,11 +85,12 @@
     receiptNotice = null;
     receiptAttached = false;
 
-    // La foto viaja PRIMERO: el comando del gasto referencia el objeto ya
-    // confirmado. Si la subida falla (tamaño, tipo, cuarentena o un 503 sin
+    // Con red la foto viaja PRIMERO: el comando del gasto referencia el objeto
+    // ya confirmado. Si la subida falla (tamaño, tipo, cuarentena o un 503 sin
     // S3/ClamAV configurados) el alta del gasto NO se bloquea: se registra sin
     // justificante y el mensaje explica qué pasó con la foto.
     let receiptStorageObjectId: string | undefined;
+    let pendingBlob: OutboxPendingBlob | undefined;
     const receiptFile = receiptInput?.files?.[0];
     if (receiptFile && online) {
       uploadBusy = true;
@@ -93,6 +103,30 @@
             : 'No se pudo subir la foto. El gasto se registra sin justificante.';
       } finally {
         uploadBusy = false;
+      }
+    } else if (receiptFile) {
+      // Sin conexión: la foto se queda en este dispositivo con su propio
+      // identificador y el gasto la espera. Nada de subidas a medias.
+      const contentType = receiptFile.type || 'application/octet-stream';
+      if (!RECEIPT_TYPES.includes(contentType)) {
+        receiptNotice = 'Ese tipo de fichero no está permitido: usa una foto (JPG, PNG, WebP) o un PDF. El gasto se registra sin justificante.';
+      } else if (receiptFile.size > RECEIPT_MAX_BYTES) {
+        receiptNotice = 'La foto supera el tamaño máximo (10 MB). El gasto se registra sin justificante.';
+      } else {
+        const blobId = crypto.randomUUID();
+        try {
+          await saveOfflineBlob({
+            id: blobId,
+            householdId,
+            contentType,
+            size: receiptFile.size,
+            createdAt: new Date().toISOString(),
+            blob: receiptFile
+          });
+          pendingBlob = { id: blobId, payloadField: 'receiptStorageObjectId' };
+        } catch {
+          receiptNotice = 'No se pudo guardar la foto en este dispositivo. El gasto se registra sin justificante.';
+        }
       }
     }
 
@@ -109,28 +143,39 @@
       optimisticExpenses = optimisticExpenses.filter((draft) => draft.operationId !== envelope.operationId);
     };
     receiptAttached = Boolean(receiptStorageObjectId);
-    await optimistic.run(envelope, {
-      apply: () => {
-        optimisticExpenses = [
-          ...optimisticExpenses,
-          {
-            operationId: envelope.operationId,
-            description,
-            amountLabel: formatCents(amountCents),
-            incurredOnLabel: dateLabel(expenseDate)
-          }
-        ];
-        expenseDescription = '';
-        expenseAmount = '';
-        if (receiptInput) receiptInput.value = '';
-        expenseSent = true;
+    receiptWaiting = Boolean(pendingBlob);
+    await optimistic.run(
+      envelope,
+      {
+        apply: () => {
+          optimisticExpenses = [
+            ...optimisticExpenses,
+            {
+              operationId: envelope.operationId,
+              description,
+              amountLabel: formatCents(amountCents),
+              incurredOnLabel: dateLabel(expenseDate)
+            }
+          ];
+          expenseDescription = '';
+          expenseAmount = '';
+          if (receiptInput) receiptInput.value = '';
+          expenseSent = true;
+        },
+        revert: () => {
+          removeDraft();
+          expenseSent = false;
+          receiptWaiting = false;
+        },
+        settle: () => {
+          removeDraft();
+          // El comando salió con la foto ya enlazada: deja de estar esperando.
+          receiptWaiting = false;
+          if (pendingBlob) receiptAttached = true;
+        }
       },
-      revert: () => {
-        removeDraft();
-        expenseSent = false;
-      },
-      settle: removeDraft
-    });
+      pendingBlob ? { pendingBlob } : {}
+    );
   }
 
   function decide(expenseId: string, resolution: 'approved' | 'rejected'): void {
@@ -258,18 +303,24 @@
           accept="image/*,application/pdf"
           capture="environment"
           bind:this={receiptInput}
-          disabled={uploadBusy || !online}
+          disabled={uploadBusy}
         />
       </label>
       {#if !online}
-        <p class="queued-note" role="status">La foto necesita conexión; el gasto puedes guardarlo ya y adjuntar el ticket cuando vuelva la red.</p>
+        <p class="queued-note" role="status">Sin conexión: haz la foto igualmente. Se guarda en este dispositivo y se une al gasto en cuanto vuelva la red.</p>
       {/if}
       {#if receiptNotice}<p class="queued-note" role="status">{receiptNotice}</p>{/if}
       {#if expenseError}<p class="queued-note" role="alert">{expenseError}</p>{/if}
       <div class="action-row">
         <button class="button primary small-button" type="submit" disabled={uploadBusy}>Añadir gasto</button>
         {#if expenseSent}
-          <span class="status-chip success">{receiptAttached ? 'Enviado · Justificante adjunto ✓' : 'Enviado'}</span>
+          <span class="status-chip {receiptWaiting ? 'warning' : 'success'}">
+            {receiptWaiting
+              ? 'Guardado aquí · La foto se unirá al gasto con conexión'
+              : receiptAttached
+                ? 'Enviado · Justificante adjunto ✓'
+                : 'Enviado'}
+          </span>
         {/if}
       </div>
     </form>
