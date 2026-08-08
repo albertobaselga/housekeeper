@@ -131,9 +131,6 @@
     draft.supplements = draft.supplements.filter((_, position) => position !== index);
   }
 
-  function candidateLabel(candidate: EmployeeCandidateView): string {
-    return candidate.name;
-  }
 </script>
 
 <svelte:head><title>Condiciones del acuerdo · Casa Clara</title></svelte:head>
@@ -366,7 +363,7 @@
               <select name="employeeMembershipId" bind:value={createEmployee} required>
                 <option value="" disabled>Elige a quién</option>
                 {#each admin.candidates as candidate (candidate.membershipId)}
-                  <option value={candidate.membershipId}>{candidateLabel(candidate)}</option>
+                  <option value={candidate.membershipId}>{candidate.name}</option>
                 {/each}
               </select>
             </label>
