@@ -1,6 +1,7 @@
 import { error } from '@sveltejs/kit';
 import { can, capabilitiesFor } from '$lib/auth/capabilities';
 import { guardForPath } from '$lib/auth/routing';
+import { getAuth } from '$lib/server/auth.server';
 import { loadSnapshotContacts } from '$lib/server/contacts.server';
 import { getHousehold } from '$lib/server/fixtures.server';
 import { getSnapshotKeys } from '$lib/server/keys.server';
@@ -46,7 +47,8 @@ export const load: LayoutServerLoad = async ({ locals, params, url }) => {
       snapshotHousehold
     ),
     snapshotPublicKey: getSnapshotKeys().publicKeyRaw,
-    synthetic: locals.syntheticOnly
+    synthetic: locals.syntheticOnly,
+    passwordAuth: Boolean(getAuth())
   };
   return { context };
 };

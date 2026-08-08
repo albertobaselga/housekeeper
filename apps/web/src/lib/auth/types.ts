@@ -38,4 +38,10 @@ export interface AppContext {
   snapshotPublicKey: string;
   /** Entorno declarado solo-sintético: el AppShell muestra un banner discreto. */
   synthetic?: boolean;
+  /**
+   * Hay identidad real con contraseña: el AppShell ofrece «Tu contraseña».
+   * Sin ella (demo por fixtures) el enlace no aparece, porque no habría nada
+   * que cambiar detrás.
+   */
+  passwordAuth?: boolean;
 }

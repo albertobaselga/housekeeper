@@ -51,11 +51,14 @@ pnpm test:rls            # matriz negativa de aislamiento por hogar y rol
 
 ### Autenticación
 
-Better Auth con magic link como método principal. La contraseña existe solo para las cinco cuentas demo locales y únicamente con `ENABLE_DEMO_PASSWORD_AUTH=true`; se siembran de forma idempotente:
+Better Auth con **usuario y contraseña**, sin correo en ningún punto del recorrido: ni enlaces mágicos ni restablecimiento por correo. El alta pública está cerrada (`disableSignUp`) en todos los entornos; las cuentas nacen del guion de alta, que toma los datos de un JSON externo al repositorio:
 
 ```bash
-pnpm --filter @casa-clara/web seed:demo   # requiere DATABASE_AUTH_URL, SEED_DATABASE_URL y las credenciales DEMO_* del entorno
+pnpm --filter @casa-clara/web seed:accounts --config /ruta/fuera/del/repo/hogar.json
+# requiere DATABASE_AUTH_URL, BETTER_AUTH_SECRET y SEED_DATABASE_URL
 ```
+
+Cómo se cambia y se repone una contraseña, y qué hacer si el administrador pierde la suya, en [docs/despliegue/acceso-produccion.md](docs/despliegue/acceso-produccion.md). Sin `DATABASE_AUTH_URL` la aplicación cae al selector de cuentas sintéticas de la demo local.
 
 ### Pila local completa
 

@@ -10,6 +10,7 @@
     calendar: '□',
     contacts: '☎',
     emergency: '+',
+    account: '◈',
     settings: '⚙'
   };
 

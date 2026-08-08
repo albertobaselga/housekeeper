@@ -6,7 +6,7 @@ Staging valida la aplicación integrada sin convertirse en producción ni alojar
 
 1. Crear `infra/env/staging.env` desde el ejemplo, generar valores aleatorios y conservarlo fuera de Git. Incluye `SNAPSHOT_SIGNING_KEY_B64` (`openssl genpkey -algorithm ed25519 | base64 -w0`): sin ella los snapshots críticos no sobreviven reinicios ni réplicas.
 2. Usar un `RELEASE_TAG` inmutable asociado al commit, no `latest`.
-3. Confirmar que `ALLOW_SYNTHETIC_DATA_ONLY=true` y que todos los nombres/correos/adjuntos de seed son ficticios. En staging la contraseña demo queda deshabilitada (`ENABLE_DEMO_PASSWORD_AUTH` ausente): el acceso es por magic link, entregado en Mailpit.
+3. Confirmar que `ALLOW_SYNTHETIC_DATA_ONLY=true` y que todos los nombres/correos/adjuntos de seed son ficticios. El acceso es por usuario y contraseña; en staging las cuentas son sintéticas y se dan de alta con el guion del paso siguiente. No hay correo en el camino de acceso: Mailpit ya solo sirve a los avisos del worker.
 4. Validar configuración antes de construir:
 
 ```bash
@@ -26,13 +26,16 @@ docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml \
   up --build -d --wait
 ```
 
-Para sembrar cuentas sintéticas con contraseña (solo si el entorno lo permite explícitamente con `ENABLE_DEMO_PASSWORD_AUTH=true` y las variables `DEMO_*`; en staging normal, no):
+Para dar de alta las cuentas sintéticas de staging, con un JSON de personas ficticias guardado **fuera del repositorio** (formato en [docs/despliegue/acceso-produccion.md](../despliegue/acceso-produccion.md)):
 
 ```bash
 docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml \
   run --rm -e SEED_DATABASE_URL="postgresql://…propietario-de-migraciones…" \
-  web pnpm --filter @casa-clara/web seed:demo
+  -v /ruta/fuera/del/repo/staging-sintetico.json:/tmp/hogar.json:ro \
+  web pnpm --filter @casa-clara/web seed:accounts --config /tmp/hogar.json
 ```
+
+El guion imprime las contraseñas generadas una sola vez. En staging pueden anotarse en el registro de la prueba; en producción no salen de la conversación en persona.
 
 Después, ejecutar smoke de los cinco roles, matriz RLS, una escritura offline, PDF, adjunto en cuarentena y modo avión. Mailpit debe contener únicamente identidades `.demo` o equivalentes sintéticas.
 

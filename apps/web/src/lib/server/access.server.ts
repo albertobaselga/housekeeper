@@ -23,6 +23,50 @@ export interface AccessOverview {
   memberships: MembershipAccessView[];
 }
 
+export interface MembershipIdentity {
+  /** Identificador estable de Better Auth guardado en app.user_profiles. */
+  userId: string;
+  name: string;
+}
+
+/**
+ * Traduce una membresía del hogar a la identidad que hay detrás, para poder
+ * reponerle la contraseña. El `user_id` NUNCA viaja al cliente: la pantalla de
+ * Ajustes solo maneja identificadores de membresía y esta función hace la
+ * traducción en el servidor, dentro de la misma transacción que comprueba que
+ * quien pide es `family_admin` del hogar. Devuelve null si no lo es, si la
+ * membresía no existe, si ya está revocada o si es la suya propia.
+ */
+export async function resolveMembershipIdentity(
+  user: { id: string },
+  householdId: string,
+  membershipId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<MembershipIdentity | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      if (membership.role !== 'family_admin') return null;
+      if (membership.id === membershipId) return null;
+      const result = await client.query<{ userId: string; displayName: string | null }>(
+        `select m.user_id as "userId", p.display_name as "displayName"
+           from app.household_memberships as m
+           left join app.user_profiles as p on p.user_id = m.user_id
+          where m.household_id = $1 and m.id = $2 and m.revoked_at is null`,
+        [householdId, membershipId]
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return { userId: row.userId, name: row.displayName ?? 'esa persona' } satisfies MembershipIdentity;
+    });
+  } catch (cause) {
+    if (!(cause instanceof AuthorizationError)) {
+      log.error('membership identity unavailable', { code: errorCode(cause) });
+    }
+    return null;
+  }
+}
+
 /**
  * Membresías del hogar con nombre de perfil y estado (starts/expires/revoked)
  * para la sección "Accesos del hogar". La política memberships_admin_read solo

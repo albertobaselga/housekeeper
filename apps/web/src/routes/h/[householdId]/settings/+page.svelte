@@ -1,14 +1,15 @@
 <script lang="ts">
+  import { enhance } from '$app/forms';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { ROLE_LABELS, type Role } from '$lib/auth/capabilities';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { revokeMembership, setMembershipExpiry } from '$lib/access/commands';
-  import type { PageData } from './$types';
+  import type { ActionData, PageData } from './$types';
 
   import { useAppContext } from '$lib/auth/context';
 
-  let { data }: { data: PageData } = $props();
+  let { data, form }: { data: PageData; form: ActionData } = $props();
   const context = useAppContext();
 
   const access = $derived(data.access);
@@ -79,6 +80,17 @@
       confirmText = '';
     });
   }
+
+  // ── Reponer contraseñas ────────────────────────────────────────────────────
+  // No pasa por la cola offline a propósito: una contraseña se cambia contra el
+  // servidor o no se cambia. Es una form action con mejora progresiva. La
+  // contraseña PROPIA se cambia en «Tu acceso» (/account), que sí alcanza todo
+  // el mundo; Ajustes es exclusivo del family_admin.
+  let resettingId = $state<string | null>(null);
+
+  function toggleReset(membershipId: string): void {
+    resettingId = resettingId === membershipId ? null : membershipId;
+  }
 </script>
 
 <svelte:head><title>Ajustes · Casa Clara</title></svelte:head>
@@ -90,6 +102,9 @@
     <section class="card" aria-labelledby="access-title">
       <div class="section-heading"><div><p class="eyebrow">Accesos del hogar</p><h2 id="access-title">¿Hasta cuándo puede entrar cada persona?</h2></div></div>
       <ActionStatus status={actionStatus} />
+      {#if form?.resetDone}
+        <p class="demo-note" role="status"><strong>Contraseña repuesta.</strong> Dile a {form.resetDone} la contraseña nueva en persona; ya no puede entrar con la anterior en ningún dispositivo.</p>
+      {/if}
       <ul class="wiki-recent">
         {#each access.memberships as member (member.id)}
           <li>
@@ -139,8 +154,46 @@
                   <button class="button secondary small-button" type="button" disabled={busy} onclick={() => askRevoke(member.id)}>
                     {confirmingId === member.id ? 'Cancelar' : 'Quitar el acceso'}
                   </button>
+                  {#if data.passwordAuth}
+                    <button class="button secondary small-button" type="button" onclick={() => toggleReset(member.id)}>
+                      {resettingId === member.id ? 'Cancelar' : 'Poner una contraseña nueva'}
+                    </button>
+                  {/if}
                 </div>
               </form>
+              {#if data.passwordAuth && resettingId === member.id}
+                <form class="action-form" method="POST" action="?/resetMemberPassword" use:enhance={() => {
+                  return async ({ result, update }) => {
+                    await update({ reset: true });
+                    // Hecha la reposición, el formulario se cierra: dejarlo
+                    // abierto invita a repetirla sin querer.
+                    if (result.type === 'success') resettingId = null;
+                  };
+                }}>
+                  <p class="audit-note">
+                    Vas a poner una contraseña nueva a <strong>{member.name}</strong>. Díctasela en persona y pídele que la
+                    cambie desde «Tu contraseña» en cuanto entre. Al hacerlo, <strong>{member.name} saldrá de todos los
+                    dispositivos donde tuviera la sesión abierta</strong> y tendrá que entrar con la contraseña nueva.
+                    Escribe <strong>{data.resetConfirmWord}</strong> para confirmar.
+                  </p>
+                  {#if form?.resetError && form?.resetMembershipId === member.id}
+                    <p class="form-error" role="alert">{form.resetError}</p>
+                  {/if}
+                  <input type="hidden" name="membershipId" value={member.id} />
+                  <label for={`reset-new-${member.id}`}>Contraseña nueva (mínimo {data.minPasswordLength} caracteres)
+                    <input id={`reset-new-${member.id}`} name="newPassword" type="password" autocomplete="new-password" minlength={data.minPasswordLength} required />
+                  </label>
+                  <label for={`reset-repeat-${member.id}`}>Repite la contraseña nueva
+                    <input id={`reset-repeat-${member.id}`} name="repeatPassword" type="password" autocomplete="new-password" minlength={data.minPasswordLength} required />
+                  </label>
+                  <label for={`reset-confirm-${member.id}`}>Confirmación
+                    <input id={`reset-confirm-${member.id}`} name="confirm" type="text" placeholder={data.resetConfirmWord} autocomplete="off" enterkeyhint="done" required />
+                  </label>
+                  <div class="menu-slot-actions">
+                    <button class="button primary" type="submit">Poner la contraseña nueva</button>
+                  </div>
+                </form>
+              {/if}
               {#if confirmingId === member.id}
                 <form
                   class="action-form"
