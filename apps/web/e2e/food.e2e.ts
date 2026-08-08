@@ -11,7 +11,7 @@ const FOOD_WRITE_ACTION_LABELS = [
   'Cambiar',
   'Vaciar',
   'Confirmar',
-  'Guardar hueco',
+  'Guardar',
   'Crear grupo',
   'Añadir a la compra',
   'Editar ingredientes',

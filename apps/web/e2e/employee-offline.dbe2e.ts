@@ -14,12 +14,12 @@ test('Ana añade a la compra sin conexión y el artículo se sincroniza al volve
   await page.goto(`/h/${HOUSEHOLD}/menu`);
   await page.getByRole('button', { name: 'Lista de la compra' }).click();
 
-  const addForm = page.locator('form.action-form').filter({ hasText: 'Nombre libre' });
+  const addForm = page.locator('form.action-form').filter({ hasText: 'Escríbelo aquí' });
   await expect(addForm).toBeVisible();
 
   await context.setOffline(true);
   try {
-    await addForm.getByRole('textbox', { name: 'Nombre libre' }).fill('Pilas AAA E2E');
+    await addForm.getByRole('textbox', { name: 'Escríbelo aquí' }).fill('Pilas AAA E2E');
     await addForm.getByLabel('Cantidad').fill('4');
     await addForm.getByLabel('Unidad').fill('uds');
     await addForm.getByLabel('Sección').fill('hogar');
