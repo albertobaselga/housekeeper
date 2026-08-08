@@ -303,6 +303,16 @@ export const contactCommandPayloadSchema = z.discriminatedUnion("action", [
 const allergenCodeSchema = z.string().regex(/^[a-z-]+$/);
 const decimalQuantitySchema = z.string().regex(/^\d{1,8}([.,]\d{1,2})?$/);
 
+/**
+ * Tamaño de paquete de compra del alimento: cantidad + unidad SIEMPRE juntas
+ * (un «500» suelto no sirve para redondear). Es opcional: sin él, la lista de
+ * la compra muestra la cantidad exacta y no inventa envases.
+ */
+export const foodPackagingSchema = z.object({
+  size: decimalQuantitySchema,
+  unit: z.string().trim().min(1).max(30),
+});
+
 export const foodUpsertPayloadSchema = z.object({
   action: z.literal("upsert"),
   foodId: uuidSchema.optional(),
@@ -310,7 +320,24 @@ export const foodUpsertPayloadSchema = z.object({
   shoppingSection: z.string().trim().min(1).max(60),
   allergenCodes: z.array(allergenCodeSchema).max(14),
   reviewed: z.boolean(),
+  packaging: foodPackagingSchema.optional(),
 });
+
+export const foodArchivePayloadSchema = z.object({
+  action: z.literal("archive"),
+  foodId: uuidSchema,
+});
+
+export const foodRestorePayloadSchema = z.object({
+  action: z.literal("restore"),
+  foodId: uuidSchema,
+});
+
+export const foodCommandPayloadSchema = z.discriminatedUnion("action", [
+  foodUpsertPayloadSchema,
+  foodArchivePayloadSchema,
+  foodRestorePayloadSchema,
+]);
 
 export const dinerUpsertPayloadSchema = z.object({
   action: z.literal("upsert"),
@@ -346,12 +373,44 @@ export const recipeSetDetailsPayloadSchema = z.object({
     .max(60),
 });
 
+export const recipeArchivePayloadSchema = z.object({
+  action: z.literal("archive"),
+  pageId: uuidSchema,
+});
+
+export const recipeRestorePayloadSchema = z.object({
+  action: z.literal("restore"),
+  pageId: uuidSchema,
+});
+
+export const recipeCommandPayloadSchema = z.discriminatedUnion("action", [
+  recipeSetDetailsPayloadSchema,
+  recipeArchivePayloadSchema,
+  recipeRestorePayloadSchema,
+]);
+
 export const menuGroupUpsertPayloadSchema = z.object({
   action: z.literal("upsert"),
   groupId: uuidSchema.optional(),
   name: z.string().trim().min(1).max(120),
   dinerIds: z.array(uuidSchema).max(30),
 });
+
+export const menuGroupArchivePayloadSchema = z.object({
+  action: z.literal("archive"),
+  groupId: uuidSchema,
+});
+
+export const menuGroupRestorePayloadSchema = z.object({
+  action: z.literal("restore"),
+  groupId: uuidSchema,
+});
+
+export const menuGroupCommandPayloadSchema = z.discriminatedUnion("action", [
+  menuGroupUpsertPayloadSchema,
+  menuGroupArchivePayloadSchema,
+  menuGroupRestorePayloadSchema,
+]);
 
 // La regla "receta o texto" la garantizan el handler y el CHECK de la tabla;
 // aquí se mantiene el objeto plano para poder entrar en la unión discriminada.
@@ -439,6 +498,13 @@ export const menuTemplateCommandPayloadSchema = z.discriminatedUnion("action", [
   menuTemplateDeletePayloadSchema,
 ]);
 
+/**
+ * Qué lista de la compra: la de casa o la «Personal» de la interna (Anexo H
+ * del manual de convivencia). La personal se escribe a mano siempre: nunca
+ * sale del menú de la casa ni apunta al catálogo de alimentos del hogar.
+ */
+export const shoppingListKindSchema = z.enum(["casa", "personal"]);
+
 export const shoppingAddPayloadSchema = z
   .object({
     action: z.literal("add"),
@@ -448,14 +514,44 @@ export const shoppingAddPayloadSchema = z
     unit: z.string().trim().min(1).max(30).optional(),
     section: z.string().trim().min(1).max(60).optional(),
     weekStartsOn: isoDateSchema.optional(),
+    listKind: shoppingListKindSchema.optional(),
   })
   .refine((value) => value.foodId !== undefined || (value.customName ?? "").trim().length > 0, {
     message: "Un añadido necesita alimento o nombre libre",
+  })
+  .refine((value) => value.listKind !== "personal" || value.foodId === undefined, {
+    message: "La lista personal se escribe a mano, sin alimentos del catálogo",
   });
 
 export const shoppingSetCheckedPayloadSchema = z.object({
   action: z.literal("set_checked"),
   itemId: uuidSchema,
+  checked: z.boolean(),
+});
+
+/**
+ * Identidad de una LÍNEA de la compra ya fusionada por el servidor:
+ * `food:<uuid>` cuando la línea es un alimento del catálogo (une lo derivado
+ * del menú con los añadidos a mano que apuntan a ese alimento o repiten su
+ * nombre) y `name:<nombre en minúsculas>` cuando es un añadido libre.
+ */
+export const shoppingLineKeySchema = z
+  .string()
+  .regex(
+    /^(?:food:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|name:[^\n]{1,120})$/,
+    "Clave de línea de la compra no reconocida",
+  );
+
+/**
+ * Marca (o desmarca) la línea entera de una semana, incluidos los artículos
+ * «del menú», que no tienen fila propia porque la parte derivada se calcula en
+ * lectura. Un solo comando idempotente por línea: robusto offline.
+ */
+export const shoppingSetLineCheckedPayloadSchema = z.object({
+  action: z.literal("set_line_checked"),
+  weekStartsOn: isoDateSchema,
+  lineKey: shoppingLineKeySchema,
+  listKind: shoppingListKindSchema.optional(),
   checked: z.boolean(),
 });
 

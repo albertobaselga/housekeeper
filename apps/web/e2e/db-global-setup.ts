@@ -58,12 +58,14 @@ const E2E_BATTERY_SEED = `
 BEGIN;
 SET LOCAL row_security = off;
 
--- Catálogo de alimentos: tres revisados (leche→lácteos, arroz, pollo) y uno sin revisar.
-INSERT INTO app.foods (id, household_id, name, shopping_section, allergens_reviewed, created_by_membership_id) VALUES
-  ('${E2E_SEED.foods.leche}', '${HOUSEHOLD}', 'Leche entera E2E', 'lácteos', true, '${ADMIN_MEMBERSHIP}'),
-  ('${E2E_SEED.foods.arroz}', '${HOUSEHOLD}', 'Arroz redondo E2E', 'despensa', true, '${ADMIN_MEMBERSHIP}'),
-  ('${E2E_SEED.foods.pollo}', '${HOUSEHOLD}', 'Pollo entero E2E', 'carnicería', true, '${ADMIN_MEMBERSHIP}'),
-  ('${E2E_SEED.foods.sinRevisar}', '${HOUSEHOLD}', 'Pan de espelta E2E', 'panadería', false, '${ADMIN_MEMBERSHIP}');
+-- Catálogo de alimentos: tres revisados (leche→lácteos, arroz, pollo) y uno sin
+-- revisar. El arroz declara además su tamaño de paquete de compra (500 g), que
+-- es lo que permite a la lista decir «1 paquete de 500 g» en vez de «0,125 kg».
+INSERT INTO app.foods (id, household_id, name, shopping_section, allergens_reviewed, package_size, package_unit, created_by_membership_id) VALUES
+  ('${E2E_SEED.foods.leche}', '${HOUSEHOLD}', 'Leche entera E2E', 'lácteos', true, NULL, NULL, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.foods.arroz}', '${HOUSEHOLD}', 'Arroz redondo E2E', 'despensa', true, 500, 'g', '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.foods.pollo}', '${HOUSEHOLD}', 'Pollo entero E2E', 'carnicería', true, NULL, NULL, '${ADMIN_MEMBERSHIP}'),
+  ('${E2E_SEED.foods.sinRevisar}', '${HOUSEHOLD}', 'Pan de espelta E2E', 'panadería', false, NULL, NULL, '${ADMIN_MEMBERSHIP}');
 
 INSERT INTO app.food_allergens (household_id, food_id, allergen_code)
 VALUES ('${HOUSEHOLD}', '${E2E_SEED.foods.leche}', 'lacteos');

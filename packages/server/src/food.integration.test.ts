@@ -13,7 +13,8 @@ import {
 
 import { foodCommandHandlers } from "./commands/food-handlers.js";
 import { recipeCommandHandler } from "./commands/food.js";
-import { aggregateShoppingList, menuSlotCommandHandler } from "./commands/menu.js";
+import { menuSlotCommandHandler } from "./commands/menu.js";
+import { buildShoppingBoard, packagesNeeded, type ShoppingLine } from "./commands/shopping.js";
 import { wikiCommandHandlers } from "./commands/wiki.js";
 import { withAuthorizedTransaction, type AuthenticatedPrincipal } from "./database.js";
 import { computeMenuSlotHash } from "./menu-hash.js";
@@ -35,7 +36,37 @@ const SCALE_WEEK = "2026-04-06";
 const DUP_FROM_WEEK = "2026-05-04";
 const DUP_TO_WEEK = "2026-05-11";
 const AGG_WEEK = "2026-06-01";
+const FUSION_WEEK = "2026-06-08";
+const PACKAGE_WEEK = "2026-06-15";
+const CHECK_WEEK = "2026-06-22";
+const PERSONAL_WEEK = "2026-06-29";
 const EMPLOYEE_WEEK = "2026-07-06";
+
+/** Una fila por (línea, unidad): la forma corta con la que se leen los asserts. */
+function flatten(
+  sections: ReadonlyArray<{ section: string; lines: ShoppingLine[] }>,
+): Array<{ name: string; section: string; unit: string | null; quantity: string | null; origin: string }> {
+  return sections.flatMap((section) =>
+    section.lines.flatMap((line) =>
+      (line.parts.length > 0 ? line.parts : [{ unit: null, quantity: null }]).map((part) => ({
+        name: line.name,
+        section: section.section,
+        unit: part.unit,
+        quantity: part.quantity,
+        origin: line.origin,
+      })),
+    ),
+  );
+}
+
+function lineNamed(
+  sections: ReadonlyArray<{ section: string; lines: ShoppingLine[] }>,
+  name: string,
+): ShoppingLine {
+  const found = sections.flatMap((section) => section.lines).find((line) => line.name === name);
+  if (!found) throw new Error(`No hay línea de compra llamada ${name}`);
+  return found;
+}
 
 function envelope(aggregateType: AggregateType, payload: unknown): CommandEnvelopeV1 {
   return {
@@ -380,14 +411,18 @@ describe.runIf(Boolean(adminUrl))("comida, menú y compra sobre Postgres real", 
       recipePageId: bizcochoPageId,
     });
 
-    const list = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
-      aggregateShoppingList(client, ROBLE_HOUSEHOLD, SCALE_WEEK),
+    const board = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, SCALE_WEEK),
     );
-    expect(list).toEqual([
-      { foodId: aceiteId, name: "Aceite de oliva IT", unit: "ud", section: "despensa", quantity: "1" },
-      { foodId: harinaId, name: "Harina de trigo IT", unit: "g", section: "despensa", quantity: "300" },
-      { foodId: lecheId, name: "Leche entera IT", unit: "ml", section: "nevera", quantity: "375" },
+    expect(flatten(board.sections)).toEqual([
+      // El aceite es 'fixed': no escala con las raciones y se dice.
+      { name: "Aceite de oliva IT", section: "despensa", unit: "ud", quantity: "1", origin: "menu" },
+      { name: "Harina de trigo IT", section: "despensa", unit: "g", quantity: "300", origin: "menu" },
+      { name: "Leche entera IT", section: "nevera", unit: "ml", quantity: "375", origin: "menu" },
     ]);
+    const aceite = lineNamed(board.sections, "Aceite de oliva IT");
+    expect(aceite.parts[0]?.includesFixed).toBe(true);
+    expect(lineNamed(board.sections, "Harina de trigo IT").parts[0]?.includesFixed).toBe(false);
   });
 
   it("AC-23: duplicate_week dos veces produce el mismo resultado sin duplicados", async () => {
@@ -498,18 +533,222 @@ describe.runIf(Boolean(adminUrl))("comida, menú y compra sobre Postgres real", 
       weekStartsOn: AGG_WEEK,
     });
 
-    const list = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
-      aggregateShoppingList(client, ROBLE_HOUSEHOLD, AGG_WEEK),
+    const board = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, AGG_WEEK),
     );
-    expect(list).toEqual([
-      { foodId: aceiteId, name: "Aceite de oliva IT", unit: "ud", section: "despensa", quantity: "1" },
-      { foodId: arrozFoodId, name: "Arroz bomba IT", unit: "g", section: "despensa", quantity: "100" },
-      { foodId: harinaId, name: "Harina de trigo IT", unit: "g", section: "despensa", quantity: "200" },
-      { foodId: null, name: "Papel de cocina IT", unit: null, section: "hogar", quantity: null },
-      // 250 (bizcocho) + 500 (arroz con leche) + 250 (manual) en ml; el litro va aparte.
-      { foodId: lecheId, name: "Leche entera IT", unit: "l", section: "nevera", quantity: "1" },
-      { foodId: lecheId, name: "Leche entera IT", unit: "ml", section: "nevera", quantity: "1000" },
+    expect(flatten(board.sections)).toEqual([
+      { name: "Aceite de oliva IT", section: "despensa", unit: "ud", quantity: "1", origin: "menu" },
+      { name: "Arroz bomba IT", section: "despensa", unit: "g", quantity: "100", origin: "menu" },
+      { name: "Harina de trigo IT", section: "despensa", unit: "g", quantity: "200", origin: "menu" },
+      { name: "Papel de cocina IT", section: "hogar", unit: null, quantity: null, origin: "manual" },
+      // P2-4: la leche del menú y las dos añadidas a mano van en UNA línea, con
+      // una parte por unidad (el litro no se convierte a mililitros a la brava).
+      { name: "Leche entera IT", section: "nevera", unit: "l", quantity: "1", origin: "mixed" },
+      { name: "Leche entera IT", section: "nevera", unit: "ml", quantity: "1000", origin: "mixed" },
     ]);
+
+    const leche = lineNamed(board.sections, "Leche entera IT");
+    expect(leche.itemIds).toHaveLength(2);
+    // 250 (bizcocho) + 500 (arroz con leche) del menú y 250 a mano, en ml.
+    expect(leche.parts.map((part) => [part.unit, part.fromMenu, part.fromManual])).toEqual([
+      ["l", null, "1"],
+      ["ml", "750", "250"],
+    ]);
+  });
+
+  it("P2-4: un añadido a mano con el nombre del alimento se fusiona con lo del menú", async () => {
+    await accept(ADMIN, "menu_slot", {
+      action: "set",
+      groupId: seisGroupId,
+      onDate: FUSION_WEEK,
+      meal: "comida",
+      recipePageId: arrozPageId,
+      servingsOverride: 4,
+    });
+    // Escrito a mano, sin elegir el alimento del catálogo: «leche entera it».
+    await accept(ADMIN, "shopping_item", {
+      action: "add",
+      customName: "  LECHE ENTERA IT ",
+      quantity: "2",
+      unit: "ml",
+      section: "hogar",
+      weekStartsOn: FUSION_WEEK,
+    });
+
+    const board = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, FUSION_WEEK),
+    );
+    const leche = lineNamed(board.sections, "Leche entera IT");
+    // Una sola línea, en la sección del alimento del catálogo (no en «hogar»).
+    expect(board.sections.filter((section) => section.lines.some((line) => line.name === "Leche entera IT")))
+      .toHaveLength(1);
+    expect(leche.section).toBe("nevera");
+    expect(leche.origin).toBe("mixed");
+    expect(leche.parts).toEqual([
+      expect.objectContaining({ unit: "ml", quantity: "502", fromMenu: "500", fromManual: "2" }),
+    ]);
+  });
+
+  it("P2-4: el tamaño de paquete del alimento redondea la compra a paquetes enteros", async () => {
+    const arrozPaquete = await accept(ADMIN, "food", {
+      action: "upsert",
+      foodId: arrozFoodId,
+      name: "Arroz bomba IT",
+      shoppingSection: "despensa",
+      allergenCodes: [],
+      reviewed: true,
+      packaging: { size: "500", unit: "g" },
+    });
+    expect(arrozPaquete).toBe(arrozFoodId);
+
+    await accept(ADMIN, "menu_slot", {
+      action: "set",
+      groupId: seisGroupId,
+      onDate: PACKAGE_WEEK,
+      meal: "comida",
+      recipePageId: arrozPageId,
+      servingsOverride: 4,
+    });
+    // La harina no declara paquete: su cantidad se muestra exacta, sin inventar.
+    await accept(ADMIN, "menu_slot", {
+      action: "set",
+      groupId: seisGroupId,
+      onDate: PACKAGE_WEEK,
+      meal: "cena",
+      recipePageId: bizcochoPageId,
+      servingsOverride: 4,
+    });
+
+    const board = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, PACKAGE_WEEK),
+    );
+    const arroz = lineNamed(board.sections, "Arroz bomba IT");
+    expect(arroz.packaging).toEqual({ size: "500", unit: "g" });
+    // 100 g de arroz → un paquete de 500 g basta.
+    expect(arroz.parts[0]).toMatchObject({ unit: "g", quantity: "100", packages: 1 });
+    expect(lineNamed(board.sections, "Harina de trigo IT").parts[0]).toMatchObject({ packages: null });
+
+    // Y la regla es pura: 1,2 kg con paquetes de 500 g son tres paquetes.
+    expect(packagesNeeded("1,2", "kg", "500", "g")).toBe(3);
+    expect(packagesNeeded("350", "g", "500", "g")).toBe(1);
+    // Unidades incomparables (peso frente a piezas) → cantidad exacta.
+    expect(packagesNeeded("3", "ud", "500", "g")).toBeNull();
+  });
+
+  it("P2-4: marcar la línea marca también lo que viene del menú y arrastra sus añadidos", async () => {
+    await accept(ADMIN, "menu_slot", {
+      action: "set",
+      groupId: seisGroupId,
+      onDate: CHECK_WEEK,
+      meal: "comida",
+      recipePageId: arrozPageId,
+      servingsOverride: 4,
+    });
+    const manualId = await accept(ADMIN, "shopping_item", {
+      action: "add",
+      foodId: lecheId,
+      quantity: "1",
+      unit: "l",
+      weekStartsOn: CHECK_WEEK,
+    });
+
+    const lineKey = `food:${lecheId}`;
+    await accept(EMPLOYEE, "shopping_item", {
+      action: "set_line_checked",
+      weekStartsOn: CHECK_WEEK,
+      lineKey,
+      checked: true,
+    });
+
+    const marked = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, CHECK_WEEK),
+    );
+    const leche = lineNamed(marked.sections, "Leche entera IT");
+    expect(leche.origin).toBe("mixed");
+    expect(leche.checked).toBe(true);
+    // El añadido fusionado queda marcado también: ninguna lectura miente.
+    const mirrored = await adminPool.query(
+      `select checked_at is not null as checked from app.shopping_items where id = $1`,
+      [manualId],
+    );
+    expect(mirrored.rows).toEqual([{ checked: true }]);
+
+    // El arroz de la misma receta sigue sin marcar: se marca por línea.
+    expect(lineNamed(marked.sections, "Arroz bomba IT").checked).toBe(false);
+
+    await accept(ADMIN, "shopping_item", {
+      action: "set_line_checked",
+      weekStartsOn: CHECK_WEEK,
+      lineKey,
+      checked: false,
+    });
+    const cleared = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, CHECK_WEEK),
+    );
+    expect(lineNamed(cleared.sections, "Leche entera IT").checked).toBe(false);
+
+    // Una clave de alimento inventada no puede sembrar marcados huérfanos.
+    const ghost = await run(ADMIN, "shopping_item", {
+      action: "set_line_checked",
+      weekStartsOn: CHECK_WEEK,
+      lineKey: "food:00000000-0000-4000-8000-0000000000ff",
+      checked: true,
+    });
+    expect(ghost).toMatchObject({ status: "rejected", errorCode: "food_not_found" });
+  });
+
+  it("lista Personal: la escriben empleada y administración; el resto ni la ve ni la escribe", async () => {
+    await accept(EMPLOYEE, "shopping_item", {
+      action: "add",
+      customName: "Champú de la interna IT",
+      quantity: "1",
+      unit: "ud",
+      weekStartsOn: PERSONAL_WEEK,
+      listKind: "personal",
+    });
+
+    // La administración familiar la ve (verificación de la compra personal).
+    const adminBoard = await withAuthorizedTransaction(appPool, ADMIN, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, PERSONAL_WEEK),
+    );
+    expect(adminBoard.personal.map((line) => line.name)).toEqual(["Champú de la interna IT"]);
+    expect(adminBoard.sections).toEqual([]);
+
+    // RLS real: el apoyo no recibe ni una fila personal.
+    const helperBoard = await withAuthorizedTransaction(appPool, HELPER, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, PERSONAL_WEEK),
+    );
+    expect(helperBoard.personal).toEqual([]);
+
+    const helperWrite = await run(HELPER, "shopping_item", {
+      action: "add",
+      customName: "Intento del apoyo",
+      weekStartsOn: PERSONAL_WEEK,
+      listKind: "personal",
+    });
+    expect(helperWrite).toMatchObject({ status: "rejected", errorCode: "not_allowed" });
+
+    // La lista personal se escribe a mano: no admite alimentos del catálogo.
+    const withCatalogFood = await run(EMPLOYEE, "shopping_item", {
+      action: "add",
+      foodId: lecheId,
+      weekStartsOn: PERSONAL_WEEK,
+      listKind: "personal",
+    });
+    expect(withCatalogFood).toMatchObject({ status: "rejected", errorCode: "invalid_payload" });
+
+    // Y se marca con el mismo mecanismo de línea que la de casa.
+    await accept(EMPLOYEE, "shopping_item", {
+      action: "set_line_checked",
+      weekStartsOn: PERSONAL_WEEK,
+      lineKey: "name:champú de la interna it",
+      listKind: "personal",
+      checked: true,
+    });
+    const checkedBoard = await withAuthorizedTransaction(appPool, EMPLOYEE, ROBLE_HOUSEHOLD, (client) =>
+      buildShoppingBoard(client, ROBLE_HOUSEHOLD, PERSONAL_WEEK),
+    );
+    expect(checkedBoard.personal[0]?.checked).toBe(true);
   });
 
   it("roles: el apoyo no escribe menú ni compra; la empleada no escribe menú pero sí añade a la compra", async () => {

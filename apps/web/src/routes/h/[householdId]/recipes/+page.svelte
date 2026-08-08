@@ -6,6 +6,8 @@
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { formatQuantityEs, scaleQuantity } from '$lib/food/quantities';
   import {
+    setFoodArchived,
+    setRecipeArchived,
     setRecipeDetails,
     upsertDiner,
     upsertFood,
@@ -109,6 +111,9 @@
   let foodSection = $state('despensa');
   let foodAllergens = $state<string[]>([]);
   let foodReviewed = $state(false);
+  /** Tamaño del paquete con el que se compra («500» + «g»); opcional. */
+  let foodPackageSize = $state('');
+  let foodPackageUnit = $state('');
 
   function editFood(id: string): void {
     const food = foodById(id);
@@ -118,6 +123,8 @@
     foodSection = food.section;
     foodAllergens = [...food.allergenCodes];
     foodReviewed = food.reviewed;
+    foodPackageSize = food.packaging ? formatQuantityEs(food.packaging.size) : '';
+    foodPackageUnit = food.packaging?.unit ?? '';
   }
 
   function resetFoodForm(): void {
@@ -126,11 +133,18 @@
     foodSection = 'despensa';
     foodAllergens = [];
     foodReviewed = false;
+    foodPackageSize = '';
+    foodPackageUnit = '';
   }
 
   function submitFood(event: SubmitEvent): void {
     event.preventDefault();
     if (!catalog || !foodName.trim()) return;
+    // Media medida no sirve: o se fijan cantidad y unidad, o no hay paquete.
+    const packaging =
+      foodPackageSize.trim() && foodPackageUnit.trim()
+        ? { size: foodPackageSize, unit: foodPackageUnit }
+        : undefined;
     void dispatch(
       upsertFood({
         householdId: catalog.householdId,
@@ -138,16 +152,47 @@
         name: foodName,
         shoppingSection: foodSection,
         allergenCodes: foodAllergens,
-        reviewed: foodReviewed
+        reviewed: foodReviewed,
+        packaging
       })
     ).then(resetFoodForm);
   }
 
+  // ── Archivado discreto (familia) ──────────────────────────────────────────
+  // Nada se borra: archivar retira de la lista y siempre se puede recuperar
+  // desde «Archivados». Confirmación ligera: el primer tap arma, el segundo
+  // archiva (mismo patrón que el borrado de plantillas del menú).
+  let archiveArmedId = $state<string | null>(null);
+
+  function archiveFood(id: string, archived: boolean): void {
+    if (!catalog) return;
+    archiveArmedId = null;
+    if (foodId === id) resetFoodForm();
+    void dispatch(setFoodArchived({ householdId: catalog.householdId, foodId: id, archived }));
+  }
+
+  function archiveRecipe(pageId: string, archived: boolean): void {
+    if (!catalog) return;
+    archiveArmedId = null;
+    void dispatch(setRecipeArchived({ householdId: catalog.householdId, pageId, archived }));
+  }
+
   // ── Catálogo: comensales con flags de alérgenos ────────────────────────────
+  // P1-7 · alta progresiva: primero SOLO el nombre. Las restricciones viven
+  // detrás de «¿Tiene alergias o restricciones?» y la matriz de 14 alérgenos
+  // solo aparece si alguien la abre. Editar a quien ya tiene restricciones la
+  // abre sola, para que no queden escondidas.
   let dinerId = $state('');
   let dinerName = $state('');
   let dinerNotes = $state('');
   let dinerSeverity = $state<Record<string, '' | AllergenSeverity>>({});
+  /** Nota por alérgeno del comensal («solo trazas», «lleva epinefrina»…). */
+  let dinerFlagNotes = $state<Record<string, string>>({});
+  let dinerAllergensOpen = $state(false);
+
+  const dinerFlagCount = $derived(
+    Object.values(dinerSeverity).filter((severity) => severity === 'high' || severity === 'medium').length
+  );
 
   function editDiner(id: string): void {
     const diner = catalog?.diners.find((candidate) => candidate.id === id);
@@ -156,6 +201,8 @@
     dinerName = diner.name;
     dinerNotes = diner.notes;
     dinerSeverity = Object.fromEntries(diner.flags.map((flag) => [flag.allergenCode, flag.severity]));
+    dinerFlagNotes = Object.fromEntries(diner.flags.map((flag) => [flag.allergenCode, flag.note]));
+    dinerAllergensOpen = diner.flags.length > 0 || diner.notes.trim().length > 0;
   }
 
   function resetDinerForm(): void {
@@ -163,6 +210,8 @@
     dinerName = '';
     dinerNotes = '';
     dinerSeverity = {};
+    dinerFlagNotes = {};
+    dinerAllergensOpen = false;
   }
 
   function submitDiner(event: SubmitEvent): void {
@@ -170,7 +219,11 @@
     if (!catalog || !dinerName.trim()) return;
     const flags = Object.entries(dinerSeverity)
       .filter((entry): entry is [string, AllergenSeverity] => entry[1] === 'high' || entry[1] === 'medium')
-      .map(([allergenCode, severity]) => ({ allergenCode, severity }));
+      .map(([allergenCode, severity]) => ({
+        allergenCode,
+        severity,
+        note: dinerFlagNotes[allergenCode] ?? ''
+      }));
     void dispatch(
       upsertDiner({
         householdId: catalog.householdId,
@@ -214,11 +267,42 @@
                 </small>
               </a>
               {#if entry.hasUnreviewedFood}<span class="status-chip warning">Alimento sin revisar</span>{/if}
+              {#if catalog.canWrite}
+                {#if archiveArmedId === `recipe:${entry.pageId}`}
+                  <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveRecipe(entry.pageId, true)}>
+                    Sí, archivar «{entry.title}»
+                  </button>
+                  <button class="button secondary small-button" type="button" onclick={() => (archiveArmedId = null)}>Cancelar</button>
+                {:else}
+                  <button class="archive-link" type="button" onclick={() => (archiveArmedId = `recipe:${entry.pageId}`)}>Archivar</button>
+                {/if}
+              {/if}
             </li>
           {:else}
             <li><p class="audit-note">Aún no hay recetas. <a href={`/h/${context.household.id}/wiki`}>Escribe la primera en la guía de la casa →</a></p></li>
           {/each}
         </ul>
+
+        {#if catalog.archivedRecipes.length}
+          <details class="archived-block">
+            <summary>Recetas archivadas ({catalog.archivedRecipes.length})</summary>
+            <p class="audit-note">La nota de la guía sigue donde estaba; solo se retiró la ficha del recetario.</p>
+            <ul class="wiki-recent">
+              {#each catalog.archivedRecipes as entry (entry.pageId)}
+                <li>
+                  <div class="wiki-node-row">
+                    <span><strong>{entry.title}</strong></span>
+                    {#if catalog.canWrite}
+                      <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveRecipe(entry.pageId, false)}>
+                        Recuperar
+                      </button>
+                    {/if}
+                  </div>
+                </li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
 
         {#if recipe}
           <article class="recipe-detail" aria-labelledby="recipe-title">
@@ -320,6 +404,7 @@
                     <strong>{food.name}</strong>
                     <small>
                       {food.section}
+                      {#if food.packaging}· se compra de {formatQuantityEs(food.packaging.size)} {food.packaging.unit}{/if}
                       {#if food.allergenCodes.length}· {food.allergenCodes.join(', ')}{/if}
                     </small>
                   </span>
@@ -330,6 +415,14 @@
                   {/if}
                   {#if catalog.canWrite}
                     <button class="button secondary small-button" type="button" onclick={() => editFood(food.id)}>Editar</button>
+                    {#if archiveArmedId === `food:${food.id}`}
+                      <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveFood(food.id, true)}>
+                        Sí, archivar «{food.name}»
+                      </button>
+                      <button class="button secondary small-button" type="button" onclick={() => (archiveArmedId = null)}>Cancelar</button>
+                    {:else}
+                      <button class="archive-link" type="button" onclick={() => (archiveArmedId = `food:${food.id}`)}>Archivar</button>
+                    {/if}
                   {/if}
                 </div>
               </li>
@@ -338,6 +431,27 @@
             {/each}
           </ul>
 
+          {#if catalog.archivedFoods.length}
+            <details class="archived-block">
+              <summary>Alimentos archivados ({catalog.archivedFoods.length})</summary>
+              <p class="audit-note">Las recetas que ya lo usaban lo siguen pidiendo en la compra; solo deja de ofrecerse para lo nuevo.</p>
+              <ul class="wiki-recent">
+                {#each catalog.archivedFoods as food (food.id)}
+                  <li>
+                    <div class="wiki-node-row">
+                      <span><strong>{food.name}</strong></span>
+                      {#if catalog.canWrite}
+                        <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveFood(food.id, false)}>
+                          Recuperar
+                        </button>
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            </details>
+          {/if}
+
           {#if catalog.canWrite}
             <form class="action-form" onsubmit={submitFood}>
               <h3>{foodId ? 'Editar alimento' : 'Nuevo alimento'}</h3>
@@ -345,7 +459,30 @@
                 <input type="text" autocomplete="off" enterkeyhint="next" bind:value={foodName} maxlength="120" required />
               </label>
               <label>Sección de compra
-                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={foodSection} maxlength="60" required />
+                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={foodSection} maxlength="60" required />
+              </label>
+              <!-- P2-4: con el tamaño del paquete, la compra dice cuántos hay
+                   que llevar («350 g → 1 paquete de 500 g»). Sin él, la lista
+                   muestra la cantidad exacta y no se inventa nada. -->
+              <label>¿En qué tamaño se compra? (opcional)
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  enterkeyhint="next"
+                  bind:value={foodPackageSize}
+                  placeholder="500"
+                />
+              </label>
+              <label>Unidad del paquete
+                <input
+                  type="text"
+                  autocomplete="off"
+                  enterkeyhint="done"
+                  bind:value={foodPackageUnit}
+                  maxlength="30"
+                  placeholder="g"
+                />
               </label>
               <fieldset class="inline-check-group">
                 <legend>Alérgenos de declaración obligatoria (UE)</legend>
@@ -378,10 +515,17 @@
                     <strong>{diner.name}</strong>
                     <small>
                       {#if diner.flags.length}
-                        {diner.flags.map((flag) => `${flag.allergenName} (${flag.severity === 'high' ? 'alta' : 'media'})`).join(', ')}
+                        {diner.flags
+                          .map(
+                            (flag) =>
+                              `${flag.allergenName} (${flag.severity === 'high' ? 'no puede tomarlo' : 'mejor evitarlo'})` +
+                              (flag.note.trim() ? ` — ${flag.note.trim()}` : '')
+                          )
+                          .join(', ')}
                       {:else}
                         Sin restricciones
                       {/if}
+                      {#if diner.notes.trim()}· {diner.notes.trim()}{/if}
                     </small>
                   </span>
                   {#if catalog.canWrite}
@@ -396,28 +540,72 @@
 
           {#if catalog.canWrite}
             <form class="action-form" onsubmit={submitDiner}>
-              <h3>{dinerId ? 'Editar comensal' : 'Nuevo comensal'}</h3>
+              <h3>{dinerId ? 'Editar comensal' : 'Apuntar quién come en casa'}</h3>
               <label>Nombre
-                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={dinerName} maxlength="120" required />
+                <input
+                  type="text"
+                  autocomplete="off"
+                  enterkeyhint="done"
+                  bind:value={dinerName}
+                  maxlength="120"
+                  required
+                  placeholder="Leo"
+                />
               </label>
-              <label>Notas
-                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={dinerNotes} maxlength="500" />
-              </label>
-              <fieldset class="inline-check-group">
-                <legend>Restricciones por alérgeno</legend>
-                {#each catalog.allergens as allergen (allergen.code)}
-                  <label class="inline-check">
-                    {allergen.name}
-                    <select bind:value={dinerSeverity[allergen.code]}>
-                      <option value="">Sin restricción</option>
-                      <option value="medium">Media</option>
-                      <option value="high">Alta</option>
-                    </select>
-                  </label>
-                {/each}
-              </fieldset>
+              <!-- P1-7: el alta normal es solo el nombre. La matriz de 14
+                   alérgenos es una decisión demasiado grande para «apuntar que
+                   Leo no toma leche», así que solo aparece si se abre. -->
+              <!-- `open` de una sola dirección + `ontoggle` en vez de
+                   `bind:open`: el binding genérico de propiedad de Svelte es
+                   runtime compartido y entraba en el bundle inicial de Hoy
+                   (presupuesto ≤ 120 kB) para una pantalla que Hoy no abre. -->
+              <details
+                class="diner-allergens"
+                open={dinerAllergensOpen}
+                ontoggle={(event) => (dinerAllergensOpen = event.currentTarget.open)}
+              >
+                <summary>
+                  ¿Tiene alergias o restricciones?
+                  {#if dinerFlagCount > 0}
+                    <span class="status-chip warning">{dinerFlagCount} {dinerFlagCount === 1 ? 'apuntada' : 'apuntadas'}</span>
+                  {:else}
+                    <small>Opcional. Si no las tiene, no hace falta abrir esto.</small>
+                  {/if}
+                </summary>
+                <fieldset class="inline-check-group">
+                  <legend>Qué evita y con cuánta gravedad</legend>
+                  {#each catalog.allergens as allergen (allergen.code)}
+                    <div class="diner-allergen-row">
+                      <label class="inline-check">
+                        {allergen.name}
+                        <select bind:value={dinerSeverity[allergen.code]}>
+                          <option value="">No la evita</option>
+                          <option value="medium">Mejor evitarlo</option>
+                          <option value="high">No puede tomarlo</option>
+                        </select>
+                      </label>
+                      {#if dinerSeverity[allergen.code] === 'high' || dinerSeverity[allergen.code] === 'medium'}
+                        <label class="diner-allergen-note">
+                          Nota sobre {allergen.name.toLocaleLowerCase('es')}
+                          <input
+                            type="text"
+                            autocomplete="off"
+                            enterkeyhint="next"
+                            bind:value={dinerFlagNotes[allergen.code]}
+                            maxlength="200"
+                            placeholder="Solo las trazas le sientan mal"
+                          />
+                        </label>
+                      {/if}
+                    </div>
+                  {/each}
+                </fieldset>
+                <label>Otra cosa que convenga saber
+                  <input type="text" autocomplete="off" enterkeyhint="done" bind:value={dinerNotes} maxlength="500" />
+                </label>
+              </details>
               <div class="menu-slot-actions">
-                <button class="button primary" type="submit" disabled={busy}>{dinerId ? 'Guardar comensal' : 'Crear comensal'}</button>
+                <button class="button primary" type="submit" disabled={busy}>{dinerId ? 'Guardar comensal' : 'Apuntar comensal'}</button>
                 {#if dinerId}<button class="button secondary" type="button" onclick={resetDinerForm}>Cancelar edición</button>{/if}
               </div>
             </form>
@@ -452,3 +640,55 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* Alta progresiva de comensal (P1-7): el desplegable es una decisión, no un
+     bloque de formulario más. Cerrado ocupa una línea; abierto, la matriz. */
+  .diner-allergens {
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface);
+  }
+  .diner-allergens > summary {
+    cursor: pointer;
+    font-weight: 700;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .diner-allergens > summary small {
+    font-weight: 400;
+    color: var(--ink-soft);
+  }
+  .diner-allergen-row {
+    display: grid;
+    gap: 0.25rem;
+  }
+  .diner-allergen-note {
+    padding-left: 1.1rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+  }
+
+  /* Archivar es una acción discreta: un enlace pequeño, no un botón que
+     compita con «Editar». Lo archivado vive en una lista plegada. */
+  .archive-link {
+    border: 0;
+    background: none;
+    padding: 0.2rem 0.1rem;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .archived-block {
+    margin-top: 0.75rem;
+  }
+  .archived-block > summary {
+    cursor: pointer;
+    color: var(--ink-soft);
+    font-size: 0.8rem;
+  }
+</style>

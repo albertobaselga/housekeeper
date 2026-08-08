@@ -2,39 +2,46 @@ import type { PoolClient } from "pg";
 
 import type { UUID } from "@casa-clara/contracts";
 import {
-  menuGroupUpsertPayloadSchema,
+  menuGroupCommandPayloadSchema,
   menuSlotCommandPayloadSchema,
-  shoppingAddPayloadSchema,
-  shoppingSetCheckedPayloadSchema,
 } from "@casa-clara/contracts/schemas";
 
 import type { ActiveMembership } from "../database.js";
 import { computeMenuSlotHash } from "../menu-hash.js";
 import { CommandConflictError, CommandRejectedError, type CommandHandler } from "../sync.js";
-import {
-  loadFoods,
-  normalizeQuantity,
-  rejectUnreviewedFoods,
-  requireFamilyRole,
-} from "./food.js";
+import { loadFoods, rejectUnreviewedFoods, requireFamilyRole, setArchived } from "./food.js";
 import { createWikiPage, createWikiSpace } from "./wiki.js";
-
-const SHOPPING_WRITER_ROLES = new Set(["family_admin", "family_member", "employee_live_in"]);
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 /**
- * `menu_group` — upsert de grupo de comensales (solo familia). La lista
- * `dinerIds` del payload reemplaza por completo la membresía del grupo.
+ * `menu_group` — upsert / archive / restore de grupo de comensales (solo
+ * familia). En el upsert, la lista `dinerIds` del payload reemplaza por
+ * completo la membresía del grupo. Archivar retira el grupo del menú sin
+ * borrar sus comidas ya planificadas: las plantillas que lo usan degradan
+ * saltándose sus huecos, como ya hacían.
  */
 export const menuGroupCommandHandler: CommandHandler = async (client, membership, envelope) => {
   requireFamilyRole(membership.role, "los grupos del menú");
-  const parsed = menuGroupUpsertPayloadSchema.safeParse(envelope.payload);
+  const parsed = menuGroupCommandPayloadSchema.safeParse(envelope.payload);
   if (!parsed.success) {
     throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
   }
   const payload = parsed.data;
   const householdId = envelope.householdId;
+
+  if (payload.action === "archive" || payload.action === "restore") {
+    return setArchived(client, {
+      table: "app.menu_groups",
+      householdId,
+      idColumn: "id",
+      id: payload.groupId,
+      archived: payload.action === "archive",
+      errorCode: "group_not_found",
+      what: "El grupo",
+    });
+  }
+
   const dinerIds = [...new Set(payload.dinerIds)].sort();
 
   if (dinerIds.length > 0) {
@@ -455,92 +462,11 @@ export const menuSlotCommandHandler: CommandHandler = async (client, membership,
   }
 };
 
-/**
- * `shopping_item` — add / set_checked. Escriben familia y empleada interna
- * (la política RLS `shopping_write` respalda la restricción); helper y viewer
- * se rechazan aquí con `not_allowed`.
- */
-export const shoppingItemCommandHandler: CommandHandler = async (client, membership, envelope) => {
-  if (!SHOPPING_WRITER_ROLES.has(membership.role)) {
-    throw new CommandRejectedError("not_allowed", "Este rol no puede escribir en la lista de la compra");
-  }
-  const householdId = envelope.householdId;
-  const action = (envelope.payload as { action?: unknown } | null)?.action;
-
-  if (action === "add") {
-    const parsed = shoppingAddPayloadSchema.safeParse(envelope.payload);
-    if (!parsed.success) {
-      throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
-    }
-    const payload = parsed.data;
-
-    let section = payload.section;
-    if (payload.foodId !== undefined) {
-      const food = await client.query<{ shopping_section: string }>(
-        `select shopping_section from app.foods where household_id = $1 and id = $2`,
-        [householdId, payload.foodId],
-      );
-      const row = food.rows[0];
-      if (!row) throw new CommandRejectedError("food_not_found", "El alimento no existe en este hogar");
-      section = section ?? row.shopping_section;
-    }
-
-    const inserted = await client.query<{ id: string }>(
-      `insert into app.shopping_items
-         (household_id, food_id, custom_name, quantity, unit, section, week_starts_on,
-          created_by_membership_id)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
-       returning id`,
-      [
-        householdId,
-        payload.foodId ?? null,
-        payload.foodId === undefined ? (payload.customName ?? "").trim() : null,
-        payload.quantity === undefined ? null : normalizeQuantity(payload.quantity),
-        payload.unit ?? null,
-        section ?? "despensa",
-        payload.weekStartsOn ?? null,
-        membership.id,
-      ],
-    );
-    const row = inserted.rows[0];
-    if (!row) throw new Error("La inserción del añadido de compra no devolvió identificador");
-    return { resourceId: row.id };
-  }
-
-  if (action === "set_checked") {
-    const parsed = shoppingSetCheckedPayloadSchema.safeParse(envelope.payload);
-    if (!parsed.success) {
-      throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
-    }
-    const payload = parsed.data;
-    const updated = await client.query<{ id: string }>(
-      `update app.shopping_items
-          set checked_at = case when $3 then statement_timestamp() else null end
-        where household_id = $1 and id = $2
-        returning id`,
-      [householdId, payload.itemId, payload.checked],
-    );
-    if ((updated.rowCount ?? 0) === 0) {
-      throw new CommandRejectedError("item_not_found", "El añadido de compra no existe en este hogar");
-    }
-    return { resourceId: payload.itemId };
-  }
-
-  throw new CommandRejectedError("invalid_payload", "Acción de compra desconocida");
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Agregación de la lista de la compra (AC-22 / AC-24)
+// Aritmética exacta de cantidades de la compra (AC-22 / AC-24). La lista en sí
+// la construye `buildShoppingBoard` en ./shopping.ts, que reutiliza estas
+// utilidades: aquí solo vive el cálculo, sin acceso a la base de datos.
 // ─────────────────────────────────────────────────────────────────────────────
-
-export interface ShoppingListEntry {
-  foodId: UUID | null;
-  name: string;
-  unit: string | null;
-  section: string;
-  /** Suma decimal exacta como string (`"300"`, `"1.5"`); null si ninguna fuente aportó cantidad. */
-  quantity: string | null;
-}
 
 /** `"12,5"` / `"12.50"` → céntimas exactas como BigInt (1250n). Sin floats. */
 export function toHundredths(value: string): bigint {
@@ -558,7 +484,7 @@ export function scaleHundredths(quantity: bigint, targetServings: number, baseSe
 /**
  * Cantidad de un ingrediente en céntimas según su modo de escalado: `linear`
  * escala con `scaleHundredths`; `fixed` es invariante a las raciones (AC-22).
- * Es exactamente la regla que aplica `aggregateShoppingList`, exportada para
+ * Es exactamente la regla que aplica `buildShoppingBoard`, exportada para
  * poder someterla a tests de propiedades.
  */
 export function scaleIngredientHundredths(
@@ -577,136 +503,4 @@ export function formatHundredths(value: bigint): string {
   if (fraction === 0n) return integerPart.toString();
   if (fraction % 10n === 0n) return `${integerPart}.${fraction / 10n}`;
   return `${integerPart}.${fraction.toString().padStart(2, "0")}`;
-}
-
-interface Accumulator {
-  foodId: UUID | null;
-  name: string;
-  unit: string | null;
-  section: string;
-  sum: bigint | null;
-}
-
-function accumulate(
-  entries: Map<string, Accumulator>,
-  item: { foodId: UUID | null; name: string; unit: string | null; section: string },
-  hundredths: bigint | null,
-): void {
-  const key = `${item.foodId ?? `custom:${item.name.toLowerCase()}`}|${item.unit ?? ""}|${item.section}`;
-  const existing = entries.get(key);
-  if (!existing) {
-    entries.set(key, { ...item, sum: hundredths });
-    return;
-  }
-  if (hundredths !== null) {
-    existing.sum = (existing.sum ?? 0n) + hundredths;
-  }
-}
-
-/**
- * Lista de la compra agregada de la semana `weekStartsOn` (7 días): los
- * ingredientes de las recetas asignadas en el menú, escalados por los
- * comensales del grupo (o `servings_override`) frente a `base_servings` —
- * `linear` escala con redondeo half-up a la céntima, `fixed` va tal cual
- * (AC-22) — más los añadidos manuales sin marcar de esa semana o sin semana.
- * Se agrupa por (alimento o nombre libre, unidad, sección) sumando cantidades
- * de forma exacta con BigInt sobre céntimas (AC-24).
- */
-export async function aggregateShoppingList(
-  client: PoolClient,
-  householdId: UUID,
-  weekStartsOn: string,
-): Promise<ShoppingListEntry[]> {
-  const entries = new Map<string, Accumulator>();
-
-  const menuRows = await client.query<{
-    food_id: string;
-    name: string;
-    unit: string;
-    section: string;
-    quantity: string;
-    scaling: string;
-    base_servings: number;
-    diner_count: number;
-    servings_override: number | null;
-  }>(
-    `select ingredient.food_id, food.name, ingredient.unit,
-            food.shopping_section as section, ingredient.quantity::text as quantity,
-            ingredient.scaling, recipe.base_servings, slot.servings_override,
-            (select count(*)::int from app.menu_group_diners as member
-              where member.household_id = slot.household_id
-                and member.group_id = slot.group_id) as diner_count
-       from app.menu_slots as slot
-       join app.recipes as recipe
-         on recipe.household_id = slot.household_id and recipe.page_id = slot.recipe_page_id
-       join app.recipe_ingredients as ingredient
-         on ingredient.household_id = recipe.household_id and ingredient.page_id = recipe.page_id
-       join app.foods as food
-         on food.household_id = ingredient.household_id and food.id = ingredient.food_id
-      where slot.household_id = $1
-        and slot.on_date >= $2::date and slot.on_date <= $2::date + 6
-        and slot.recipe_page_id is not null
-      order by slot.on_date, slot.meal, ingredient.position`,
-    [householdId, weekStartsOn],
-  );
-
-  for (const row of menuRows.rows) {
-    // Raciones objetivo: override explícito del hueco, si no el nº de comensales
-    // del grupo; un grupo vacío cae a base_servings (factor 1).
-    const target = row.servings_override ?? (row.diner_count > 0 ? row.diner_count : row.base_servings);
-    const raw = toHundredths(row.quantity);
-    const scaled = scaleIngredientHundredths(
-      raw,
-      row.scaling === "linear" ? "linear" : "fixed",
-      target,
-      row.base_servings,
-    );
-    accumulate(
-      entries,
-      { foodId: row.food_id, name: row.name, unit: row.unit, section: row.section },
-      scaled,
-    );
-  }
-
-  const manualRows = await client.query<{
-    food_id: string | null;
-    name: string;
-    unit: string | null;
-    section: string;
-    quantity: string | null;
-  }>(
-    `select item.food_id, coalesce(food.name, item.custom_name) as name,
-            item.unit, item.section, item.quantity::text as quantity
-       from app.shopping_items as item
-       left join app.foods as food
-         on food.household_id = item.household_id and food.id = item.food_id
-      where item.household_id = $1
-        and item.checked_at is null
-        and (item.week_starts_on is null or item.week_starts_on = $2::date)
-      order by item.created_at`,
-    [householdId, weekStartsOn],
-  );
-
-  for (const row of manualRows.rows) {
-    accumulate(
-      entries,
-      { foodId: row.food_id, name: row.name, unit: row.unit, section: row.section },
-      row.quantity === null ? null : toHundredths(row.quantity),
-    );
-  }
-
-  return [...entries.values()]
-    .map((entry) => ({
-      foodId: entry.foodId,
-      name: entry.name,
-      unit: entry.unit,
-      section: entry.section,
-      quantity: entry.sum === null ? null : formatHundredths(entry.sum),
-    }))
-    .sort(
-      (a, b) =>
-        a.section.localeCompare(b.section, "es") ||
-        a.name.localeCompare(b.name, "es") ||
-        (a.unit ?? "").localeCompare(b.unit ?? "", "es"),
-    );
 }

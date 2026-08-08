@@ -157,13 +157,16 @@ async function applyTemplate(
             slot.recipe_page_id, slot.recipe_title, slot.free_text, slot.notes,
             slot.servings_override,
             (slot.recipe_page_id is not null and page.id is not null
-             and page.archived_at is null) as recipe_alive
+             and page.archived_at is null
+             and recipe.page_id is not null and recipe.archived_at is null) as recipe_alive
        from app.menu_week_template_slots as slot
        join app.menu_groups as menu_group
          on menu_group.household_id = slot.household_id and menu_group.id = slot.group_id
         and menu_group.archived_at is null
        left join app.wiki_pages as page
          on page.household_id = slot.household_id and page.id = slot.recipe_page_id
+       left join app.recipes as recipe
+         on recipe.household_id = slot.household_id and recipe.page_id = slot.recipe_page_id
       where slot.household_id = $1 and slot.template_id = $2
       order by slot.day_offset, slot.meal, slot.group_id`,
     [householdId, payload.templateId],
