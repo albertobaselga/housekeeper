@@ -17,9 +17,29 @@ const TRACKING_TABLE_DDL = `
   )
 `;
 
+// Bloque idempotente que levanta FORCE ROW LEVEL SECURITY sobre el propietario
+// del esquema cuando ese rol no puede puentear RLS (Postgres gestionado tipo
+// Supabase). Es una migración de pleno derecho, pero además hay que ejecutarla
+// ENTRE migraciones: 0005, 0007, 0008, 0013, 0014, 0015 y 0016 vuelven a forzar,
+// y las funciones SECURITY DEFINER con `SET row_security = off` de 0006 en
+// adelante no se pueden ni crear mientras el forzado siga puesto. Reutilizar el
+// fichero de la migración evita mantener dos copias del mismo bloque.
+export const rlsForceCompatMigration = '0018_rls_force_compat.sql';
+
 export async function listMigrationFiles() {
   const entries = await readdir(migrationsDir);
   return entries.filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name)).sort();
+}
+
+// Los atributos de rol no se heredan por pertenencia, así que basta con mirar
+// los del rol conectado: si es superusuario o tiene BYPASSRLS, FORCE no estorba
+// y no se degrada nada.
+async function ownerCanBypassRowSecurity(client) {
+  const { rows } = await client.query(
+    `SELECT coalesce(bool_or(rolsuper OR rolbypassrls), false) AS can_bypass
+       FROM pg_catalog.pg_roles WHERE rolname = current_user`
+  );
+  return rows[0].can_bypass;
 }
 
 function stripOuterTransaction(filename, content) {
@@ -49,6 +69,13 @@ export async function applyMigrations(client, { log = () => {} } = {}) {
     );
     const applied = new Map(appliedRows.map((row) => [row.filename, row.sha256]));
 
+    const relaxRlsForce = (await ownerCanBypassRowSecurity(client))
+      ? null
+      : await readFile(path.join(migrationsDir, rlsForceCompatMigration), 'utf8');
+    if (relaxRlsForce) {
+      log(`owner cannot bypass RLS; relaxing FORCE via ${rlsForceCompatMigration} between migrations`);
+    }
+
     let appliedCount = 0;
     for (const filename of await listMigrationFiles()) {
       const content = await readFile(path.join(migrationsDir, filename), 'utf8');
@@ -64,6 +91,9 @@ export async function applyMigrations(client, { log = () => {} } = {}) {
         continue;
       }
       const body = stripOuterTransaction(filename, content);
+      if (relaxRlsForce) {
+        await client.query(relaxRlsForce);
+      }
       await client.query('BEGIN');
       try {
         await client.query(body);
@@ -78,6 +108,11 @@ export async function applyMigrations(client, { log = () => {} } = {}) {
       }
       appliedCount += 1;
       log(`applied ${filename}`);
+    }
+    // Una pasada final para que una migración futura que vuelva a forzar no deje
+    // la base en un estado donde la siguiente función definer no se pueda crear.
+    if (relaxRlsForce && appliedCount > 0) {
+      await client.query(relaxRlsForce);
     }
     return appliedCount;
   } finally {

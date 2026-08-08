@@ -158,6 +158,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./postgres/00-create-roles.sh:/docker-entrypoint-initdb.d/00-create-roles.sh:ro
+      - ../packages/db/scripts/sql/bootstrap.sql:/opt/casa-clara/bootstrap.sql:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

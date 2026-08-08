@@ -5,6 +5,12 @@
 > qué cuesta y qué decisiones quedan pendientes del propietario.
 >
 > Fecha: 8 de agosto de 2026.
+>
+> **Estado**: los bloqueantes de base de datos B-1 … B-5 (§3.1) ya están
+> resueltos e implementados; el trabajo, la incompatibilidad adicional de
+> `pg_trgm` que esta auditoría no había detectado y la sonda que lo reproduce
+> todo están en [`supabase-esquema.md`](supabase-esquema.md). El resto del
+> documento sigue vigente.
 
 ---
 

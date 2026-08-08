@@ -5,19 +5,41 @@ SET LOCAL row_security = off;
 
 DO $assert_schema$
 DECLARE
-  missing_force_rls integer;
+  missing_rls integer;
+  wrong_force_rls integer;
+  owner_can_bypass boolean;
   settlement_total bigint;
   permanent_minutes bigint;
   pending_events integer;
 BEGIN
-  SELECT count(*)::integer INTO missing_force_rls
+  -- RLS activada: invariante absoluta, no negociable en ningún despliegue.
+  SELECT count(*)::integer INTO missing_rls
     FROM pg_catalog.pg_class AS relation
     JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
    WHERE relation.relkind = 'r'
      AND namespace.nspname IN ('app', 'app_private')
-     AND NOT (relation.relrowsecurity AND relation.relforcerowsecurity);
-  IF missing_force_rls <> 0 THEN
-    RAISE EXCEPTION '% tenant tables are missing FORCE RLS', missing_force_rls;
+     AND NOT relation.relrowsecurity;
+  IF missing_rls <> 0 THEN
+    RAISE EXCEPTION '% tenant tables are missing ENABLE ROW LEVEL SECURITY', missing_rls;
+  END IF;
+
+  -- FORCE sólo protege del propietario del esquema. Donde ese rol puede puentear
+  -- RLS (superusuario local, CI) se exige puesto en todas las tablas; donde no
+  -- (Supabase) la migración 0018 lo levanta y se exige quitado en TODAS, para que
+  -- un estado a medias -- que dejaría migraciones futuras sin poder aplicarse --
+  -- también sea rojo. El aislamiento de casa_clara_app/worker no depende de esto:
+  -- lo fija tests/020_rls_matrix.sql.
+  SELECT rolsuper OR rolbypassrls INTO owner_can_bypass
+    FROM pg_catalog.pg_roles WHERE rolname = current_user;
+  SELECT count(*)::integer INTO wrong_force_rls
+    FROM pg_catalog.pg_class AS relation
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+   WHERE relation.relkind = 'r'
+     AND namespace.nspname IN ('app', 'app_private')
+     AND relation.relforcerowsecurity <> coalesce(owner_can_bypass, false);
+  IF wrong_force_rls <> 0 THEN
+    RAISE EXCEPTION '% tenant tables disagree with the expected FORCE RLS state (owner can bypass: %)',
+      wrong_force_rls, coalesce(owner_can_bypass, false);
   END IF;
 
   SELECT transfer_total_cents INTO settlement_total

@@ -3,7 +3,7 @@
 // las credenciales viven en el entorno (.env), nunca en el código.
 //
 // Requiere:
-//   DATABASE_AUTH_URL     login de auth (search_path=auth)
+//   DATABASE_AUTH_URL     login de auth (search_path=casa_auth)
 //   BETTER_AUTH_SECRET
 //   SEED_DATABASE_URL     propietario de las migraciones del esquema app
 //   ENABLE_DEMO_PASSWORD_AUTH=true
