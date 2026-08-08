@@ -7,17 +7,19 @@ import { getSettingsFixture } from '$lib/server/fixtures.server';
 import { canDownloadHandover } from '$lib/server/handover.server';
 import type { Actions, PageServerLoad } from './$types';
 
-/** Palabra de confirmación de la reposición, en la línea de «QUITAR». */
-export const RESET_CONFIRM_WORD = 'REPONER';
-
-const TOO_SHORT = `La contraseña nueva debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`;
-const MISMATCH = 'Las dos contraseñas nuevas no coinciden.';
+/**
+ * Palabra de confirmación de la reposición, en la línea de «QUITAR». Viaja al
+ * cliente por `load` (un `+page.server.ts` solo puede exportar `load`/`actions`).
+ */
+const RESET_CONFIRM_WORD = 'REPONER';
 
 function readPasswordPair(formData: FormData): { value: string } | { message: string } {
   const next = String(formData.get('newPassword') ?? '');
   const repeat = String(formData.get('repeatPassword') ?? '');
-  if (next.length < MIN_PASSWORD_LENGTH) return { message: TOO_SHORT };
-  if (next !== repeat) return { message: MISMATCH };
+  if (next.length < MIN_PASSWORD_LENGTH) {
+    return { message: `La contraseña nueva debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.` };
+  }
+  if (next !== repeat) return { message: 'Las dos contraseñas nuevas no coinciden.' };
   return { value: next };
 }
 
@@ -46,35 +48,6 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
 };
 
 export const actions: Actions = {
-  /** Cambiar la contraseña propia. Cierra el resto de sesiones abiertas. */
-  changePassword: async ({ locals, request }) => {
-    const auth = getAuth();
-    if (!auth) error(404, 'Este entorno no gestiona contraseñas');
-    if (!locals.user) error(401, 'Necesitas haber entrado');
-    const formData = await request.formData();
-    const currentPassword = String(formData.get('currentPassword') ?? '');
-    const candidate = readPasswordPair(formData);
-    if ('message' in candidate) return fail(400, { passwordError: candidate.message });
-
-    try {
-      await auth.api.changePassword({
-        body: {
-          currentPassword,
-          newPassword: candidate.value,
-          // Cambiar la contraseña cierra la sesión en los demás dispositivos:
-          // si alguien la conocía, deja de entrar en el momento.
-          revokeOtherSessions: true
-        },
-        headers: request.headers
-      });
-    } catch {
-      return fail(400, {
-        passwordError: 'No hemos podido cambiarla. Comprueba que la contraseña actual es la correcta.'
-      });
-    }
-    return { passwordChanged: true };
-  },
-
   /**
    * Reponer la contraseña de otra persona del hogar. La autorización de verdad
    * la da la membresía `family_admin` bajo RLS (resolveMembershipIdentity); la

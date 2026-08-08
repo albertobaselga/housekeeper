@@ -12,6 +12,8 @@
   let { context, children }: { context: AppContext; children: Snippet } = $props();
 
   const has = (capability: Capability) => context.capabilities.includes(capability);
+  /** ¿Hay identidad real con contraseña detrás de esta instalación? */
+  const hasPasswordAuth = () => Boolean(context.passwordAuth);
 
   interface NavEntry {
     module: HouseholdModule;
@@ -47,8 +49,12 @@
   // lista para que roles con pocos módulos (viewer) la conserven a un tap.
   const mobileOrder = [...visibleNavigation, NAV_ENTRIES.emergency];
   const mobilePrimary = mobileOrder.slice(0, 4);
+  // «Tu contraseña» solo cuando hay identidad real detrás: en la demo por
+  // fixtures no existe contraseña alguna y el enlace sería una promesa vacía.
+  const accountEntry = { module: 'account', label: 'Tu contraseña', short: 'Contraseña', capability: 'emergency.read' } as NavEntry;
   const sheetNavigation: NavEntry[] = [
     ...mobileOrder.slice(4),
+    ...(hasPasswordAuth() ? [accountEntry] : []),
     ...(has('access.manage')
       ? [{ module: 'settings', label: 'Ajustes del hogar', short: 'Ajustes', capability: 'access.manage' } as NavEntry]
       : [])
@@ -217,6 +223,11 @@
         <NavIcon name="emergency" />
         <span><strong>Emergencias</strong><small>Disponible sin conexión</small></span>
       </a>
+      {#if context.passwordAuth}
+        <a class="settings-link" class:active={isActive('account')} href={pathFor('account')} aria-current={isActive('account') ? 'page' : undefined}>
+          <NavIcon name="account" /> <span>Tu contraseña</span>
+        </a>
+      {/if}
       {#if has('access.manage')}
         <a class="settings-link" class:active={isActive('settings')} href={pathFor('settings')} aria-current={isActive('settings') ? 'page' : undefined}>
           <NavIcon name="settings" /> <span>Ajustes del hogar</span>

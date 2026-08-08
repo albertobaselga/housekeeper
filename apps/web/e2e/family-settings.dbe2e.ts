@@ -92,20 +92,35 @@ test('Alberto quita el acceso a Diego escribiendo QUITAR y la base de datos le n
   }
 });
 
-test('sin base de datos de identidad no se ofrece cambiar ni reponer contraseñas', async ({ page }) => {
+test('sin base de datos de identidad no se ofrece reponer ni cambiar contraseñas', async ({ page }) => {
   await gotoSettings(page);
 
   // Esta instalación tiene DATABASE_URL pero no DATABASE_AUTH_URL: hay accesos
   // que gobernar, pero ninguna contraseña que tocar. Ofrecer los botones sería
   // prometer algo que el entorno no puede cumplir.
-  await expect(page.getByRole('heading', { name: 'Cambiar tu contraseña' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Poner una contraseña nueva' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Tu contraseña' })).toHaveCount(0);
 
-  const response = await page.request.post(`/h/${HOUSEHOLD}/settings?/changePassword`, {
-    form: { currentPassword: 'lo-que-sea-2026', newPassword: 'otra-cosa-2026', repeatPassword: 'otra-cosa-2026' },
+  const denied = await page.request.post(`/h/${HOUSEHOLD}/settings?/resetMemberPassword`, {
+    form: { membershipId: 'da-igual', newPassword: 'otra-cosa-2026', repeatPassword: 'otra-cosa-2026', confirm: 'REPONER' },
     failOnStatusCode: false
   });
-  expect(response.status()).toBe(404);
+  expect(denied.status()).toBe(404);
+
+  // «Tu acceso» sí existe para cualquier rol, pero dice la verdad: aquí no hay
+  // contraseña que cambiar.
+  await page.goto(`/h/${HOUSEHOLD}/account`);
+  await expect(page.getByText('Esta instalación no usa contraseñas.')).toBeVisible();
+  await expect(page.locator('input[name="currentPassword"]')).toHaveCount(0);
+});
+
+test('la empleada alcanza «Tu acceso» aunque Ajustes sea de la familia', async ({ page }) => {
+  await loginAs(page, 'employee');
+  // Ajustes le está vedado (access.manage)…
+  expect((await page.goto(`/h/${HOUSEHOLD}/settings`))?.status()).toBe(403);
+  // …pero su propia contraseña es suya: la puerta de «Tu acceso» se abre.
+  expect((await page.goto(`/h/${HOUSEHOLD}/account`))?.status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'Cambiar tu contraseña' })).toBeVisible();
 });
 
 test('Alberto descarga el traspaso operativo como ZIP (F4-02)', async ({ page }) => {

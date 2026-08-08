@@ -81,11 +81,12 @@
     });
   }
 
-  // ── Contraseñas ────────────────────────────────────────────────────────────
-  // No pasan por la cola offline a propósito: una contraseña se cambia contra el
-  // servidor o no se cambia. Son form actions con mejora progresiva.
+  // ── Reponer contraseñas ────────────────────────────────────────────────────
+  // No pasa por la cola offline a propósito: una contraseña se cambia contra el
+  // servidor o no se cambia. Es una form action con mejora progresiva. La
+  // contraseña PROPIA se cambia en «Tu acceso» (/account), que sí alcanza todo
+  // el mundo; Ajustes es exclusivo del family_admin.
   let resettingId = $state<string | null>(null);
-  let changingPassword = $state(false);
 
   function toggleReset(membershipId: string): void {
     resettingId = resettingId === membershipId ? null : membershipId;
@@ -162,13 +163,16 @@
               </form>
               {#if data.passwordAuth && resettingId === member.id}
                 <form class="action-form" method="POST" action="?/resetMemberPassword" use:enhance={() => {
-                  return async ({ update }) => {
+                  return async ({ result, update }) => {
                     await update({ reset: true });
+                    // Hecha la reposición, el formulario se cierra: dejarlo
+                    // abierto invita a repetirla sin querer.
+                    if (result.type === 'success') resettingId = null;
                   };
                 }}>
                   <p class="audit-note">
                     Vas a poner una contraseña nueva a <strong>{member.name}</strong>. Díctasela en persona y pídele que la
-                    cambie desde Ajustes en cuanto entre. Al hacerlo, <strong>{member.name} saldrá de todos los
+                    cambie desde «Tu contraseña» en cuanto entre. Al hacerlo, <strong>{member.name} saldrá de todos los
                     dispositivos donde tuviera la sesión abierta</strong> y tendrá que entrar con la contraseña nueva.
                     Escribe <strong>{data.resetConfirmWord}</strong> para confirmar.
                   </p>
@@ -233,41 +237,6 @@
       </div>
     </section>
     <div class="stack">
-      {#if data.passwordAuth}
-        <section class="card" aria-labelledby="password-title">
-          <p class="eyebrow">Tu acceso</p>
-          <h2 id="password-title">Cambiar tu contraseña</h2>
-          <p>Al cambiarla, se cierran tus sesiones abiertas en los demás dispositivos. Tendrás que volver a entrar en ellos con la nueva.</p>
-          {#if form?.passwordChanged}
-            <p class="demo-note" role="status"><strong>Contraseña cambiada.</strong> Las demás sesiones que tuvieras abiertas se han cerrado.</p>
-          {/if}
-          {#if form?.passwordError}
-            <p class="form-error" role="alert">{form.passwordError}</p>
-          {/if}
-          <form class="action-form" method="POST" action="?/changePassword" use:enhance={() => {
-            changingPassword = true;
-            return async ({ update }) => {
-              await update({ reset: true });
-              changingPassword = false;
-            };
-          }}>
-            <label for="current-password">Tu contraseña de ahora
-              <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required />
-            </label>
-            <label for="new-password">Contraseña nueva (mínimo {data.minPasswordLength} caracteres)
-              <input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength={data.minPasswordLength} required />
-            </label>
-            <label for="repeat-password">Repite la contraseña nueva
-              <input id="repeat-password" name="repeatPassword" type="password" autocomplete="new-password" minlength={data.minPasswordLength} required />
-            </label>
-            <div class="menu-slot-actions">
-              <button class="button primary" type="submit" disabled={changingPassword}>
-                {changingPassword ? 'Cambiando…' : 'Cambiar mi contraseña'}
-              </button>
-            </div>
-          </form>
-        </section>
-      {/if}
       <section class="card"><p class="eyebrow">Hogar</p><h2>{data.settings.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>{data.settings.preferences.locale}</dd></div><div><dt>Zona horaria</dt><dd>{data.settings.preferences.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>{data.settings.preferences.weekStarts}</dd></div></dl></section>
       {#if data.handover}
         <section class="card">

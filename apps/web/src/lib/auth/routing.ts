@@ -11,6 +11,7 @@ export const HOUSEHOLD_MODULES = [
   'calendar',
   'contacts',
   'emergency',
+  'account',
   'settings'
 ] as const;
 
@@ -29,6 +30,10 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
   calendar: 'calendar.read',
   contacts: 'contact.read',
   emergency: 'emergency.read',
+  // Tu propia contraseña es tuya sea cual sea tu papel en la casa: la puerta de
+  // «Tu acceso» pide la misma capacidad mínima que Hoy, no `access.manage`.
+  // Ajustes sigue siendo de la familia; ahí se reponen las contraseñas ajenas.
+  account: 'emergency.read',
   settings: 'access.manage'
 };
 

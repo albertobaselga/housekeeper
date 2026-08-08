@@ -56,7 +56,10 @@ export async function resolveAppUser(
       );
       const displayName = summary.rows[0]?.display_name;
       if (displayName) {
-        households.push({ id: row.household_id, name: displayName, subtitle: 'Hogar · datos sintéticos' });
+        // Sin adjetivos: esta rama es la de una instalación real. El aviso de
+        // datos sintéticos lo pone el banner del AppShell cuando el entorno se
+        // declara como tal (ALLOW_SYNTHETIC_DATA_ONLY), no este subtítulo.
+        households.push({ id: row.household_id, name: displayName, subtitle: 'Tu hogar' });
       }
     }
     await client.query('commit');
