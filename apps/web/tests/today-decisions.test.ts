@@ -213,7 +213,7 @@ describe('triaje genérico del outbox', () => {
       'Marca de tarea de demostración (sin efecto en el servidor)'
     );
     expect(describeCommand(envelope('wiki_page', { action: 'edit' }))).toBe('Edición de una nota de la guía');
-    expect(describeCommand(envelope('membership', { action: 'revoke' }))).toBe('Revocación de un acceso');
+    expect(describeCommand(envelope('membership', { action: 'revoke' }))).toBe('Retirada de un acceso');
     expect(describeCommand(envelope('food', { action: 'upsert', name: 'Leche' }))).toBe(
       'Alimento «Leche» del catálogo'
     );
