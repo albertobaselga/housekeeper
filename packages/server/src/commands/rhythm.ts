@@ -393,12 +393,16 @@ async function upsertIcsSource(
 
   // El worker no tiene grant sobre app.ics_sources, así que la URL viaja en el
   // propio job y la sincronización arranca de inmediato tras el alta/edición.
-  if (payload.enabled) {
-    await client.query(`select app.enqueue_job($1, $2::jsonb)`, [
-      ICS_SYNC_JOB,
-      JSON.stringify({ sourceId, url: payload.url }),
-    ]);
-  }
+  // Al desactivar la fuente, el mismo job con `clear` vacía sus eventos ya
+  // persistidos (0015) para que el Calendario no siga mostrando un calendario
+  // que la familia dejó de enlazar.
+  const jobPayload = payload.enabled
+    ? { sourceId, url: payload.url }
+    : { sourceId, url: payload.url, clear: true };
+  await client.query(`select app.enqueue_job($1, $2::jsonb)`, [
+    ICS_SYNC_JOB,
+    JSON.stringify(jobPayload),
+  ]);
   return { resourceId: sourceId };
 }
 
