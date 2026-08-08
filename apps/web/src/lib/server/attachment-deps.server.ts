@@ -112,6 +112,11 @@ export function createAttachmentDependencies(
       const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       if (!result.Body) throw new Error(`El objeto ${key} llegó sin contenido`);
       return await result.Body.transformToByteArray();
+    },
+    getObjectStream: async (key) => {
+      const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!result.Body) throw new Error(`El objeto ${key} llegó sin contenido`);
+      return result.Body.transformToWebStream() as ReadableStream<Uint8Array>;
     }
   };
 }

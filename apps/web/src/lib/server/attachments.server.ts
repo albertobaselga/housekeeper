@@ -2,9 +2,11 @@ import { createHash } from 'node:crypto';
 
 import type { Pool } from 'pg';
 
-import { withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:attachments');
 
 /** Límite duro de subida (control 5 de la línea base de seguridad). */
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -22,7 +24,11 @@ export type AttachmentErrorCode =
   | 'attachment_type_not_allowed'
   | 'attachment_signature_mismatch'
   | 'attachment_infected'
-  | 'attachments_unavailable';
+  | 'attachments_unavailable'
+  /** El antivirus no contesta o contesta algo que no se entiende. */
+  | 'attachment_scan_unavailable'
+  /** El almacén de objetos rechazó el PUT (credenciales, red, cuota). */
+  | 'attachment_storage_unavailable';
 
 /** Error tipado de la tubería de adjuntos; la ruta lo traduce a HTTP. */
 export class AttachmentError extends Error {
@@ -47,6 +53,14 @@ export interface AttachmentDependencies {
   putObject(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
   /** Lectura del objeto ya guardado (ver un justificante desde la cuenta del mes). */
   getObject(key: string): Promise<Uint8Array>;
+  /**
+   * Misma lectura, pero en flujo. Es opcional para no obligar a los dobles de
+   * test a implementarla, y el motivo de existir es concreto: una función de
+   * Vercel no puede devolver más de 4,5 MB en una respuesta materializada, y un
+   * justificante llega hasta MAX_ATTACHMENT_BYTES (10 MiB). En flujo ese límite
+   * no aplica. Sin ella, la ruta cae a `getObject` (el camino autogestionado).
+   */
+  getObjectStream?(key: string): Promise<ReadableStream<Uint8Array>>;
 }
 
 export interface AttachmentInput {
@@ -131,7 +145,21 @@ export async function uploadAttachment(
   const sha256 = createHash('sha256').update(bytes).digest('hex');
 
   // Antivirus SIEMPRE antes de subir: un positivo corta la tubería en seco.
-  if ((await deps.scan(bytes)) === 'infected') {
+  // Un antivirus CAÍDO no es un positivo y tampoco puede pasar por limpio: se
+  // traduce a un error tipado que la ruta convierte en 503 con un mensaje
+  // veraz («el antivirus no responde»), en vez del 500 mudo que salía antes de
+  // que nadie capturase el rechazo del socket (auditoría §6).
+  let verdict: 'clean' | 'infected';
+  try {
+    verdict = await deps.scan(bytes);
+  } catch (cause) {
+    log.error('antivirus unavailable', { code: errorCode(cause) });
+    throw new AttachmentError(
+      'attachment_scan_unavailable',
+      'El antivirus del hogar no responde: la foto sigue en tu dispositivo y no se ha guardado nada'
+    );
+  }
+  if (verdict === 'infected') {
     throw new AttachmentError(
       'attachment_infected',
       'El antivirus ha detectado malware: el fichero queda en cuarentena y no se ha guardado'
@@ -159,7 +187,16 @@ export async function uploadAttachment(
     );
     // PUT dentro de la transacción: si el almacén falla, el registro se
     // revierte y no queda fila huérfana apuntando a un objeto inexistente.
-    await deps.putObject(objectKey, bytes, mediaType);
+    // El fallo se tipa igual que el del antivirus: 503 honesto en vez de 500.
+    try {
+      await deps.putObject(objectKey, bytes, mediaType);
+    } catch (cause) {
+      log.error('object store unavailable', { code: errorCode(cause) });
+      throw new AttachmentError(
+        'attachment_storage_unavailable',
+        'El almacén de documentos del hogar no responde: la foto sigue en tu dispositivo y no se ha guardado nada'
+      );
+    }
     return { storageObjectId: inserted.rows[0]!.id, sha256 };
   });
 }

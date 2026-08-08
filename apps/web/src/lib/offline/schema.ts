@@ -47,6 +47,13 @@ export type OutboxStatus = 'pending' | 'conflict' | 'rejected';
  * dispositivo tras subirse (y entonces la marca se retira), así que la espera
  * siempre termina; si el almacén local se corrompiera y la foto desapareciera
  * sin subir, el comando quedaría esperando y se descarta desde el triaje.
+ *
+ * La espera tampoco puede ser eterna cuando la subida falla una y otra vez
+ * (antivirus caído, almacén sin credenciales, fichero rechazado): tras
+ * MAX_BLOB_UPLOAD_ATTEMPTS intentos —o al primer rechazo definitivo— el
+ * registro pasa a `rejected` con `lastErrorCode` y aparece en el triaje con un
+ * mensaje veraz, en vez de quedarse «pendiente» para siempre sin que nadie lo
+ * note (ver blob-link.ts).
  */
 export interface OutboxPendingBlob {
   /** Clave del blob en el almacén local de fotos. */
@@ -67,7 +74,16 @@ export interface OutboxRecord {
   lastErrorCode?: string;
   /** Foto local pendiente de subir y enlazar; ausente = nada que esperar. */
   pendingBlob?: OutboxPendingBlob;
+  /** Intentos fallidos de subir `pendingBlob`; alimenta el corte del triaje. */
+  blobAttempts?: number;
 }
+
+/**
+ * Intentos de subida de una foto pendiente antes de dar el comando por
+ * bloqueado y mandarlo al triaje. Cinco pasadas de flush cubren de sobra un
+ * corte transitorio del antivirus o del almacén sin dejar el gasto atrapado.
+ */
+export const MAX_BLOB_UPLOAD_ATTEMPTS = 5;
 
 export interface OfflineBlobRecord {
   id: string;
@@ -98,7 +114,9 @@ export function isCriticalSnapshotV1(value: unknown): value is CriticalSnapshotV
 
 export function createOutboxRecord(
   envelope: CommandEnvelopeV1,
-  overrides: Partial<Pick<OutboxRecord, 'createdAt' | 'attempts' | 'status' | 'pendingBlob'>> = {}
+  overrides: Partial<
+    Pick<OutboxRecord, 'createdAt' | 'attempts' | 'status' | 'pendingBlob' | 'blobAttempts'>
+  > = {}
 ): OutboxRecord {
   if (!envelope.operationId.trim() || !envelope.householdId.trim()) {
     throw new TypeError('Outbox records require stable identifiers');
@@ -110,6 +128,7 @@ export function createOutboxRecord(
     createdAt: overrides.createdAt ?? new Date().toISOString(),
     attempts: overrides.attempts ?? 0,
     status: overrides.status ?? 'pending',
-    ...(overrides.pendingBlob ? { pendingBlob: overrides.pendingBlob } : {})
+    ...(overrides.pendingBlob ? { pendingBlob: overrides.pendingBlob } : {}),
+    ...(overrides.blobAttempts ? { blobAttempts: overrides.blobAttempts } : {})
   };
 }

@@ -2,6 +2,11 @@ import net from 'node:net';
 import { describe, expect, it } from 'vitest';
 
 import { createAttachmentDependencies, scanWithClamAv } from '../src/lib/server/attachment-deps.server';
+import {
+  AttachmentError,
+  uploadAttachment,
+  type AttachmentDependencies
+} from '../src/lib/server/attachments.server';
 
 interface FakeClamd {
   port: number;
@@ -126,5 +131,53 @@ describe('createAttachmentDependencies desde variables de entorno', () => {
     expect(createAttachmentDependencies({})).toBeNull();
     expect(createAttachmentDependencies({ ...FULL_ENV, S3_PRIVATE_BUCKET: ' ' })).toBeNull();
     expect(createAttachmentDependencies({ ...FULL_ENV, CLAMAV_HOST: undefined })).toBeNull();
+  });
+
+  it('expone lectura en flujo, que es lo que evita el tope de 4,5 MB de una función serverless', () => {
+    expect(typeof createAttachmentDependencies(FULL_ENV)!.getObjectStream).toBe('function');
+  });
+});
+
+// Con el worker (y su ClamAV) en un host aparte, el antivirus puede estar
+// caído mientras la web sigue en pie. Ese caso NO puede salir como 500 mudo:
+// tiene que decir la verdad y no dejar rastro en la base ni en el bucket.
+describe('un antivirus caído es un 503 honesto, no un 500 mudo', () => {
+  const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0x00, 0x01, 0x02]);
+
+  function deps(overrides: Partial<AttachmentDependencies> = {}): AttachmentDependencies {
+    return {
+      bucket: 'casaclara-local',
+      scan: () => Promise.resolve('clean'),
+      putObject: () => Promise.resolve(),
+      getObject: () => Promise.resolve(new Uint8Array()),
+      ...overrides
+    };
+  }
+
+  it('el rechazo del socket se convierte en attachment_scan_unavailable', async () => {
+    const failing = deps({ scan: () => Promise.reject(new Error('No se pudo escanear con ClamAV: ECONNREFUSED')) });
+    // El pool no llega a usarse: el escaneo va antes de abrir transacción.
+    const attempt = uploadAttachment(
+      { id: 'u-1' },
+      '11111111-1111-4111-8111-111111111111',
+      { bytes: JPEG, mediaType: 'image/jpeg' },
+      failing,
+      {} as never
+    );
+    await expect(attempt).rejects.toBeInstanceOf(AttachmentError);
+    await expect(attempt).rejects.toMatchObject({ code: 'attachment_scan_unavailable' });
+  });
+
+  it('un veredicto «infected» sigue siendo attachment_infected, no se confunde con la avería', async () => {
+    const infected = deps({ scan: () => Promise.resolve('infected') });
+    await expect(
+      uploadAttachment(
+        { id: 'u-1' },
+        '11111111-1111-4111-8111-111111111111',
+        { bytes: JPEG, mediaType: 'image/jpeg' },
+        infected,
+        {} as never
+      )
+    ).rejects.toMatchObject({ code: 'attachment_infected' });
   });
 });

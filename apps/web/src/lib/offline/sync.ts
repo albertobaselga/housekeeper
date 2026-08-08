@@ -132,6 +132,12 @@ export interface BlobUploadMapping {
  * locales hasta subida y ACK completos"). El mapeo blobId→storageObjectId se
  * expone vía callback opcional; `linkPendingBlobs` lo usa para escribirlo en
  * el comando que espera esa foto antes de que el comando salga.
+ *
+ * Cada fallo se anota contra el comando que espera esa foto
+ * (`recordBlobUploadFailure`): así una avería persistente acaba en el triaje
+ * con un motivo veraz en vez de dejar el gasto «pendiente» indefinidamente. Un
+ * blob cuyo comando ya está bloqueado no se vuelve a intentar solo: espera la
+ * decisión de la persona.
  */
 export async function flushBlobs(
   householdId: string,
@@ -141,9 +147,22 @@ export async function flushBlobs(
 ): Promise<'idle' | 'flushed' | 'failed'> {
   const blobs = await listOfflineBlobs(householdId, databaseName);
   if (!blobs.length) return 'idle';
+  // Toda la contabilidad de fallos vive en blob-link, que se carga BAJO
+  // DEMANDA: quien no captura fotos sin conexión no paga ese código en Hoy.
+  const gate = await import('./blob-link');
+  const blocked = await gate.blockedBlobIds(householdId, databaseName);
   let uploaded = 0;
   let failed = 0;
+  const noteFailure = async (blobId: string, status: number) => {
+    failed += 1;
+    try {
+      await gate.recordBlobUploadFailure(householdId, blobId, status, databaseName);
+    } catch {
+      // Si ni siquiera se puede anotar el fallo, el siguiente flush lo intentará.
+    }
+  };
   for (const record of blobs) {
+    if (blocked.has(record.id)) continue;
     try {
       const response = await fetchFn(`/api/v1/households/${householdId}/attachments`, {
         method: 'POST',
@@ -151,13 +170,13 @@ export async function flushBlobs(
         body: record.blob
       });
       if (!response.ok) {
-        failed += 1;
+        await noteFailure(record.id, response.status);
         continue;
       }
       const payload: unknown = await response.json();
       const storageObjectId = (payload as { storageObjectId?: unknown }).storageObjectId;
       if (typeof storageObjectId !== 'string' || !storageObjectId) {
-        failed += 1;
+        await noteFailure(record.id, 0);
         continue;
       }
       await onUploaded?.({ blobId: record.id, storageObjectId });
@@ -166,7 +185,7 @@ export async function flushBlobs(
       await deleteOfflineBlob(record.id, databaseName);
       uploaded += 1;
     } catch {
-      failed += 1;
+      await noteFailure(record.id, 0);
     }
   }
   if (failed > 0) return 'failed';
