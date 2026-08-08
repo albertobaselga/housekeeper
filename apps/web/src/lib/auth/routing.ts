@@ -37,6 +37,23 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
   settings: 'access.manage'
 };
 
+/**
+ * Rutas hijas con su propia regla de autorización, declaradas aquí junto a la
+ * ruta que las estrena. Sin esta tabla `guardForPath` falla cerrado para
+ * cualquier ruta anidada, que es el comportamiento correcto: una ruta nueva no
+ * hereda el permiso de su padre por el hecho de colgar de él.
+ *
+ * · `employment/acuerdo` — pactar condiciones es escribir el acuerdo, y eso es
+ *   solo de quien administra (`agreement.write`).
+ * · `employment/condiciones` — leer lo pactado. `agreement.read` lo tienen
+ *   también la familia no administradora; para ella la RLS no devuelve ninguna
+ *   versión y la página enseña su estado vacío, que es la verdad.
+ */
+export const NESTED_ROUTE_CAPABILITY: Readonly<Record<string, Capability>> = {
+  'employment/acuerdo': 'agreement.write',
+  'employment/condiciones': 'agreement.read'
+};
+
 export interface HouseholdRouteGuard {
   householdId: string;
   module: HouseholdModule | null;
@@ -72,11 +89,15 @@ export function guardForPath(pathname: string): HouseholdRouteGuard | null {
     return { householdId, module: null, capability: null, known: false };
   }
 
-  // Only wiki owns nested routes in the current contract. Everything else is
-  // exact until a route and its authorization rule are added together.
-  const supportsNestedPath = moduleName === 'wiki';
-  if (parts.length > 3 && !supportsNestedPath) {
-    return { householdId, module: moduleName, capability: null, known: false };
+  // Wiki owns una jerarquía abierta (una nota por slug). El resto de rutas
+  // hijas se declaran una a una en NESTED_ROUTE_CAPABILITY, junto con su regla:
+  // lo que no está declarado falla cerrado.
+  if (parts.length > 3 && moduleName !== 'wiki') {
+    const nested = parts.length === 4 ? NESTED_ROUTE_CAPABILITY[`${moduleName}/${parts[3]}`] : undefined;
+    if (!nested) {
+      return { householdId, module: moduleName, capability: null, known: false };
+    }
+    return { householdId, module: moduleName, capability: nested, known: true };
   }
 
   return {

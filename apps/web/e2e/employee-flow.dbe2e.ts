@@ -15,21 +15,24 @@ async function gotoEmployment(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Pagos', exact: true })).toBeVisible();
 }
 
-test('Ana registra una jornada extra nueva con tipo, fecha y minutos', async ({ page }) => {
+test('Ana registra una jornada extra del catálogo, con la duración pactada', async ({ page }) => {
   await gotoEmployment(page);
 
   const extrasCard = page.locator('article.card').filter({ hasText: 'Jornadas extra' });
   const form = extrasCard.locator('form.action-form').filter({ hasText: 'Registrar jornada extra' });
-  await form.getByLabel('Tipo').selectOption('worked_rest_day');
+  // Las opciones son los conceptos del acuerdo, con su tarifa a la vista.
+  await form.getByLabel('Tipo').selectOption({ label: 'Jornada extra · 50,00 € por jornada' });
   await expect(form.getByLabel('Fecha')).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
-  await form.getByLabel('Horas', { exact: true }).fill('2');
-  await form.getByLabel('Y minutos').fill('0');
+  // Una jornada no pide horas: la duración es la pactada, y pedirla haría creer
+  // que cambia el importe.
+  await expect(form.getByLabel('Horas', { exact: true })).toHaveCount(0);
+  await expect(form).toContainText('jornada de 10 h, según lo pactado');
   await form.getByLabel('Nota (opcional)').fill('Canguro nocturno E2E');
   await form.getByRole('button', { name: 'Registrar jornada extra' }).click();
 
   const newRow = extrasCard.locator('.ledger-list > div').filter({ hasText: 'Canguro nocturno E2E' });
-  await expect(newRow).toContainText('Festivo o descanso trabajado');
-  await expect(newRow).toContainText('2 h');
+  await expect(newRow).toContainText('Jornada extra');
+  await expect(newRow).toContainText('10 h');
   await expect(newRow).toContainText('Solicitada');
 });
 

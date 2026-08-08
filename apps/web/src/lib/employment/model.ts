@@ -622,9 +622,9 @@ export function sourceAnchor(sourceType: string, sourceId: string): string | nul
 }
 
 const UNIT_LABELS: Record<ExtraWorkUnit, string> = {
-  per_hour: 'por hora',
+  per_hour: 'por hora trabajada',
   per_shift: 'por jornada',
-  fixed_amount: 'importe fijo'
+  fixed_amount: 'un importe fijo cada vez'
 };
 
 /**
@@ -650,8 +650,12 @@ export function buildExtraWorkTypeView(row: ExtraWorkTypeRow): ExtraWorkTypeView
     rateCents: row.rateCents,
     rateLabel,
     referenceMinutes: row.referenceMinutes,
+    // Solo la jornada anuncia su duración pactada. En un importe fijo la
+    // duración no decide el importe, y enseñarla invitaría a creer que sí.
     referenceLabel:
-      row.referenceMinutes === null ? null : `jornada de ${formatMinutes(row.referenceMinutes)}`,
+      row.unit === 'per_shift' && row.referenceMinutes !== null
+        ? `jornada de ${formatMinutes(row.referenceMinutes)}`
+        : null,
     active: row.active,
     available: row.active && row.rateCents !== null
   };
@@ -672,6 +676,13 @@ export function buildSupplementView(row: RecurringSupplementRow): SupplementView
     endsOn: row.endsOn,
     validityLabel: from && to ? `${from} ${to}` : (from ?? to)
   };
+}
+
+/** «40 h a la semana», «37 h 30 min a la semana». */
+export function weeklyHoursLabel(minutes: number): string {
+  const hours = Math.trunc(minutes / 60);
+  const rest = minutes % 60;
+  return `${hours} h${rest > 0 ? ` ${rest} min` : ''} a la semana`;
 }
 
 /**
@@ -698,7 +709,9 @@ export function buildAgreementTermsView(input: {
     versionNumber: input.version.versionNumber,
     effectiveFromLabel: dateLabel(input.version.effectiveFrom),
     salaryLabel: formatCents(input.version.monthlySalaryCents),
-    weeklyHoursLabel: `${formatMinutes(input.version.contractedWeeklyMinutes)} a la semana`,
+    // Una jornada semanal se cuenta en horas, no en días: «1 día 16 h» es
+    // aritméticamente cierto y no significa nada para quien la trabaja.
+    weeklyHoursLabel: weeklyHoursLabel(input.version.contractedWeeklyMinutes),
     vacationDaysLabel: `${input.version.annualVacationDays} ${
       input.version.annualVacationDays === 1 ? 'día natural' : 'días naturales'
     } al año`,

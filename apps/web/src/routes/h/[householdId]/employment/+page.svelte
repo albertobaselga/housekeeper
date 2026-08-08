@@ -225,6 +225,15 @@
                   {/each}
                 </div>
                 <div class="ledger-total"><span>Total previsto del mes</span><strong>{overview.accrual.transferTotalLabel}</strong></div>
+                <!-- Debajo del total, nunca dentro: lo que la casa paga por su
+                     cuenta consta como condición y no se transfiere. Meterlo
+                     entre las líneas haría que la cuenta mintiera. -->
+                {#if overview.accrual.householdPaidSupplements.length > 0}
+                  <p class="audit-note">
+                    Además, la casa paga aparte:
+                    {#each overview.accrual.householdPaidSupplements as supplement, index (supplement.id)}{index > 0 ? ', ' : ''}{supplement.label} ({supplement.amountLabel}){/each}. No entra en la transferencia.
+                  </p>
+                {/if}
               {:else}
                 <p class="audit-note">El acuerdo todavía no está en vigor este mes.</p>
               {/if}

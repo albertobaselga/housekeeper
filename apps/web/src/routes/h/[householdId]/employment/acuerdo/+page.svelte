@@ -266,7 +266,7 @@
                 </select>
               </label>
               <label>Tarifa (vacío = sin tarifa)
-                <input type="text" inputmode="decimal" name={`type.${index}.rate`} bind:value={type.rate} placeholder="50,00" />
+                <input type="text" inputmode="decimal" name={`type.${index}.rate`} bind:value={type.rate} placeholder="sin tarifa" />
               </label>
               {#if type.unit !== 'per_hour'}
                 <label>Duración de la jornada (minutos)
