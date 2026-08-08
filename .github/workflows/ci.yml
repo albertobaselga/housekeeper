@@ -50,6 +50,10 @@ jobs:
     name: Unit and domain tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # SIN base de datos a propósito. `pnpm test:unit` es `pnpm -r test`, que
+    # ejecuta los workspaces en PARALELO; darle Postgres pondría a las suites de
+    # integración de server y web a recrear el esquema de la misma base a la vez.
+    # Su sitio es el job `integration`, que las corre una detrás de otra.
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
