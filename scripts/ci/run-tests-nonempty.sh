@@ -7,7 +7,8 @@ if (( $# == 0 )); then
 fi
 
 test_output="$(mktemp -t casaclara-tests.XXXXXX)"
-trap 'rm -f "${test_output}"' EXIT HUP INT TERM
+plain_output="$(mktemp -t casaclara-tests-plain.XXXXXX)"
+trap 'rm -f "${test_output}" "${plain_output}"' EXIT HUP INT TERM
 
 set +e
 "$@" 2>&1 | tee "${test_output}"
@@ -19,12 +20,19 @@ if (( command_status != 0 )); then
   exit "${command_status}"
 fi
 
-if grep -Eiq 'no tests (found|collected)|tests?[[:space:]]*[:=]?[[:space:]]*0([^0-9]|$)' "${test_output}"; then
+# Los recuentos se buscan sobre una copia SIN secuencias ANSI. Vitest colorea su
+# resumen precisamente cuando CI=true (tinyrainbow activa color si detecta CI),
+# de modo que "23 passed" llega como "\e[1m\e[32m23 passed\e[39m" y los anclajes
+# de espacio en blanco de los patrones de abajo no casaban: la guarda daba
+# «no positive test count» sobre una suite perfectamente verde.
+sed -E $'s/\033\\[[0-9;?]*[ -\/]*[@-~]//g' "${test_output}" > "${plain_output}"
+
+if grep -Eiq 'no tests (found|collected)|tests?[[:space:]]*[:=]?[[:space:]]*0([^0-9]|$)' "${plain_output}"; then
   echo "Quality gate failed: the command reported zero tests." >&2
   exit 65
 fi
 
-if grep -Eiq '(^|[[:space:]#])tests?[[:space:]]+[1-9][0-9]*([[:space:]]|$)|(^|[[:space:]])[1-9][0-9]*[[:space:]]+passed([[:space:](]|$)|^1\.\.[1-9][0-9]*$' "${test_output}"; then
+if grep -Eiq '(^|[[:space:]#])tests?[[:space:]]+[1-9][0-9]*([[:space:]]|$)|(^|[[:space:]])[1-9][0-9]*[[:space:]]+passed([[:space:](]|$)|^1\.\.[1-9][0-9]*$' "${plain_output}"; then
   exit 0
 fi
 
