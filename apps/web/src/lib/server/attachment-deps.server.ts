@@ -1,4 +1,5 @@
 import net from 'node:net';
+import tls from 'node:tls';
 
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { env } from '$env/dynamic/private';
@@ -13,6 +14,25 @@ export interface ClamAvOptions {
   host: string;
   port: number;
   timeoutMs?: number;
+  /**
+   * TLS en el transporte. Obligatorio cuando clamd NO está en la misma red
+   * privada que la web —el caso del despliegue en Vercel, donde el antivirus
+   * vive en el host del worker—: el documento del hogar viaja entero por ese
+   * socket y no puede ir en claro por internet.
+   */
+  tls?: boolean;
+  /**
+   * Secreto compartido que la pasarela de `infra/clamav` exige antes de dejar
+   * pasar nada a clamd. clamd no tiene autenticación propia, así que sin esto
+   * publicar el 3310 equivale a ofrecer escaneo gratis a quien pase por ahí.
+   */
+  token?: string;
+  /**
+   * Autoridad de confianza en PEM, para cuando el certificado de la pasarela lo
+   * emite una CA propia en vez de una pública. La verificación NUNCA se apaga:
+   * o el certificado encadena con las CA del sistema, o se declara la CA aquí.
+   */
+  caPem?: string;
 }
 
 /**
@@ -20,11 +40,22 @@ export interface ClamAvOptions {
  * se envía `zINSTREAM\0`, después cada trozo precedido de su longitud en 4
  * bytes big-endian y un trozo de longitud cero como terminador. clamd responde
  * `stream: OK` (limpio) o `stream: <firma> FOUND` (infectado), terminado en \0.
+ *
+ * Con `tls` el socket se abre cifrado y con `token` se antepone la línea
+ * `CASACLARA <token>\n`, que la pasarela consume y no reenvía: clamd al otro
+ * lado ve exactamente el mismo diálogo de siempre.
  */
 export function scanWithClamAv(bytes: Uint8Array, options: ClamAvOptions): Promise<'clean' | 'infected'> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
-    const socket = net.connect(options.port, options.host);
+    const socket = options.tls
+      ? tls.connect({
+          host: options.host,
+          port: options.port,
+          servername: options.host,
+          ...(options.caPem ? { ca: options.caPem } : {})
+        })
+      : net.connect(options.port, options.host);
     const received: Buffer[] = [];
     let settled = false;
 
@@ -42,7 +73,10 @@ export function scanWithClamAv(bytes: Uint8Array, options: ClamAvOptions): Promi
       finish(() => reject(new Error(`No se pudo escanear con ClamAV: ${cause.message}`)));
     });
 
-    socket.on('connect', () => {
+    const sendStream = (): void => {
+      // El saludo de la pasarela va PRIMERO y en su propia escritura: quien
+      // no lo conozca no llega a hablar con clamd.
+      if (options.token) socket.write(`CASACLARA ${options.token}\n`);
       socket.write('zINSTREAM\0');
       for (let offset = 0; offset < bytes.length; offset += INSTREAM_CHUNK_BYTES) {
         const chunk = bytes.subarray(offset, Math.min(offset + INSTREAM_CHUNK_BYTES, bytes.length));
@@ -52,7 +86,10 @@ export function scanWithClamAv(bytes: Uint8Array, options: ClamAvOptions): Promi
         socket.write(frame);
       }
       socket.write(Buffer.from([0, 0, 0, 0]));
-    });
+    };
+    // Con TLS hay que esperar al handshake: escribir en `connect` mandaría los
+    // bytes antes de que el canal esté cifrado y negociado.
+    socket.on(options.tls ? 'secureConnect' : 'connect', sendStream);
 
     const conclude = (): void => {
       const reply = Buffer.concat(received).toString('utf8').replaceAll('\0', '').trim();
@@ -84,6 +121,12 @@ export function createAttachmentDependencies(
 ): AttachmentDependencies | null {
   const clamHost = environment.CLAMAV_HOST?.trim();
   const clamPort = Number.parseInt(environment.CLAMAV_PORT?.trim() || '3310', 10);
+  // Transporte del antivirus: en Compose clamd está en la red interna y va en
+  // claro; con la web en Vercel y clamd en el host del worker, CLAMAV_TLS y
+  // CLAMAV_TOKEN son obligatorias (ver docs/despliegue/runbook-despliegue.md).
+  const clamTls = environment.CLAMAV_TLS?.trim() === 'true';
+  const clamToken = environment.CLAMAV_TOKEN?.trim();
+  const clamCa = environment.CLAMAV_TLS_CA_PEM?.trim();
   const endpoint = environment.S3_ENDPOINT?.trim();
   const bucket = environment.S3_PRIVATE_BUCKET?.trim();
   const accessKeyId = environment.S3_ACCESS_KEY_ID?.trim();
@@ -102,7 +145,14 @@ export function createAttachmentDependencies(
 
   return {
     bucket,
-    scan: (bytes) => scanWithClamAv(bytes, { host: clamHost, port: clamPort }),
+    scan: (bytes) =>
+      scanWithClamAv(bytes, {
+        host: clamHost,
+        port: clamPort,
+        ...(clamTls ? { tls: true } : {}),
+        ...(clamToken ? { token: clamToken } : {}),
+        ...(clamCa ? { caPem: clamCa } : {})
+      }),
     putObject: async (key, bytes, contentType) => {
       await client.send(
         new PutObjectCommand({ Bucket: bucket, Key: key, Body: bytes, ContentType: contentType })
