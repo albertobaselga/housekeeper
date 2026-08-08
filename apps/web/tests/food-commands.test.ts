@@ -13,7 +13,8 @@ import {
   routineCompletePayloadSchema,
   routineUpsertPayloadSchema,
   shoppingAddPayloadSchema,
-  shoppingSetCheckedPayloadSchema
+  shoppingSetCheckedPayloadSchema,
+  shoppingSetLineCheckedPayloadSchema
 } from '@casa-clara/contracts/schemas';
 
 import {
@@ -26,6 +27,7 @@ import {
   setMenuSlot,
   setRecipeDetails,
   setShoppingChecked,
+  setShoppingLineChecked,
   upsertDiner,
   upsertFood,
   upsertMenuGroup,
@@ -235,6 +237,95 @@ describe('constructores de envelopes de comida y rutinas', () => {
       itemId: ITEM,
       checked: true
     });
+  });
+
+  it('upsertFood lleva el tamaño de paquete entero o no lo lleva (P2-4)', () => {
+    const withPackage = upsertFood(
+      {
+        householdId: HOUSEHOLD,
+        name: 'Arroz',
+        shoppingSection: 'despensa',
+        allergenCodes: [],
+        reviewed: true,
+        packaging: { size: ' 500 ', unit: ' g ' }
+      },
+      OPTIONS
+    );
+    expect(foodUpsertPayloadSchema.parse(withPackage.payload)).toMatchObject({
+      packaging: { size: '500', unit: 'g' }
+    });
+
+    // Media medida (cantidad sin unidad) no viaja: no sirve para redondear.
+    const halfMeasure = upsertFood(
+      {
+        householdId: HOUSEHOLD,
+        name: 'Arroz',
+        shoppingSection: 'despensa',
+        allergenCodes: [],
+        reviewed: true,
+        packaging: { size: '500', unit: '  ' }
+      },
+      OPTIONS
+    );
+    expect(foodUpsertPayloadSchema.parse(halfMeasure.payload)).not.toHaveProperty('packaging');
+  });
+
+  it('setShoppingLineChecked marca la línea entera, también la que viene del menú', () => {
+    const derived = setShoppingLineChecked(
+      { householdId: HOUSEHOLD, weekStartsOn: '2026-08-03', lineKey: `food:${FOOD}`, checked: true },
+      OPTIONS
+    );
+    expect(derived.aggregateType).toBe('shopping_item');
+    expect(shoppingSetLineCheckedPayloadSchema.parse(derived.payload)).toEqual({
+      action: 'set_line_checked',
+      weekStartsOn: '2026-08-03',
+      lineKey: `food:${FOOD}`,
+      checked: true
+    });
+
+    // La lista personal viaja explícita; la de casa es el valor por defecto.
+    const personal = setShoppingLineChecked(
+      {
+        householdId: HOUSEHOLD,
+        weekStartsOn: '2026-08-03',
+        lineKey: 'name:champú',
+        listKind: 'personal',
+        checked: false
+      },
+      OPTIONS
+    );
+    expect(shoppingSetLineCheckedPayloadSchema.parse(personal.payload)).toMatchObject({
+      listKind: 'personal',
+      checked: false
+    });
+
+    // Una clave que no es ni alimento ni nombre se rechaza en el contrato.
+    expect(() =>
+      shoppingSetLineCheckedPayloadSchema.parse({
+        action: 'set_line_checked',
+        weekStartsOn: '2026-08-03',
+        lineKey: 'otra-cosa',
+        checked: true
+      })
+    ).toThrow();
+  });
+
+  it('addShoppingItem a la lista personal se escribe a mano, sin catálogo', () => {
+    const personal = addShoppingItem(
+      { householdId: HOUSEHOLD, customName: ' Champú ', listKind: 'personal', weekStartsOn: '2026-08-03' },
+      OPTIONS
+    );
+    expect(shoppingAddPayloadSchema.parse(personal.payload)).toEqual({
+      action: 'add',
+      customName: 'Champú',
+      weekStartsOn: '2026-08-03',
+      listKind: 'personal'
+    });
+
+    // El contrato impide colar un alimento del catálogo en la lista personal.
+    expect(() =>
+      shoppingAddPayloadSchema.parse({ action: 'add', foodId: FOOD, listKind: 'personal' })
+    ).toThrow();
   });
 
   it('upsertRoutine y completeRoutine validan contra el contrato', () => {

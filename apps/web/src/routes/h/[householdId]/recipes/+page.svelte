@@ -109,6 +109,9 @@
   let foodSection = $state('despensa');
   let foodAllergens = $state<string[]>([]);
   let foodReviewed = $state(false);
+  /** Tamaño del paquete con el que se compra («500» + «g»); opcional. */
+  let foodPackageSize = $state('');
+  let foodPackageUnit = $state('');
 
   function editFood(id: string): void {
     const food = foodById(id);
@@ -118,6 +121,8 @@
     foodSection = food.section;
     foodAllergens = [...food.allergenCodes];
     foodReviewed = food.reviewed;
+    foodPackageSize = food.packaging ? formatQuantityEs(food.packaging.size) : '';
+    foodPackageUnit = food.packaging?.unit ?? '';
   }
 
   function resetFoodForm(): void {
@@ -126,11 +131,18 @@
     foodSection = 'despensa';
     foodAllergens = [];
     foodReviewed = false;
+    foodPackageSize = '';
+    foodPackageUnit = '';
   }
 
   function submitFood(event: SubmitEvent): void {
     event.preventDefault();
     if (!catalog || !foodName.trim()) return;
+    // Media medida no sirve: o se fijan cantidad y unidad, o no hay paquete.
+    const packaging =
+      foodPackageSize.trim() && foodPackageUnit.trim()
+        ? { size: foodPackageSize, unit: foodPackageUnit }
+        : undefined;
     void dispatch(
       upsertFood({
         householdId: catalog.householdId,
@@ -138,7 +150,8 @@
         name: foodName,
         shoppingSection: foodSection,
         allergenCodes: foodAllergens,
-        reviewed: foodReviewed
+        reviewed: foodReviewed,
+        packaging
       })
     ).then(resetFoodForm);
   }
@@ -320,6 +333,7 @@
                     <strong>{food.name}</strong>
                     <small>
                       {food.section}
+                      {#if food.packaging}· se compra de {formatQuantityEs(food.packaging.size)} {food.packaging.unit}{/if}
                       {#if food.allergenCodes.length}· {food.allergenCodes.join(', ')}{/if}
                     </small>
                   </span>
@@ -345,7 +359,30 @@
                 <input type="text" autocomplete="off" enterkeyhint="next" bind:value={foodName} maxlength="120" required />
               </label>
               <label>Sección de compra
-                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={foodSection} maxlength="60" required />
+                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={foodSection} maxlength="60" required />
+              </label>
+              <!-- P2-4: con el tamaño del paquete, la compra dice cuántos hay
+                   que llevar («350 g → 1 paquete de 500 g»). Sin él, la lista
+                   muestra la cantidad exacta y no se inventa nada. -->
+              <label>¿En qué tamaño se compra? (opcional)
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  enterkeyhint="next"
+                  bind:value={foodPackageSize}
+                  placeholder="500"
+                />
+              </label>
+              <label>Unidad del paquete
+                <input
+                  type="text"
+                  autocomplete="off"
+                  enterkeyhint="done"
+                  bind:value={foodPackageUnit}
+                  maxlength="30"
+                  placeholder="g"
+                />
               </label>
               <fieldset class="inline-check-group">
                 <legend>Alérgenos de declaración obligatoria (UE)</legend>

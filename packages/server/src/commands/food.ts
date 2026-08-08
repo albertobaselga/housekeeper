@@ -103,14 +103,28 @@ export const foodCommandHandler: CommandHandler = async (client, membership, env
   const allergenCodes = [...new Set(payload.allergenCodes)].sort();
   await requireKnownAllergens(client, allergenCodes);
 
+  // El tamaño de paquete es opcional y viaja completo (cantidad + unidad) o no
+  // viaja: sin él, la lista de la compra muestra la cantidad exacta.
+  const packageSize = payload.packaging ? normalizeQuantity(payload.packaging.size) : null;
+  const packageUnit = payload.packaging ? payload.packaging.unit : null;
+
   let foodId: UUID;
   if (payload.foodId !== undefined) {
     const updated = await client.query<{ id: string }>(
       `update app.foods
-          set name = $3, shopping_section = $4, allergens_reviewed = $5
+          set name = $3, shopping_section = $4, allergens_reviewed = $5,
+              package_size = $6, package_unit = $7
         where household_id = $1 and id = $2
         returning id`,
-      [householdId, payload.foodId, payload.name, payload.shoppingSection, payload.reviewed],
+      [
+        householdId,
+        payload.foodId,
+        payload.name,
+        payload.shoppingSection,
+        payload.reviewed,
+        packageSize,
+        packageUnit,
+      ],
     );
     const row = updated.rows[0];
     if (!row) throw new CommandRejectedError("food_not_found", "El alimento no existe en este hogar");
@@ -118,10 +132,19 @@ export const foodCommandHandler: CommandHandler = async (client, membership, env
   } else {
     const inserted = await client.query<{ id: string }>(
       `insert into app.foods
-         (household_id, name, shopping_section, allergens_reviewed, created_by_membership_id)
-       values ($1, $2, $3, $4, $5)
+         (household_id, name, shopping_section, allergens_reviewed, package_size, package_unit,
+          created_by_membership_id)
+       values ($1, $2, $3, $4, $5, $6, $7)
        returning id`,
-      [householdId, payload.name, payload.shoppingSection, payload.reviewed, membership.id],
+      [
+        householdId,
+        payload.name,
+        payload.shoppingSection,
+        payload.reviewed,
+        packageSize,
+        packageUnit,
+        membership.id,
+      ],
     );
     const row = inserted.rows[0];
     if (!row) throw new Error("La inserción del alimento no devolvió identificador");

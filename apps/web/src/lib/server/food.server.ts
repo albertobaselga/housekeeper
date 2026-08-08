@@ -1,9 +1,18 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
+import {
+  AuthorizationError,
+  buildShoppingBoard,
+  createLogger,
+  errorCode,
+  computeMenuSlotHash,
+  withAuthorizedTransaction,
+  type ShoppingLine,
+  type ShoppingSection
+} from '@casa-clara/server';
 
-import { addQuantities, fromHundredths, scaleQuantity, toHundredths } from '$lib/food/quantities';
+import { fromHundredths, toHundredths } from '$lib/food/quantities';
 import { weekDays } from '$lib/food/dates';
 import { getDatabasePool } from './db.server';
 
@@ -11,6 +20,8 @@ const log = createLogger('web:food');
 
 const FAMILY_ROLES: readonly Role[] = ['family_admin', 'family_member'];
 const SHOPPING_WRITER_ROLES: readonly Role[] = ['family_admin', 'family_member', 'employee_live_in'];
+/** Lista «Personal» de la interna (Anexo H): ella y la administración. */
+const PERSONAL_SHOPPING_ROLES: readonly Role[] = ['family_admin', 'employee_live_in'];
 
 export type MealSlot = 'desayuno' | 'almuerzo' | 'comida' | 'merienda' | 'cena';
 export const MEAL_SLOTS: readonly MealSlot[] = ['desayuno', 'almuerzo', 'comida', 'merienda', 'cena'];
@@ -497,41 +508,33 @@ export async function loadRecipe(
   }
 }
 
-export interface ShoppingEntryView {
-  kind: 'derived' | 'manual';
-  /** Solo los añadidos manuales tienen fila propia que marcar (set_checked). */
-  itemId: string | null;
-  foodId: string | null;
-  name: string;
-  quantity: string | null;
-  unit: string | null;
-  checked: boolean;
-  /** Cantidad con al menos un ingrediente 'fixed' sin escalar dentro. */
-  includesFixed: boolean;
-}
-
-export interface ShoppingSectionView {
-  section: string;
-  entries: ShoppingEntryView[];
-}
+export type { ShoppingLine, ShoppingPart, ShoppingSection } from '@casa-clara/server';
 
 export interface ShoppingList {
   householdId: string;
   role: Role;
   weekStartsOn: string;
-  /** Compra: familia y empleada escriben (política shopping_write). */
+  /** Compra de casa: familia y empleada escriben (política shopping_write). */
   canWrite: boolean;
-  sections: ShoppingSectionView[];
+  /**
+   * Lista «Personal» de la interna: solo se ofrece a la propia empleada y a la
+   * administración familiar. La RLS ya impide leer sus filas a los demás; esto
+   * decide únicamente si la sección aparece en la pantalla.
+   */
+  canUsePersonal: boolean;
+  sections: ShoppingSection[];
+  personal: ShoppingLine[];
   /** Alimentos del catálogo para el alta manual con sección precargada. */
   foods: Array<{ id: string; name: string; section: string }>;
 }
 
 /**
- * Lista de compra semanal: parte derivada del menú (ingredientes de las
- * recetas asignadas, escalados linealmente al nº de comensales del grupo —o al
- * servings_override— frente a base_servings con aritmética decimal exacta;
- * los 'fixed' entran intactos) más los añadidos manuales de la semana (y los
- * sin semana). Agregado por alimento+unidad dentro de cada sección.
+ * Lista de compra semanal ya fusionada, tal como se ve. Toda la regla vive en
+ * `buildShoppingBoard` (@casa-clara/server): parte derivada del menú calculada
+ * en lectura y escalada con aritmética decimal exacta, añadidos a mano
+ * fusionados en la misma línea cuando son el mismo alimento, redondeo a
+ * paquetes cuando el alimento lo declara y marcado por línea (que es lo que
+ * permite marcar también lo que viene del menú).
  */
 export async function loadShoppingList(
   user: { id: string },
@@ -540,40 +543,9 @@ export async function loadShoppingList(
   pool: Pool | null = getDatabasePool()
 ): Promise<ShoppingList | null> {
   if (!pool) return null;
-  const days = weekDays(mondayISO);
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
-      const slotResult = await client.query<{
-        groupId: string;
-        recipePageId: string;
-        servingsOverride: number | null;
-      }>(
-        `select group_id as "groupId",
-                recipe_page_id as "recipePageId",
-                servings_override as "servingsOverride"
-           from app.menu_slots
-          where household_id = $1 and on_date between $2 and $3 and recipe_page_id is not null`,
-        [householdId, days[0], days[6]]
-      );
-
-      const dinerCountResult = await client.query<{ groupId: string; diners: number }>(
-        `select member.group_id as "groupId", count(*)::int as "diners"
-           from app.menu_group_diners as member
-           join app.diners as diner
-             on diner.household_id = member.household_id and diner.id = member.diner_id
-          where member.household_id = $1 and diner.archived_at is null
-          group by member.group_id`,
-        [householdId]
-      );
-      const dinersByGroup = new Map(dinerCountResult.rows.map((row) => [row.groupId, row.diners]));
-
-      const pageIds = [...new Set(slotResult.rows.map((row) => row.recipePageId))];
-      const { recipes, ingredients } = await fetchRecipes(
-        client,
-        householdId,
-        pageIds.length > 0 ? pageIds : ['00000000-0000-4000-8000-000000000000']
-      );
-
+      const board = await buildShoppingBoard(client, householdId, mondayISO);
       const foodResult = await client.query<{ id: string; name: string; section: string }>(
         `select id, name, shopping_section as "section"
            from app.foods
@@ -581,108 +553,15 @@ export async function loadShoppingList(
           order by name`,
         [householdId]
       );
-      const foodSection = new Map(foodResult.rows.map((row) => [row.id, row.section]));
-
-      // Agregado derivado por (alimento, unidad): suma exacta en centésimas.
-      const derived = new Map<
-        string,
-        { foodId: string; name: string; unit: string; section: string; total: string; includesFixed: boolean }
-      >();
-      for (const slot of slotResult.rows) {
-        const core = recipes.get(slot.recipePageId);
-        if (!core) continue;
-        const servings = slot.servingsOverride ?? dinersByGroup.get(slot.groupId) ?? 0;
-        const effectiveServings = servings > 0 ? servings : core.baseServings;
-        for (const ingredient of ingredients.get(core.pageId) ?? []) {
-          const amount =
-            ingredient.scaling === 'fixed'
-              ? normalizeQuantity(ingredient.quantity)
-              : scaleQuantity(ingredient.quantity, effectiveServings, core.baseServings);
-          if (amount === null) continue;
-          const key = `${ingredient.foodId}::${ingredient.unit}`;
-          const existing = derived.get(key);
-          if (!existing) {
-            derived.set(key, {
-              foodId: ingredient.foodId,
-              name: ingredient.name,
-              unit: ingredient.unit,
-              section: foodSection.get(ingredient.foodId) ?? 'despensa',
-              total: amount,
-              includesFixed: ingredient.scaling === 'fixed'
-            });
-          } else {
-            existing.total = addQuantities(existing.total, amount) ?? existing.total;
-            existing.includesFixed = existing.includesFixed || ingredient.scaling === 'fixed';
-          }
-        }
-      }
-
-      const manualResult = await client.query<{
-        id: string;
-        foodId: string | null;
-        customName: string | null;
-        foodName: string | null;
-        quantity: string | null;
-        unit: string | null;
-        section: string;
-        checkedAt: Date | null;
-      }>(
-        `select item.id,
-                item.food_id as "foodId",
-                item.custom_name as "customName",
-                food.name as "foodName",
-                item.quantity::text as "quantity",
-                item.unit,
-                item.section,
-                item.checked_at as "checkedAt"
-           from app.shopping_items as item
-           left join app.foods as food
-             on food.household_id = item.household_id and food.id = item.food_id
-          where item.household_id = $1
-            and (item.week_starts_on = $2 or item.week_starts_on is null)
-          order by item.created_at`,
-        [householdId, mondayISO]
-      );
-
-      const sections = new Map<string, ShoppingEntryView[]>();
-      const push = (section: string, entry: ShoppingEntryView): void => {
-        const list = sections.get(section) ?? [];
-        list.push(entry);
-        sections.set(section, list);
-      };
-      for (const entry of [...derived.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'))) {
-        push(entry.section, {
-          kind: 'derived',
-          itemId: null,
-          foodId: entry.foodId,
-          name: entry.name,
-          quantity: entry.total,
-          unit: entry.unit,
-          checked: false,
-          includesFixed: entry.includesFixed
-        });
-      }
-      for (const row of manualResult.rows) {
-        push(row.section, {
-          kind: 'manual',
-          itemId: row.id,
-          foodId: row.foodId,
-          name: row.foodName ?? row.customName ?? '',
-          quantity: row.quantity ? normalizeQuantity(row.quantity) : null,
-          unit: row.unit,
-          checked: row.checkedAt !== null,
-          includesFixed: false
-        });
-      }
 
       return {
         householdId,
         role: membership.role,
         weekStartsOn: mondayISO,
         canWrite: SHOPPING_WRITER_ROLES.includes(membership.role),
-        sections: [...sections.entries()]
-          .sort(([a], [b]) => a.localeCompare(b, 'es'))
-          .map(([section, entries]) => ({ section, entries })),
+        canUsePersonal: PERSONAL_SHOPPING_ROLES.includes(membership.role),
+        sections: board.sections,
+        personal: board.personal,
         foods: foodResult.rows
       } satisfies ShoppingList;
     });
@@ -700,6 +579,8 @@ export interface FoodCatalogEntry {
   section: string;
   reviewed: boolean;
   allergenCodes: string[];
+  /** Tamaño del paquete con el que se compra («500 g»); null si no se fijó. */
+  packaging: { size: string; unit: string } | null;
 }
 
 export interface FoodCatalog {
@@ -738,11 +619,15 @@ export async function loadFoodCatalog(
         section: string;
         reviewed: boolean;
         allergenCodes: string[] | null;
+        packageSize: string | null;
+        packageUnit: string | null;
       }>(
         `select food.id,
                 food.name,
                 food.shopping_section as "section",
                 food.allergens_reviewed as "reviewed",
+                food.package_size::text as "packageSize",
+                food.package_unit as "packageUnit",
                 (select array_agg(fa.allergen_code order by fa.allergen_code)
                    from app.food_allergens as fa
                   where fa.household_id = food.household_id and fa.food_id = food.id
@@ -784,7 +669,11 @@ export async function loadFoodCatalog(
           name: row.name,
           section: row.section,
           reviewed: row.reviewed,
-          allergenCodes: row.allergenCodes ?? []
+          allergenCodes: row.allergenCodes ?? [],
+          packaging:
+            row.packageSize && row.packageUnit
+              ? { size: normalizeQuantity(row.packageSize), unit: row.packageUnit }
+              : null
         })),
         diners: dinerResult.rows.map((diner) => ({
           id: diner.id,

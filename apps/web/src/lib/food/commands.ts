@@ -25,6 +25,11 @@ export type IngredientScaling = 'linear' | 'fixed';
 export type RoutineAudience = 'family' | 'employee' | 'all';
 export type RoutineFrequency = 'daily' | 'weekly' | 'monthly' | 'quarterly';
 
+export interface FoodPackaging {
+  size: string;
+  unit: string;
+}
+
 export interface FoodUpsertPayload {
   action: 'upsert';
   foodId?: string;
@@ -32,6 +37,8 @@ export interface FoodUpsertPayload {
   shoppingSection: string;
   allergenCodes: string[];
   reviewed: boolean;
+  /** Tamaño del paquete con el que se compra («500 g»); opcional. */
+  packaging?: FoodPackaging;
 }
 
 export interface DinerUpsertPayload {
@@ -117,6 +124,8 @@ export interface MenuTemplateDeletePayload {
   templateId: string;
 }
 
+export type ShoppingListKind = 'casa' | 'personal';
+
 export interface ShoppingAddPayload {
   action: 'add';
   foodId?: string;
@@ -125,11 +134,20 @@ export interface ShoppingAddPayload {
   unit?: string;
   section?: string;
   weekStartsOn?: string;
+  listKind?: ShoppingListKind;
 }
 
 export interface ShoppingSetCheckedPayload {
   action: 'set_checked';
   itemId: string;
+  checked: boolean;
+}
+
+export interface ShoppingSetLineCheckedPayload {
+  action: 'set_line_checked';
+  weekStartsOn: string;
+  lineKey: string;
+  listKind?: ShoppingListKind;
   checked: boolean;
 }
 
@@ -162,9 +180,15 @@ export function upsertFood(
     shoppingSection: string;
     allergenCodes: string[];
     reviewed: boolean;
+    packaging?: FoodPackaging;
   },
   options: EnvelopeOptions = {}
 ): CommandEnvelopeV1<FoodUpsertPayload> {
+  // Tamaño y unidad del paquete viajan juntos o no viajan: media medida no
+  // sirve para redondear y el contrato la rechazaría.
+  const packageSize = trimmedOrUndefined(input.packaging?.size);
+  const packageUnit = trimmedOrUndefined(input.packaging?.unit);
+  const packaging = packageSize && packageUnit ? { size: packageSize, unit: packageUnit } : undefined;
   return createCommandEnvelope({
     ...options,
     householdId: input.householdId,
@@ -176,7 +200,8 @@ export function upsertFood(
       name: input.name.trim(),
       shoppingSection: input.shoppingSection.trim(),
       allergenCodes: [...input.allergenCodes].sort(),
-      reviewed: input.reviewed
+      reviewed: input.reviewed,
+      ...(packaging ? { packaging } : {})
     } satisfies FoodUpsertPayload
   }) as CommandEnvelopeV1<FoodUpsertPayload>;
 }
@@ -444,6 +469,7 @@ export function addShoppingItem(
     unit?: string;
     section?: string;
     weekStartsOn?: string;
+    listKind?: ShoppingListKind;
   },
   options: EnvelopeOptions = {}
 ): CommandEnvelopeV1<ShoppingAddPayload> {
@@ -462,9 +488,40 @@ export function addShoppingItem(
       ...(quantity ? { quantity } : {}),
       ...(unit ? { unit } : {}),
       ...(section ? { section } : {}),
-      ...(input.weekStartsOn ? { weekStartsOn: input.weekStartsOn } : {})
+      ...(input.weekStartsOn ? { weekStartsOn: input.weekStartsOn } : {}),
+      ...(input.listKind && input.listKind !== 'casa' ? { listKind: input.listKind } : {})
     } satisfies ShoppingAddPayload
   }) as CommandEnvelopeV1<ShoppingAddPayload>;
+}
+
+/**
+ * Marca (o desmarca) una LÍNEA entera de la compra de la semana, incluida la
+ * parte que viene del menú —que no tiene fila propia porque se calcula en
+ * lectura—. Un solo comando idempotente por línea: dos taps rápidos no dejan
+ * medio marcado, y offline se reenvía tal cual.
+ */
+export function setShoppingLineChecked(
+  input: {
+    householdId: string;
+    weekStartsOn: string;
+    lineKey: string;
+    listKind?: ShoppingListKind;
+    checked: boolean;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<ShoppingSetLineCheckedPayload> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'shopping_item',
+    payload: {
+      action: 'set_line_checked',
+      weekStartsOn: input.weekStartsOn,
+      lineKey: input.lineKey,
+      ...(input.listKind && input.listKind !== 'casa' ? { listKind: input.listKind } : {}),
+      checked: input.checked
+    } satisfies ShoppingSetLineCheckedPayload
+  }) as CommandEnvelopeV1<ShoppingSetLineCheckedPayload>;
 }
 
 export function setShoppingChecked(

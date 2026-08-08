@@ -15,11 +15,12 @@
     saveMenuTemplate,
     setMenuSlot,
     setMenuSlotNewRecipe,
-    setShoppingChecked,
+    setShoppingLineChecked,
     upsertMenuGroup,
-    type MealSlot
+    type MealSlot,
+    type ShoppingListKind
   } from '$lib/food/commands';
-  import type { MenuSlotView } from '$lib/server/food.server';
+  import type { MenuSlotView, ShoppingLine } from '$lib/server/food.server';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -364,39 +365,73 @@
     });
   }
 
-  // ── Lista de la compra (AC-24) ─────────────────────────────────────────────
+  // ── Lista de la compra (AC-24 · P2-4) ──────────────────────────────────────
   let itemFoodId = $state('');
   let itemName = $state('');
   let itemQuantity = $state('');
   let itemUnit = $state('');
   let itemSection = $state('');
+  /** A qué lista se añade: la de casa o la personal de la interna. */
+  let itemList = $state<ShoppingListKind>('casa');
 
-  /** Marcado optimista por artículo: taps encadenables, sin bloquear nada. */
+  /** Marcado optimista por LÍNEA: taps encadenables, sin bloquear nada. */
   let checkedOverrides = $state<Record<string, boolean>>({});
   /** Añadidos recién guardados que aún no llegaron del servidor. */
-  type OptimisticAddition = { operationId: string; name: string; quantity: string; unit: string };
+  type OptimisticAddition = {
+    operationId: string;
+    name: string;
+    quantity: string;
+    unit: string;
+    listKind: ShoppingListKind;
+  };
   let optimisticAdds = $state<OptimisticAddition[]>([]);
   const serverEntryNames = $derived(
-    new Set((shopping?.sections ?? []).flatMap((section) => section.entries.map((entry) => entry.name)))
+    new Set(
+      [
+        ...(shopping?.sections ?? []).flatMap((section) => section.lines),
+        ...(shopping?.personal ?? [])
+      ].map((line) => line.name.trim().toLowerCase())
+    )
   );
-  // Dedupe por nombre: cuando los datos frescos ya lo listan, la fila
-  // optimista desaparece sin solaparse ni parpadear.
-  const pendingAdds = $derived(optimisticAdds.filter((addition) => !serverEntryNames.has(addition.name)));
+
+  /**
+   * Dedupe visual de los añadidos optimistas: dos taps rápidos del mismo
+   * artículo son UNA sola línea provisional («×2»), y cuando los datos frescos
+   * ya lo listan, la fila optimista desaparece sin solaparse ni parpadear.
+   */
+  const pendingAdds = $derived.by(() => {
+    const grouped = new Map<string, OptimisticAddition & { times: number }>();
+    for (const addition of optimisticAdds) {
+      const normalized = addition.name.trim().toLowerCase();
+      if (serverEntryNames.has(normalized)) continue;
+      const key = `${addition.listKind}|${normalized}|${addition.quantity}|${addition.unit}`;
+      const existing = grouped.get(key);
+      if (existing) existing.times += 1;
+      else grouped.set(key, { ...addition, times: 1 });
+    }
+    return [...grouped.values()];
+  });
+  const pendingHouseAdds = $derived(pendingAdds.filter((addition) => addition.listKind === 'casa'));
+  const pendingPersonalAdds = $derived(pendingAdds.filter((addition) => addition.listKind === 'personal'));
 
   function submitShoppingItem(event: SubmitEvent): void {
     event.preventDefault();
     if (!shopping) return;
-    if (!itemFoodId && !itemName.trim()) return;
-    const food = shopping.foods.find((candidate) => candidate.id === itemFoodId);
-    const displayName = (itemFoodId ? food?.name : itemName.trim()) ?? itemName.trim();
+    const listKind = shopping.canUsePersonal ? itemList : 'casa';
+    // La lista personal se escribe a mano siempre (nunca sale del menú).
+    const foodId = listKind === 'personal' ? '' : itemFoodId;
+    if (!foodId && !itemName.trim()) return;
+    const food = shopping.foods.find((candidate) => candidate.id === foodId);
+    const displayName = (foodId ? food?.name : itemName.trim()) ?? itemName.trim();
     const envelope = addShoppingItem({
       householdId: shopping.householdId,
-      foodId: itemFoodId || undefined,
-      customName: itemFoodId ? undefined : itemName,
+      foodId: foodId || undefined,
+      customName: foodId ? undefined : itemName,
       quantity: itemQuantity,
       unit: itemUnit,
-      section: itemSection || food?.section,
-      weekStartsOn: shopping.weekStartsOn
+      section: itemSection || (listKind === 'personal' ? 'personal' : food?.section),
+      weekStartsOn: shopping.weekStartsOn,
+      listKind
     });
     const removeAddition = () => {
       optimisticAdds = optimisticAdds.filter((addition) => addition.operationId !== envelope.operationId);
@@ -405,7 +440,13 @@
       apply: () => {
         optimisticAdds = [
           ...optimisticAdds,
-          { operationId: envelope.operationId, name: displayName, quantity: itemQuantity.trim(), unit: itemUnit.trim() }
+          {
+            operationId: envelope.operationId,
+            name: displayName,
+            quantity: itemQuantity.trim(),
+            unit: itemUnit.trim(),
+            listKind
+          }
         ];
         itemFoodId = '';
         itemName = '';
@@ -418,20 +459,56 @@
     });
   }
 
-  function toggleChecked(itemId: string, checked: boolean): void {
+  function overrideKey(listKind: ShoppingListKind, lineKey: string): string {
+    return `${listKind}|${lineKey}`;
+  }
+
+  function shownChecked(line: ShoppingLine, listKind: ShoppingListKind): boolean {
+    const key = overrideKey(listKind, line.key);
+    return key in checkedOverrides ? checkedOverrides[key]! : line.checked;
+  }
+
+  /**
+   * Marca la línea entera, venga del menú, de un añadido a mano o de los dos:
+   * un solo comando idempotente que el servidor resuelve sobre la semana.
+   */
+  function toggleLine(line: ShoppingLine, listKind: ShoppingListKind): void {
     if (!shopping) return;
-    const next = !checked;
-    void optimistic.run(setShoppingChecked({ householdId: shopping.householdId, itemId, checked: next }), {
-      apply: () => {
-        checkedOverrides[itemId] = next;
-      },
-      revert: () => {
-        delete checkedOverrides[itemId];
-      },
-      settle: () => {
-        delete checkedOverrides[itemId];
+    const key = overrideKey(listKind, line.key);
+    const next = !shownChecked(line, listKind);
+    void optimistic.run(
+      setShoppingLineChecked({
+        householdId: shopping.householdId,
+        weekStartsOn: shopping.weekStartsOn,
+        lineKey: line.key,
+        listKind,
+        checked: next
+      }),
+      {
+        apply: () => {
+          checkedOverrides[key] = next;
+        },
+        revert: () => {
+          delete checkedOverrides[key];
+        },
+        settle: () => {
+          delete checkedOverrides[key];
+        }
       }
-    });
+    );
+  }
+
+  /** «500 g del menú + 1 añadido» — el origen de la cantidad, a la vista. */
+  function partOrigin(line: ShoppingLine, part: ShoppingLine['parts'][number]): string {
+    if (line.origin !== 'mixed' || part.fromMenu === null || part.fromManual === null) return '';
+    const unit = part.unit ? ` ${part.unit}` : '';
+    return `${formatQuantityEs(part.fromMenu)}${unit} del menú + ${formatQuantityEs(part.fromManual)}${unit} añadido`;
+  }
+
+  function packagesLabel(line: ShoppingLine, part: ShoppingLine['parts'][number]): string {
+    if (part.packages === null || !line.packaging) return '';
+    const size = `${formatQuantityEs(line.packaging.size)} ${line.packaging.unit}`;
+    return part.packages === 1 ? `1 paquete de ${size}` : `${part.packages} paquetes de ${size}`;
   }
 
   // Modo fixture (sin base de datos): lectura pura del menú de demostración.
@@ -786,6 +863,30 @@
         </section>
       {/if}
     {:else if shopping}
+      {#snippet shoppingLine(line: ShoppingLine, listKind: ShoppingListKind)}
+        {@const marked = shownChecked(line, listKind)}
+        <li class:checked={marked}>
+          {#if shopping.canWrite}
+            <label class="inline-check">
+              <input type="checkbox" checked={marked} onchange={() => toggleLine(line, listKind)} />
+              <span>{line.name}</span>
+            </label>
+          {:else}
+            <span>{line.name}</span>
+          {/if}
+          <small>
+            {#each line.parts as part, index (part.unit ?? index)}
+              {index > 0 ? ' + ' : ''}
+              {#if part.quantity}{formatQuantityEs(part.quantity)} {part.unit ?? ''}{/if}
+              {#if packagesLabel(line, part)}<span class="shopping-packages">({packagesLabel(line, part)})</span>{/if}
+              {#if partOrigin(line, part)}<span class="shopping-origin">{partOrigin(line, part)}</span>{/if}
+              {#if part.includesFixed}· incluye cantidad fija sin escalar{/if}
+            {/each}
+            {#if line.origin === 'menu'}· del menú{/if}
+          </small>
+        </li>
+      {/snippet}
+
       <section class="card" aria-labelledby="shopping-title">
         <div class="section-heading">
           <div><p class="eyebrow">Semana del {weekLabel(shopping.weekStartsOn)}</p><h2 id="shopping-title">Lista de la compra</h2></div>
@@ -793,33 +894,18 @@
         {#each shopping.sections as section (section.section)}
           <h3 class="shopping-section-title">{section.section}</h3>
           <ul class="ingredient-list">
-            {#each section.entries as entry (entry.itemId ?? `${entry.foodId}:${entry.unit}`)}
-              {@const shownChecked = entry.itemId !== null && entry.itemId in checkedOverrides ? checkedOverrides[entry.itemId] : entry.checked}
-              <li class:checked={shownChecked}>
-                {#if entry.kind === 'manual' && shopping.canWrite}
-                  <label class="inline-check">
-                    <input type="checkbox" checked={shownChecked} onchange={() => toggleChecked(entry.itemId!, shownChecked ?? false)} />
-                    <span>{entry.name}</span>
-                  </label>
-                {:else}
-                  <span>{entry.name}</span>
-                {/if}
-                <small>
-                  {#if entry.quantity}{formatQuantityEs(entry.quantity)} {entry.unit ?? ''}{/if}
-                  {#if entry.includesFixed}· incluye cantidad fija sin escalar{/if}
-                  {#if entry.kind === 'derived'}· del menú{/if}
-                </small>
-              </li>
+            {#each section.lines as line (line.key)}
+              {@render shoppingLine(line, 'casa')}
             {/each}
           </ul>
         {:else}
           <p class="audit-note">No hay nada en la lista de esta semana todavía.</p>
         {/each}
-        {#if pendingAdds.length}
+        {#if pendingHouseAdds.length}
           <ul class="ingredient-list">
-            {#each pendingAdds as addition (addition.operationId)}
+            {#each pendingHouseAdds as addition (addition.operationId)}
               <li>
-                <span>{addition.name}</span>
+                <span>{addition.name}{#if addition.times > 1}&nbsp;×{addition.times}{/if}</span>
                 <small>{#if addition.quantity}{addition.quantity} {addition.unit}{/if}</small>
               </li>
             {/each}
@@ -827,19 +913,70 @@
         {/if}
       </section>
 
+      {#if shopping.canUsePersonal}
+        <!-- Compra personal quincenal del manual de convivencia: sección
+             aparte y visible solo para la persona interna y quien administra
+             la casa. Quien no puede verla no recibe ni una fila (RLS). -->
+        <section class="card" aria-labelledby="shopping-personal-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Solo lo ve la persona interna y quien administra la casa</p>
+              <h2 id="shopping-personal-title">Personal</h2>
+            </div>
+          </div>
+          <p class="audit-note">
+            La compra personal de la persona interna. Se apunta aquí para poder comprobarla aparte de la de casa.
+          </p>
+          {#if shopping.personal.length}
+            <ul class="ingredient-list">
+              {#each shopping.personal as line (line.key)}
+                {@render shoppingLine(line, 'personal')}
+              {/each}
+            </ul>
+          {:else}
+            <p class="audit-note">Todavía no hay nada apuntado en la lista personal de esta semana.</p>
+          {/if}
+          {#if pendingPersonalAdds.length}
+            <ul class="ingredient-list">
+              {#each pendingPersonalAdds as addition (addition.operationId)}
+                <li>
+                  <span>{addition.name}{#if addition.times > 1}&nbsp;×{addition.times}{/if}</span>
+                  <small>{#if addition.quantity}{addition.quantity} {addition.unit}{/if}</small>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+      {/if}
+
       {#if shopping.canWrite}
         <section class="card" aria-labelledby="shopping-add-title">
           <div class="section-heading"><div><p class="eyebrow">Lista de la compra</p><h2 id="shopping-add-title">Añadir otra cosa</h2></div></div>
           <form class="action-form" onsubmit={submitShoppingItem}>
-            <label>¿Qué es? (elige o escríbelo)
-              <select bind:value={itemFoodId}>
-                <option value="">— Otra cosa: escríbela abajo —</option>
-                {#each shopping.foods as food (food.id)}
-                  <option value={food.id}>{food.name}</option>
-                {/each}
-              </select>
-            </label>
-            {#if !itemFoodId}
+            {#if shopping.canUsePersonal}
+              <fieldset class="inline-check-group">
+                <legend>¿A qué lista?</legend>
+                <label class="inline-check">
+                  <input type="radio" value="casa" bind:group={itemList} />
+                  La compra de casa
+                </label>
+                <label class="inline-check">
+                  <input type="radio" value="personal" bind:group={itemList} />
+                  La lista personal
+                </label>
+              </fieldset>
+            {/if}
+            {#if itemList === 'casa'}
+              <label>¿Qué es? (elige o escríbelo)
+                <select bind:value={itemFoodId}>
+                  <option value="">— Otra cosa: escríbela abajo —</option>
+                  {#each shopping.foods as food (food.id)}
+                    <option value={food.id}>{food.name}</option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+            {#if itemList === 'personal' || !itemFoodId}
               <label>Escríbelo aquí
                 <input type="text" autocomplete="off" enterkeyhint="next" bind:value={itemName} maxlength="120" />
               </label>
@@ -850,10 +987,14 @@
             <label>Unidad
               <input type="text" autocomplete="off" enterkeyhint="next" bind:value={itemUnit} maxlength="30" placeholder="kg" />
             </label>
-            <label>Sección
-              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={itemSection} maxlength="60" placeholder="despensa" />
-            </label>
-            <button class="button primary" type="submit">Añadir a la compra</button>
+            {#if itemList === 'casa'}
+              <label>Sección
+                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={itemSection} maxlength="60" placeholder="despensa" />
+              </label>
+            {/if}
+            <button class="button primary" type="submit">
+              {itemList === 'personal' ? 'Añadir a la lista personal' : 'Añadir a la compra'}
+            </button>
           </form>
         </section>
       {/if}
@@ -914,6 +1055,14 @@
     gap: 0.15rem;
   }
   .first-use-steps small {
+    color: var(--ink-soft);
+  }
+
+  /* Compra (P2-4): el redondeo a paquetes y el desglose por origen son
+     apoyos de la cantidad, no ruido que compita con el nombre. */
+  .shopping-packages,
+  .shopping-origin {
+    margin-left: 0.35rem;
     color: var(--ink-soft);
   }
 

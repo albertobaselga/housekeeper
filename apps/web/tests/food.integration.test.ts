@@ -265,29 +265,39 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
     const list = await loadShoppingList(ADMIN_USER, FIXTURE_HOUSEHOLD, WEEK, appPool);
     expect(list).not.toBeNull();
     expect(list!.canWrite).toBe(true);
+    // La administración familiar sí dispone de la sección «Personal».
+    expect(list!.canUsePersonal).toBe(true);
 
     const frescos = list!.sections.find((section) => section.section === 'frescos')!;
     // Leche: 0.50 × 2/4 (crema, 2 comensales) + 1.00 × 2/2 (arroz) = 1.25 l.
-    const leche = frescos.entries.find((entry) => entry.foodId === FOOD_LECHE)!;
-    expect(leche.quantity).toBe('1.25');
-    expect(leche.unit).toBe('l');
-    expect(leche.kind).toBe('derived');
+    const leche = frescos.lines.find((line) => line.foodId === FOOD_LECHE)!;
+    expect(leche.parts).toEqual([
+      expect.objectContaining({ unit: 'l', quantity: '1.25', fromMenu: '1.25', fromManual: null })
+    ]);
+    expect(leche.origin).toBe('menu');
     // Nata: 0.20 × 2/4 = 0.1 l.
-    expect(frescos.entries.find((entry) => entry.foodId === FOOD_NATA)!.quantity).toBe('0.1');
+    expect(frescos.lines.find((line) => line.foodId === FOOD_NATA)!.parts[0]!.quantity).toBe('0.1');
 
     const despensa = list!.sections.find((section) => section.section === 'despensa')!;
     // 'fixed' entra intacto, sin escalar por comensales.
-    const aceite = despensa.entries.find((entry) => entry.foodId === FOOD_ACEITE)!;
-    expect(aceite.quantity).toBe('0.1');
-    expect(aceite.includesFixed).toBe(true);
-    expect(despensa.entries.find((entry) => entry.foodId === FOOD_ARROZ)!.quantity).toBe('0.3');
+    const aceite = despensa.lines.find((line) => line.foodId === FOOD_ACEITE)!;
+    expect(aceite.parts[0]!.quantity).toBe('0.1');
+    expect(aceite.parts[0]!.includesFixed).toBe(true);
+    expect(despensa.lines.find((line) => line.foodId === FOOD_ARROZ)!.parts[0]!.quantity).toBe('0.3');
 
-    // El añadido manual conserva su fila (marcable) en su sección.
+    // El añadido a mano conserva su línea marcable en su sección.
     const hogar = list!.sections.find((section) => section.section === 'hogar')!;
-    const manual = hogar.entries.find((entry) => entry.name === 'Papel de cocina')!;
-    expect(manual.kind).toBe('manual');
-    expect(manual.itemId).not.toBeNull();
+    const manual = hogar.lines.find((line) => line.name === 'Papel de cocina')!;
+    expect(manual.origin).toBe('manual');
+    expect(manual.itemIds).toHaveLength(1);
     expect(manual.checked).toBe(false);
+  });
+
+  it('loadShoppingList: el apoyo no recibe la sección personal ni se le ofrece', async () => {
+    const helper = await loadShoppingList(HELPER_USER, FIXTURE_HOUSEHOLD, WEEK, appPool);
+    expect(helper).not.toBeNull();
+    expect(helper!.canUsePersonal).toBe(false);
+    expect(helper!.personal).toEqual([]);
   });
 
   it('loadRecipe trae la ficha con alérgenos y estado de revisión', async () => {

@@ -1,15 +1,13 @@
 import type { CommandHandlers } from "../sync.js";
 import { dinerCommandHandler, foodCommandHandler, recipeCommandHandler } from "./food.js";
-import {
-  menuGroupCommandHandler,
-  menuSlotCommandHandler,
-  shoppingItemCommandHandler,
-} from "./menu.js";
+import { menuGroupCommandHandler, menuSlotCommandHandler } from "./menu.js";
 import { menuTemplateCommandHandler } from "./menu-template.js";
+import { shoppingItemCommandHandler } from "./shopping.js";
 
 export * from "./food.js";
 export * from "./menu.js";
 export * from "./menu-template.js";
+export * from "./shopping.js";
 
 /**
  * Handlers de comida, menú y compra listos para `processSyncBatch`: catálogo
