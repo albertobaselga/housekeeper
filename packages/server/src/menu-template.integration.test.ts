@@ -36,7 +36,7 @@ const EMPTY_WEEK = "2026-12-07";
 function envelope(
   aggregateType: AggregateType,
   payload: unknown,
-  operationId = randomUUID(),
+  operationId: string = randomUUID(),
 ): CommandEnvelopeV1 {
   return {
     apiVersion: API_VERSION,
