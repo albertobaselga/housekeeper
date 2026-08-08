@@ -28,6 +28,50 @@ function mondayPlus(weeks: number): string {
 const WEEK = mondayPlus(9);
 const DINER_NAME = 'Nieta sin alergias E2E';
 
+/**
+ * Espera a que el outbox local quede vacío: el marcado se pinta al instante
+ * (optimista) y recargar antes del ACK abortaría el comando en vuelo. La doble
+ * lectura evita muestrear el hueco entre el tap y la escritura en IndexedDB.
+ */
+async function outboxDrained(page: Page): Promise<void> {
+  const count = (): Promise<number> =>
+    page.evaluate(
+      () =>
+        new Promise<number>((resolve, reject) => {
+          const open = indexedDB.open('casa-clara-web');
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const db = open.result;
+            if (!db.objectStoreNames.contains('outbox')) {
+              db.close();
+              resolve(0);
+              return;
+            }
+            const request = db.transaction('outbox', 'readonly').objectStore('outbox').count();
+            request.onsuccess = () => {
+              db.close();
+              resolve(request.result);
+            };
+            request.onerror = () => {
+              db.close();
+              reject(request.error);
+            };
+          };
+        })
+    );
+  await expect
+    .poll(
+      async () => {
+        const first = await count();
+        if (first > 0) return first;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return count();
+      },
+      { timeout: 10_000 }
+    )
+    .toBe(0);
+}
+
 async function gotoShopping(page: Page, account: 'family' | 'employee' | 'helper'): Promise<void> {
   await loginAs(page, account);
   await page.goto(`/h/${HOUSEHOLD}/menu?week=${WEEK}`);
@@ -61,6 +105,7 @@ test('Marta planifica la semana y marca como comprado un artículo «del menú»
   await expect(arroz).toHaveClass(/checked/);
 
   // Y sigue marcado tras recargar: el hecho se persiste por semana + línea.
+  await outboxDrained(page);
   await page.reload();
   await page.getByRole('button', { name: 'Lista de la compra' }).click();
   await expect(
@@ -103,6 +148,14 @@ test('la sección «Personal» es de la interna: Ana la usa y para el apoyo no e
   await expect(item).toBeVisible();
   await item.getByRole('checkbox').check();
   await expect(item).toHaveClass(/checked/);
+
+  // Y el marcado llegó de verdad al servidor, no solo al pintado optimista.
+  await outboxDrained(page);
+  await page.reload();
+  await page.getByRole('button', { name: 'Lista de la compra' }).click();
+  await expect(
+    page.locator('.ingredient-list li').filter({ hasText: 'Champú de Ana E2E' }).getByRole('checkbox')
+  ).toBeChecked();
 });
 
 test('para el apoyo la lista «Personal» no existe, pero la de casa sí (Anexo H)', async ({ page }) => {
