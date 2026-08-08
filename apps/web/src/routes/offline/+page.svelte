@@ -15,8 +15,35 @@
     body: string;
   }
 
+  interface SnapshotMenuSlot {
+    id: string;
+    mealLabel: string;
+    groupName: string;
+    dish: string;
+    confirmed: boolean;
+  }
+
+  interface SnapshotRoutine {
+    id: string;
+    title: string;
+    dueLabel: string;
+    overdue: boolean;
+    done: boolean;
+  }
+
+  interface SnapshotGuidePage {
+    id: string;
+    title: string;
+    space: string;
+    body: string;
+  }
+
   let contacts = $state<SnapshotContact[]>([]);
   let notes = $state<SnapshotNote[]>([]);
+  let dateLabel = $state('');
+  let menu = $state<SnapshotMenuSlot[]>([]);
+  let routines = $state<SnapshotRoutine[]>([]);
+  let guidePages = $state<SnapshotGuidePage[]>([]);
   let snapshotLoaded = $state(false);
 
   function asContact(value: unknown): SnapshotContact | null {
@@ -37,6 +64,54 @@
     return { id: candidate.id, title: candidate.title, body: candidate.body };
   }
 
+  function asMenuSlot(value: unknown): SnapshotMenuSlot | null {
+    if (!value || typeof value !== 'object') return null;
+    const candidate = value as Partial<SnapshotMenuSlot>;
+    if (typeof candidate.id !== 'string' || typeof candidate.dish !== 'string') return null;
+    return {
+      id: candidate.id,
+      mealLabel: typeof candidate.mealLabel === 'string' ? candidate.mealLabel : '',
+      groupName: typeof candidate.groupName === 'string' ? candidate.groupName : '',
+      dish: candidate.dish,
+      confirmed: candidate.confirmed === true
+    };
+  }
+
+  function asRoutine(value: unknown): SnapshotRoutine | null {
+    if (!value || typeof value !== 'object') return null;
+    const candidate = value as Partial<SnapshotRoutine>;
+    if (typeof candidate.id !== 'string' || typeof candidate.title !== 'string') return null;
+    return {
+      id: candidate.id,
+      title: candidate.title,
+      dueLabel: typeof candidate.dueLabel === 'string' ? candidate.dueLabel : '',
+      overdue: candidate.overdue === true,
+      done: candidate.done === true
+    };
+  }
+
+  function asGuidePage(value: unknown): SnapshotGuidePage | null {
+    if (!value || typeof value !== 'object') return null;
+    const candidate = value as Partial<SnapshotGuidePage>;
+    if (typeof candidate.id !== 'string' || typeof candidate.title !== 'string' || typeof candidate.body !== 'string') {
+      return null;
+    }
+    return {
+      id: candidate.id,
+      title: candidate.title,
+      space: typeof candidate.space === 'string' ? candidate.space : '',
+      body: candidate.body
+    };
+  }
+
+  /** Párrafos legibles sin hoja de estilos: el Markdown se lee tal cual, por líneas. */
+  function paragraphs(body: string): string[] {
+    return body
+      .split(/\n{2,}/)
+      .map((block) => block.replace(/\s*\n\s*/g, ' ').trim())
+      .filter(Boolean);
+  }
+
   // El fallback offline se sirve bajo la URL que se intentaba visitar
   // (p. ej. /h/<id>/emergency): el hogar se lee de esa URL, no de datos de
   // servidor, porque aquí no hay servidor.
@@ -54,6 +129,17 @@
       if (!snapshot) return;
       contacts = snapshot.payload.contacts.map(asContact).filter((value): value is SnapshotContact => value !== null);
       notes = snapshot.payload.emergency.map(asNote).filter((value): value is SnapshotNote => value !== null);
+      const today = (snapshot.payload.today ?? {}) as Record<string, unknown>;
+      dateLabel = typeof today.dateLabel === 'string' ? today.dateLabel : '';
+      menu = (Array.isArray(today.menu) ? today.menu : [])
+        .map(asMenuSlot)
+        .filter((value): value is SnapshotMenuSlot => value !== null);
+      routines = (Array.isArray(today.routines) ? today.routines : [])
+        .map(asRoutine)
+        .filter((value): value is SnapshotRoutine => value !== null);
+      guidePages = snapshot.payload.wikiPages
+        .map(asGuidePage)
+        .filter((value): value is SnapshotGuidePage => value !== null);
       snapshotLoaded = true;
     } catch {
       // Sin IndexedDB o snapshot ilegible: se mantiene el aviso genérico.
@@ -110,9 +196,65 @@
           {/each}
         </ul>
       {/if}
-      <p style="margin: 0.75rem 0 0; font-size: 0.8rem; color: #666;">Información del snapshot crítico guardado en este dispositivo.</p>
+      <p style="margin: 0.75rem 0 0; font-size: 0.8rem; color: #666;">Información guardada en este dispositivo la última vez que hubo conexión.</p>
     {:else}
       <p style="margin: 0; font-size: 0.9rem; color: #444;">Si has iniciado sesión en este dispositivo, los contactos de emergencia guardados aparecerán aquí en cuanto la página termine de cargar.</p>
     {/if}
   </section>
+
+  {#if menu.length > 0 || routines.length > 0}
+    <section aria-labelledby="offline-today-title" style="border: 1px solid #ddd; border-radius: 12px; padding: 1.25rem; background: #fff; margin-top: 1.25rem;">
+      <h2 id="offline-today-title" style="margin: 0 0 0.25rem; font-size: 1.15rem; color: #1a1a1a;">El día de hoy</h2>
+      {#if dateLabel}
+        <p style="margin: 0 0 0.75rem; font-size: 0.85rem; color: #666;">{dateLabel}</p>
+      {/if}
+
+      {#if menu.length > 0}
+        <h3 style="margin: 0 0 0.5rem; font-size: 0.95rem; color: #1a1a1a;">Qué se come</h3>
+        <ul style="list-style: none; margin: 0 0 1rem; padding: 0;">
+          {#each menu as slot (slot.id)}
+            <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+              <strong style="color: #1a1a1a;">{slot.mealLabel}</strong>
+              <span style="color: #444;"> · {slot.dish}</span>
+              {#if slot.groupName}<span style="color: #666; font-size: 0.85rem;"> ({slot.groupName})</span>{/if}
+              {#if !slot.confirmed}
+                <span style="color: #8a5a00; font-size: 0.8rem;"> · Sin confirmar</span>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      {#if routines.length > 0}
+        <h3 style="margin: 0 0 0.5rem; font-size: 0.95rem; color: #1a1a1a;">Tareas que tocan hoy</h3>
+        <ul style="list-style: none; margin: 0; padding: 0;">
+          {#each routines as routine (routine.id)}
+            <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+              <strong style="color: #1a1a1a;">{routine.title}</strong>
+              <span style="color: #666; font-size: 0.85rem;">
+                {' · '}{routine.done ? 'Hecha' : routine.overdue ? routine.dueLabel : 'Pendiente'}
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </section>
+  {/if}
+
+  {#if guidePages.length > 0}
+    <section aria-labelledby="offline-guide-title" style="border: 1px solid #ddd; border-radius: 12px; padding: 1.25rem; background: #fff; margin-top: 1.25rem;">
+      <h2 id="offline-guide-title" style="margin: 0 0 0.75rem; font-size: 1.15rem; color: #1a1a1a;">Instrucciones guardadas</h2>
+      {#each guidePages as page (page.id)}
+        <article style="padding: 0.5rem 0 0.75rem; border-bottom: 1px solid #eee;">
+          <h3 style="margin: 0; font-size: 0.98rem; color: #1a1a1a;">{page.title}</h3>
+          {#if page.space}
+            <p style="margin: 0.1rem 0 0.4rem; font-size: 0.8rem; color: #666;">{page.space}</p>
+          {/if}
+          {#each paragraphs(page.body) as block}
+            <p style="margin: 0 0 0.4rem; color: #444;">{block}</p>
+          {/each}
+        </article>
+      {/each}
+    </section>
+  {/if}
 </main>

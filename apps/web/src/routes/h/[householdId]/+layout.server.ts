@@ -4,7 +4,7 @@ import { guardForPath } from '$lib/auth/routing';
 import { loadSnapshotContacts } from '$lib/server/contacts.server';
 import { getHousehold } from '$lib/server/fixtures.server';
 import { getSnapshotKeys } from '$lib/server/keys.server';
-import { buildCriticalSnapshot } from '$lib/server/snapshot.server';
+import { buildCriticalSnapshot, loadSnapshotHousehold } from '$lib/server/snapshot.server';
 import type { AppContext } from '$lib/auth/types';
 import type { LayoutServerLoad } from './$types';
 
@@ -24,9 +24,13 @@ export const load: LayoutServerLoad = async ({ locals, params, url }) => {
     error(403, 'Esta parte la lleva la familia.');
   }
 
-  // Contactos reales del hogar para el snapshot crítico (null sin pool: la
-  // demo conserva la fixture sintética).
-  const snapshotContacts = await loadSnapshotContacts({ id: locals.user.id }, household.id);
+  // Contenido real del hogar para el snapshot crítico (null sin pool: la demo
+  // conserva la fixture sintética). Las dos lecturas van en paralelo: cada una
+  // abre su propia transacción autorizada y no dependen entre sí.
+  const [snapshotContacts, snapshotHousehold] = await Promise.all([
+    loadSnapshotContacts({ id: locals.user.id }, household.id),
+    loadSnapshotHousehold({ id: locals.user.id }, household.id)
+  ]);
 
   const context: AppContext = {
     user: locals.user,
@@ -35,7 +39,12 @@ export const load: LayoutServerLoad = async ({ locals, params, url }) => {
     capabilities: capabilitiesFor(locals.user.role),
     locale: 'es-ES',
     timeZone: 'Europe/Madrid',
-    criticalSnapshot: buildCriticalSnapshot(household.id, locals.user.membershipId, snapshotContacts),
+    criticalSnapshot: buildCriticalSnapshot(
+      household.id,
+      locals.user.membershipId,
+      snapshotContacts,
+      snapshotHousehold
+    ),
     snapshotPublicKey: getSnapshotKeys().publicKeyRaw,
     synthetic: locals.syntheticOnly
   };
