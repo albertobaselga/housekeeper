@@ -16,7 +16,9 @@
 //
 // Front-matter YAML mínimo (parseado a mano, sin dependencias):
 //   title (obligatorio), slug?, tags? (lista), aliases? (lista),
-//   status? (draft|published; por defecto published).
+//   status? (draft|published; por defecto published),
+//   pinned? (true|false; fijada en la portada de la Guía).
+// El `_space.md` admite además `position` (orden del apartado en portada).
 //
 // Enlaces internos relativos `[texto](./otra.md)` se reescriben a
 // `[texto](wiki:slug)` para que sobrevivan a renombrados (slug histórico).
@@ -43,8 +45,8 @@ import pg from 'pg';
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PAGE_KEYS = new Set(['title', 'slug', 'tags', 'aliases', 'status']);
-const SPACE_KEYS = new Set(['name', 'description']);
+const PAGE_KEYS = new Set(['title', 'slug', 'tags', 'aliases', 'status', 'pinned']);
+const SPACE_KEYS = new Set(['name', 'description', 'position']);
 
 export function slugify(value) {
   const slug = value
@@ -121,6 +123,11 @@ function parsePageFile(raw, { fallbackSlug }) {
   if (status !== 'draft' && status !== 'published') {
     throw new Error(`«status» debe ser draft o published, llegó «${data.status}»`);
   }
+  const pinnedRaw = data.pinned ?? 'false';
+  if (pinnedRaw !== 'true' && pinnedRaw !== 'false') {
+    throw new Error(`«pinned» debe ser true o false, llegó «${data.pinned}»`);
+  }
+  const pinned = pinnedRaw === 'true';
   let slug;
   if ('slug' in data) {
     if (Array.isArray(data.slug) || !SLUG_RE.test(data.slug)) {
@@ -136,6 +143,7 @@ function parsePageFile(raw, { fallbackSlug }) {
     tags: data.tags ?? [],
     aliases: data.aliases ?? [],
     status,
+    pinned,
     body,
   };
 }
@@ -211,24 +219,31 @@ export async function buildPlan(rootDir) {
     }
     let name = entry.name;
     let description = '';
+    let position = 0;
     const spaceFile = path.join(spaceDir, '_space.md');
     if (await stat(spaceFile).then((s) => s.isFile(), () => false)) {
       try {
         const { data } = parseFrontMatter(await readFile(spaceFile, 'utf8'), {
           allowedKeys: SPACE_KEYS,
         });
-        for (const key of ['name', 'description']) {
+        for (const key of ['name', 'description', 'position']) {
           if (key in data && typeof data[key] !== 'string') {
             throw new Error(`«${key}» debe ser un escalar`);
           }
         }
         if (data.name) name = data.name.trim();
         if (data.description) description = data.description.trim();
+        if ('position' in data) {
+          if (!/^\d+$/.test(data.position)) {
+            throw new Error(`«position» debe ser un entero no negativo, llegó «${data.position}»`);
+          }
+          position = Number(data.position);
+        }
       } catch (error) {
         errors.push({ file: relative(spaceFile), reason: error.message });
       }
     }
-    spaces.push({ slug: spaceSlug, name, description, dir: entry.name });
+    spaces.push({ slug: spaceSlug, name, description, position, dir: entry.name });
     await walk(spaceDir, spaceSlug, null);
   }
 
@@ -317,27 +332,31 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
     const spaceIdBySlug = new Map();
     for (const space of plan.spaces) {
       const existing = await client.query(
-        `select id, name, description from app.wiki_spaces
+        `select id, name, description, position from app.wiki_spaces
           where household_id = $1 and slug = $2`,
         [householdId, space.slug]
       );
       if (existing.rowCount === 0) {
         const inserted = await client.query(
-          `insert into app.wiki_spaces (household_id, slug, name, description, created_by_membership_id)
-           values ($1, $2, $3, $4, $5)
+          `insert into app.wiki_spaces (household_id, slug, name, description, position, created_by_membership_id)
+           values ($1, $2, $3, $4, $5, $6)
            returning id`,
-          [householdId, space.slug, space.name, space.description, membershipId]
+          [householdId, space.slug, space.name, space.description, space.position, membershipId]
         );
         spaceIdBySlug.set(space.slug, inserted.rows[0].id);
         report.spaces.created.push(space.slug);
       } else {
         const row = existing.rows[0];
         spaceIdBySlug.set(space.slug, row.id);
-        if (row.name !== space.name || row.description !== space.description) {
+        if (
+          row.name !== space.name ||
+          row.description !== space.description ||
+          row.position !== space.position
+        ) {
           await client.query(
-            `update app.wiki_spaces set name = $3, description = $4
+            `update app.wiki_spaces set name = $3, description = $4, position = $5
               where household_id = $1 and id = $2`,
-            [householdId, row.id, space.name, space.description]
+            [householdId, row.id, space.name, space.description, space.position]
           );
           report.spaces.updated.push(space.slug);
         } else {
@@ -352,7 +371,7 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
         const spaceId = spaceIdBySlug.get(page.spaceSlug);
         const parentId = page.parentFile ? pageIdByFile.get(page.parentFile) ?? null : null;
         const existing = await client.query(
-          `select p.id, p.space_id, p.status, p.parent_page_id, p.current_slug,
+          `select p.id, p.space_id, p.status, p.parent_page_id, p.current_slug, p.pinned,
                   r.title, r.body_markdown, r.tags, r.aliases, r.summary
              from app.wiki_page_slugs s
              join app.wiki_pages p on p.household_id = s.household_id and p.id = s.page_id
@@ -365,10 +384,10 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
         if (existing.rowCount === 0) {
           const inserted = await client.query(
             `insert into app.wiki_pages
-               (household_id, space_id, parent_page_id, status, current_slug, position, created_by_membership_id)
-             values ($1, $2, $3, $4, $5, $6, $7)
+               (household_id, space_id, parent_page_id, status, current_slug, pinned, position, created_by_membership_id)
+             values ($1, $2, $3, $4, $5, $6, $7, $8)
              returning id`,
-            [householdId, spaceId, parentId, page.status, page.slug, page.position, membershipId]
+            [householdId, spaceId, parentId, page.status, page.slug, page.pinned, page.position, membershipId]
           );
           const pageId = inserted.rows[0].id;
           pageIdByFile.set(page.file, pageId);
@@ -401,7 +420,10 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
               });
         const sameContent =
           existingHash === page.hash || (existingHash === null && summaryHash === page.hash.slice(0, 12));
-        const sameMeta = row.status === page.status && (row.parent_page_id ?? null) === parentId;
+        const sameMeta =
+          row.status === page.status &&
+          (row.parent_page_id ?? null) === parentId &&
+          row.pinned === page.pinned;
 
         if (sameContent && sameMeta) {
           report.pages.skipped.push(page.slug);
@@ -410,11 +432,12 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
         if (!sameContent) {
           await insertRevision(client, { householdId, membershipId, pageId: row.id, page });
           report.revisions += 1;
-        } else {
+        }
+        if (!sameMeta || !sameContent) {
           await client.query(
-            `update app.wiki_pages set status = $3, parent_page_id = $4
+            `update app.wiki_pages set status = $3, parent_page_id = $4, pinned = $5
               where household_id = $1 and id = $2`,
-            [householdId, row.id, page.status, parentId]
+            [householdId, row.id, page.status, parentId, page.pinned]
           );
         }
         report.pages.updated.push(page.slug);
