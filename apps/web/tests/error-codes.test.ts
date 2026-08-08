@@ -10,9 +10,11 @@ describe('diccionario compartido de códigos de error', () => {
     expect(describeErrorCode('not_allowed')).toBe('Tu rol no permite esta acción');
     // Genéricos del dispatcher
     expect(describeErrorCode('unsupported_aggregate')).toBe('El servidor no reconoce este tipo de cambio');
-    // Wiki
-    expect(describeErrorCode('wiki_revision_conflict')).toBe('Alguien guardó otra revisión antes que tú');
-    expect(describeErrorCode('slug_taken')).toBe('Ya existe una página con ese nombre');
+    // Guía de la casa (wiki)
+    expect(describeErrorCode('wiki_revision_conflict')).toBe(
+      'Otra persona guardó cambios mientras editabas; revisa su versión antes de guardar la tuya'
+    );
+    expect(describeErrorCode('slug_taken')).toBe('Ya existe una nota con ese nombre');
     // Menú/compra
     expect(describeErrorCode('menu_content_changed')).toBe('El menú cambió mientras confirmabas: revísalo');
     expect(describeErrorCode('allergen_conflict')).toBe('Choca con un alérgeno declarado del hogar');

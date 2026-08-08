@@ -77,22 +77,22 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
     case 'wiki_space':
       switch (action) {
         case 'set_template':
-          return 'Plantilla de un espacio de la wiki';
+          return 'Apartado de la guía usado como modelo';
         case 'clone_template':
-          return 'Página clonada desde plantilla';
+          return 'Apartado creado desde un modelo';
         default:
-          return 'Espacio de la wiki';
+          return 'Apartado de la guía de la casa';
       }
     case 'wiki_page':
       switch (action) {
         case 'create':
-          return 'Página nueva de la wiki';
+          return 'Nota nueva en la guía de la casa';
         case 'edit':
-          return 'Edición de una página de la wiki';
+          return 'Edición de una nota de la guía';
         case 'set_state':
-          return 'Cambio de estado de una página de la wiki';
+          return 'Cambio de estado de una nota de la guía';
         default:
-          return 'Cambio en la wiki';
+          return 'Cambio en la guía de la casa';
       }
     case 'membership':
       return action === 'revoke' ? 'Revocación de un acceso' : 'Caducidad de un acceso';
@@ -104,7 +104,7 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
 const GENERIC_ERROR_LABELS: Record<string, string> = {
   unsupported_aggregate: 'El servidor no reconoce este tipo de cambio',
   not_authorized: 'Tu acceso a este hogar no lo permite',
-  wiki_revision_conflict: 'Otra persona editó la página antes',
+  wiki_revision_conflict: 'Otra persona guardó la nota antes que tú',
   menu_content_changed: 'El contenido del hueco cambió desde tu confirmación',
   allergen_conflict: 'La receta choca con una restricción del grupo',
   food_unreviewed: 'La receta usa un alimento sin revisar',
@@ -112,8 +112,8 @@ const GENERIC_ERROR_LABELS: Record<string, string> = {
   routine_not_found: 'La rutina ya no existe',
   slot_not_found: 'El hueco del menú ya no existe',
   item_not_found: 'El artículo de la compra ya no existe',
-  page_not_found: 'La página de la wiki ya no existe',
-  space_not_found: 'El espacio de la wiki ya no existe',
+  page_not_found: 'La nota de la guía ya no existe',
+  space_not_found: 'El apartado de la guía ya no existe',
   membership_not_found: 'El acceso ya no existe',
   already_revoked: 'El acceso ya estaba revocado',
   expiry_in_past: 'La caducidad quedaba en el pasado',

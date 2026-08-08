@@ -212,7 +212,7 @@ describe('triaje genérico del outbox', () => {
     expect(describeCommand(envelope('routine_occurrence', {}))).toBe(
       'Marca de tarea de demostración (sin efecto en el servidor)'
     );
-    expect(describeCommand(envelope('wiki_page', { action: 'edit' }))).toBe('Edición de una página de la wiki');
+    expect(describeCommand(envelope('wiki_page', { action: 'edit' }))).toBe('Edición de una nota de la guía');
     expect(describeCommand(envelope('membership', { action: 'revoke' }))).toBe('Revocación de un acceso');
     expect(describeCommand(envelope('food', { action: 'upsert', name: 'Leche' }))).toBe(
       'Alimento «Leche» del catálogo'
@@ -223,7 +223,7 @@ describe('triaje genérico del outbox', () => {
 
   it('traduce los códigos de error propios y conserva los laborales y desconocidos', () => {
     expect(describeError('unsupported_aggregate')).toBe('El servidor no reconoce este tipo de cambio');
-    expect(describeError('wiki_revision_conflict')).toBe('Otra persona editó la página antes');
+    expect(describeError('wiki_revision_conflict')).toBe('Otra persona guardó la nota antes que tú');
     expect(describeError('week_already_reported')).toBe('La semana ya fue enviada');
     expect(describeError('codigo_inventado')).toBe('codigo_inventado');
     expect(describeError(undefined)).toBeNull();

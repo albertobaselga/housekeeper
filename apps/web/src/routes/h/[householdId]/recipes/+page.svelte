@@ -195,7 +195,7 @@
     <PageHeader
       eyebrow={`${catalog.recipes.length} recetas del hogar`}
       title="Recetario"
-      description="Datos estructurados sobre páginas de la wiki, con alérgenos y escalado exacto."
+      description="Fichas de receta guardadas en la guía de la casa, con alérgenos y raciones exactas."
     />
 
     <ActionStatus status={actionStatus} />
@@ -216,7 +216,7 @@
               {#if entry.hasUnreviewedFood}<span class="status-chip warning">Alimento sin revisar</span>{/if}
             </li>
           {:else}
-            <li><p class="audit-note">Todavía no hay recetas con datos estructurados.</p></li>
+            <li><p class="audit-note">Aún no hay recetas. <a href={`/h/${context.household.id}/wiki`}>Escribe la primera en la guía de la casa →</a></p></li>
           {/each}
         </ul>
 
@@ -224,7 +224,7 @@
           <article class="recipe-detail" aria-labelledby="recipe-title">
             <div class="section-heading">
               <div><p class="eyebrow">Receta seleccionada</p><h2 id="recipe-title">{recipe.title}</h2></div>
-              <a href={`/h/${context.household.id}/wiki/${recipe.slug}`}>Ver página wiki →</a>
+              <a href={`/h/${context.household.id}/wiki/${recipe.slug}`}>Ver la nota en la guía →</a>
             </div>
             {#if recipe.allergens.length}
               <p class="queued-note">Alérgenos: {recipe.allergens.map((allergen) => allergen.name).join(', ')}</p>

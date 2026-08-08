@@ -101,7 +101,7 @@ describe('queueCommand unificado: resultado veraz por ACK', () => {
     expect(result).toEqual({
       outcome: 'conflict',
       errorCode: 'wiki_revision_conflict',
-      message: 'Conflicto con otro cambio: Alguien guardó otra revisión antes que tú. Necesita tu decisión.'
+      message: 'Conflicto con otro cambio: Otra persona guardó cambios mientras editabas; revisa su versión antes de guardar la tuya. Necesita tu decisión.'
     });
     const [record] = await listOutbox(HOUSEHOLD, name);
     expect(record).toMatchObject({ id: envelope.operationId, status: 'conflict' });
