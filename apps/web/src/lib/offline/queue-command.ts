@@ -48,8 +48,10 @@ export interface QueueCommandResult {
   message: string;
 }
 
+// P2-9 (revisión UX v3): «sincronizado» es de informático; la nota dice
+// «guardado», que es lo que la persona quería conseguir.
 const MESSAGES: Record<Exclude<QueueOutcome, 'rejected' | 'conflict'>, string> = {
-  synced: 'Cambio sincronizado.',
+  synced: 'Guardado ✓',
   queued: 'Guardado en este dispositivo; se enviará al recuperar la conexión.'
 };
 

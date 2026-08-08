@@ -46,7 +46,7 @@ test('Marta edita en el editor visual y persiste Markdown canónico (versión 2)
   await page.getByRole('button', { name: 'Guardar cambios' }).click();
 
   // El envelope edit con baseRevision=1 crea la revisión 2 y la nota nueva.
-  await expect(page.locator('.success-message')).toContainText('sincronizado');
+  await expect(page.locator('.success-message')).toContainText('Guardado ✓');
   await expect(page.getByRole('heading', { name: 'Programa nuevo' })).toBeVisible();
   await expect(page.locator('.wiki-article')).toContainText('Importante');
   await expect(page.locator('.wiki-history summary')).toContainText('Cambios anteriores (2)');
