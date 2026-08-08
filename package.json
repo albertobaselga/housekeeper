@@ -9,6 +9,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "backup:full": "pnpm --filter @casa-clara/worker backup:full",
     "build": "pnpm -r --if-present build",
     "check": "pnpm -r --if-present check",
     "db:migrate": "pnpm --filter @casa-clara/db migrate",
