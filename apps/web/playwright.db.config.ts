@@ -11,6 +11,11 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = Number(process.env.E2E_PORT ?? 4317);
 const adminUrl = process.env.E2E_DATABASE_URL ?? '';
 
+// Evidencia JUnit propia (fichero distinto del de la config principal) para que
+// assert-junit-nonempty.py y assert-suite-coverage.py puedan comprobar que estas
+// 18 specs se han ejecutado de verdad y no sólo recolectado.
+const JUNIT_OUTPUT = process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? '../../artifacts/e2e/junit-db.xml';
+
 export const E2E_APP_LOGIN = 'e2e_casa_clara_web';
 export const E2E_APP_PASSWORD = 'e2e-only';
 
@@ -30,7 +35,7 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  reporter: 'list',
+  reporter: [['list'], ['junit', { outputFile: JUNIT_OUTPUT }]],
   globalSetup: './e2e/db-global-setup',
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,

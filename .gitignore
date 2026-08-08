@@ -1,20 +1,49 @@
+# Sistema operativo y editores
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Rutas de Windows que WSL deja caer en el árbol al montar C:\
+C:*
+
+# Registros y artefactos de ejecución
 *.log
-.lighthouseci/
+artifacts/
 coverage/
+.lighthouseci/
+playwright-report/
+test-results/
+.vitest/
+*.tsbuildinfo
+
+# Dependencias y salidas de build
 node_modules/
 .pnpm-store/
 .svelte-kit/
 .vercel/
 build/
 dist/
-playwright-report/
-test-results/
-.vitest/
+
+# Secretos y configuración local. El único fichero de entorno versionado es el
+# ejemplo de la raíz; los de infra/ terminan en .env.example y no casan aquí.
 .env
 .env.*
 !.env.example
-artifacts/
-C:*
+*.pem
+*.p12
+*.pfx
+
+# Volcados de base de datos: nunca versionar datos, ni sintéticos.
+# Ojo: NO ignorar *.sql en bloque; packages/db/{migrations,fixtures,tests} lo son.
+*.dump
+*.sql.gz
+*.sql.zst
+*.backup
+
+# Espacios de trabajo de agentes y borradores
 .claude/
+.codex/
+.agents/
+scratchpad/

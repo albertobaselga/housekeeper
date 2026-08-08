@@ -743,6 +743,15 @@ Lo que ya está bien resuelto y **no hay que rehacer**:
 
 ### 12.2 Huecos reales del CI actual (no documentados en ninguna parte)
 
+> **Estado: los huecos 1, 2, 3 y 4 están cerrados.** `.github/workflows/ci.yml`
+> ejecuta ahora `test:e2e:db` (job `e2e-database`, 18 specs / 72 pruebas), da
+> Postgres a la integración de web y worker (job `integration`), corre las
+> baterías de navegador también en push, y emite JUnit del worker por línea de
+> órdenes. Además `scripts/ci/assert-suite-coverage.py` falla si vuelve a
+> aparecer un fichero de spec que ningún job ejecute. Sigue abierto el hueco 5
+> (el presupuesto de `/today` que LHCI no recoge). Lo que sigue se conserva como
+> registro de qué faltaba y por qué importaba.
+
 Esto importa para un despliegue porque son las pruebas que **creerías** que te
 protegen y no se están ejecutando:
 

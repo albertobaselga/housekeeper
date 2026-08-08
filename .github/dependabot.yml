@@ -1,0 +1,47 @@
+version: 2
+
+# Agrupado y mensual a propósito: es un repositorio de un solo mantenedor y una
+# avalancha de PRs individuales acabaría ignorándose, que es peor que no
+# tenerlos. Lo urgente (vulnerabilidades) ya lo cubre `pnpm audit --prod
+# --audit-level high` en security.yml, que corre en cada PR y cada lunes.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    groups:
+      dev-tooling:
+        patterns:
+          - "@eslint/*"
+          - "eslint*"
+          - "typescript*"
+          - "vitest"
+          - "@vitest/*"
+          - "@playwright/*"
+          - "@lhci/*"
+        update-types: [minor, patch]
+      runtime-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # El runtime va fijado a Node 24.18.0 en engines, .nvmrc y la acción de
+      # setup; subirlo es una decisión, no un bump automático.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "05:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
