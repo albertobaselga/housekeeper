@@ -27,6 +27,12 @@ const MADRID_HOUR = new Intl.DateTimeFormat('en-GB', {
   hour: 'numeric',
   hourCycle: 'h23'
 });
+const AGENDA_TIME = new Intl.DateTimeFormat('es-ES', {
+  timeZone: 'Europe/Madrid',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23'
+});
 const HEADER_LABEL = new Intl.DateTimeFormat('es-ES', {
   weekday: 'long',
   day: 'numeric',
@@ -80,6 +86,16 @@ export interface TodayRoutineView {
   intervalCount: number;
 }
 
+export interface TodayAgendaItem {
+  id: string;
+  /** «16:45», o «Todo el día» para eventos de día completo. */
+  timeLabel: string;
+  allDay: boolean;
+  title: string;
+  /** Nombre del calendario enlazado del que viene el evento. */
+  sourceLabel: string;
+}
+
 export interface TodayOverview {
   householdId: string;
   role: Role;
@@ -90,6 +106,8 @@ export interface TodayOverview {
   decisions: TodayDecisionItem[];
   menu: TodayMenuSlotView[];
   routines: TodayRoutineView[];
+  /** Eventos de hoy de los calendarios enlazados (Ola E); RLS deja fuera al apoyo. */
+  agenda: TodayAgendaItem[];
 }
 
 // ─── Filas crudas que alimentan el mapeo puro (unit-testeable) ───────────────
@@ -403,6 +421,35 @@ export async function loadTodayOverview(
         }
       }
 
+      // Agenda del día desde los calendarios enlazados (Ola E). RLS aplica la
+      // matriz calendar.read: al apoyo esta consulta le devuelve cero filas y
+      // el bloque no aparece.
+      const agendaResult = await client.query<{
+        id: string;
+        startsAt: Date;
+        allDay: boolean;
+        summary: string;
+        sourceLabel: string;
+      }>(
+        `select id,
+                starts_at as "startsAt",
+                all_day as "allDay",
+                summary,
+                source_label as "sourceLabel"
+           from app.ics_source_events
+          where household_id = $1
+            and (starts_at at time zone 'Europe/Madrid')::date = $2::date
+          order by all_day desc, starts_at, summary`,
+        [householdId, todayISO]
+      );
+      const agenda: TodayAgendaItem[] = agendaResult.rows.map((row) => ({
+        id: row.id,
+        timeLabel: row.allDay ? 'Todo el día' : AGENDA_TIME.format(row.startsAt),
+        allDay: row.allDay,
+        title: row.summary,
+        sourceLabel: row.sourceLabel
+      }));
+
       // Hechos laborales: el acuerdo más relevante y sus pendientes. Para roles
       // sin acceso laboral (helper/viewer) RLS devuelve cero filas y el bloque
       // queda sin items de empleo.
@@ -506,7 +553,8 @@ export async function loadTodayOverview(
         greeting: greetingFor(hour),
         decisions,
         menu,
-        routines
+        routines,
+        agenda
       } satisfies TodayOverview;
     });
   } catch (cause) {

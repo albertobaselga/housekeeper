@@ -4,6 +4,8 @@
   // chunk aparte (mismo mecanismo que WikiEditor) para respetar el presupuesto
   // de JavaScript inicial de Hoy.
   const OutboxTriage = import('$lib/components/OutboxTriage.svelte').then((module) => module.default);
+  // La agenda real del día también va en chunk aparte (solo pesa cuando hay eventos).
+  const TodayAgenda = import('$lib/components/TodayAgenda.svelte').then((module) => module.default);
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import type { Capability } from '$lib/auth/capabilities';
@@ -226,6 +228,19 @@
           <p class="card-footnote">Tu acceso permite consultar el día, pero no marcar rutinas.</p>
         {/if}
       </article>
+
+      {#if overview.agenda.length > 0}
+        <!-- Agenda real del día (calendarios enlazados, Ola E): chunk lazy
+             como el triaje para no romper el presupuesto de Hoy. Sin eventos
+             hoy, el bloque no ocupa sitio. -->
+        {#await TodayAgenda then Agenda}
+          <Agenda
+            householdId={overview.householdId}
+            agenda={overview.agenda}
+            showLink={context.capabilities.includes('calendar.read')}
+          />
+        {/await}
+      {/if}
     </section>
   {:else if data.today}
     <PageHeader eyebrow={data.today.dateLabel} title={`${data.today.greeting}, ${context.user.name}`} description="Lo importante de hoy, sin ruido." actions={emergencyShortcut} />
