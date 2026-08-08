@@ -61,6 +61,40 @@ describe('render Markdown propio: estructura sin HTML', () => {
     expect(flatten(paragraph.inline)).toContain('roto');
   });
 
+  it('convierte una tabla con separadora en cabecera y filas', () => {
+    const blocks = parseWikiMarkdown(
+      'Antes.\n\n| Zona | Atención |\n| --- | --- |\n| Dormitorios | Descanso y ropa |\n| Cocina | Alimentos \\| útiles |\n\nDespués.',
+      { wikiBasePath: BASE }
+    );
+    expect(blocks.map((block) => block.kind)).toEqual(['paragraph', 'table', 'paragraph']);
+    const table = blocks[1] as { header: WikiInline[][]; rows: WikiInline[][][] };
+    expect(table.header.map(flatten)).toEqual(['Zona', 'Atención']);
+    expect(table.rows.map((row) => row.map(flatten))).toEqual([
+      ['Dormitorios', 'Descanso y ropa'],
+      ['Cocina', 'Alimentos | útiles']
+    ]);
+  });
+
+  it('una barra suelta sin fila separadora sigue siendo párrafo', () => {
+    const blocks = parseWikiMarkdown('| esto no es tabla |', { wikiBasePath: BASE });
+    expect(blocks.map((block) => block.kind)).toEqual(['paragraph']);
+  });
+
+  it('agrupa las citas > en un solo bloque con énfasis interior', () => {
+    const blocks = parseWikiMarkdown(
+      '> **Pendiente de completar por la familia:** programa y temperatura.\n> Segunda línea.\n\nTexto normal.',
+      { wikiBasePath: BASE }
+    );
+    expect(blocks.map((block) => block.kind)).toEqual(['quote', 'paragraph']);
+    const quote = blocks[0] as { lines: WikiInline[][] };
+    expect(quote.lines).toHaveLength(2);
+    expect(quote.lines[0]![0]).toMatchObject({
+      kind: 'strong',
+      text: 'Pendiente de completar por la familia:'
+    });
+    expect(flatten(quote.lines[1]!)).toBe('Segunda línea.');
+  });
+
   it('admite https, tel y mailto además de negrita, cursiva y código', () => {
     const blocks = parseWikiMarkdown(
       '**Fuerte** y *suave* con `codigo`, [web](https://example.org/x) y [tel](tel:+34600000122)',

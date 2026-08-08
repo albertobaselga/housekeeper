@@ -27,6 +27,33 @@
       <svelte:element this={headingTag(block.level)}>{@render inline(block.inline)}</svelte:element>
     {:else if block.kind === 'paragraph'}
       <p>{@render inline(block.inline)}</p>
+    {:else if block.kind === 'quote'}
+      <blockquote>
+        {#each block.lines as line}
+          <p>{@render inline(line)}</p>
+        {/each}
+      </blockquote>
+    {:else if block.kind === 'table'}
+      <div class="wiki-table">
+        <table>
+          <thead>
+            <tr>
+              {#each block.header as cell}
+                <th scope="col">{@render inline(cell)}</th>
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each block.rows as row}
+              <tr>
+                {#each row as cell}
+                  <td>{@render inline(cell)}</td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {:else if block.ordered}
       <ol>
         {#each block.items as item}
