@@ -33,7 +33,7 @@ const WEEK = "2026-11-02";
 function envelope(
   aggregateType: AggregateType,
   payload: unknown,
-  operationId = randomUUID(),
+  operationId: string = randomUUID(),
 ): CommandEnvelopeV1 {
   return {
     apiVersion: API_VERSION,

@@ -7,10 +7,14 @@ import { createLogger, errorCode } from "@casa-clara/server/logging";
 import { loadWorkerConfig } from "./config.js";
 import { RENDER_RECEIPT_JOB, createRenderReceiptHandler } from "./handlers.js";
 import {
+  ICS_SYNC_ALL_JOB,
   ICS_SYNC_JOB,
   ROUTINE_DUE_JOB,
+  createIcsQueries,
+  createIcsSyncAllHandler,
   createIcsSyncHandler,
   createRoutineDueHandler,
+  ensureIcsSyncScheduled,
   fetchIcsSource,
 } from "./ics.js";
 import { objectStore, putPrivateObject, sendEmail } from "./integrations.js";
@@ -88,13 +92,18 @@ handlers[PRUNE_DISCOVERY_JOB] = createPruneDiscoveryHandler({
   prune: maintenanceQueries.pruneDiscoveryData,
   enqueue: maintenanceQueries.enqueueJob,
 });
+// Fontanería ICS entrante (Ola E): descarga con guard SSRF y expansión de
+// recurrencias en ics.ts; persistencia y registro SOLO vía funciones definer
+// (0009/0015), sin lectura ni escritura directa sobre app.ics_*.
+const icsQueries = createIcsQueries(pool);
 handlers[ICS_SYNC_JOB] = createIcsSyncHandler({
   fetchSource: (url) => fetchIcsSource(url),
-  // La función definer de la 0009 registra el resultado sin dar al worker
-  // lectura ni escritura directa sobre app.ics_sources.
-  persist: async (householdId, sourceId) => {
-    await pool.query("select app_private.record_ics_sync($1, $2, '')", [householdId, sourceId]);
-  },
+  persistEvents: icsQueries.replaceSourceEvents,
+  recordSync: icsQueries.recordSync,
+});
+handlers[ICS_SYNC_ALL_JOB] = createIcsSyncAllHandler({
+  listSources: icsQueries.listSourcesForSync,
+  enqueue: maintenanceQueries.enqueueJob,
 });
 for (const [type, handler] of Object.entries(handlers)) {
   handlers[type] = withJobLogging(type, handler);
@@ -136,6 +145,13 @@ async function loop(): Promise<void> {
   // tumbar el worker: el siguiente arranque —o el operador— la encolará.
   try {
     await ensurePruneDiscoveryScheduled(pool);
+  } catch {
+    pollFailures += 1;
+  }
+  // Ciclo periódico de calendarios enlazados: mismo contrato que la poda
+  // (si ya hay un ics.sync_all pendiente no se duplica; fallo no fatal).
+  try {
+    await ensureIcsSyncScheduled(pool);
   } catch {
     pollFailures += 1;
   }
