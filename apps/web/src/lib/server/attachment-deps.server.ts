@@ -1,6 +1,6 @@
 import net from 'node:net';
 
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { env } from '$env/dynamic/private';
 
 import type { AttachmentDependencies } from './attachments.server';
@@ -107,6 +107,11 @@ export function createAttachmentDependencies(
       await client.send(
         new PutObjectCommand({ Bucket: bucket, Key: key, Body: bytes, ContentType: contentType })
       );
+    },
+    getObject: async (key) => {
+      const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      if (!result.Body) throw new Error(`El objeto ${key} llegó sin contenido`);
+      return await result.Body.transformToByteArray();
     }
   };
 }

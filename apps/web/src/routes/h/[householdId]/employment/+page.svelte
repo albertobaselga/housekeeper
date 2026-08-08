@@ -286,6 +286,14 @@
                       <strong>{line.concept}</strong>
                       <small>
                         {#if line.href}<a href={line.href}>{line.occurredOnLabel}</a>{:else}{line.occurredOnLabel}{/if}
+                        {#if line.receiptExpenseId}
+                          ·
+                          <a
+                            href={`/api/v1/households/${context.household.id}/receipts/${line.receiptExpenseId}`}
+                            target="_blank"
+                            rel="noopener"
+                          >Ver el justificante</a>
+                        {/if}
                       </small>
                     </span>
                     <strong>{line.amountLabel}</strong>

@@ -19,6 +19,12 @@ test.describe.configure({ mode: 'serial' });
 const STORAGE_OBJECT = 'ad800000-0000-4000-8000-000000000001';
 const DESCRIPTION = 'Farmacia con foto sin red E2E';
 
+// Cuenta de marzo de la fixture: cerrada, pagada y con cobro confirmado. Su
+// gasto de farmacia se enlaza aquí con el documento que la fixture ya trae,
+// como haría el comando del gasto con foto (Ola D-3).
+const CLOSED_EXPENSE = '12a00000-0000-4000-8000-000000000001';
+const FIXTURE_DOCUMENT = '12f00000-0000-4000-8000-000000000002';
+
 test.beforeAll(async () => {
   const admin = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL });
   await admin.connect();
@@ -33,6 +39,8 @@ test.beforeAll(async () => {
         '${STORAGE_OBJECT}', '${HOUSEHOLD}', 'casa-clara-e2e', '${HOUSEHOLD}/attachments/ticket-e2e.jpg',
         'image/jpeg', 1024, '${'a'.repeat(64)}', '${E2E_SEED.memberships.employee}'
       ) ON CONFLICT DO NOTHING;
+
+      UPDATE app.expenses SET receipt_document_id = '${FIXTURE_DOCUMENT}' WHERE id = '${CLOSED_EXPENSE}';
 
       COMMIT;
     `);
@@ -110,4 +118,30 @@ test('Ana hace la foto sin conexión y el gasto llega con su justificante enlaza
   } finally {
     await admin.end();
   }
+});
+
+test('Alberto ve el justificante del gasto reembolsado en la cuenta de marzo ya pagada', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/employment`);
+
+  const pharmacyLine = page.locator('.ledger-list > div').filter({ hasText: 'Fixture pharmacy reimbursement' });
+  await expect(pharmacyLine).toBeVisible();
+  const link = pharmacyLine.getByRole('link', { name: 'Ver el justificante' });
+  await expect(link).toHaveAttribute(
+    'href',
+    `/api/v1/households/${HOUSEHOLD}/receipts/${CLOSED_EXPENSE}`
+  );
+
+  // La línea del gasto SIN foto no ofrece enlace: no se inventa nada.
+  const groceryLine = page.locator('.ledger-list > div').filter({ hasText: 'Fixture grocery reimbursement' });
+  await expect(groceryLine.getByRole('link', { name: 'Ver el justificante' })).toHaveCount(0);
+  if (process.env.E2E_SHOT_DIR) {
+    await page.screenshot({ path: `${process.env.E2E_SHOT_DIR}/d3-justificante-cuenta-cerrada.png`, fullPage: true });
+  }
+
+  // Y la cuenta sigue siendo de solo lectura: la ruta no admite escritura.
+  const response = await page.request.fetch(`/api/v1/households/${HOUSEHOLD}/receipts/${CLOSED_EXPENSE}`, {
+    method: 'POST'
+  });
+  expect(response.status()).toBe(405);
 });

@@ -45,6 +45,8 @@ export interface AttachmentDependencies {
   bucket: string;
   scan(bytes: Uint8Array): Promise<'clean' | 'infected'>;
   putObject(key: string, bytes: Uint8Array, contentType: string): Promise<void>;
+  /** Lectura del objeto ya guardado (ver un justificante desde la cuenta del mes). */
+  getObject(key: string): Promise<Uint8Array>;
 }
 
 export interface AttachmentInput {

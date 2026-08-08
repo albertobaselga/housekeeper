@@ -247,6 +247,7 @@ export async function loadEmploymentOverview(
       const settlementIds = settlements.rows.map((row) => row.id);
       let lineRows: SettlementLineRow[] = [];
       let paymentRows: PaymentRow[] = [];
+      let receiptExpenseIds: string[] = [];
       if (settlementIds.length > 0) {
         const lines = await client.query<SettlementLineRow>(
           `select line.settlement_id as "settlementId",
@@ -269,6 +270,24 @@ export async function loadEmploymentOverview(
           [householdId, settlementIds]
         );
         lineRows = lines.rows;
+
+        // Justificantes de los gastos ya reembolsados: la cuenta cerrada
+        // enseña el enlace a la foto sin poder tocar nada (RLS decide quién
+        // ve estas filas; a quien no ve la cuenta no le llega ninguna).
+        const expenseIds = lineRows
+          .map((line) => line.expenseId)
+          .filter((id): id is string => id !== null);
+        if (expenseIds.length > 0) {
+          const receipts = await client.query<{ id: string }>(
+            `select id
+               from app.expenses
+              where household_id = $1 and id = any($2::uuid[])
+                and receipt_document_id is not null`,
+            [householdId, expenseIds]
+          );
+          receiptExpenseIds = receipts.rows.map((row) => row.id);
+        }
+
         const payments = await client.query<PaymentRow>(
           `select id,
                   settlement_id as "settlementId",
@@ -297,7 +316,12 @@ export async function loadEmploymentOverview(
           advances: advances.rows,
           expenses: expenses.rows
         }),
-        settlements: buildSettlementViews(settlements.rows, lineRows, paymentRows),
+        settlements: buildSettlementViews(
+          settlements.rows,
+          lineRows,
+          paymentRows,
+          new Set(receiptExpenseIds)
+        ),
         pendingExtras: buildPendingExtraViews(pendingExtras.rows),
         pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows),
         recentReports: buildWeeklyReportViews(weeklyReports.rows),

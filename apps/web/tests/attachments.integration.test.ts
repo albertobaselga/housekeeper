@@ -59,6 +59,7 @@ interface FakeDeps {
 
 function fakeDeps(verdict: 'clean' | 'infected' = 'clean'): FakeDeps {
   const puts: FakeDeps['puts'] = [];
+  const stored = new Map<string, Uint8Array>();
   const scan = vi.fn(async () => verdict);
   return {
     scan,
@@ -68,6 +69,12 @@ function fakeDeps(verdict: 'clean' | 'infected' = 'clean'): FakeDeps {
       scan,
       putObject: async (key, bytes, contentType) => {
         puts.push({ key, contentType, byteSize: bytes.length });
+        stored.set(key, bytes);
+      },
+      getObject: async (key) => {
+        const bytes = stored.get(key);
+        if (!bytes) throw new Error(`El objeto ${key} no está en el almacén`);
+        return bytes;
       }
     }
   };
@@ -276,6 +283,9 @@ describe.runIf(Boolean(adminUrl))('subida de adjuntos bajo RLS con antivirus iny
       bucket: BUCKET,
       scan: async () => 'clean',
       putObject: async () => {
+        throw new Error('minio caído');
+      },
+      getObject: async () => {
         throw new Error('minio caído');
       }
     };
