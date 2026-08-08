@@ -6,6 +6,11 @@
   import { activeMenuDayIndex, addDays, dayLabel, isIsoDate, mondayOf, weekLabel } from '$lib/food/dates';
   import { formatQuantityEs } from '$lib/food/quantities';
   import {
+    collapseOptimisticAdds,
+    normalizeAdditionName,
+    type OptimisticAddition
+  } from '$lib/food/optimistic-adds';
+  import {
     addShoppingItem,
     applyMenuTemplate,
     clearMenuSlot,
@@ -394,20 +399,13 @@
   /** Marcado optimista por LÍNEA: taps encadenables, sin bloquear nada. */
   let checkedOverrides = $state<Record<string, boolean>>({});
   /** Añadidos recién guardados que aún no llegaron del servidor. */
-  type OptimisticAddition = {
-    operationId: string;
-    name: string;
-    quantity: string;
-    unit: string;
-    listKind: ShoppingListKind;
-  };
   let optimisticAdds = $state<OptimisticAddition[]>([]);
   const serverEntryNames = $derived(
     new Set(
       [
         ...(shopping?.sections ?? []).flatMap((section) => section.lines),
         ...(shopping?.personal ?? [])
-      ].map((line) => line.name.trim().toLowerCase())
+      ].map((line) => normalizeAdditionName(line.name))
     )
   );
 
@@ -416,18 +414,7 @@
    * artículo son UNA sola línea provisional («×2»), y cuando los datos frescos
    * ya lo listan, la fila optimista desaparece sin solaparse ni parpadear.
    */
-  const pendingAdds = $derived.by(() => {
-    const grouped = new Map<string, OptimisticAddition & { times: number }>();
-    for (const addition of optimisticAdds) {
-      const normalized = addition.name.trim().toLowerCase();
-      if (serverEntryNames.has(normalized)) continue;
-      const key = `${addition.listKind}|${normalized}|${addition.quantity}|${addition.unit}`;
-      const existing = grouped.get(key);
-      if (existing) existing.times += 1;
-      else grouped.set(key, { ...addition, times: 1 });
-    }
-    return [...grouped.values()];
-  });
+  const pendingAdds = $derived(collapseOptimisticAdds(optimisticAdds, serverEntryNames));
   const pendingHouseAdds = $derived(pendingAdds.filter((addition) => addition.listKind === 'casa'));
   const pendingPersonalAdds = $derived(pendingAdds.filter((addition) => addition.listKind === 'personal'));
 
