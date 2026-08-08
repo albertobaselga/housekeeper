@@ -5,14 +5,16 @@ import {
   menuSlotCommandHandler,
   shoppingItemCommandHandler,
 } from "./menu.js";
+import { menuTemplateCommandHandler } from "./menu-template.js";
 
 export * from "./food.js";
 export * from "./menu.js";
+export * from "./menu-template.js";
 
 /**
  * Handlers de comida, menú y compra listos para `processSyncBatch`: catálogo
- * (food, diner), recetas, grupos y huecos del menú semanal y añadidos de la
- * lista de la compra.
+ * (food, diner), recetas, grupos y huecos del menú semanal, plantillas de
+ * semana y añadidos de la lista de la compra.
  */
 export const foodCommandHandlers: CommandHandlers = {
   food: foodCommandHandler,
@@ -20,5 +22,6 @@ export const foodCommandHandlers: CommandHandlers = {
   recipe: recipeCommandHandler,
   menu_group: menuGroupCommandHandler,
   menu_slot: menuSlotCommandHandler,
+  menu_template: menuTemplateCommandHandler,
   shopping_item: shoppingItemCommandHandler,
 };

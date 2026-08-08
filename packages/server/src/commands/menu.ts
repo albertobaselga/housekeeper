@@ -17,6 +17,7 @@ import {
   rejectUnreviewedFoods,
   requireFamilyRole,
 } from "./food.js";
+import { createWikiPage, createWikiSpace } from "./wiki.js";
 
 const SHOPPING_WRITER_ROLES = new Set(["family_admin", "family_member", "employee_live_in"]);
 
@@ -205,6 +206,118 @@ async function setMenuSlot(
   return { resourceId: slot.id };
 }
 
+interface MenuSlotSetNewRecipePayload {
+  groupId: UUID;
+  onDate: string;
+  meal: "desayuno" | "almuerzo" | "comida" | "merienda" | "cena";
+  recipeTitle: string;
+  recipeBody?: string | undefined;
+  baseServings?: number | undefined;
+  notes?: string | undefined;
+  servingsOverride?: number | undefined;
+}
+
+/**
+ * Espacio wiki donde vivirá una receta creada desde el menú: el de la última
+ * receta del hogar; si no hay recetas todavía, el espacio con slug `recetas`;
+ * y como último recurso se crea el espacio «Recetas» con el mismo camino que
+ * `wiki_space.create` (slug desambiguado).
+ */
+async function resolveRecipeSpaceId(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+): Promise<UUID> {
+  const fromRecipes = await client.query<{ space_id: string }>(
+    `select page.space_id
+       from app.recipes as recipe
+       join app.wiki_pages as page
+         on page.household_id = recipe.household_id and page.id = recipe.page_id
+       join app.wiki_spaces as space
+         on space.household_id = page.household_id and space.id = page.space_id
+      where recipe.household_id = $1
+        and page.archived_at is null and space.archived_at is null
+      order by recipe.updated_at desc
+      limit 1`,
+    [householdId],
+  );
+  const recipeSpace = fromRecipes.rows[0];
+  if (recipeSpace) return recipeSpace.space_id;
+
+  const bySlug = await client.query<{ id: string }>(
+    `select id from app.wiki_spaces
+      where household_id = $1 and slug = 'recetas' and archived_at is null`,
+    [householdId],
+  );
+  const named = bySlug.rows[0];
+  if (named) return named.id;
+
+  const created = await createWikiSpace(client, membership, householdId, {
+    name: "Recetas",
+    description: "Recetario de la casa",
+  });
+  return created.resourceId;
+}
+
+/**
+ * `set_new_recipe` — crear la receta AHÍ MISMO, desde el hueco: página wiki
+ * (mismo camino que `wiki_page.create`, publicada), fila de `app.recipes`
+ * (todavía sin ingredientes) y asignación del hueco vía `setMenuSlot`, todo en
+ * la MISMA transacción y con un único recibo idempotente: offline no puede
+ * quedar la receta creada sin hueco ni al revés. Sin ingredientes no hay
+ * alérgenos que reconocer; la puerta de AC-21 gobierna en cuanto la receta
+ * reciba ingredientes con `recipe.set_details`.
+ */
+async function setMenuSlotWithNewRecipe(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  payload: MenuSlotSetNewRecipePayload,
+): Promise<{ resourceId: UUID }> {
+  // El grupo se comprueba ANTES de crear nada para rechazar con código claro
+  // (la transacción revertiría igualmente, pero sin ruido intermedio).
+  const group = await client.query(
+    `select 1 from app.menu_groups where household_id = $1 and id = $2 for update`,
+    [householdId, payload.groupId],
+  );
+  if ((group.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError("group_not_found", "El grupo del menú no existe en este hogar");
+  }
+
+  const spaceId = await resolveRecipeSpaceId(client, membership, householdId);
+  const page = await createWikiPage(client, membership, householdId, {
+    spaceId,
+    title: payload.recipeTitle,
+    bodyMarkdown: payload.recipeBody?.trim() ?? "",
+    tags: ["receta"],
+    publish: true,
+  });
+
+  // Raciones base: explícitas o el nº de comensales del grupo (mínimo 1).
+  let baseServings = payload.baseServings;
+  if (baseServings === undefined) {
+    const diners = await client.query<{ n: number }>(
+      `select count(*)::int as n from app.menu_group_diners
+        where household_id = $1 and group_id = $2`,
+      [householdId, payload.groupId],
+    );
+    baseServings = Math.max(1, diners.rows[0]?.n ?? 0);
+  }
+  await client.query(
+    `insert into app.recipes (household_id, page_id, base_servings) values ($1, $2, $3)`,
+    [householdId, page.resourceId, baseServings],
+  );
+
+  return setMenuSlot(client, membership, householdId, {
+    groupId: payload.groupId,
+    onDate: payload.onDate,
+    meal: payload.meal,
+    recipePageId: page.resourceId,
+    notes: payload.notes,
+    servingsOverride: payload.servingsOverride,
+  });
+}
+
 async function clearMenuSlot(
   client: PoolClient,
   householdId: UUID,
@@ -312,10 +425,12 @@ async function confirmMenuSlot(
 }
 
 /**
- * `menu_slot` — set / clear / duplicate_week / confirm, todo escritura de
- * familia (RLS lo respalda; aquí se rechaza antes con `not_allowed`). `set`
- * aplica la puerta de alérgenos de AC-21 y cualquier set/clear invalida la
- * confirmación previa; `confirm` compara el hash de contenido vigente (AC-23).
+ * `menu_slot` — set / set_new_recipe / clear / duplicate_week / confirm, todo
+ * escritura de familia (RLS lo respalda; aquí se rechaza antes con
+ * `not_allowed`). `set` aplica la puerta de alérgenos de AC-21 y cualquier
+ * set/clear invalida la confirmación previa; `set_new_recipe` crea la receta
+ * (página wiki + fila de recipes) y asigna el hueco en un único comando
+ * atómico; `confirm` compara el hash de contenido vigente (AC-23).
  */
 export const menuSlotCommandHandler: CommandHandler = async (client, membership, envelope) => {
   requireFamilyRole(membership.role, "el menú semanal");
@@ -329,6 +444,8 @@ export const menuSlotCommandHandler: CommandHandler = async (client, membership,
   switch (payload.action) {
     case "set":
       return setMenuSlot(client, membership, householdId, payload);
+    case "set_new_recipe":
+      return setMenuSlotWithNewRecipe(client, membership, householdId, payload);
     case "clear":
       return clearMenuSlot(client, householdId, payload.slotId);
     case "duplicate_week":
