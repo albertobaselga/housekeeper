@@ -6,6 +6,7 @@ coverage/
 node_modules/
 .pnpm-store/
 .svelte-kit/
+.vercel/
 build/
 dist/
 playwright-report/
