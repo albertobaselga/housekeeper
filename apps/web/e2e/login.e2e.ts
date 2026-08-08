@@ -23,10 +23,15 @@ test('el alta pública no existe: POST /api/auth/sign-up/email no crea cuentas',
   expect([400, 404]).toContain(response.status());
 });
 
-test('la acción de contraseña no existe mientras no haya identidad real', async ({ request }) => {
-  const response = await request.post('/login?/password', {
-    form: { username: 'alberto', password: 'una-contrasena-larguisima-2026' },
-    failOnStatusCode: false
+test('la acción de contraseña no existe mientras no haya identidad real', async ({ page }) => {
+  await page.goto('/login');
+  // El envío sale del propio documento para que lleve `Origin` y no lo pare
+  // antes la protección CSRF de SvelteKit: lo que se quiere comprobar es que la
+  // acción no existe, no que el navegador la envía mal.
+  const status = await page.evaluate(async () => {
+    const body = new URLSearchParams({ username: 'alberto', password: 'una-contrasena-larguisima-2026' });
+    const response = await fetch('/login?/password', { method: 'POST', body });
+    return response.status;
   });
-  expect(response.status()).toBe(404);
+  expect(status).toBe(404);
 });

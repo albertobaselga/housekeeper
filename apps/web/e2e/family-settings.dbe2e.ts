@@ -101,11 +101,19 @@ test('sin base de datos de identidad no se ofrece reponer ni cambiar contraseña
   await expect(page.getByRole('button', { name: 'Poner una contraseña nueva' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Tu contraseña' })).toHaveCount(0);
 
-  const denied = await page.request.post(`/h/${HOUSEHOLD}/settings?/resetMemberPassword`, {
-    form: { membershipId: 'da-igual', newPassword: 'otra-cosa-2026', repeatPassword: 'otra-cosa-2026', confirm: 'REPONER' },
-    failOnStatusCode: false
+  // El envío sale del propio documento para que lleve `Origin` y no lo pare
+  // antes la protección CSRF de SvelteKit.
+  const denied = await page.evaluate(async () => {
+    const body = new URLSearchParams({
+      membershipId: 'da-igual',
+      newPassword: 'otra-cosa-2026',
+      repeatPassword: 'otra-cosa-2026',
+      confirm: 'REPONER'
+    });
+    const response = await fetch(`${location.pathname}?/resetMemberPassword`, { method: 'POST', body });
+    return response.status;
   });
-  expect(denied.status()).toBe(404);
+  expect(denied).toBe(404);
 
   // «Tu acceso» sí existe para cualquier rol, pero dice la verdad: aquí no hay
   // contraseña que cambiar.
