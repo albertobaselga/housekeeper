@@ -32,10 +32,20 @@
   let confirmingId = $state<string | null>(null);
   let confirmText = $state('');
 
+  // Mensajes de rechazo exclusivos de accesos: viven aquí (y no en el
+  // diccionario global) para no cargar en el grafo inicial de Hoy textos que
+  // solo esta página puede provocar.
+  const MEMBERSHIP_MESSAGES: Readonly<Record<string, string>> = {
+    already_revoked: 'El acceso ya estaba retirado',
+    expiry_in_past: 'La fecha límite no puede estar en el pasado',
+    membership_not_found: 'La membresía ya no existe',
+    cannot_modify_self: 'No puedes cambiar tu propia membresía'
+  };
+
   async function dispatch(envelope: Parameters<typeof optimistic.run>[0]): Promise<void> {
     busy = true;
     try {
-      await optimistic.run(envelope);
+      await optimistic.run(envelope, { messageOverrides: MEMBERSHIP_MESSAGES });
     } finally {
       busy = false;
     }

@@ -65,11 +65,8 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   feed_not_found: 'El calendario externo ya no existe',
   source_not_found: 'El origen ya no existe',
 
-  // Accesos y membresías
-  already_revoked: 'El acceso ya estaba revocado',
-  expiry_in_past: 'La fecha límite no puede estar en el pasado',
-  membership_not_found: 'La membresía ya no existe',
-  cannot_modify_self: 'No puedes cambiar tu propia membresía',
+  // Los mensajes de accesos y membresías viven como messageOverrides en la
+  // página de Ajustes: solo allí pueden producirse y así no pesan en Hoy.
   group_not_found: 'El grupo ya no existe'
 };
 

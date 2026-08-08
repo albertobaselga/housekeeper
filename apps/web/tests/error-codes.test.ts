@@ -18,8 +18,9 @@ describe('diccionario compartido de códigos de error', () => {
     // Menú/compra
     expect(describeErrorCode('menu_content_changed')).toBe('El menú cambió mientras confirmabas: revísalo');
     expect(describeErrorCode('allergen_conflict')).toBe('Choca con un alérgeno declarado del hogar');
-    // Accesos
-    expect(describeErrorCode('already_revoked')).toBe('El acceso ya estaba revocado');
+    // Accesos: sus mensajes viven como messageOverrides de Ajustes (fuera del
+    // grafo inicial de Hoy); el diccionario global degrada al código crudo.
+    expect(describeErrorCode('already_revoked')).toBe('already_revoked');
   });
 
   it('degrada con seguridad: código desconocido crudo, sin código null', () => {
