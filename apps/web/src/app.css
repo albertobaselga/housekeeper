@@ -440,6 +440,12 @@
     font-size: 1rem;
   }
   .action-form .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; }
+  /* P2-2 rutinas: «Se repite cada [2] [semanas]» leído como frase única. */
+  .repeat-fieldset { display: grid; gap: .28rem; margin: 0; border: 0; padding: 0; }
+  .repeat-fieldset legend { padding: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  .repeat-phrase { display: flex; align-items: center; gap: .45rem; }
+  .repeat-phrase > span { color: var(--ink); font-size: 1rem; }
+  .repeat-phrase input { width: 4.5rem; }
   .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
   /* Apertura de liquidación: fecha de vencimiento junto al botón de cabecera. */
   .open-settlement-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; }
