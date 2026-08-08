@@ -93,10 +93,10 @@ describe('descripciones humanas de comandos del expediente', () => {
     );
   });
 
-  it('traduce códigos de error conocidos y conserva los desconocidos', () => {
+  it('traduce códigos de error conocidos y calla ante los desconocidos', () => {
     expect(describeErrorCode('week_already_reported')).toBe('La semana ya fue enviada');
     expect(describeErrorCode('not_allowed')).toBe('Tu rol no permite esta acción');
-    expect(describeErrorCode('algo_nuevo')).toBe('algo_nuevo');
+    expect(describeErrorCode('algo_nuevo')).toBeNull();
     expect(describeErrorCode(undefined)).toBeNull();
   });
 });

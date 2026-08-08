@@ -88,7 +88,7 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
       return action === 'complete' ? 'Rutina marcada como hecha' : 'Rutina creada o editada';
     case 'routine_occurrence':
       // Comando heredado de la maqueta: el servidor no lo implementa.
-      return 'Marca de tarea de demostración (sin efecto en el servidor)';
+      return 'Marca de tarea de demostración (no se guarda en la casa)';
     case 'wiki_space':
       switch (action) {
         case 'set_template':
@@ -117,7 +117,7 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
 }
 
 const GENERIC_ERROR_LABELS: Record<string, string> = {
-  unsupported_aggregate: 'El servidor no reconoce este tipo de cambio',
+  unsupported_aggregate: 'Casa Clara no reconoce este tipo de cambio',
   not_authorized: 'Tu acceso a este hogar no lo permite',
   wiki_revision_conflict: 'Otra persona guardó la nota antes que tú',
   menu_content_changed: 'Esa comida del menú cambió desde tu confirmación',
@@ -133,8 +133,8 @@ const GENERIC_ERROR_LABELS: Record<string, string> = {
   already_revoked: 'El acceso ya estaba revocado',
   expiry_in_past: 'La fecha límite quedaba en el pasado',
   cannot_modify_self: 'No puedes cambiar tu propio acceso',
-  operation_conflict: 'Otra operación llegó antes con otro contenido',
-  constraint_violation: 'El servidor no pudo aplicar el cambio'
+  operation_conflict: 'Otro cambio llegó antes con otro contenido',
+  constraint_violation: 'El cambio no encaja con lo que ya hay guardado'
 };
 
 /** Etiqueta humana del código de error del servidor (laborales incluidos); conserva el código si es desconocido. */

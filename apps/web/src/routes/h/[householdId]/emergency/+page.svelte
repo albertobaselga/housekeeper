@@ -18,7 +18,7 @@
 
 <div class="page-wrap emergency-page">
   {#snippet actions()}<button class="button secondary print-button" type="button" onclick={() => window.print()}>Imprimir</button>{/snippet}
-  <PageHeader eyebrow="Acceso prioritario" title="Emergencias" description="Información breve, accionable y conservada en el snapshot crítico." {actions} />
+  <PageHeader eyebrow="Acceso prioritario" title="Emergencias" description="Esta pantalla se guarda en tu dispositivo: se abre aunque no haya cobertura." {actions} />
 
   <p class="offline-proof" role="status"><span aria-hidden="true">✓</span>{live ? 'Contactos del hogar · disponibles sin conexión' : data.emergency?.updatedLabel}</p>
 

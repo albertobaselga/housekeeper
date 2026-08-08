@@ -46,7 +46,7 @@ export function deriveSyncState(facts: SyncFacts): SyncPresentation {
     return {
       phase: 'offline',
       label: facts.pendingCount ? `Sin conexión · ${facts.pendingCount} pendiente${facts.pendingCount === 1 ? '' : 's'}` : 'Sin conexión',
-      detail: 'El contenido crítico guardado sigue disponible.'
+      detail: 'Lo importante sigue guardado en este dispositivo.'
     };
   }
   if (facts.syncing) {
@@ -56,7 +56,7 @@ export function deriveSyncState(facts: SyncFacts): SyncPresentation {
     return {
       phase: 'pending',
       label: `${facts.pendingCount} cambio${facts.pendingCount === 1 ? '' : 's'} pendiente${facts.pendingCount === 1 ? '' : 's'}`,
-      detail: 'Guardado en este dispositivo; falta confirmación del servidor.'
+      detail: 'Guardado en este dispositivo; falta que llegue a la casa.'
     };
   }
   return { phase: 'saved', label: 'Todo guardado', detail: 'No hay cambios pendientes.' };

@@ -99,7 +99,7 @@
       <section class="empty-state">
         <span aria-hidden="true">⌕</span>
         <h2>No aparece “{offline.query}” en lo guardado</h2>
-        <p>Sin conexión solo buscamos en el snapshot de este dispositivo. Vuelve a intentarlo cuando haya red.</p>
+        <p>Sin conexión solo buscamos en lo que está guardado en este dispositivo. Vuelve a intentarlo cuando haya cobertura.</p>
       </section>
     {/if}
   {:else if live}

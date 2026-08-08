@@ -99,7 +99,7 @@ describe('visible sync states', () => {
     expect(deriveSyncState({ online: true, pendingCount: 1 })).toMatchObject({
       phase: 'pending',
       label: '1 cambio pendiente',
-      detail: 'Guardado en este dispositivo; falta confirmación del servidor.'
+      detail: 'Guardado en este dispositivo; falta que llegue a la casa.'
     });
     // Rechazado/conflicto: NO se reenviará solo; el conteo afina el copy.
     expect(deriveSyncState({ online: true, pendingCount: 0, conflict: true, attentionCount: 1 })).toMatchObject({

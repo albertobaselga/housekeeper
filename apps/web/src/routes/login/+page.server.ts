@@ -88,7 +88,8 @@ export const actions: Actions = {
         });
       } catch {
         return fail(401, {
-          message: 'La cuenta demo no existe todavía. Ejecuta `pnpm --filter @casa-clara/web seed:demo`.'
+          message:
+            'Esta cuenta de demostración todavía no está dada de alta en esta instalación. Avisa a quien la mantiene.'
         });
       }
       redirect(303, destination ?? '/');
