@@ -1,43 +1,36 @@
 import { dev } from '$app/environment';
-import { env } from '$env/dynamic/private';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { ROLE_LABELS } from '$lib/auth/capabilities';
 import { getAuth } from '$lib/server/auth.server';
 import { getDemoUser, listDemoUsers } from '$lib/server/fixtures.server';
 import { createDemoSession } from '$lib/server/session.server';
-import { demoPasswordBlocked } from '$lib/server/synthetic.server';
+import { isLocalHostname } from '$lib/server/synthetic.server';
 import type { Actions, PageServerLoad } from './$types';
 
-export type LoginMode = 'fixture-selector' | 'password-selector' | 'magic-link';
+/**
+ * Dos modos, y solo dos:
+ *
+ * - `password`: hay instalación real (DATABASE_AUTH_URL + BETTER_AUTH_SECRET).
+ *   Se entra con nombre de usuario y contraseña. Es el modo de producción.
+ * - `fixture-selector`: no hay base de datos de identidad. Solo entonces vive el
+ *   selector de cuentas sintéticas que sostiene la demo y la batería e2e.
+ */
+export type LoginMode = 'fixture-selector' | 'password';
+
+/**
+ * Mensaje ÚNICO para cualquier fallo de entrada. Usuario inexistente,
+ * contraseña incorrecta o cuenta sin membresía dan exactamente la misma
+ * respuesta: nadie puede averiguar desde fuera qué cuentas existen.
+ */
+const SIGN_IN_FAILED = 'No hemos podido entrar con esos datos. Revisa el usuario y la contraseña.';
+const TOO_MANY_ATTEMPTS = 'Demasiados intentos seguidos. Espera un minuto y vuelve a probar.';
 
 function isSafeNext(value: string | null): value is string {
   return Boolean(value && value.startsWith('/') && !value.startsWith('//'));
 }
 
-function isLocalHostname(hostname: string): boolean {
-  return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(hostname);
-}
-
-function demoPasswordEnabled(): boolean {
-  return env.ENABLE_DEMO_PASSWORD_AUTH === 'true';
-}
-
 function resolveMode(): LoginMode {
-  if (!getAuth()) return 'fixture-selector';
-  return demoPasswordEnabled() ? 'password-selector' : 'magic-link';
-}
-
-/** Credenciales demo desde el entorno; nunca viajan al cliente. */
-function demoCredentialFor(accountId: string): { email: string; password: string } | null {
-  const byAccount: Record<string, [string | undefined, string | undefined]> = {
-    'fixture:roble:admin': [env.DEMO_ADMIN_EMAIL, env.DEMO_ADMIN_PASSWORD],
-    'fixture:roble:family': [env.DEMO_MEMBER_EMAIL, env.DEMO_MEMBER_PASSWORD],
-    'fixture:roble:employee': [env.DEMO_EMPLOYEE_EMAIL, env.DEMO_EMPLOYEE_PASSWORD],
-    'fixture:roble:helper': [env.DEMO_HELPER_EMAIL, env.DEMO_HELPER_PASSWORD],
-    'fixture:roble:viewer': [env.DEMO_VIEWER_EMAIL, env.DEMO_VIEWER_PASSWORD]
-  };
-  const [email, password] = byAccount[accountId] ?? [];
-  return email && password ? { email, password } : null;
+  return getAuth() ? 'password' : 'fixture-selector';
 }
 
 export const load: PageServerLoad = ({ locals, url }) => {
@@ -46,8 +39,9 @@ export const load: PageServerLoad = ({ locals, url }) => {
   return {
     mode,
     next: isSafeNext(url.searchParams.get('next')) ? url.searchParams.get('next') : null,
+    // Las cuentas sintéticas no viajan al cliente cuando hay entrada real.
     accounts:
-      mode === 'magic-link'
+      mode === 'password'
         ? []
         : listDemoUsers().map(({ id, name, initials, email, role }) => ({
             id,
@@ -61,63 +55,52 @@ export const load: PageServerLoad = ({ locals, url }) => {
 };
 
 export const actions: Actions = {
+  /** Entrada real: nombre de usuario + contraseña. */
+  password: async ({ request }) => {
+    const auth = getAuth();
+    if (!auth) error(404, 'La entrada con contraseña no está configurada en este entorno');
+    const formData = await request.formData();
+    const name = String(formData.get('username') ?? '').trim();
+    const password = String(formData.get('password') ?? '');
+    const nextValue = String(formData.get('next') ?? '');
+    const destination = isSafeNext(nextValue) ? nextValue : null;
+    if (!name || !password) return fail(400, { message: SIGN_IN_FAILED, username: name });
+
+    try {
+      await auth.api.signInUsername({
+        body: { username: name, password },
+        headers: request.headers
+      });
+    } catch (cause) {
+      // El limitador (rateLimit, almacenado en base de datos) responde 429; es
+      // el único caso que merece un mensaje distinto, porque callarlo dejaría a
+      // la persona repitiendo una contraseña que sí es correcta.
+      const status = (cause as { status?: number | string })?.status;
+      if (status === 429 || status === 'TOO_MANY_REQUESTS') {
+        return fail(429, { message: TOO_MANY_ATTEMPTS, username: name });
+      }
+      return fail(401, { message: SIGN_IN_FAILED, username: name });
+    }
+    // `/` reenvía a Hoy del primer hogar de la persona (routes/+page.server.ts).
+    redirect(303, destination ?? '/');
+  },
+
+  /**
+   * Selector de cuentas sintéticas. Solo existe sin instalación real de
+   * identidad: en cuanto hay `getAuth()`, esta acción responde 404 y la única
+   * puerta es la contraseña.
+   */
   demo: async ({ cookies, request, url }) => {
+    if (getAuth()) error(404, 'Este entorno entra con contraseña');
     if (!dev && !isLocalHostname(url.hostname)) error(403, 'El acceso demo solo está disponible en local');
     const formData = await request.formData();
     const accountId = String(formData.get('accountId') ?? '');
     const nextValue = String(formData.get('next') ?? '');
     const destination = isSafeNext(nextValue) ? nextValue : null;
 
-    const auth = getAuth();
-    if (auth) {
-      if (!demoPasswordEnabled()) error(403, 'Las cuentas demo con contraseña están deshabilitadas');
-      // Control 9: fuera de localhost, las sesiones demo con contraseña solo
-      // arrancan en un entorno declarado solo-sintético (ALLOW_SYNTHETIC_DATA_ONLY=true).
-      if (demoPasswordBlocked(url.hostname)) {
-        error(
-          403,
-          'Acceso demo bloqueado: este entorno no está declarado solo-sintético (ALLOW_SYNTHETIC_DATA_ONLY) y el origen no es localhost'
-        );
-      }
-      const credential = demoCredentialFor(accountId);
-      if (!credential) return fail(400, { message: 'Elige una cuenta demo válida.' });
-      try {
-        await auth.api.signInEmail({
-          body: { email: credential.email, password: credential.password },
-          headers: request.headers
-        });
-      } catch {
-        return fail(401, {
-          message:
-            'Esta cuenta de demostración todavía no está dada de alta en esta instalación. Avisa a quien la mantiene.'
-        });
-      }
-      redirect(303, destination ?? '/');
-    }
-
     const user = getDemoUser(accountId);
     if (!user) return fail(400, { message: 'Elige una cuenta demo válida.' });
     createDemoSession(cookies, user.id, url.protocol === 'https:');
     redirect(303, destination ?? `/h/${encodeURIComponent(user.householdIds[0])}/today`);
-  },
-
-  magiclink: async ({ request }) => {
-    const auth = getAuth();
-    if (!auth) error(404, 'La autenticación real no está configurada');
-    const formData = await request.formData();
-    const email = String(formData.get('email') ?? '').trim();
-    const nextValue = String(formData.get('next') ?? '');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return fail(400, { message: 'Escribe un correo válido.' });
-    }
-    try {
-      await auth.api.signInMagicLink({
-        body: { email, callbackURL: isSafeNext(nextValue) ? nextValue : '/' },
-        headers: request.headers
-      });
-    } catch {
-      // Respuesta idéntica exista o no la cuenta: sin enumeración de usuarios.
-    }
-    return { sent: true };
   }
 };

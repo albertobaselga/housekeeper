@@ -500,6 +500,22 @@
   .login-brand span:last-child { color: var(--ink-faint); font-size: .77rem; }
   .login-card h1 { margin-top: .35rem; color: var(--primary); }
   .login-card .lede { max-width: 36rem; margin-top: .65rem; }
+  /* Formulario de entrada real (usuario + contraseña): mismos campos que
+     .action-form, sin el separador superior que allí marca «zona de acciones». */
+  .login-form { display: grid; gap: .85rem; max-width: 24rem; margin-top: 1.6rem; }
+  .login-form label { display: grid; gap: .3rem; color: var(--ink-soft); font-size: .78rem; font-weight: 700; }
+  .login-form input {
+    width: 100%;
+    min-height: 2.9rem;
+    border: 1px solid var(--line-strong);
+    border-radius: .7rem;
+    background: white;
+    padding: .6rem .75rem;
+    color: var(--ink);
+    font-size: 1rem;
+  }
+  .login-form input:focus-visible { border-color: var(--primary); outline: 2px solid var(--primary-pale); }
+  .login-form .button { margin-top: .35rem; }
   .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-top: 1.6rem; }
   .account-grid form:last-child { grid-column: 1 / -1; }
   .account-card { display: flex; width: 100%; min-height: 5rem; align-items: center; gap: .75rem; border: 1px solid var(--line); border-radius: .8rem; background: var(--surface-strong); padding: .7rem; text-align: left; transition: border .16s, background .16s, transform .16s; }

@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 
 export const HOUSEHOLD = '10000000-0000-4000-8000-000000000001';
 
@@ -61,10 +61,23 @@ export const ACCOUNT_EMAILS = {
   viewer: 'diego.canguro@casaclara.demo'
 } as const;
 
+/**
+ * Entra en la aplicación desde la pantalla de acceso.
+ *
+ * Las dos baterías (fixture y Postgres) corren SIN `DATABASE_AUTH_URL`, así que
+ * la pantalla está en modo `fixture-selector`: cuentas sintéticas, sin
+ * contraseña. El modo real de producción (usuario + contraseña) no tiene
+ * cuentas que sembrar aquí — se cubre por HTTP en tests/auth.integration.test.ts
+ * y a mano contra una instalación con identidad real.
+ */
 export async function loginAs(page: Page, account: keyof typeof ACCOUNT_EMAILS): Promise<void> {
   await page.goto('/login');
-  await page
-    .locator('button.account-card', { hasText: ACCOUNT_EMAILS[account] })
-    .click();
+  // Si esto falla, la instalación tiene identidad real y el selector no existe:
+  // el aviso explícito ahorra un «elemento no encontrado» sin contexto.
+  await expect(
+    page.getByRole('heading', { name: 'Entra con una perspectiva' }),
+    'la batería e2e espera la pantalla sin base de datos de identidad'
+  ).toBeVisible();
+  await page.locator('button.account-card', { hasText: ACCOUNT_EMAILS[account] }).click();
   await page.waitForURL(`**/h/${HOUSEHOLD}/today`);
 }

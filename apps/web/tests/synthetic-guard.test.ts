@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  SYNTHETIC_BANNER_TEXT,
-  demoPasswordBlocked,
-  isLocalHostname,
-  syntheticGuard
-} from '../src/lib/server/synthetic.server';
+import { SYNTHETIC_BANNER_TEXT, isLocalHostname, syntheticGuard } from '../src/lib/server/synthetic.server';
 
 describe('syntheticGuard (ALLOW_SYNTHETIC_DATA_ONLY)', () => {
   it("solo el literal 'true' declara el entorno solo-sintético", () => {
@@ -29,21 +24,5 @@ describe('isLocalHostname', () => {
     for (const host of ['staging.casaclara.test', 'casaclara.example', '192.168.1.10', 'localhost.evil.com']) {
       expect(isLocalHostname(host), host).toBe(false);
     }
-  });
-});
-
-describe('demoPasswordBlocked (403 para sesiones demo con contraseña)', () => {
-  it('bloquea cuando el flag NO es true y el origen no es localhost', () => {
-    expect(demoPasswordBlocked('staging.casaclara.test', {})).toBe(true);
-    expect(demoPasswordBlocked('casaclara.example', { ALLOW_SYNTHETIC_DATA_ONLY: 'false' })).toBe(true);
-  });
-
-  it('permite el entorno declarado sintético en cualquier origen', () => {
-    expect(demoPasswordBlocked('staging.casaclara.test', { ALLOW_SYNTHETIC_DATA_ONLY: 'true' })).toBe(false);
-  });
-
-  it('permite localhost aunque el flag no esté', () => {
-    expect(demoPasswordBlocked('localhost', {})).toBe(false);
-    expect(demoPasswordBlocked('127.0.0.1', {})).toBe(false);
   });
 });
