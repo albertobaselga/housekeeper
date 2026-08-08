@@ -5,8 +5,10 @@
   "type": "module",
   "description": "Migraciones PostgreSQL multi-tenant, fixtures sintéticas y pruebas de esquema/RLS.",
   "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
     "manual:import": "node scripts/import-manual.mjs",
     "migrate": "node scripts/migrate.mjs",
+    "probe:supabase": "node scripts/probe-supabase.mjs",
     "test:db": "node scripts/run-sql-tests.mjs",
     "test:import": "vitest run",
     "test:rls": "node scripts/run-sql-tests.mjs tests/020_rls_matrix.sql"
