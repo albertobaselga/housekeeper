@@ -1,0 +1,70 @@
+# Casa Clara — ClamAV en Fly.io, con la pasarela autenticada delante.
+#
+# La web en Vercel no puede entrar en la red privada de Fly, así que el
+# antivirus tiene que ser alcanzable desde internet. clamd NO tiene
+# autenticación: publicar el 3310 sería regalar escaneo y una vía de agotar el
+# host. Por eso lo que se publica es infra/clamav/gateway.mjs, que exige TLS y
+# un token compartido antes de dejar pasar nada a clamd, y clamd escucha solo
+# en 127.0.0.1.
+#
+#   fly launch --no-deploy --copy-config --config infra/fly/clamav.fly.toml
+#   fly secrets set CLAMAV_GATEWAY_TOKEN=$(openssl rand -hex 32) -a casaclara-clamav
+#   fly deploy --config infra/fly/clamav.fly.toml \
+#              --dockerfile infra/docker/clamav-gateway.Dockerfile
+#
+# El certificado lo emite el propio Fly para el dominio de la app; la pasarela
+# lo lee de /etc/casaclara/tls (ver runbook §4: montar el secreto o usar el
+# handler `tls` de Fly y arrancar la pasarela sin TLS propio).
+#
+# Memoria: la base de firmas de ClamAV necesita ~1 GB residente. Con menos,
+# freshclam carga y clamd muere por OOM en mitad de un escaneo, que es
+# exactamente el fallo que la web traduce ahora a 503 honesto en vez de 500.
+
+app = "casaclara-clamav"
+primary_region = "fra"
+
+[build]
+  dockerfile = "../docker/clamav-gateway.Dockerfile"
+
+[env]
+  CLAMAV_GATEWAY_PORT = "3311"
+  CLAMAV_UPSTREAM_HOST = "127.0.0.1"
+  CLAMAV_UPSTREAM_PORT = "3310"
+  CLAMAV_GATEWAY_CERT = "/etc/casaclara/tls/fullchain.pem"
+  CLAMAV_GATEWAY_KEY = "/etc/casaclara/tls/privkey.pem"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1024mb"
+  cpus = 1
+
+# Volumen para /var/lib/clamav: sin él, cada reinicio vuelve a descargar los
+# ~250 MB de firmas y el antivirus tarda minutos en estar listo.
+[[mounts]]
+  source = "clamav_signatures"
+  destination = "/var/lib/clamav"
+
+[[services]]
+  internal_port = 3311
+  protocol = "tcp"
+  # Siempre encendida: un arranque en frío del antivirus son minutos, y
+  # mientras tanto toda subida de adjunto devolvería 503.
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[services.ports]]
+    port = 3311
+    handlers = []
+
+  # Límite de concurrencia como cortafuegos barato: aunque el token protege el
+  # acceso, un atacante que lo ignore no debe poder abrir miles de sockets.
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 10
+
+  [[services.tcp_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "180s"

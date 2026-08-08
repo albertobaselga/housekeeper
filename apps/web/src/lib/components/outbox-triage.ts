@@ -137,6 +137,21 @@ const GENERIC_ERROR_LABELS: Record<string, string> = {
   constraint_violation: 'El cambio no encaja con lo que ya hay guardado'
 };
 
+/**
+ * ¿Este registro está parado por su foto pendiente, y no por el comando? El
+ * triaje cambia entonces el copy y el significado de los botones: reintentar
+ * vuelve a intentar la SUBIDA (la foto sigue en el dispositivo) y descartar
+ * borra el cambio junto con la foto. Los códigos los pone el propio
+ * dispositivo en blob-link.ts; el servidor nunca llegó a ver el comando.
+ */
+export function isBlockedByAttachment(record: OutboxRecord): boolean {
+  const code = record.lastErrorCode;
+  return (
+    Boolean(record.pendingBlob) &&
+    (code === 'attachment_rejected' || code === 'attachment_upload_blocked')
+  );
+}
+
 /** Etiqueta humana del código de error del servidor (laborales incluidos); conserva el código si es desconocido. */
 export function describeError(code: string | undefined): string | null {
   if (!code) return null;

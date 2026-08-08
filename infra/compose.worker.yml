@@ -1,0 +1,103 @@
+name: casaclara-worker
+
+# Host del worker (Fly.io, Hetzner, un VPS cualquiera) para el despliegue
+# «web en Vercel + base en Supabase». Aquí NO hay Postgres, ni MinIO, ni Caddy,
+# ni web: la base es Supabase y el almacén es Supabase Storage. Solo viven las
+# dos piezas que no caben en una función serverless:
+#
+#   worker  — el demonio de la cola tal cual está en apps/worker, sin un solo
+#             cambio de arquitectura: mismo bucle, mismo /health, mismo
+#             /metrics, mismo apagado ordenado.
+#   clamav  — clamd + la pasarela autenticada de infra/clamav, que es lo que
+#             permite que la web (en Vercel, fuera de esta red) siga escaneando
+#             adjuntos sin publicar el 3310 en abierto.
+#
+# Todo lo sensible entra por entorno; este fichero no trae ningún valor por
+# omisión utilizable en producción a propósito.
+
+x-hardening: &hardening
+  restart: unless-stopped
+  init: true
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+
+services:
+  worker:
+    <<: *hardening
+    image: casaclara/worker:${RELEASE_TAG:?set RELEASE_TAG}
+    build:
+      context: ..
+      dockerfile: infra/docker/worker.Dockerfile
+      args:
+        WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+    environment:
+      NODE_ENV: production
+      # Rol casa_clara_worker_login. Directa (5432) o pooler (6543): el worker
+      # es un proceso fijo y ambas valen; el código es transaccional entero.
+      DATABASE_URL: ${WORKER_DATABASE_URL:?set WORKER_DATABASE_URL}
+      # Supabase Storage por su endpoint S3 (ver runbook-despliegue.md §5).
+      S3_ENDPOINT: ${S3_ENDPOINT:?set S3_ENDPOINT}
+      S3_REGION: ${S3_REGION:?set S3_REGION}
+      S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET:?set S3_PRIVATE_BUCKET}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM}
+      WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+      HOST: 0.0.0.0
+      WORKER_HEALTH_PORT: "3001"
+    ports:
+      # Solo loopback: /health y /metrics son para el supervisor del host y para
+      # un Prometheus que raspe por túnel, nunca para internet.
+      - "127.0.0.1:${WORKER_HEALTH_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - worker
+
+  clamav:
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    image: casaclara/clamav-gateway:${RELEASE_TAG:?set RELEASE_TAG}
+    build:
+      context: ..
+      dockerfile: infra/docker/clamav-gateway.Dockerfile
+    environment:
+      # El MISMO valor que CLAMAV_TOKEN en las variables de la web en Vercel.
+      CLAMAV_GATEWAY_TOKEN: ${CLAMAV_GATEWAY_TOKEN:?set CLAMAV_GATEWAY_TOKEN}
+      CLAMAV_GATEWAY_CERT: /etc/casaclara/tls/fullchain.pem
+      CLAMAV_GATEWAY_KEY: /etc/casaclara/tls/privkey.pem
+      CLAMAV_GATEWAY_PORT: "3311"
+    volumes:
+      - ${CLAMAV_TLS_DIR:?set CLAMAV_TLS_DIR}:/etc/casaclara/tls:ro
+      - clamav_signatures:/var/lib/clamav
+    ports:
+      # Este SÍ es público: es el único punto por el que la web de Vercel
+      # alcanza el antivirus, y por eso va con TLS y token, nunca clamd desnudo.
+      - "${CLAMAV_PUBLIC_PORT:-3311}:3311"
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks:
+      - worker
+
+networks:
+  worker: {}
+
+volumes:
+  clamav_signatures: {}

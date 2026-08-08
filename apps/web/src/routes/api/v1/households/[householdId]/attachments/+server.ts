@@ -16,7 +16,9 @@ const ERROR_STATUS: Record<AttachmentError['code'], number> = {
   attachment_type_not_allowed: 415,
   attachment_signature_mismatch: 415,
   attachment_infected: 422,
-  attachments_unavailable: 503
+  attachments_unavailable: 503,
+  attachment_scan_unavailable: 503,
+  attachment_storage_unavailable: 503
 };
 
 /**

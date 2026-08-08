@@ -9,12 +9,20 @@ import sys
 import yaml
 
 
-EXPECTED = {"caddy", "postgres", "web", "worker", "minio", "mailpit", "clamav"}
+SELF_HOSTED = {"caddy", "postgres", "web", "worker", "minio", "mailpit", "clamav"}
+# infra/compose.worker.yml despliega SOLO las dos piezas que no caben en una
+# función serverless; su base de datos es Supabase y su almacén, Supabase
+# Storage, así que no puede traer postgres, minio, caddy ni web.
+WORKER_HOST = {"worker", "clamav"}
 ONE_SHOT = {"minio-init", "db-backup", "object-backup"}
 
 
 def fail(message: str) -> None:
     raise ValueError(message)
+
+
+def expected_services(path: pathlib.Path) -> set[str]:
+    return WORKER_HOST if path.name == "compose.worker.yml" else SELF_HOSTED
 
 
 def validate(path: pathlib.Path) -> None:
@@ -23,21 +31,22 @@ def validate(path: pathlib.Path) -> None:
         fail(f"{path}: missing services mapping")
 
     services = data["services"]
-    missing = EXPECTED - services.keys()
+    missing = expected_services(path) - services.keys()
     if missing:
         fail(f"{path}: missing required services: {', '.join(sorted(missing))}")
 
-    postgres_image = str(services["postgres"].get("image", ""))
-    if not postgres_image.startswith("postgres:18."):
-        fail(f"{path}: PostgreSQL must be pinned to major 18 and a minor tag")
+    if "postgres" in services:
+        postgres_image = str(services["postgres"].get("image", ""))
+        if not postgres_image.startswith("postgres:18."):
+            fail(f"{path}: PostgreSQL must be pinned to major 18 and a minor tag")
 
-    profiles = {
-        profile
-        for service in services.values()
-        for profile in service.get("profiles", [])
-    }
-    if not {"observability", "backup"}.issubset(profiles):
-        fail(f"{path}: observability and backup profiles are required")
+        profiles = {
+            profile
+            for service in services.values()
+            for profile in service.get("profiles", [])
+        }
+        if not {"observability", "backup"}.issubset(profiles):
+            fail(f"{path}: observability and backup profiles are required")
 
     for name, service in services.items():
         image = str(service.get("image", ""))

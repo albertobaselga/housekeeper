@@ -10,6 +10,8 @@ export default tseslint.config(
       '**/dist/**',
       '**/build/**',
       '**/.svelte-kit/**',
+      // Salida del adaptador de Vercel: artefactos de build, no fuentes.
+      '**/.vercel/**',
       'coverage/**',
       'artifacts/**',
       // Prototipo legacy preservado en el tag demo-v0.1.0; no se lintan sus fuentes.

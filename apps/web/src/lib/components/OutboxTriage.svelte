@@ -1,9 +1,15 @@
 <script lang="ts">
   import { browser } from '$app/environment';
   import { invalidateAll } from '$app/navigation';
-  import { describeCommand, describeError, retryableEnvelope, triageableRecords } from '$lib/components/outbox-triage';
+  import {
+    describeCommand,
+    describeError,
+    isBlockedByAttachment,
+    retryableEnvelope,
+    triageableRecords
+  } from '$lib/components/outbox-triage';
   import { queueFoodCommand } from '$lib/food/commands';
-  import { discardOutboxRecord, listOutbox } from '$lib/offline/idb';
+  import { deleteOfflineBlob, discardOutboxRecord, listOutbox, queueOutbox } from '$lib/offline/idb';
   import type { OutboxRecord } from '$lib/offline/schema';
   import { refreshSyncStatus } from '$lib/offline/sync';
 
@@ -34,6 +40,10 @@
     busy = true;
     try {
       await discardOutboxRecord(record.id);
+      // La foto que este cambio esperaba se va con él: si el cambio no se
+      // guarda, nadie va a subir ya su justificante y dejarla ocuparía sitio
+      // en el dispositivo para siempre.
+      if (record.pendingBlob) await deleteOfflineBlob(record.pendingBlob.id);
       await refreshSyncStatus();
       await refresh();
       await invalidateAll();
@@ -45,10 +55,20 @@
   async function retry(record: OutboxRecord): Promise<void> {
     busy = true;
     try {
-      // Copia con operationId NUEVO: el original ya fue consumido por el
-      // servidor. Se borra el registro viejo antes de encolar la copia.
-      await discardOutboxRecord(record.id);
-      await queueFoodCommand(retryableEnvelope(record.envelope));
+      if (isBlockedByAttachment(record)) {
+        // Aquí el servidor NUNCA vio el comando: lo que falló fue la subida de
+        // la foto. El operationId sigue siendo válido, así que basta con
+        // devolverlo a la cola y poner el contador a cero para que el próximo
+        // flush reintente la subida con la foto que sigue en el dispositivo.
+        const revived = { ...record, status: 'pending' as const, blobAttempts: 0 };
+        delete revived.lastErrorCode;
+        await queueOutbox(revived);
+      } else {
+        // Copia con operationId NUEVO: el original ya fue consumido por el
+        // servidor. Se borra el registro viejo antes de encolar la copia.
+        await discardOutboxRecord(record.id);
+        await queueFoodCommand(retryableEnvelope(record.envelope));
+      }
       await refreshSyncStatus();
       await refresh();
       await invalidateAll();
@@ -65,9 +85,9 @@
       <span class="status-chip warning">{records.length} sin resolver</span>
     </div>
     <p class="audit-note">
-      Estos cambios no llegaron a guardarse. Suele significar que ya hay un dato más reciente:
-      revisa la pantalla correspondiente antes de reintentar. Descartar elimina el cambio solo de
-      este dispositivo.
+      Estos cambios no llegaron a guardarse: suele haber un dato más reciente, o una foto que no
+      pudo subir. Revisa la pantalla antes de reintentar. Descartar elimina el cambio —y su foto—
+      solo de este dispositivo.
     </p>
     <div class="ledger-list">
       {#each records as record (record.id)}
@@ -75,7 +95,11 @@
           <span>
             <strong>{describeCommand(record.envelope)}</strong>
             <small>
-              {record.status === 'conflict' ? 'Hay una versión más reciente guardada' : 'El cambio no se pudo aplicar'}
+              {isBlockedByAttachment(record)
+                ? 'La foto no llegó a la casa y el cambio sigue esperando aquí'
+                : record.status === 'conflict'
+                  ? 'Hay una versión más reciente guardada'
+                  : 'El cambio no se pudo aplicar'}
               {#if describeError(record.lastErrorCode)}
                 · {describeError(record.lastErrorCode)}
               {/if}

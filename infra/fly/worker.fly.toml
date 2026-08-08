@@ -1,0 +1,56 @@
+# Casa Clara — worker en Fly.io.
+#
+# Ejecuta apps/worker TAL CUAL: mismo bucle de sondeo, mismo /health, mismo
+# /metrics, mismo apagado ordenado por SIGTERM. No hay refactor a «una función
+# que drena la cola»: la opción B de la auditoría (§5) es la que se despliega.
+#
+#   fly launch --no-deploy --copy-config --config infra/fly/worker.fly.toml
+#   fly secrets set DATABASE_URL=... S3_SECRET_ACCESS_KEY=... (ver runbook)
+#   fly deploy --config infra/fly/worker.fly.toml --dockerfile infra/docker/worker.Dockerfile
+#
+# Región: ADR 0001 exige UE. ams (Ámsterdam) o fra (Fráncfort); fra queda al
+# lado de la región `fra1` de Vercel y de `eu-central-1` de Supabase.
+
+app = "casaclara-worker"
+primary_region = "fra"
+
+[build]
+  dockerfile = "../docker/worker.Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  HOST = "0.0.0.0"
+  WORKER_HEALTH_PORT = "3001"
+  # El resto (DATABASE_URL, S3_*, SMTP_*) son secretos: `fly secrets set`.
+  # ALLOW_SYNTHETIC_DATA_ONLY se deja SIN DEFINIR: su omisión es el estado
+  # seguro y definirla a "true" haría que el worker rechazase todo destinatario
+  # que no sea de un dominio de prueba, matando los avisos reales.
+
+# Una sola máquina: la cola usa `for update skip locked`, así que varias serían
+# correctas, pero para un hogar sobra una y evita duplicar el coste.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1
+
+# El worker NO publica nada en internet: no hay [[services]] con puertos
+# públicos. /health y /metrics quedan en la red privada 6PN de la organización,
+# alcanzables con `fly proxy 3001:3001 -a casaclara-worker`.
+[[services]]
+  internal_port = 3001
+  protocol = "tcp"
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "30s"
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "45s"
+    method = "get"
+    path = "/health"

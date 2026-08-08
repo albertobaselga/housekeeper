@@ -1,8 +1,13 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it, vi } from 'vitest';
 
+import { isBlockedByAttachment, triageableRecords } from '../src/lib/components/outbox-triage';
 import { listOfflineBlobs, listOutbox, queueOutbox, readOfflineBlob, saveOfflineBlob } from '../src/lib/offline/idb';
-import { createOutboxRecord, type OfflineBlobRecord } from '../src/lib/offline/schema';
+import {
+  createOutboxRecord,
+  MAX_BLOB_UPLOAD_ATTEMPTS,
+  type OfflineBlobRecord
+} from '../src/lib/offline/schema';
 import { flushBlobs, performSyncFlush, type BlobUploadMapping } from '../src/lib/offline/sync';
 import { FIXTURE_HOUSEHOLD as HOUSEHOLD, envelopeFixture } from './helpers';
 
@@ -201,5 +206,78 @@ describe('re-enlace diferido foto → gasto', () => {
     await performSyncFlush(HOUSEHOLD, fetchMock as unknown as typeof fetch, name);
     const [body] = seen as [{ commands: Array<{ operationId: string }> }];
     expect(body.commands.map((command) => command.operationId)).toEqual([otro]);
+  });
+});
+
+// Despliegue serverless: el ClamAV del hogar vive en otro host y puede caerse.
+// Antes, un 503 persistente dejaba el gasto con `pendingBlob` y estado
+// `pending` PARA SIEMPRE: no salía, no aparecía en el triaje y la píldora lo
+// contaba como «pendiente de red». Ahora la espera tiene fin y es visible.
+describe('la espera de una foto que nunca sube acaba en el triaje', () => {
+  const operationId = '22222222-0000-4000-8000-000000000040';
+
+  function pendingExpense(name: string, blobId: string): Promise<unknown> {
+    return queueOutbox(
+      createOutboxRecord(envelopeFixture(operationId, '2026-08-07T09:00:00.000Z'), {
+        pendingBlob: { id: blobId, payloadField: 'receiptStorageObjectId' }
+      }),
+      name
+    );
+  }
+
+  async function setUp(label: string): Promise<string> {
+    const name = databaseName(label);
+    await saveOfflineBlob(blobRecord('blob-ticket', '2026-08-07T08:59:00.000Z'), name);
+    await pendingExpense(name, 'blob-ticket');
+    return name;
+  }
+
+  it('el antivirus caído (503) bloquea el gasto tras MAX_BLOB_UPLOAD_ATTEMPTS pasadas, no antes', async () => {
+    const name = await setUp('clamav-down');
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 } as unknown as Response);
+
+    for (let pass = 1; pass < MAX_BLOB_UPLOAD_ATTEMPTS; pass += 1) {
+      expect(await flushBlobs(HOUSEHOLD, fetchMock as unknown as typeof fetch, name)).toBe('failed');
+      const [waiting] = await listOutbox(HOUSEHOLD, name);
+      expect(waiting!.status).toBe('pending');
+      expect(waiting!.blobAttempts).toBe(pass);
+    }
+
+    expect(await flushBlobs(HOUSEHOLD, fetchMock as unknown as typeof fetch, name)).toBe('failed');
+    const [blocked] = await listOutbox(HOUSEHOLD, name);
+    expect(blocked!.status).toBe('rejected');
+    expect(blocked!.lastErrorCode).toBe('attachment_upload_blocked');
+    // La foto NO se borra: «Reintentar» en el triaje tiene algo que subir.
+    expect(await readOfflineBlob('blob-ticket', name)).not.toBeNull();
+    expect(triageableRecords(await listOutbox(HOUSEHOLD, name))).toHaveLength(1);
+    expect(isBlockedByAttachment(blocked!)).toBe(true);
+
+    // Y deja de reintentarse solo: espera la decisión de la persona.
+    const before = fetchMock.mock.calls.length;
+    expect(await flushBlobs(HOUSEHOLD, fetchMock as unknown as typeof fetch, name)).toBe('idle');
+    expect(fetchMock.mock.calls).toHaveLength(before);
+  });
+
+  it('un rechazo definitivo (422 en cuarentena) bloquea a la primera', async () => {
+    const name = await setUp('quarantine');
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 422 } as unknown as Response);
+
+    expect(await flushBlobs(HOUSEHOLD, fetchMock as unknown as typeof fetch, name)).toBe('failed');
+    const [blocked] = await listOutbox(HOUSEHOLD, name);
+    expect(blocked!.status).toBe('rejected');
+    expect(blocked!.lastErrorCode).toBe('attachment_rejected');
+    expect(isBlockedByAttachment(blocked!)).toBe(true);
+  });
+
+  it('un blob sin comando que lo espere no bloquea nada y se sigue reintentando', async () => {
+    const name = databaseName('huerfano');
+    await saveOfflineBlob(blobRecord('blob-suelto', '2026-08-07T08:59:00.000Z'), name);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503 } as unknown as Response);
+
+    for (let pass = 0; pass <= MAX_BLOB_UPLOAD_ATTEMPTS; pass += 1) {
+      expect(await flushBlobs(HOUSEHOLD, fetchMock as unknown as typeof fetch, name)).toBe('failed');
+    }
+    expect(await listOutbox(HOUSEHOLD, name)).toHaveLength(0);
+    expect(await readOfflineBlob('blob-suelto', name)).not.toBeNull();
   });
 });

@@ -7,8 +7,9 @@
     retryEnvelope,
     triageableEmploymentRecords
   } from '$lib/employment/outbox';
+  import { isBlockedByAttachment } from '$lib/components/outbox-triage';
   import { queueEmploymentCommand } from '$lib/employment/commands';
-  import { discardOutboxRecord, listOutbox } from '$lib/offline/idb';
+  import { deleteOfflineBlob, discardOutboxRecord, listOutbox, queueOutbox } from '$lib/offline/idb';
   import type { OutboxRecord } from '$lib/offline/schema';
   import { refreshSyncStatus } from '$lib/offline/sync';
 
@@ -35,6 +36,9 @@
     busy = true;
     try {
       await discardOutboxRecord(record.id);
+      // La foto que este gasto esperaba se va con él: nadie va a subir ya un
+      // justificante de un cambio descartado.
+      if (record.pendingBlob) await deleteOfflineBlob(record.pendingBlob.id);
       await refreshSyncStatus();
       await refresh();
       await invalidateAll();
@@ -46,10 +50,19 @@
   async function retry(record: OutboxRecord): Promise<void> {
     busy = true;
     try {
-      // Copia con operationId NUEVO: el original ya fue consumido por el
-      // servidor. Se borra el registro viejo antes de encolar la copia.
-      await discardOutboxRecord(record.id);
-      await queueEmploymentCommand(retryEnvelope(record.envelope));
+      if (isBlockedByAttachment(record)) {
+        // El servidor NUNCA vio este comando: lo que falló fue la subida de la
+        // foto. El operationId sigue libre, así que vuelve a la cola con el
+        // contador a cero y el próximo flush reintenta la subida.
+        const revived = { ...record, status: 'pending' as const, blobAttempts: 0 };
+        delete revived.lastErrorCode;
+        await queueOutbox(revived);
+      } else {
+        // Copia con operationId NUEVO: el original ya fue consumido por el
+        // servidor. Se borra el registro viejo antes de encolar la copia.
+        await discardOutboxRecord(record.id);
+        await queueEmploymentCommand(retryEnvelope(record.envelope));
+      }
       await refreshSyncStatus();
       await refresh();
       await invalidateAll();
@@ -66,8 +79,9 @@
       <span class="status-chip warning">{records.length} sin resolver</span>
     </div>
     <p class="audit-note">
-      Suele significar que ya hay un dato más reciente guardado: revisa la página antes de
-      reintentar. Descartar elimina el cambio solo de este dispositivo.
+      Suele significar que ya hay un dato más reciente guardado, y a veces que la foto que
+      acompañaba al cambio no se pudo subir: revisa la página antes de reintentar. Descartar elimina
+      el cambio —y la foto que esperaba— solo de este dispositivo.
     </p>
     <div class="ledger-list">
       {#each records as record (record.id)}
@@ -75,7 +89,11 @@
           <span>
             <strong>{describeEmploymentCommand(record.envelope)}</strong>
             <small>
-              {record.status === 'conflict' ? 'Hay una versión más reciente guardada' : 'El cambio no se pudo aplicar'}
+              {isBlockedByAttachment(record)
+                ? 'La foto no llegó a la casa, así que el gasto sigue esperando en este dispositivo'
+                : record.status === 'conflict'
+                  ? 'Hay una versión más reciente guardada'
+                  : 'El cambio no se pudo aplicar'}
               {#if describeErrorCode(record.lastErrorCode)}
                 · {describeErrorCode(record.lastErrorCode)}
               {/if}

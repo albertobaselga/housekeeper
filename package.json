@@ -9,6 +9,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "backup:full": "pnpm --filter @casa-clara/worker backup:full",
     "build": "pnpm -r --if-present build",
     "check": "pnpm -r --if-present check",
     "db:migrate": "pnpm --filter @casa-clara/db migrate",
@@ -22,7 +23,8 @@
     "test:lighthouse": "lhci autorun --config=infra/quality/lighthouserc.json",
     "test:rls": "pnpm --filter @casa-clara/db test:rls",
     "test:unit": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r --if-present typecheck"
+    "typecheck": "pnpm -r --if-present typecheck",
+    "verify:bundle": "pnpm --filter @casa-clara/web verify:bundle"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
