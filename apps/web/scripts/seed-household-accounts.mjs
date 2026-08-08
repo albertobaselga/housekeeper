@@ -296,7 +296,7 @@ try {
   }
   if (secretsToHandOut.length > 0) {
     console.log('\nContraseñas generadas. Se muestran UNA sola vez: apúntalas ahora y');
-    console.log('entrégalas en persona. Cada quien debe cambiarla desde Ajustes al entrar.\n');
+    console.log('entrégalas en persona. Cada quien debe cambiarla desde «Tu contraseña» al entrar.\n');
     for (const secret of secretsToHandOut) {
       console.log(`  ${secret.username.padEnd(14)} ${secret.password}`);
     }

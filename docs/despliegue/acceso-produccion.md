@@ -98,7 +98,7 @@ Hogar Casa Clara (casa-clara) → e561d89e-…
   creada    nuria         employee_live_in   nuria@casa.local
 
 Contraseñas generadas. Se muestran UNA sola vez: apúntalas ahora y
-entrégalas en persona. Cada quien debe cambiarla desde Ajustes al entrar.
+entrégalas en persona. Cada quien debe cambiarla desde «Tu contraseña» al entrar.
 
   alberto        vd3tm-e2bwd-3qhp6-xjpzn
   ana            prukg-b8ybe-g7zm2-gu4r2

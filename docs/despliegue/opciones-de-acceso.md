@@ -8,6 +8,12 @@ El propietario descarta depender del correo.
 Este documento **no implementa nada**: compara opciones, recomienda una y detalla el plan.
 Precios y límites verificados en agosto de 2026 (fuentes al final).
 
+> **Estado (agosto de 2026): la opción A está implementada.** Lo que hay montado y cómo se
+> opera se cuenta en [acceso-produccion.md](acceso-produccion.md). Las referencias a líneas
+> concretas de este documento describen el código **anterior** al cambio; sirven para entender
+> por qué se decidió lo que se decidió, no para leer el código de hoy. Sigue pendiente el
+> paso 8 (passkeys) y, fuera del acceso, el cambio a `@sveltejs/adapter-vercel` del paso 7.
+
 ---
 
 ## 1. Qué hay hoy en el repositorio
