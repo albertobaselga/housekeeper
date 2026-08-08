@@ -138,16 +138,79 @@ export function getHousehold(householdId: string): HouseholdSummary | null {
   return householdId === HOUSEHOLD.id ? copy(HOUSEHOLD) : null;
 }
 
+/** Hueco de menú del día tal y como viaja dentro del snapshot crítico. */
+export interface SnapshotMenuSlot {
+  id: string;
+  /** «Comida», «Cena»… ya en lenguaje llano. */
+  mealLabel: string;
+  groupName: string;
+  dish: string;
+  confirmed: boolean;
+}
+
+/** Rutina que vence hoy (o antes) dentro del snapshot crítico. */
+export interface SnapshotRoutine {
+  id: string;
+  title: string;
+  details: string;
+  /** «Hoy» o «Vencía el 3 de agosto». */
+  dueLabel: string;
+  overdue: boolean;
+  done: boolean;
+}
+
+/** Nota de la Guía guardada entera para poder leerla sin conexión. */
+export interface SnapshotWikiPage {
+  id: string;
+  title: string;
+  space: string;
+  body: string;
+}
+
+/**
+ * Bloque «hoy» del snapshot: misma forma con datos reales y con la fixture,
+ * para que la página sin conexión tenga UN solo camino de pintado.
+ */
+// Alias de tipo (no interface) a propósito: el contrato declara `today` como
+// Record<string, unknown> y solo los alias reciben firma de índice implícita.
+export type SnapshotToday = {
+  dateISO: string;
+  dateLabel: string;
+  menu: SnapshotMenuSlot[];
+  routines: SnapshotRoutine[];
+};
+
 export interface CriticalSnapshotFixturePayload {
   emergency: Array<{ id: string; title: string; body: string }>;
   contacts: Array<{ id: string; name: string; phone: string; kind: string }>;
   dietaryFlags: Array<{ id: string; label: string; severity: 'high' | 'medium' }>;
-  today: { dateLabel: string; nextEvent: string; menu: string };
-  wikiPages: Array<{ id: string; title: string; space: string; body: string }>;
+  today: SnapshotToday;
+  wikiPages: SnapshotWikiPage[];
 }
 
+/** Datos REALES del hogar que sustituyen a la fixture dentro del snapshot. */
+export interface SnapshotHouseholdData {
+  today: SnapshotToday;
+  wikiPages: SnapshotWikiPage[];
+}
+
+const FIXTURE_TODAY: SnapshotToday = {
+  dateISO: '2026-08-07',
+  dateLabel: 'Viernes, 7 de agosto',
+  menu: [
+    { id: 'fixture-desayuno', mealLabel: 'Desayuno', groupName: 'Casa', dish: 'Tostadas, fruta y bebida de avena', confirmed: true },
+    { id: 'fixture-comida', mealLabel: 'Comida', groupName: 'Casa', dish: 'Lentejas con verduras', confirmed: true },
+    { id: 'fixture-cena', mealLabel: 'Cena', groupName: 'Casa', dish: 'Tortilla francesa y tomate', confirmed: false }
+  ],
+  routines: [
+    { id: 'fixture-camas', title: 'Ventilar y hacer las camas', details: 'Dormitorios', dueLabel: 'Hoy', overdue: false, done: true },
+    { id: 'fixture-lavadora', title: 'Poner lavadora clara', details: 'Lavandería', dueLabel: 'Hoy', overdue: false, done: false }
+  ]
+};
+
 export function getCriticalSnapshotPayload(
-  realContacts?: Array<{ id: string; name: string; phone: string; kind: string }> | null
+  realContacts?: Array<{ id: string; name: string; phone: string; kind: string }> | null,
+  realHousehold?: SnapshotHouseholdData | null
 ): CriticalSnapshotFixturePayload {
   return {
     // Con contactos REALES del hogar las notas de demostración desaparecen:
@@ -166,13 +229,15 @@ export function getCriticalSnapshotPayload(
           phone: contact.phone,
           kind: contact.kind
         })),
-    dietaryFlags: [{ id: 'dairy-free', label: 'Leo · sin lácteos', severity: 'high' }],
-    today: {
-      dateLabel: 'Viernes, 7 de agosto',
-      nextEvent: '16:45 · Recoger a Leo',
-      menu: '14:00 · Lentejas con verduras'
-    },
-    wikiPages: WIKI_PAGES.map((page) => ({ id: page.id, title: page.title, space: page.space, body: page.body }))
+    // La alergia de demostración desaparece igual que las notas en cuanto hay
+    // hogar real detrás: los avisos alimentarios viven en Comida, no aquí.
+    dietaryFlags: realHousehold ? [] : [{ id: 'dairy-free', label: 'Leo · sin lácteos', severity: 'high' }],
+    today: realHousehold
+      ? realHousehold.today
+      : { ...FIXTURE_TODAY, menu: FIXTURE_TODAY.menu.map((slot) => ({ ...slot })), routines: FIXTURE_TODAY.routines.map((routine) => ({ ...routine })) },
+    wikiPages: realHousehold
+      ? realHousehold.wikiPages.map((page) => ({ ...page }))
+      : WIKI_PAGES.map((page) => ({ id: page.id, title: page.title, space: page.space, body: page.body }))
   };
 }
 

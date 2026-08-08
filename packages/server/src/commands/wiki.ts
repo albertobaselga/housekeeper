@@ -408,12 +408,64 @@ export const wikiSpaceCommandHandler: CommandHandler = async (client, membership
  * wiki de la receta con EXACTAMENTE este camino, dentro de su misma
  * transacción de comando.
  */
+/**
+ * Apartado donde va la nota. Con `spaceId` se exige que exista. Con
+ * `spaceSlug` se busca por slug y, si el hogar aún no lo tiene, se CREA en la
+ * misma transacción (alta implícita, solo familia): así se puede escribir la
+ * primera instrucción sin conexión, porque el cliente ya no depende de un
+ * identificador que antes solo llegaba con el ACK del apartado.
+ */
+async function resolvePageSpace(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  payload: { spaceId?: UUID | undefined; spaceSlug?: string | undefined; spaceName?: string | undefined },
+): Promise<UUID> {
+  if (payload.spaceId !== undefined) {
+    const space = await client.query(
+      `select 1 from app.wiki_spaces where household_id = $1 and id = $2 and archived_at is null`,
+      [householdId, payload.spaceId],
+    );
+    if ((space.rowCount ?? 0) === 0) {
+      throw new CommandRejectedError("space_not_found", "El espacio no existe o no es visible");
+    }
+    return payload.spaceId;
+  }
+
+  const slug = payload.spaceSlug;
+  if (slug === undefined) {
+    throw new CommandRejectedError("invalid_payload", "La nota necesita un apartado");
+  }
+  const existing = await client.query<{ id: string; archived: boolean }>(
+    `select id, (archived_at is not null) as archived
+       from app.wiki_spaces where household_id = $1 and slug = $2`,
+    [householdId, slug],
+  );
+  const row = existing.rows[0];
+  if (row) {
+    if (row.archived) {
+      throw new CommandRejectedError("space_not_found", "Ese apartado está archivado");
+    }
+    return row.id;
+  }
+  if (!SPACE_ADMIN_ROLES.has(membership.role)) {
+    throw new CommandRejectedError("not_allowed", "Solo la familia crea apartados nuevos");
+  }
+  const created = await createWikiSpace(client, membership, householdId, {
+    name: payload.spaceName ?? slug,
+    slug,
+  });
+  return created.resourceId;
+}
+
 export async function createWikiPage(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
   payload: {
-    spaceId: UUID;
+    spaceId?: UUID | undefined;
+    spaceSlug?: string | undefined;
+    spaceName?: string | undefined;
     parentPageId?: UUID | null | undefined;
     title: string;
     bodyMarkdown: string;
@@ -422,13 +474,7 @@ export async function createWikiPage(
     publish?: boolean | undefined;
   },
 ): Promise<{ resourceId: UUID; revision: number }> {
-  const space = await client.query(
-    `select 1 from app.wiki_spaces where household_id = $1 and id = $2 and archived_at is null`,
-    [householdId, payload.spaceId],
-  );
-  if ((space.rowCount ?? 0) === 0) {
-    throw new CommandRejectedError("space_not_found", "El espacio no existe o no es visible");
-  }
+  const spaceId = await resolvePageSpace(client, membership, householdId, payload);
 
   // El slug se calcula antes de insertar porque `current_slug` es NOT NULL; el
   // registro en wiki_page_slugs llega justo después, en la misma transacción.
@@ -447,7 +493,7 @@ export async function createWikiPage(
      returning id`,
     [
       householdId,
-      payload.spaceId,
+      spaceId,
       payload.parentPageId ?? null,
       payload.publish === true ? "published" : "draft",
       slug,

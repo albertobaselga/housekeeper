@@ -130,8 +130,8 @@ export interface BlobUploadMapping {
  * Cualquier error —red, 413/415, 422 de cuarentena, 5xx— conserva el blob
  * local para reintentarlo o para que la persona decida ("las fotos permanecen
  * locales hasta subida y ACK completos"). El mapeo blobId→storageObjectId se
- * expone vía callback opcional; el enlazado con el gasto que referencie el
- * blob queda documentado como hueco para la siguiente ronda.
+ * expone vía callback opcional; `linkPendingBlobs` lo usa para escribirlo en
+ * el comando que espera esa foto antes de que el comando salga.
  */
 export async function flushBlobs(
   householdId: string,
@@ -194,10 +194,17 @@ export async function performSyncFlush(
     onAcks?: (acks: ReadonlyMap<string, SyncCommandAck>) => void;
   } = {}
 ): Promise<'idle' | 'flushed' | 'failed'> {
-  // Los blobs que fallen se conservan y se reintentarán en la próxima pasada;
-  // los comandos siguen su curso (hoy ninguno referencia blobs: hueco anotado).
-  const blobResult = await flushBlobs(householdId, fetchFn, databaseName, options.onBlobUploaded);
-  const batch = pendingRecords(await listOutbox(householdId, databaseName)).slice(0, MAX_SYNC_COMMANDS);
+  // Cada foto que sube se enlaza AL VUELO con el comando que la esperaba (en
+  // un chunk aparte: quien no captura fotos sin conexión no lo carga). Los
+  // blobs que fallen se conservan y su comando sigue esperando con ellos.
+  const blobResult = await flushBlobs(householdId, fetchFn, databaseName, async (mapping) => {
+    await (await import('./blob-link')).linkUploadedBlob(householdId, mapping, databaseName);
+    await options.onBlobUploaded?.(mapping);
+  });
+  // Un comando con foto pendiente NO sale: primero tiene que llegar su foto.
+  const batch = pendingRecords(await listOutbox(householdId, databaseName))
+    .filter((record) => !record.pendingBlob)
+    .slice(0, MAX_SYNC_COMMANDS);
   if (!batch.length) return blobResult;
   try {
     const response = await fetchFn('/api/v1/sync', {

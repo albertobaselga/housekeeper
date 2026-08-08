@@ -2,9 +2,14 @@ import { invalidate } from '$app/navigation';
 import { writable, type Writable } from 'svelte/store';
 import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
 
-import { describeErrorCode } from './error-codes';
+import { describeErrorCodeLazy } from './error-codes-lazy';
 import { listOutbox } from './idb';
-import { queueCommand, type QueueCommandResult, type QueueOutcome } from './queue-command';
+import {
+  queueCommand,
+  type QueueCommandOptions,
+  type QueueCommandResult,
+  type QueueOutcome
+} from './queue-command';
 import { lastFlushAt } from './sync';
 
 /**
@@ -98,10 +103,18 @@ export class OptimisticActions {
     this.status.set(null);
   }
 
-  /** Encola el comando con pintado optimista inmediato y resultado veraz. */
-  async run(envelope: CommandEnvelopeV1, hooks: OptimisticHooks = {}): Promise<QueueOutcome> {
+  /**
+   * Encola el comando con pintado optimista inmediato y resultado veraz.
+   * `queueOptions` deja pasar extras del encolado (p. ej. la foto capturada
+   * sin conexión que este comando debe llevar enlazada).
+   */
+  async run(
+    envelope: CommandEnvelopeV1,
+    hooks: OptimisticHooks = {},
+    queueOptions: QueueCommandOptions = {}
+  ): Promise<QueueOutcome> {
     hooks.apply?.();
-    const result = await this.options.queueCommandFn(envelope);
+    const result = await this.options.queueCommandFn(envelope, queueOptions);
     await this.applyResult(result, envelope.operationId, hooks);
     return result.outcome;
   }
@@ -127,14 +140,14 @@ export class OptimisticActions {
     }
   }
 
-  private failureFeedback(
+  private async failureFeedback(
     status: 'rejected' | 'conflict',
     errorCode: string | undefined,
     overrides?: Readonly<Record<string, string>>
-  ): ActionFeedback {
+  ): Promise<ActionFeedback> {
     const override = errorCode ? overrides?.[errorCode] : undefined;
     if (override) return { tone: 'error', text: override };
-    const cause = describeErrorCode(errorCode);
+    const cause = await describeErrorCodeLazy(errorCode);
     if (status === 'conflict') {
       return {
         tone: 'error',
@@ -167,7 +180,7 @@ export class OptimisticActions {
           settled.push(operation.hooks);
         } else {
           operation.hooks.revert?.();
-          failure = this.failureFeedback(
+          failure = await this.failureFeedback(
             record.status as 'rejected' | 'conflict',
             record.lastErrorCode,
             operation.hooks.messageOverrides

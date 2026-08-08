@@ -57,6 +57,11 @@ export interface TodayDecisionItem {
   href: string;
   /** Verbo del enlace («Revisar», «Confirmar»…). */
   cta: string;
+  /**
+   * Asunto que además se resuelve AQUÍ, sin salir de Hoy (Ola D-5). El enlace
+   * a la pantalla completa se mantiene: esto es un atajo, no un sustituto.
+   */
+  inline?: { kind: 'accept_extra'; id: string };
 }
 
 export interface TodayMenuSlotView {
@@ -70,6 +75,12 @@ export interface TodayMenuSlotView {
   notes: string;
   /** Confirmación vigente (hash al día); null = hueco sin contenido que confirmar. */
   confirmed: boolean;
+  /**
+   * Hash canónico del contenido leído en ESTA carga. Es lo que permite
+   * confirmar el hueco desde Hoy sin pasar por Menú: si el plato cambia entre
+   * medias, el servidor responde conflicto en vez de confirmar otra cosa.
+   */
+  contentHash: string;
 }
 
 export interface TodayRoutineView {
@@ -192,7 +203,8 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           title: 'Jornada extra solicitada',
           detail: extraDetail(extra),
           href: `${base}/employment#extra-${extra.id}`,
-          cta: 'Revisar'
+          cta: 'Revisar',
+          inline: { kind: 'accept_extra', id: extra.id }
         });
       } else if (extra.status === 'performed_pending_resolution') {
         items.push({
@@ -416,7 +428,8 @@ export async function loadTodayOverview(
             dish: slot.recipeTitle ?? slot.freeText,
             isRecipe: slot.recipeTitle !== null,
             notes: slot.notes,
-            confirmed
+            confirmed,
+            contentHash: contentHash ?? ''
           });
         }
       }

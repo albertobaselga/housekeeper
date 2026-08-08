@@ -71,6 +71,27 @@ describe('constructores de envelopes de la wiki', () => {
     });
   });
 
+  it('createWikiPage nombra el apartado por slug cuando el hogar aún no lo tiene', () => {
+    const envelope = createWikiPage(
+      {
+        householdId: HOUSEHOLD,
+        spaceSlug: 'general',
+        spaceName: 'General',
+        title: 'Primera instrucción',
+        bodyMarkdown: 'Escrita sin conexión.'
+      },
+      OPTIONS
+    );
+    expect(commandEnvelopeSchema.parse(envelope)).toBeTruthy();
+    expect(wikiPageCreatePayloadSchema.parse(envelope.payload)).toEqual({
+      action: 'create',
+      spaceSlug: 'general',
+      spaceName: 'General',
+      title: 'Primera instrucción',
+      bodyMarkdown: 'Escrita sin conexión.'
+    });
+  });
+
   it('editWikiPage ancla aggregateId y viaja con baseRevision en el envelope', () => {
     const envelope = editWikiPage(
       {

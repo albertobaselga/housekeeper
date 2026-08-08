@@ -300,7 +300,16 @@ export interface WikiSpaceCreatePayloadV1 {
 /** `aggregateType: "wiki_page"` — creación con su primera revisión Markdown. */
 export interface WikiPageCreatePayloadV1 {
   action: "create";
-  spaceId: UUID;
+  /** Apartado existente; alternativa a `spaceSlug`. Uno de los dos es obligatorio. */
+  spaceId?: UUID;
+  /**
+   * Apartado por slug con alta implícita si falta (solo familia). Es lo que
+   * permite escribir la primera instrucción de la Guía SIN conexión: el
+   * cliente no necesita el identificador que antes llegaba con el ACK.
+   */
+  spaceSlug?: string;
+  /** Nombre legible del apartado cuando hay que crearlo; por defecto, el slug. */
+  spaceName?: string;
   parentPageId?: UUID | null;
   title: string;
   bodyMarkdown: string;

@@ -275,6 +275,13 @@ export interface SettlementLineView {
   amountCents: string;
   amountLabel: string;
   href: string | null;
+  /**
+   * Gasto reembolsado que SÍ tiene justificante guardado. La cuenta del mes ya
+   * está cerrada y no se toca: el enlace es de solo lectura y lo ve quien ya
+   * puede ver la cuenta. Null cuando la línea no viene de un gasto o el gasto
+   * se aprobó sin foto.
+   */
+  receiptExpenseId: string | null;
 }
 
 export interface SettlementPaymentView {
@@ -634,7 +641,9 @@ function paymentStateLabel(row: SettlementRow, fullyPaid: boolean, anyPayment: b
 export function buildSettlementViews(
   settlements: readonly SettlementRow[],
   lines: readonly SettlementLineRow[],
-  payments: readonly PaymentRow[]
+  payments: readonly PaymentRow[],
+  /** Gastos de estas líneas que tienen justificante guardado (lectura RLS). */
+  expensesWithReceipt: ReadonlySet<string> = new Set()
 ): SettlementView[] {
   return settlements.map((row) => {
     const ownLines = lines
@@ -649,7 +658,9 @@ export function buildSettlementViews(
         concept: line.concept,
         amountCents: line.amountCents,
         amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
-        href: settlementLineHref(line)
+        href: settlementLineHref(line),
+        receiptExpenseId:
+          line.expenseId && expensesWithReceipt.has(line.expenseId) ? line.expenseId : null
       }));
     const ownPayments = payments
       .filter((payment) => payment.settlementId === row.id)

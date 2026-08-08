@@ -117,6 +117,11 @@ describe('buildTodayDecisions por rol', () => {
 
     const requested = items[0]!;
     expect(requested.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment#extra-e-requested`);
+    // Ola D-5: la jornada solicitada se acepta desde Hoy sin perder el enlace.
+    expect(requested.inline).toEqual({ kind: 'accept_extra', id: 'e-requested' });
+    // Lo que no se resuelve en un gesto sigue siendo solo enlace.
+    expect(items[1]!.inline).toBeUndefined();
+    expect(items[2]!.inline).toBeUndefined();
     expect(requested.detail).toContain('1 ago 2026');
     expect(requested.detail).toContain('1 h 30 min');
     expect(requested.detail).toContain('Plancha del sábado');

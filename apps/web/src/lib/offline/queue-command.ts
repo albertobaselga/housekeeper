@@ -2,8 +2,8 @@ import { browser } from '$app/environment';
 import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
 
 import { listOutbox, queueOutbox } from './idb';
-import { createOutboxRecord } from './schema';
-import { describeErrorCode } from './error-codes';
+import { createOutboxRecord, type OutboxPendingBlob } from './schema';
+import { describeErrorCodeLazy } from './error-codes-lazy';
 import {
   flushOutbox,
   performSyncFlush,
@@ -55,13 +55,9 @@ const MESSAGES: Record<Exclude<QueueOutcome, 'rejected' | 'conflict'>, string> =
   queued: 'Guardado en este dispositivo; se enviará al recuperar la conexión.'
 };
 
-function describeCause(errorCode: string | undefined): string | null {
-  return describeErrorCode(errorCode);
-}
-
-function resultFor(outcome: QueueOutcome, errorCode?: string): QueueCommandResult {
+async function resultFor(outcome: QueueOutcome, errorCode?: string): Promise<QueueCommandResult> {
   if (outcome === 'rejected') {
-    const cause = describeCause(errorCode);
+    const cause = await describeErrorCodeLazy(errorCode);
     return {
       outcome,
       ...(errorCode ? { errorCode } : {}),
@@ -71,7 +67,7 @@ function resultFor(outcome: QueueOutcome, errorCode?: string): QueueCommandResul
     };
   }
   if (outcome === 'conflict') {
-    const cause = describeCause(errorCode);
+    const cause = await describeErrorCodeLazy(errorCode);
     return {
       outcome,
       ...(errorCode ? { errorCode } : {}),
@@ -83,7 +79,7 @@ function resultFor(outcome: QueueOutcome, errorCode?: string): QueueCommandResul
   return { outcome, message: MESSAGES[outcome] };
 }
 
-function outcomeFromAck(ack: SyncCommandAck): QueueCommandResult {
+function outcomeFromAck(ack: SyncCommandAck): Promise<QueueCommandResult> {
   switch (ack.status) {
     case 'accepted':
     case 'duplicate':
@@ -106,17 +102,23 @@ export interface QueueCommandOptions {
    */
   fetchFn?: typeof fetch;
   databaseName?: string;
+  /**
+   * Foto capturada sin conexión que este comando debe llevar enlazada: el
+   * comando espera en el outbox hasta que la foto se sube y su identificador
+   * real entra en el payload (ver `linkPendingBlobs` en sync.ts).
+   */
+  pendingBlob?: OutboxPendingBlob;
 }
 
 export async function queueCommand(
   envelope: CommandEnvelopeV1,
   options: QueueCommandOptions = {}
 ): Promise<QueueCommandResult> {
-  const { fetchFn, databaseName } = options;
+  const { fetchFn, databaseName, pendingBlob } = options;
 
   // 1) Persistencia local SIEMPRE primero: pase lo que pase con la red, el
   //    cambio no se pierde.
-  await queueOutbox(createOutboxRecord(envelope), databaseName);
+  await queueOutbox(createOutboxRecord(envelope, pendingBlob ? { pendingBlob } : {}), databaseName);
   await refreshSyncStatus();
 
   // 2) Intento de envío inmediato, capturando el mapa de acks del flush.

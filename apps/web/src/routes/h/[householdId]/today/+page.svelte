@@ -6,6 +6,9 @@
   const OutboxTriage = import('$lib/components/OutboxTriage.svelte').then((module) => module.default);
   // La agenda real del día también va en chunk aparte (solo pesa cuando hay eventos).
   const TodayAgenda = import('$lib/components/TodayAgenda.svelte').then((module) => module.default);
+  // Los atajos que resuelven aquí mismo (confirmar la comida, aceptar la
+  // jornada) arrastran los comandos de comida y empleo: otro chunk aparte.
+  const InlineAction = import('$lib/components/TodayInlineAction.svelte').then((module) => module.default);
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import type { Capability } from '$lib/auth/capabilities';
@@ -49,6 +52,10 @@
   const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:today' });
   const actionStatus = optimistic.status;
   $effect(() => optimistic.start());
+
+  // Asuntos ya resueltos DESDE Hoy (Ola D-5): la clave pasa a chip al instante
+  // y vuelve atrás sola si el servidor rechaza el cambio.
+  let resolvedInline = $state<Record<string, string>>({});
 
   type DoneRoutine = { id: string; title: string; details: string; chip: string };
   let doneRoutines = $state<Record<string, DoneRoutine>>({});
@@ -146,7 +153,24 @@
                 <strong>{item.title}</strong>
                 <small>{item.detail}</small>
               </span>
-              <a class="button secondary small-button" href={item.href}>{item.cta}</a>
+              <span class="inline-actions">
+                {#if resolvedInline[item.key]}
+                  <span class="status-chip success">{resolvedInline[item.key]}</span>
+                {:else if item.inline}
+                  {@const inline = item.inline}
+                  {#await InlineAction then Action}
+                    <Action
+                      householdId={overview.householdId}
+                      action={inline}
+                      label="Aceptar"
+                      {optimistic}
+                      onApply={() => (resolvedInline[item.key] = 'Aceptada ✓')}
+                      onRevert={() => delete resolvedInline[item.key]}
+                    />
+                  {/await}
+                {/if}
+                <a class="button secondary small-button" href={item.href}>{item.cta}</a>
+              </span>
             </div>
           {/each}
         </div>
@@ -170,10 +194,30 @@
                   <small>{slot.mealLabel} · {slot.groupName}{slot.notes ? ` · ${slot.notes}` : ''}</small>
                 </span>
                 {#if slot.dish}
-                  <!-- P2-8: a quien no puede confirmar (p. ej. la empleada) el
-                       chip no le finge una tarea suya pendiente. -->
-                  <span class="status-chip {slot.confirmed ? 'success' : 'warning'}">
-                    {slot.confirmed ? 'Confirmado' : canConfirmMenu ? 'Sin confirmar' : 'Pendiente de la familia'}
+                  <span class="inline-actions">
+                    <!-- P2-8: a quien no puede confirmar (p. ej. la empleada) el
+                         chip no le finge una tarea suya pendiente. -->
+                    {#if slot.confirmed || resolvedInline[`menu-${slot.id}`]}
+                      <span class="status-chip success">Confirmado</span>
+                    {:else}
+                      <span class="status-chip warning">
+                        {canConfirmMenu ? 'Sin confirmar' : 'Pendiente de la familia'}
+                      </span>
+                      {#if canConfirmMenu && slot.contentHash}
+                        <!-- Ola D-5: se confirma aquí mismo; «Ver la semana»
+                             sigue arriba para lo demás. -->
+                        {#await InlineAction then Action}
+                          <Action
+                            householdId={overview.householdId}
+                            action={{ kind: 'confirm_menu', slotId: slot.id, contentHash: slot.contentHash }}
+                            label="Confirmar"
+                            {optimistic}
+                            onApply={() => (resolvedInline[`menu-${slot.id}`] = 'Confirmado')}
+                            onRevert={() => delete resolvedInline[`menu-${slot.id}`]}
+                          />
+                        {/await}
+                      {/if}
+                    {/if}
                   </span>
                 {/if}
               </div>
