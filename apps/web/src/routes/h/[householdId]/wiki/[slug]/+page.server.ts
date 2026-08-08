@@ -20,7 +20,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   if (view) {
     // Un slug histórico redirige de forma permanente al slug vigente (AC-15).
     if (view.kind === 'redirect') redirect(308, `${base}/${encodeURIComponent(view.slug)}`);
-    if (view.kind === 'not_found') error(404, 'Esta página de la wiki no existe en este hogar.');
+    if (view.kind === 'not_found') error(404, 'Esta nota no está en la guía de esta casa.');
     return {
       view,
       blocks: parseWikiMarkdown(view.revision.bodyMarkdown, { wikiBasePath: base }),
@@ -30,7 +30,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
 
   // Sin base de datos (o sin membresía autorizada): la demo sirve la fixture.
   const fixture = getWikiFixture().pages.find((page) => page.id === params.slug) ?? null;
-  if (!fixture) error(404, 'Esta página de la wiki no existe en este hogar.');
+  if (!fixture) error(404, 'Esta nota no está en la guía de esta casa.');
   return {
     view: null,
     blocks: parseWikiMarkdown(fixture.body, { wikiBasePath: base }),

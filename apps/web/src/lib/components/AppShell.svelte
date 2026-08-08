@@ -24,7 +24,7 @@
     today: { module: 'today', label: 'Hoy', short: 'Hoy', capability: 'emergency.read' },
     employment: { module: 'employment', label: 'Acuerdos y pagos', short: 'Pagos', capability: 'settlement.read' },
     menu: { module: 'menu', label: 'Menú', short: 'Menú', capability: 'menu.read' },
-    wiki: { module: 'wiki', label: 'Wiki de la casa', short: 'Wiki', capability: 'content.read' },
+    wiki: { module: 'wiki', label: 'Guía de la casa', short: 'Guía', capability: 'content.read' },
     routines: { module: 'routines', label: 'Rutinas', short: 'Rutinas', capability: 'routine.read' },
     calendar: { module: 'calendar', label: 'Calendario', short: 'Agenda', capability: 'calendar.read' },
     contacts: { module: 'contacts', label: 'Contactos', short: 'Contactos', capability: 'contact.read' },
@@ -358,6 +358,6 @@
       />
       <button type="submit" class="button primary small-button">Buscar</button>
     </form>
-    <p>Enter busca en wiki, contactos y más · Escape cierra</p>
+    <p>Enter busca en la guía, contactos y más · Escape cierra</p>
   </div>
 {/if}

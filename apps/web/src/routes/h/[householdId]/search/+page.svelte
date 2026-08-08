@@ -59,7 +59,7 @@
 <svelte:head><title>Buscar · Casa Clara</title></svelte:head>
 
 <div class="page-wrap search-page">
-  <PageHeader eyebrow="Buscador global" title="¿Qué necesitas encontrar?" description="Wiki, recetas y contactos en una sola búsqueda." />
+  <PageHeader eyebrow="Buscador global" title="¿Qué necesitas encontrar?" description="La guía de la casa, las recetas y los contactos en una sola búsqueda." />
 
   <form class="search-form" method="GET" onsubmit={handleSubmit}>
     <label class="sr-only" for="global-query">Buscar en toda la casa</label>
@@ -85,7 +85,7 @@
             </a>
           {:else}
             <a href={`/h/${context.household.id}/wiki`}>
-              <span class="result-type">Wiki</span>
+              <span class="result-type">Guía</span>
               <span>
                 <strong>{@render marked(result.title, offline.query)}</strong>
                 <small>{result.detail} · {@render marked(result.excerpt, offline.query)}</small>
@@ -108,13 +108,13 @@
         <h2 id="results-title">{liveTotal} resultado{liveTotal === 1 ? '' : 's'}</h2>
 
         {#if live.wiki.length}
-          <h3>Wiki</h3>
+          <h3>Guía de la casa</h3>
           {#each live.wiki as result (result.id)}
             <a href={`/h/${context.household.id}/wiki/${result.slug}`}>
-              <span class="result-type">Wiki</span>
+              <span class="result-type">Guía</span>
               <span>
                 <strong>{@render marked(result.title, live.query)}</strong>
-                <small>{result.spaceName}{result.status === 'draft' ? ' · borrador' : ''} · {@render marked(result.excerpt, live.query)}</small>
+                <small>{result.spaceName}{result.status === 'draft' ? ' · sin publicar' : ''} · {@render marked(result.excerpt, live.query)}</small>
               </span>
               <span aria-hidden="true">→</span>
             </a>
@@ -139,7 +139,7 @@
       <section class="empty-state">
         <span aria-hidden="true">⌕</span>
         <h2>No aparece “{live.query}”</h2>
-        <p>Hemos anotado el hueco para que alguien lo documente. Prueba con menos palabras o con el nombre del aparato, receta o persona.</p>
+        <p>Hemos apuntado esta búsqueda para que alguien escriba la respuesta en la guía. Prueba con menos palabras o con el nombre del aparato, receta o persona.</p>
       </section>
     {/if}
   {:else if data.search}

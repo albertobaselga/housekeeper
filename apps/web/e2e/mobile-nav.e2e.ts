@@ -19,7 +19,7 @@ test('la hoja «Más» expone para Marta el resto de módulos y Salir, sin Recet
   const sheet = page.getByRole('dialog', { name: 'Más opciones' });
   await expect(sheet).toBeVisible();
 
-  await expect(sheet.getByRole('link', { name: 'Wiki de la casa' })).toBeVisible();
+  await expect(sheet.getByRole('link', { name: 'Guía de la casa' })).toBeVisible();
   await expect(sheet.getByRole('link', { name: 'Rutinas' })).toBeVisible();
   await expect(sheet.getByRole('link', { name: 'Contactos' })).toBeVisible();
   await expect(sheet.getByRole('link', { name: /Emergencias/ })).toBeVisible();

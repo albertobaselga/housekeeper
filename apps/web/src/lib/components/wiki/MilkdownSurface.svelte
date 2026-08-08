@@ -61,7 +61,7 @@
             ctx.set(core.defaultValueCtx, initialValue);
             ctx.update(core.editorViewOptionsCtx, (previous) => ({
               ...previous,
-              attributes: { 'aria-label': 'Contenido (editor visual)' }
+              attributes: { 'aria-label': 'El texto (editor con formato)' }
             }));
             ctx.get(listenerModule.listenerCtx).markdownUpdated((_ctx, markdown, previous) => {
               if (markdown !== previous) onChange(markdown);

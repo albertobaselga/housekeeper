@@ -33,12 +33,12 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   expense_not_pending: 'El gasto ya fue resuelto',
   no_agreement_version: 'No hay versión de acuerdo vigente',
 
-  // Wiki
-  wiki_revision_conflict: 'Alguien guardó otra revisión antes que tú',
-  page_not_found: 'La página ya no existe',
-  space_not_found: 'El espacio ya no existe',
-  template_not_found: 'La plantilla ya no existe',
-  slug_taken: 'Ya existe una página con ese nombre',
+  // Guía de la casa (wiki)
+  wiki_revision_conflict: 'Otra persona guardó cambios mientras editabas; revisa su versión antes de guardar la tuya',
+  page_not_found: 'La nota ya no existe',
+  space_not_found: 'El apartado ya no existe',
+  template_not_found: 'El modelo ya no existe',
+  slug_taken: 'Ya existe una nota con ese nombre',
 
   // Menú, recetas y compra
   menu_content_changed: 'El menú cambió mientras confirmabas: revísalo',

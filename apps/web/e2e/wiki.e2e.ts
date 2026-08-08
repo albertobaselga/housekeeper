@@ -2,23 +2,26 @@ import { expect, test } from '@playwright/test';
 
 import { HOUSEHOLD, loginAs } from './helpers';
 
-// El servidor de Playwright arranca SIN base de datos: la wiki queda en modo
-// fixture (solo lectura) y ninguna acción de escritura debe aparecer, ni
-// siquiera para el administrador.
+// El servidor de Playwright arranca SIN base de datos: la guía de la casa
+// queda en modo fixture (solo lectura) y ninguna acción de escritura debe
+// aparecer, ni siquiera para el administrador.
 const WRITE_ACTION_LABELS = [
   'Editar',
-  'Crear página',
-  'Crear espacio',
+  'Escribir una instrucción',
+  'Crear apartado',
+  'Crear un apartado',
   'Publicar',
-  'Fijar',
-  'Desfijar',
-  'Guardar cambios'
+  'Destacar',
+  'Quitar de destacados',
+  'Usar como modelo (avanzado)',
+  'Guardar cambios',
+  'Guardar y publicar'
 ];
 
-test('admin en modo fixture: la wiki renderiza pero sin acciones de escritura', async ({ page }) => {
+test('admin en modo fixture: la guía renderiza pero sin acciones de escritura', async ({ page }) => {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/wiki`);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Wiki de la casa');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Guía de la casa');
   // La lectura fixture sigue renderizando lista y artículo.
   await expect(page.locator('.wiki-list')).toBeVisible();
   await expect(page.locator('.wiki-article')).toContainText('programa Mixto 40°');

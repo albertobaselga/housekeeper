@@ -236,7 +236,7 @@ export function getWikiFixture() {
 export function getSearchFixture(query: string) {
   const normalized = query.trim().toLocaleLowerCase('es');
   const corpus = [
-    ...WIKI_PAGES.map((page) => ({ type: 'Wiki', title: page.title, description: page.summary, href: 'wiki' })),
+    ...WIKI_PAGES.map((page) => ({ type: 'Guía', title: page.title, description: page.summary, href: 'wiki' })),
     ...RECIPES.map((recipe) => ({ type: 'Receta', title: recipe.title, description: recipe.tags.join(' · '), href: 'recipes' })),
     ...CONTACTS.map((contact) => ({ type: 'Contacto', title: contact.name, description: contact.role, href: 'contacts' }))
   ];
