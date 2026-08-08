@@ -10,7 +10,12 @@ import {
 } from "./index.js";
 import {
   agreementCommandPayloadSchema,
+  agreementCreateInputSchema,
+  agreementTermsInputSchema,
   commandEnvelopeSchema,
+  extraWorkCommandPayloadSchema,
+  extraWorkTypeInputSchema,
+  recurringSupplementInputSchema,
   vacationCommandPayloadSchema,
 } from "./schemas.js";
 
@@ -115,6 +120,106 @@ describe("contratos públicos", () => {
     expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: 366 }).success).toBe(false);
     expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: -1 }).success).toBe(false);
     expect(agreementCommandPayloadSchema.safeParse({ ...base, annualVacationDays: 22.5 }).success).toBe(false);
+  });
+
+  it("acepta el concepto del catálogo al registrar trabajo extra, y lo exige bien formado", () => {
+    const base = {
+      action: "register" as const,
+      agreementId: "12000000-0000-4000-8000-000000000001",
+      kind: "worked_rest_day" as const,
+      workedOn: "2026-08-08",
+      durationMinutes: 480,
+    };
+    // Sin concepto sigue valiendo: es el histórico anterior a 0021.
+    expect(extraWorkCommandPayloadSchema.safeParse(base).success).toBe(true);
+    expect(
+      extraWorkCommandPayloadSchema.safeParse({
+        ...base,
+        extraWorkTypeId: "13000000-0000-4000-8000-000000000004",
+      }).success,
+    ).toBe(true);
+    expect(
+      extraWorkCommandPayloadSchema.safeParse({ ...base, extraWorkTypeId: "jornada-extra" }).success,
+    ).toBe(false);
+  });
+
+  it("una jornada tiene que decir de cuántas horas es; una tarifa por hora, no", () => {
+    const base = { code: "jornada_extra", name: "Jornada extra", rateCents: "5000", active: true };
+    expect(
+      extraWorkTypeInputSchema.safeParse({ ...base, unit: "per_shift", referenceMinutes: 600 })
+        .success,
+    ).toBe(true);
+    expect(
+      extraWorkTypeInputSchema.safeParse({ ...base, unit: "per_shift", referenceMinutes: null })
+        .success,
+    ).toBe(false);
+    expect(
+      extraWorkTypeInputSchema.safeParse({ ...base, unit: "per_hour", referenceMinutes: 600 })
+        .success,
+    ).toBe(false);
+    // Un concepto pactado sin tarifa es legítimo: la empleada no lo verá.
+    expect(
+      extraWorkTypeInputSchema.safeParse({
+        ...base,
+        unit: "fixed_amount",
+        rateCents: null,
+        referenceMinutes: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      extraWorkTypeInputSchema.safeParse({
+        ...base,
+        unit: "fixed_amount",
+        rateCents: "-1",
+        referenceMinutes: null,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("un complemento dice siempre si suma a la transferencia o lo paga la casa", () => {
+    const base = {
+      code: "seguro_medico",
+      name: "Seguro médico privado",
+      amountCents: "4500",
+      periodicity: "monthly" as const,
+      startsOn: null,
+      endsOn: null,
+      active: true,
+    };
+    expect(recurringSupplementInputSchema.safeParse({ ...base, addsToPay: false }).success).toBe(true);
+    expect(recurringSupplementInputSchema.safeParse(base).success).toBe(false);
+    expect(
+      recurringSupplementInputSchema.safeParse({
+        ...base,
+        addsToPay: true,
+        startsOn: "2026-09-01",
+        endsOn: "2026-08-01",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("los términos de una versión llevan siempre motivo y fecha de entrada en vigor", () => {
+    const terms = {
+      effectiveFrom: "2026-09-01",
+      monthlySalaryCents: "150000",
+      contractedWeeklyMinutes: 2400,
+      annualVacationDays: 30,
+      reason: "Subida pactada en agosto",
+      extraWorkTypes: [],
+      supplements: [],
+    };
+    expect(agreementTermsInputSchema.safeParse(terms).success).toBe(true);
+    expect(agreementTermsInputSchema.safeParse({ ...terms, reason: "  " }).success).toBe(false);
+    expect(
+      agreementTermsInputSchema.safeParse({ ...terms, monthlySalaryCents: "-1" }).success,
+    ).toBe(false);
+    expect(
+      agreementCreateInputSchema.safeParse({
+        employeeMembershipId: "11000000-0000-4000-8000-000000000003",
+        startsOn: "2026-09-01",
+        terms,
+      }).success,
+    ).toBe(true);
   });
 
   it("rechaza snapshots con concesiones superiores a 24 horas", () => {

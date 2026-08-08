@@ -215,6 +215,13 @@ export interface WeeklyReportSubmitPayloadV1 {
 export interface ExtraWorkRegisterPayloadV1 {
   action: "register";
   agreementId: UUID;
+  /**
+   * Concepto del catálogo de la versión vigente el día trabajado (0021). Es
+   * quien decide la tarifa; `kind` pasa a ser la clasificación gruesa que el
+   * servidor deriva de su unidad. Opcional únicamente para los hechos
+   * anteriores al catálogo.
+   */
+  extraWorkTypeId?: UUID;
   kind: "overtime" | "worked_rest_day";
   workedOn: ISODate;
   durationMinutes: number;
@@ -306,6 +313,63 @@ export interface AgreementSetVacationEntitlementPayloadV1 {
   /** Fecha de entrada en vigor; nunca retroactiva. */
   effectiveFrom: ISODate;
   reason: string;
+}
+
+/**
+ * Catálogo de condiciones de una versión del acuerdo (migración 0021).
+ *
+ * No es un payload de comando: el alta y la edición del acuerdo NO pasan por la
+ * cola offline. Pactar condiciones es un acto administrativo deliberado —se
+ * hace contra el servidor o no se hace—, la misma decisión que la pantalla de
+ * ajustes toma para el cambio de contraseña. Los tipos viven aquí porque los
+ * comparten la form action, su validador zod y la vista de condiciones.
+ */
+export type ExtraWorkUnitV1 = "per_hour" | "per_shift" | "fixed_amount";
+
+export interface ExtraWorkTypeInputV1 {
+  /** Identidad estable del concepto a través de las versiones. */
+  code: string;
+  name: string;
+  unit: ExtraWorkUnitV1;
+  /** null = pactado sin tarifa todavía; la empleada no lo ve. */
+  rateCents: MoneyCents | null;
+  /** Duración pactada de la jornada; obligatoria en `per_shift`. */
+  referenceMinutes: number | null;
+  /** El permiso: false = a esta empleada no se le permite este trabajo. */
+  active: boolean;
+}
+
+export interface RecurringSupplementInputV1 {
+  code: string;
+  name: string;
+  amountCents: MoneyCents | null;
+  periodicity: "monthly";
+  /** true: suma a la transferencia. false: lo paga la casa aparte y solo consta. */
+  addsToPay: boolean;
+  startsOn: ISODate | null;
+  endsOn: ISODate | null;
+  active: boolean;
+}
+
+/**
+ * Términos completos de UNA versión. Nunca se editan: cada cambio apila una
+ * versión nueva con su catálogo entero, y el historial enseña las dos.
+ */
+export interface AgreementTermsInputV1 {
+  effectiveFrom: ISODate;
+  monthlySalaryCents: MoneyCents;
+  contractedWeeklyMinutes: number;
+  annualVacationDays: number;
+  reason: string;
+  extraWorkTypes: ExtraWorkTypeInputV1[];
+  supplements: RecurringSupplementInputV1[];
+}
+
+/** Alta del acuerdo: la relación laboral y su primera versión, a la vez. */
+export interface AgreementCreateInputV1 {
+  employeeMembershipId: UUID;
+  startsOn: ISODate;
+  terms: AgreementTermsInputV1;
 }
 
 /**
