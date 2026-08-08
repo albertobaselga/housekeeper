@@ -289,6 +289,14 @@ jobs:
       - name: Every Vitest file of web, server and worker must have run
         # Cubre de paso el segundo hueco de la auditoría: una suite de
         # integración con TODOS sus casos saltados cuenta como no ejecutada.
+        #
+        # Quedan fuera del inventario `packages/{domain,contracts,db}`: no
+        # emiten JUnit y, sobre todo, no lo necesitan — no dependen de ningún
+        # entorno y `pnpm -r test` descubre cualquier fichero nuevo por sí solo,
+        # así que no pueden caer en el fallo que este gate persigue. Los cubren
+        # `run-tests-nonempty.sh` en los jobs `unit` y `database`. Si algún día
+        # una de esas suites pasa a depender de un servicio externo, hay que
+        # darle JUnit y meterla aquí.
         run: >-
           python3 scripts/ci/assert-suite-coverage.py
           --label 'suites de Vitest con servidor o base de datos'
