@@ -9,19 +9,19 @@ const ACTION_LABELS = [
   'Registrar jornada extra',
   'Marcar realizada',
   'Aceptar',
-  'Resolver',
+  'Decidir compensación',
   'Añadir gasto',
   'Aprobar',
   'Rechazar',
-  'Abrir liquidación',
-  'Cerrar liquidación',
+  'Empezar la cuenta',
+  'Cerrar el mes',
   'Registrar pago',
   'Confirmar cobro'
 ];
 
 async function expectReadOnlyEmployment(page: Page): Promise<void> {
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Acuerdos y pagos');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Pagos');
   // La lectura fixture sigue renderizando el resumen de liquidación.
   await expect(page.locator('.summary-strip')).toContainText('Total transferencia');
   await expect(page.locator('.ledger-total')).toBeVisible();

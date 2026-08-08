@@ -42,17 +42,28 @@
   const actionStatus = optimistic.status;
   $effect(() => optimistic.start());
 
-  let rows = $state<WeekEntryDraft[]>([
-    { workedOn: days.includes(today) ? today : days[0]!, minutes: 480, note: '' }
+  // P2-7 (revisión UX v3): el tiempo se teclea en horas y minutos («8 h 0 min»
+  // en vez de «480»); el payload congelado sigue viajando en minutos.
+  type RowDraft = { workedOn: string; hours: number; minutes: number; note: string };
+  let rows = $state<RowDraft[]>([
+    { workedOn: days.includes(today) ? today : days[0]!, hours: 8, minutes: 0, note: '' }
   ]);
   let sent = $state(false);
   let error = $state<string | null>(null);
+
+  function toEntryDrafts(drafts: readonly RowDraft[]): WeekEntryDraft[] {
+    return drafts.map((row) => ({
+      workedOn: row.workedOn,
+      minutes: Math.trunc(Number(row.hours) || 0) * 60 + Math.trunc(Number(row.minutes) || 0),
+      note: row.note
+    }));
+  }
 
   function addRow(): void {
     if (rows.length >= MAX_WEEK_ROWS) return;
     const used = new Set(rows.map((row) => row.workedOn));
     const nextDay = days.find((day) => !used.has(day)) ?? days[0]!;
-    rows = [...rows, { workedOn: nextDay, minutes: 480, note: '' }];
+    rows = [...rows, { workedOn: nextDay, hours: 8, minutes: 0, note: '' }];
   }
 
   function removeRow(index: number): void {
@@ -62,7 +73,7 @@
 
   function submit(event: SubmitEvent): void {
     event.preventDefault();
-    const result = buildWeekEntries(weekStartsOn, rows);
+    const result = buildWeekEntries(weekStartsOn, toEntryDrafts(rows));
     if (!result.ok) {
       error = result.error;
       return;
@@ -83,7 +94,7 @@
 
 <article class="card">
   <div class="section-heading">
-    <div><p class="eyebrow">Mi semana</p><h2>Parte semanal de tiempo</h2></div>
+    <div><p class="eyebrow">Mi semana</p><h2>Días trabajados esta semana</h2></div>
     {#if alreadyReported || sent}
       <span class="status-chip success">Semana enviada</span>
     {/if}
@@ -97,8 +108,11 @@
           <label>Día
             <input type="date" bind:value={row.workedOn} min={days[0]} max={days[6]} required />
           </label>
-          <label>Minutos trabajados
-            <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={row.minutes} min="0" max="1440" step="1" required />
+          <label>Horas
+            <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={row.hours} min="0" max="24" step="1" required />
+          </label>
+          <label>Y minutos
+            <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={row.minutes} min="0" max="59" step="1" required />
           </label>
           <label>Nota (opcional)
             <input type="text" autocomplete="off" enterkeyhint="done" bind:value={row.note} maxlength="500" placeholder="Detalle del día" />
@@ -120,8 +134,8 @@
           disabled={rows.length >= MAX_WEEK_ROWS}
           onclick={addRow}
         >Añadir día</button>
-        <button class="button primary small-button" type="submit">Enviar parte semanal</button>
-        <small>Al enviarlo, la familia tiene tres días para confirmarlo o disputarlo.</small>
+        <button class="button primary small-button" type="submit">Enviar mi semana</button>
+        <small>Al enviarla, la familia tiene tres días para confirmarla o comentarla contigo.</small>
       </div>
     </form>
   {:else if canSubmit && alreadyReported}
@@ -140,11 +154,11 @@
           </small>
         </span>
         <span class="status-chip {report.status === 'confirmed' ? 'success' : 'warning'}">
-          {report.status === 'confirmed' ? (report.autoConfirmed ? 'Auto-confirmado' : 'Confirmado') : report.status === 'disputed' ? 'Disputado' : 'Enviado'}
+          {report.status === 'confirmed' ? (report.autoConfirmed ? 'Auto-confirmado' : 'Confirmado') : report.status === 'disputed' ? 'Con reparos' : 'Enviado'}
         </span>
       </div>
     {:else}
-      <div><span><strong>Sin partes recientes</strong><small>Todavía no hay semanas enviadas.</small></span></div>
+      <div><span><strong>Sin semanas recientes</strong><small>Todavía no hay semanas enviadas.</small></span></div>
     {/each}
   </div>
 </article>

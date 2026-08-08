@@ -293,6 +293,7 @@ export interface SettlementView {
   periodEnd: string;
   periodLabel: string;
   dueOn: string;
+  dueOnLabel: string;
   status: string;
   statusLabel: string;
   salaryTotalCents: string;
@@ -669,6 +670,7 @@ export function buildSettlementViews(
       periodEnd: row.periodEnd,
       periodLabel: periodLabel(row.periodStart.slice(0, 7)),
       dueOn: row.dueOn,
+      dueOnLabel: dateLabel(row.dueOn),
       status: row.status,
       statusLabel: SETTLEMENT_STATUS_LABELS[row.status] ?? row.status,
       salaryTotalCents: row.salaryTotalCents,
@@ -692,11 +694,13 @@ export function buildSettlementViews(
   });
 }
 
+// Lenguaje de casa (revisión UX v3, P2-5): «resolver» suena a pleito; los
+// estados cuentan qué falta en frases llanas.
 const PENDING_EXTRA_STATUS_LABELS: Record<PendingExtraWorkStatus, string> = {
   requested: 'Solicitada',
   accepted: 'Aceptada · sin realizar',
-  performed: 'Realizada · pendiente de resolver',
-  performed_pending_resolution: 'Realizada sin aceptación previa'
+  performed: 'Hecha · falta decidir la compensación',
+  performed_pending_resolution: 'Hecha sin acordarla antes · falta decidir la compensación'
 };
 
 export function buildPendingExtraViews(
@@ -746,7 +750,7 @@ export function weeklyReportStatusLabel(status: WeeklyReportStatus, autoConfirme
     case 'confirmed':
       return autoConfirmed ? 'Auto-confirmado' : 'Confirmado';
     case 'disputed':
-      return 'Disputado';
+      return 'Con reparos de la familia';
     default:
       return 'Borrador';
   }

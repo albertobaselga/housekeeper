@@ -43,6 +43,15 @@
   const canCloseSettlement = $derived(agreement !== null && can(context.role, 'settlement.close'));
   const canRecordPayment = $derived(agreement !== null && can(context.role, 'payment.register'));
 
+  // P1-6 (revisión UX v3): RLS solo enseña importes (versiones del acuerdo,
+  // devengo, liquidaciones, saldos) a quien administra y a la propia empleada.
+  // Para el resto (p. ej. un miembro de la familia) esas consultas devuelven
+  // cero filas: no es «no hay datos», es «no puedes verlos», y la página debe
+  // decir esa verdad en vez de pintar vacíos falsos.
+  const seesAmounts = $derived(
+    can(context.role, 'settlement.close') || can(context.role, 'payment.confirm.self')
+  );
+
   // Jerarquía por rol: quien decide (la familia) ve las tarjetas con
   // decisiones pendientes arriba del expediente; la empleada conserva su orden
   // (parte semanal y proyección primero).
@@ -103,7 +112,7 @@
   }
 </script>
 
-<svelte:head><title>Acuerdos y pagos · Casa Clara</title></svelte:head>
+<svelte:head><title>Pagos · Casa Clara</title></svelte:head>
 
 <div class="page-wrap">
   {#snippet actions()}
@@ -119,14 +128,16 @@
           <input type="date" bind:value={openDueOn} min={openPeriodEnd} required />
         </label>
         <button class="button primary" type="submit">
-          Abrir liquidación de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
+          Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
         </button>
       </form>
     {:else if openSent}
       <span class="status-chip success">Apertura enviada</span>
     {/if}
   {/snippet}
-  <PageHeader eyebrow="Expediente laboral" title="Acuerdos y pagos" description="Importes trazables, confirmaciones separadas y un historial claro." {actions} />
+  <!-- P2-3 (revisión UX v3): un solo nombre para la sección — «Pagos» — con el
+       subtítulo «Acuerdo, nómina y gastos» en vez de «Expediente laboral». -->
+  <PageHeader eyebrow="Acuerdo, nómina y gastos" title="Pagos" description="Importes claros, confirmaciones separadas y un historial que se entiende." {actions} />
 
   <ActionStatus status={actionStatus} />
 
@@ -134,16 +145,18 @@
     {#if !overview.hasEmploymentData}
       <article class="card quiet-card">
         <span class="card-icon" aria-hidden="true">·</span>
-        <h2>Sin datos laborales visibles</h2>
-        <p>Tu rol no tiene acceso al expediente laboral de este hogar, o todavía no hay un acuerdo registrado.</p>
+        <h2>Sin acuerdo de trabajo registrado</h2>
+        <p>Cuando el hogar registre un acuerdo con la empleada, aquí se verán sus pagos.</p>
       </article>
     {:else}
-      <section class="summary-strip" aria-label="Resumen del devengo en curso">
-        <div><span>Periodo en curso</span><strong>{overview.accrual?.periodLabel ?? '—'}</strong></div>
-        <div><span>Total salarial</span><strong>{overview.accrual?.salaryLabel ?? '—'}</strong></div>
-        <div><span>Reembolsos</span><strong>{overview.accrual?.reimbursementLabel ?? '—'}</strong></div>
-        <div class="total"><span>Transferencia proyectada</span><strong>{overview.accrual?.transferTotalLabel ?? '—'}</strong></div>
-      </section>
+      {#if seesAmounts}
+        <section class="summary-strip" aria-label="Resumen de lo que va sumando este mes">
+          <div><span>Mes en curso</span><strong>{overview.accrual?.periodLabel ?? '—'}</strong></div>
+          <div><span>Total salarial</span><strong>{overview.accrual?.salaryLabel ?? '—'}</strong></div>
+          <div><span>Reembolsos</span><strong>{overview.accrual?.reimbursementLabel ?? '—'}</strong></div>
+          <div class="total"><span>Total previsto</span><strong>{overview.accrual?.transferTotalLabel ?? '—'}</strong></div>
+        </section>
+      {/if}
 
       <OutboxTriageCard householdId={overview.householdId} />
 
@@ -159,7 +172,9 @@
           />
         {/if}
 
-        {#if agreement && (overview.pendingExpenses.length > 0 || canSubmitExpense)}
+        <!-- P3-6: la tarjeta de gastos no desaparece para quien decide cuando
+             no hay pendientes; conserva su estado vacío como las demás. -->
+        {#if agreement && (overview.pendingExpenses.length > 0 || canSubmitExpense || canCloseSettlement)}
           <ExpensesPendingCard
             householdId={overview.householdId}
             agreementId={agreement.id}
@@ -183,34 +198,50 @@
             />
           {/if}
 
-          <article class="card ledger-card">
-            <div class="section-heading">
-              <div><p class="eyebrow">Devengo en curso</p><h2>Proyección de {overview.accrual?.periodLabel.toLocaleLowerCase('es') ?? 'este periodo'}</h2></div>
-              <span class="status-chip warning">Sin cerrar</span>
-            </div>
-            {#if overview.accrual}
-              <div class="ledger-list">
-                {#each overview.accrual.lines as line (line.id)}
-                  <div id={line.anchorId ?? undefined}>
-                    <span>
-                      <strong>{line.concept}</strong>
-                      <small>
-                        {#if line.href}<a href={line.href}>{line.detail || 'Ver origen'}</a>{:else}{line.detail}{/if}
-                      </small>
-                    </span>
-                    <strong>{line.amountLabel}</strong>
-                  </div>
-                {/each}
+          {#if seesAmounts}
+            <article class="card ledger-card">
+              <div class="section-heading">
+                <div><p class="eyebrow">Este mes</p><h2>Lo que va sumando {overview.accrual?.periodLabel.toLocaleLowerCase('es') ?? 'este mes'}</h2></div>
+                <span class="status-chip warning">Sin cerrar</span>
               </div>
-              <div class="ledger-total"><span>Total proyectado</span><strong>{overview.accrual.transferTotalLabel}</strong></div>
-            {:else}
-              <p class="audit-note">No hay una versión del acuerdo vigente en este periodo.</p>
-            {/if}
-            <p class="audit-note">Cada línea conserva su origen y la regla vigente al cerrar el periodo.</p>
-          </article>
+              {#if overview.accrual}
+                <div class="ledger-list">
+                  {#each overview.accrual.lines as line (line.id)}
+                    <div id={line.anchorId ?? undefined}>
+                      <span>
+                        <strong>{line.concept}</strong>
+                        <small>
+                          {#if line.href}<a href={line.href}>{line.detail || 'Ver origen'}</a>{:else}{line.detail}{/if}
+                        </small>
+                      </span>
+                      <strong>{line.amountLabel}</strong>
+                    </div>
+                  {/each}
+                </div>
+                <div class="ledger-total"><span>Total previsto del mes</span><strong>{overview.accrual.transferTotalLabel}</strong></div>
+              {:else}
+                <p class="audit-note">El acuerdo todavía no está en vigor este mes.</p>
+              {/if}
+              <p class="audit-note">Cada importe dice de dónde sale y se calcula con la tarifa acordada en la fecha en que se trabajó.</p>
+            </article>
+          {/if}
 
           {#if !pendingFirst}{@render pendingDecisionCards()}{/if}
 
+          {#if !seesAmounts}
+            <!-- Ausencia por permiso, no por falta de datos: nada de «Todavía
+                 no hay liquidaciones» cuando RLS simplemente no las enseña. -->
+            <article class="card quiet-card">
+              <span class="card-icon" aria-hidden="true">·</span>
+              <h2>Importes reservados</h2>
+              <p>
+                Los importes y las cuentas de cada mes solo los ven quien administra el hogar y la
+                empleada. Tú puedes revisar las jornadas y los gastos pendientes de esta página.
+              </p>
+            </article>
+          {/if}
+
+          {#if seesAmounts}
           <article class="card">
             <div class="section-heading">
               <div><p class="eyebrow">Acuerdo</p><h2>Versiones y cambios de salario</h2></div>
@@ -234,14 +265,14 @@
                   </span>
                 </div>
               {:else}
-                <div><span><strong>Sin versiones visibles</strong><small>Tu rol no puede ver los términos salariales.</small></span></div>
+                <div><span><strong>Sin versiones visibles</strong><small>Los términos salariales solo los ven quien administra y la empleada.</small></span></div>
               {/each}
             </div>
           </article>
 
           <article class="card">
             <div class="section-heading">
-              <div><p class="eyebrow">Liquidaciones</p><h2>Historial con pagos y confirmación</h2></div>
+              <div><p class="eyebrow">Cuentas de cada mes</p><h2>Historial con pagos y confirmación</h2></div>
             </div>
             {#each overview.settlements as settlement (settlement.id)}
               <div class="section-heading">
@@ -270,11 +301,13 @@
                   </div>
                 {/each}
                 <div>
-                  <span><strong>Pagado / pendiente</strong><small>{settlement.statusLabel} · vence el {settlement.dueOn}</small></span>
+                  <span><strong>Pagado / pendiente</strong><small>{settlement.statusLabel} · vence el {settlement.dueOnLabel}</small></span>
                   <strong>{settlement.paidLabel} / {settlement.pendingLabel}</strong>
                 </div>
               </div>
-              <div class="ledger-total"><span>Total transferido</span><strong>{settlement.transferTotalLabel}</strong></div>
+              <!-- P1-8: la fila suma el total adeudado del mes, no lo enviado;
+                   «Total transferido» mentía cuando aún no había ningún pago. -->
+              <div class="ledger-total"><span>Total a pagar</span><strong>{settlement.transferTotalLabel}</strong></div>
               <p class="audit-note">
                 {#if settlement.receiptConfirmed}
                   Cobro confirmado por la empleada{settlement.receiptNote ? `: ${settlement.receiptNote}` : '.'}
@@ -290,12 +323,14 @@
                 canConfirmReceipt={canConfirmReceipt}
               />
             {:else}
-              <p class="audit-note">Todavía no hay liquidaciones cerradas ni abiertas.</p>
+              <p class="audit-note">Todavía no hay cuentas de meses empezadas ni cerradas.</p>
             {/each}
           </article>
+          {/if}
         </div>
 
         <aside class="stack">
+          {#if seesAmounts}
           <article class="card">
             <p class="eyebrow">Saldos</p><h2>Tiempo y compensación</h2>
             <div class="balance-list">
@@ -317,6 +352,7 @@
               {/each}
             </div>
           </article>
+          {/if}
           {#if canDownloadExport}
             <article class="card">
               <p class="eyebrow">Mi expediente</p>
@@ -334,11 +370,13 @@
               </a>
             </article>
           {/if}
-          <article class="card quiet-card">
-            <span class="card-icon" aria-hidden="true">✓</span>
-            <h2>Confirmación independiente</h2>
-            <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
-          </article>
+          {#if seesAmounts}
+            <article class="card quiet-card">
+              <span class="card-icon" aria-hidden="true">✓</span>
+              <h2>Confirmación independiente</h2>
+              <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
+            </article>
+          {/if}
         </aside>
       </div>
     {/if}
@@ -352,14 +390,14 @@
 
     <div class="content-grid employment-grid">
       <article class="card ledger-card">
-        <div class="section-heading"><div><p class="eyebrow">Liquidación</p><h2>Detalle de {data.employment.period.toLocaleLowerCase('es')}</h2></div><span class="status-chip warning">{data.employment.status}</span></div>
+        <div class="section-heading"><div><p class="eyebrow">Cuenta del mes</p><h2>Detalle de {data.employment.period.toLocaleLowerCase('es')}</h2></div><span class="status-chip warning">{data.employment.status}</span></div>
         <div class="ledger-list">
           {#each data.employment.lines as line}
             <div><span><strong>{line.concept}</strong><small>{line.detail}</small></span><strong>{line.amount}</strong></div>
           {/each}
         </div>
-        <div class="ledger-total"><span>Total a transferir</span><strong>{data.employment.transferTotal}</strong></div>
-        <p class="audit-note">Cada línea conserva su origen y la regla vigente al cerrar el periodo.</p>
+        <div class="ledger-total"><span>Total a pagar</span><strong>{data.employment.transferTotal}</strong></div>
+        <p class="audit-note">Cada importe dice de dónde sale y se calcula con la tarifa acordada en la fecha en que se trabajó.</p>
       </article>
 
       <aside class="stack">

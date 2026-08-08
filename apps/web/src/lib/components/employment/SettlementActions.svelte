@@ -126,8 +126,8 @@
             class="button primary small-button"
             type="button"
             onclick={() => run(closeSettlement({ householdId, settlementId: settlement.id }), 'close')}
-          >Cerrar liquidación</button>
-          <small>El servidor materializa las líneas desde los hechos y congela los totales.</small>
+          >Cerrar el mes</button>
+          <small>Al cerrar el mes se calculan las líneas y los importes quedan fijados: ya no cambian aunque cambie el acuerdo.</small>
         </div>
       {/if}
     {/if}

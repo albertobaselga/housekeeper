@@ -44,7 +44,7 @@ export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
   switch (envelope.aggregateType) {
     case 'time_entry': {
       const week = payloadField(envelope, 'weekStartsOn');
-      return week ? `Parte semanal de la semana del ${dateLabel(week)}` : 'Parte semanal';
+      return week ? `Días trabajados de la semana del ${dateLabel(week)}` : 'Días trabajados de la semana';
     }
     case 'extra_work':
       switch (action) {
@@ -59,7 +59,7 @@ export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
         case 'mark_performed':
           return 'Jornada extra marcada como realizada';
         case 'resolve':
-          return 'Resolución de jornada extra';
+          return 'Decisión de compensación de jornada extra';
         default:
           return 'Cambio en jornada extra';
       }
@@ -68,22 +68,22 @@ export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
         case 'open': {
           const periodStart = payloadField(envelope, 'periodStart');
           return periodStart
-            ? `Apertura de liquidación (${periodStart.slice(0, 7)})`
-            : 'Apertura de liquidación';
+            ? `Apertura de la cuenta del mes (${periodStart.slice(0, 7)})`
+            : 'Apertura de la cuenta del mes';
         }
         case 'close':
-          return 'Cierre de liquidación';
+          return 'Cierre de la cuenta del mes';
         case 'confirm_receipt':
           return 'Confirmación de cobro';
         default:
-          return 'Cambio en liquidación';
+          return 'Cambio en la cuenta del mes';
       }
     case 'payment': {
       const valueOn = payloadField(envelope, 'valueOn');
       return valueOn ? `Registro de pago del ${dateLabel(valueOn)}` : 'Registro de pago';
     }
     case 'expense':
-      return action === 'resolve' ? 'Resolución de gasto' : 'Gasto enviado';
+      return action === 'resolve' ? 'Decisión sobre un gasto' : 'Gasto enviado';
     default:
       return 'Cambio pendiente';
   }

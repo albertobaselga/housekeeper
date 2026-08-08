@@ -12,7 +12,7 @@ test.describe.configure({ mode: 'serial' });
 async function gotoEmployment(page: Page): Promise<void> {
   await loginAs(page, 'employee');
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { name: 'Acuerdos y pagos' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pagos', exact: true })).toBeVisible();
 }
 
 test('Ana registra una jornada extra nueva con tipo, fecha y minutos', async ({ page }) => {
@@ -22,7 +22,8 @@ test('Ana registra una jornada extra nueva con tipo, fecha y minutos', async ({ 
   const form = extrasCard.locator('form.action-form').filter({ hasText: 'Registrar jornada extra' });
   await form.getByLabel('Tipo').selectOption('worked_rest_day');
   await expect(form.getByLabel('Fecha')).toHaveValue(/^\d{4}-\d{2}-\d{2}$/);
-  await form.getByLabel('Minutos', { exact: true }).fill('120');
+  await form.getByLabel('Horas', { exact: true }).fill('2');
+  await form.getByLabel('Y minutos').fill('0');
   await form.getByLabel('Nota (opcional)').fill('Canguro nocturno E2E');
   await form.getByRole('button', { name: 'Registrar jornada extra' }).click();
 
@@ -35,16 +36,16 @@ test('Ana registra una jornada extra nueva con tipo, fecha y minutos', async ({ 
 test('Ana envía el parte de la semana en curso con dos días', async ({ page }) => {
   await gotoEmployment(page);
 
-  const weekCard = page.locator('article.card').filter({ hasText: 'Parte semanal de tiempo' });
-  await expect(weekCard.getByRole('button', { name: 'Enviar parte semanal' })).toBeVisible();
+  const weekCard = page.locator('article.card').filter({ hasText: 'Días trabajados esta semana' });
+  await expect(weekCard.getByRole('button', { name: 'Enviar mi semana' })).toBeVisible();
 
-  // Primera fila: hoy, 480 minutos por defecto. Segunda fila: otro día, 300.
+  // Primera fila: hoy, 8 h por defecto. Segunda fila: otro día, 5 h.
   await weekCard.getByRole('button', { name: 'Añadir día' }).click();
-  const minuteInputs = weekCard.getByLabel('Minutos trabajados');
-  await expect(minuteInputs).toHaveCount(2);
-  await minuteInputs.nth(1).fill('300');
+  const hourInputs = weekCard.getByLabel('Horas', { exact: true });
+  await expect(hourInputs).toHaveCount(2);
+  await hourInputs.nth(1).fill('5');
   await weekCard.getByLabel('Nota (opcional)').nth(1).fill('Media jornada E2E');
-  await weekCard.getByRole('button', { name: 'Enviar parte semanal' }).click();
+  await weekCard.getByRole('button', { name: 'Enviar mi semana' }).click();
 
   await expect(weekCard.locator('.status-chip').filter({ hasText: 'Semana enviada' })).toBeVisible();
   await expect(weekCard.locator('.ledger-list')).toContainText('Enviado · pendiente de confirmación');

@@ -43,7 +43,7 @@ describe('descripciones humanas de comandos del expediente', () => {
           entries: [{ workedOn: '2026-08-03', regularMinutes: 480 }]
         })
       )
-    ).toBe('Parte semanal de la semana del 3 ago 2026');
+    ).toBe('Días trabajados de la semana del 3 ago 2026');
     expect(
       describeEmploymentCommand(
         registerExtra({
@@ -65,7 +65,7 @@ describe('descripciones humanas de comandos del expediente', () => {
           dueOn: '2026-08-31'
         })
       )
-    ).toBe('Apertura de liquidación (2026-08)');
+    ).toBe('Apertura de la cuenta del mes (2026-08)');
     expect(
       describeEmploymentCommand(
         recordPayment({
@@ -86,7 +86,7 @@ describe('descripciones humanas de comandos del expediente', () => {
           reason: 'Con justificante'
         })
       )
-    ).toBe('Resolución de gasto');
+    ).toBe('Decisión sobre un gasto');
     // El fixture genérico es un gasto sin action: descripción de envío.
     expect(describeEmploymentCommand(envelopeFixture(crypto.randomUUID(), '2026-08-07T08:00:00.000Z'))).toBe(
       'Gasto enviado'

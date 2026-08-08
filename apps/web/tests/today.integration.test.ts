@@ -180,7 +180,7 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
 
     // El hueco fuera de la ventana ±3d no cuenta: el item es singular y de hoy.
     const menuItem = overview!.decisions.find((item) => item.key === 'menu-unconfirmed')!;
-    expect(menuItem.title).toContain('Hueco del menú sin confirmar');
+    expect(menuItem.title).toContain('Comida del menú sin confirmar');
     expect(menuItem.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/menu?week=${mondayOf(TODAY)}`);
 
     // Menú de hoy con el hueco sin confirmar y rutinas: la familia las ve todas.

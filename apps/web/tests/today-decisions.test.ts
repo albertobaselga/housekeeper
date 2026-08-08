@@ -127,7 +127,7 @@ describe('buildTodayDecisions por rol', () => {
 
     // Los huecos se agregan en un único item con la semana del primero.
     const menu = items[3]!;
-    expect(menu.title).toBe('2 huecos del menú sin confirmar');
+    expect(menu.title).toBe('2 comidas del menú sin confirmar');
     expect(menu.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/menu?week=2026-08-03`);
 
     // Solo la liquidación cerrada CON pendiente pide pago; la pagada no.
@@ -207,7 +207,7 @@ describe('triaje genérico del outbox', () => {
 
   it('describe comandos de todos los dominios y delega los laborales', () => {
     expect(describeCommand(envelope('extra_work', { action: 'accept' }))).toBe('Aceptación de jornada extra');
-    expect(describeCommand(envelope('menu_slot', { action: 'confirm' }))).toBe('Confirmación de un hueco del menú');
+    expect(describeCommand(envelope('menu_slot', { action: 'confirm' }))).toBe('Confirmación de una comida del menú');
     expect(describeCommand(envelope('routine', { action: 'complete' }))).toBe('Rutina marcada como hecha');
     expect(describeCommand(envelope('routine_occurrence', {}))).toBe(
       'Marca de tarea de demostración (sin efecto en el servidor)'

@@ -43,9 +43,15 @@
 
   let registerKind = $state<'overtime' | 'worked_rest_day'>('overtime');
   let registerDate = $state(new Date().toISOString().slice(0, 10));
-  let registerMinutes = $state(60);
+  // P2-7 (revisión UX v3): la duración se pide en horas y minutos; el contrato
+  // sigue viajando en minutos (durationMinutes) sin cambios.
+  let registerHours = $state(1);
+  let registerExtraMinutes = $state(0);
   let registerNote = $state('');
   let registerSent = $state(false);
+  const registerMinutes = $derived(
+    Math.trunc(Number(registerHours) || 0) * 60 + Math.trunc(Number(registerExtraMinutes) || 0)
+  );
 
   const KIND_LABEL: Record<'overtime' | 'worked_rest_day', string> = {
     overtime: 'Horas extraordinarias',
@@ -76,8 +82,8 @@
 
   function submitRegister(event: SubmitEvent): void {
     event.preventDefault();
-    if (!registerDate || registerMinutes < 1) return;
-    const minutes = Math.trunc(registerMinutes);
+    if (!registerDate || registerMinutes < 1 || registerMinutes > 1440) return;
+    const minutes = registerMinutes;
     const note = registerNote.trim();
     const envelope = registerExtra({
       householdId,
@@ -130,8 +136,8 @@
 
 <article class="card">
   <div class="section-heading">
-    <div><p class="eyebrow">Jornadas extra</p><h2>Pendientes de acordar o resolver</h2></div>
-    {#if extras.length > 0}<span class="status-chip warning">{extras.length} sin resolver</span>{/if}
+    <div><p class="eyebrow">Jornadas extra</p><h2>Pendientes de acordar o compensar</h2></div>
+    {#if extras.length > 0}<span class="status-chip warning">{extras.length} {extras.length === 1 ? 'pendiente' : 'pendientes'}</span>{/if}
   </div>
 
   <div class="ledger-list">
@@ -158,7 +164,7 @@
                 type="button"
                 aria-expanded={resolveOpenId === extra.id}
                 onclick={() => { resolveOpenId = resolveOpenId === extra.id ? null : extra.id; resolveReason = ''; }}
-              >Resolver</button>
+              >Decidir compensación</button>
             {/if}
             {#if canRegister && extra.performable && extra.employeeMembershipId === ownMembershipId}
               <button
@@ -175,17 +181,17 @@
           <div class="form-grid">
             <label>Compensación
               <select bind:value={resolveResolution}>
-                <option value="money">Pagar en dinero</option>
-                <option value="time_off">Compensar con descanso</option>
+                <option value="money">Pagarla</option>
+                <option value="time_off">Darle descanso</option>
               </select>
             </label>
             <label>Motivo
-              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={resolveReason} maxlength="500" required placeholder="Motivo de la resolución" />
+              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={resolveReason} maxlength="500" required placeholder="Por qué se decide así" />
             </label>
           </div>
           <div class="action-row">
-            <button class="button primary small-button" type="submit" disabled={!resolveReason.trim()}>Confirmar resolución</button>
-            <small>La tarifa se congela en el servidor con la versión vigente del acuerdo.</small>
+            <button class="button primary small-button" type="submit" disabled={!resolveReason.trim()}>Confirmar la decisión</button>
+            <small>Se pagará con la tarifa acordada en la fecha en que se trabajó.</small>
           </div>
         </form>
       {/if}
@@ -217,8 +223,11 @@
         <label>Fecha
           <input type="date" bind:value={registerDate} required />
         </label>
-        <label>Minutos
-          <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerMinutes} min="1" max="1440" step="1" required />
+        <label>Horas
+          <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerHours} min="0" max="24" step="1" required />
+        </label>
+        <label>Y minutos
+          <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerExtraMinutes} min="0" max="59" step="1" required />
         </label>
       </div>
       <label>Nota (opcional)
