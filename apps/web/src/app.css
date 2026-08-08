@@ -599,12 +599,12 @@
   .editor-panel textarea, .editor-panel input[type="text"] { width: 100%; resize: vertical; border: 1px solid var(--line-strong); border-radius: .7rem; background: white; padding: .8rem; color: var(--ink); line-height: 1.55; }
   .file-field { display: grid; gap: .35rem; border: 1px dashed var(--line-strong); border-radius: .7rem; padding: .75rem; }
 
-  /* Conmutador Visual/Markdown del editor de wiki (patrón tabs de WAI-ARIA). */
+  /* Editor único de la guía: el visual delante y el Markdown en avanzadas. */
   .editor-content-label { font-size: .78rem; font-weight: 750; }
   .editor-body { display: grid; gap: .45rem; }
-  .editor-tabs { display: flex; gap: .35rem; }
-  .editor-tabs [role="tab"] { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: .38rem .85rem; color: var(--ink-soft); font-size: .75rem; font-weight: 700; }
-  .editor-tabs [role="tab"][aria-selected="true"] { border-color: var(--primary); background: var(--primary); color: white; }
+  .wiki-advanced summary { cursor: pointer; color: var(--ink-soft); font-size: .78rem; font-weight: 750; }
+  .wiki-advanced > .stack { margin-top: .8rem; gap: .65rem; }
+  .wiki-advanced .text-button { justify-self: start; }
 
   /* Superficie Milkdown: mismo marco que el textarea y estilos ProseMirror
      mínimos escritos a mano (sin CSS del tema: nada de url() externas). */
@@ -635,7 +635,31 @@
   .wiki-pinned small { color: var(--accent); font-size: .66rem; font-weight: 800; text-transform: uppercase; }
   .wiki-pinned span { color: var(--ink-soft); font-size: .7rem; }
   .wiki-space { margin-top: 1rem; }
-  .wiki-space h3 { font-size: .9rem; }
+  .wiki-space h3, .wiki-space h4 { font-size: .9rem; }
+
+  /* Portada «Guía de la casa»: escribir, destacadas, apartados, mantenimiento. */
+  .wiki-write-cta { display: flex; }
+  .wiki-composer form label, .wiki-maintenance form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .78rem; font-weight: 750; }
+  .wiki-composer form input[type="text"], .wiki-composer form input[type="search"], .wiki-composer form select, .wiki-composer form textarea,
+  .wiki-maintenance form input[type="text"] {
+    width: 100%;
+    resize: vertical;
+    border: 1px solid var(--line-strong);
+    border-radius: .7rem;
+    background: white;
+    padding: .6rem .8rem;
+    color: var(--ink);
+    /* ≥16 px efectivos: evita el zoom automático de iOS al enfocar. */
+    font-size: 1rem;
+  }
+  .wiki-composer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; }
+  .wiki-sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: .8rem; align-items: start; margin-top: .8rem; }
+  .wiki-section-card h3 { font-size: .95rem; }
+  .wiki-section-count { margin-left: auto; color: var(--ink-soft); font-size: .7rem; }
+  .wiki-maintenance > summary { cursor: pointer; font-weight: 750; }
+  .wiki-maintenance > .stack { margin-top: 1rem; }
+  .wiki-maintenance h3 { font-size: .9rem; }
+  .wiki-confirm { display: grid; gap: .6rem; margin-top: .6rem; border: 1px solid var(--warning); border-radius: .8rem; background: var(--warning-soft); padding: .8rem; font-size: .8rem; }
   .wiki-tree { display: grid; gap: .35rem; margin: .5rem 0 0; padding: 0; list-style: none; }
   .wiki-tree .wiki-tree { margin-left: 1rem; border-left: 1px solid var(--line); padding-left: .75rem; }
   .wiki-node-row { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }

@@ -2,14 +2,14 @@
   import { untrack } from 'svelte';
   import { editWikiPage, parseTermList } from '$lib/wiki/commands';
   import { queueCommand, type QueueCommandResult } from '$lib/offline/queue-command';
-  import { nextEditorTab, type EditorTab } from '$lib/wiki/editor-tabs';
   import MilkdownSurface from './MilkdownSurface.svelte';
 
-  // Editor route-lazy: solo se importa dinámicamente desde la página de wiki.
-  // El Markdown canónico vive en `body`; la pestaña Visual (Milkdown) y la
-  // pestaña Markdown (textarea) editan ese MISMO estado. Al guardar construye
-  // el envelope `edit` del contrato con baseRevision = la revisión mostrada al
-  // abrir el editor, y lo encola offline-first.
+  // Editor route-lazy: solo se importa dinámicamente desde la página de la
+  // guía. El Markdown canónico vive en `body`; hay UN solo editor visible (el
+  // visual de Milkdown) y el texto sin formato (Markdown) queda escondido en
+  // «Opciones avanzadas». Al guardar construye el envelope `edit` del contrato
+  // con baseRevision = la revisión mostrada al abrir el editor, y lo encola
+  // offline-first.
   let {
     householdId,
     pageId,
@@ -51,38 +51,34 @@
   let aliases = $state(untrack(() => initialAliases.join(', ')));
   let saving = $state(false);
 
-  // Por defecto la pestaña Visual; si Milkdown no consigue montar (sin red
-  // para el chunk, navegador raro…) cae automáticamente al textarea y la
-  // pestaña Visual desaparece con un aviso discreto.
-  let tab = $state<EditorTab>('visual');
+  // Por defecto el editor visual; si Milkdown no consigue montar (sin red
+  // para el chunk, navegador raro…) cae automáticamente al texto plano con un
+  // aviso discreto. «Escribir en Markdown» vive en Opciones avanzadas.
+  let markdownMode = $state(false);
   let visualFailed = $state(false);
-  let tablist = $state<HTMLDivElement | null>(null);
   let surface = $state<{ currentMarkdown: () => string | null } | null>(null);
 
-  function selectTab(next: EditorTab): void {
-    tab = next;
+  function flushBody(): void {
+    // El listener de Milkdown va con debounce: se vuelca el estado actual
+    // del editor visual antes de cambiar de modo o guardar.
+    const flushed = surface?.currentMarkdown();
+    if (typeof flushed === 'string') body = flushed;
+  }
+
+  function toggleMarkdownMode(): void {
+    if (!markdownMode) flushBody();
+    markdownMode = !markdownMode;
   }
 
   function onVisualError(): void {
     visualFailed = true;
-    tab = 'markdown';
-  }
-
-  function onTablistKeydown(event: KeyboardEvent): void {
-    const next = nextEditorTab(tab, event.key, !visualFailed);
-    if (!next || next === tab) return;
-    event.preventDefault();
-    tab = next;
-    tablist?.querySelector<HTMLButtonElement>(`#wiki-tab-${next}`)?.focus();
+    markdownMode = true;
   }
 
   async function save(): Promise<void> {
     saving = true;
     try {
-      // El listener de Milkdown va con debounce: se vuelca el estado actual
-      // del editor visual antes de construir el envelope.
-      const flushed = surface?.currentMarkdown();
-      if (typeof flushed === 'string') body = flushed;
+      flushBody();
       const envelope = editWikiPage({
         householdId,
         pageId,
@@ -111,56 +107,36 @@
   <label for="wiki-title">Título</label>
   <input id="wiki-title" type="text" autocomplete="off" enterkeyhint="next" bind:value={title} maxlength="200" />
 
-  <span class="editor-content-label" id="wiki-content-label" aria-hidden="true">Contenido</span>
+  <span class="editor-content-label" id="wiki-content-label">El texto</span>
   <div class="editor-body">
-    <div class="editor-tabs" role="tablist" aria-label="Modo de edición del contenido" bind:this={tablist}>
-      {#if !visualFailed}
-        <button
-          id="wiki-tab-visual"
-          role="tab"
-          type="button"
-          aria-selected={tab === 'visual'}
-          aria-controls="wiki-panel-visual"
-          tabindex={tab === 'visual' ? 0 : -1}
-          onclick={() => selectTab('visual')}
-          onkeydown={onTablistKeydown}
-        >Visual</button>
-      {/if}
-      <button
-        id="wiki-tab-markdown"
-        role="tab"
-        type="button"
-        aria-selected={tab === 'markdown'}
-        aria-controls="wiki-panel-markdown"
-        tabindex={tab === 'markdown' ? 0 : -1}
-        onclick={() => selectTab('markdown')}
-        onkeydown={onTablistKeydown}
-      >Markdown</button>
-    </div>
-
     {#if visualFailed}
-      <p class="audit-note" role="status">El editor visual no ha podido cargarse; puedes seguir editando en Markdown.</p>
+      <p class="audit-note" role="status">El editor con formato no ha podido cargarse; puedes seguir escribiendo el texto igualmente.</p>
     {/if}
-
-    {#if tab === 'visual' && !visualFailed}
-      <div id="wiki-panel-visual" role="tabpanel" aria-labelledby="wiki-tab-visual">
-        <MilkdownSurface bind:this={surface} value={body} onChange={(markdown) => (body = markdown)} onError={onVisualError} />
-      </div>
+    {#if markdownMode || visualFailed}
+      <label class="sr-only" for="wiki-body">El texto</label>
+      <textarea id="wiki-body" rows="12" bind:value={body}></textarea>
     {:else}
-      <div id="wiki-panel-markdown" role="tabpanel" aria-labelledby="wiki-tab-markdown">
-        <label class="sr-only" for="wiki-body">Contenido (Markdown)</label>
-        <textarea id="wiki-body" rows="12" bind:value={body}></textarea>
-      </div>
+      <MilkdownSurface bind:this={surface} value={body} onChange={(markdown) => (body = markdown)} onError={onVisualError} />
     {/if}
   </div>
 
-  <label for="wiki-summary">Resumen del cambio</label>
-  <input id="wiki-summary" type="text" autocomplete="off" enterkeyhint="next" bind:value={summary} maxlength="500" placeholder="Qué has cambiado y por qué" />
-  <label for="wiki-tags">Etiquetas (separadas por comas)</label>
-  <input id="wiki-tags" type="text" autocomplete="off" enterkeyhint="next" bind:value={tags} />
-  <label for="wiki-aliases">Alias de búsqueda (separados por comas)</label>
-  <input id="wiki-aliases" type="text" autocomplete="off" enterkeyhint="done" bind:value={aliases} />
-  <p class="audit-note">Editas sobre la revisión {baseRevision}. Si alguien guardó otra más nueva, el servidor pedirá resolverlo a mano.</p>
+  <details class="wiki-advanced">
+    <summary>Opciones avanzadas</summary>
+    <div class="stack">
+      <label for="wiki-summary">Qué has cambiado (opcional)</label>
+      <input id="wiki-summary" type="text" autocomplete="off" enterkeyhint="next" bind:value={summary} maxlength="500" placeholder="p. ej. Añadido el programa de toallas" />
+      <label for="wiki-tags">Palabras para encontrarla (separadas por comas)</label>
+      <input id="wiki-tags" type="text" autocomplete="off" enterkeyhint="next" bind:value={tags} />
+      <label for="wiki-aliases">Otros nombres con los que buscarla (separados por comas)</label>
+      <input id="wiki-aliases" type="text" autocomplete="off" enterkeyhint="done" bind:value={aliases} />
+      {#if !visualFailed}
+        <button class="text-button" type="button" onclick={toggleMarkdownMode}>
+          {markdownMode ? 'Volver al editor con formato' : 'Escribir en Markdown'}
+        </button>
+      {/if}
+    </div>
+  </details>
+
   <button
     class="button primary"
     type="button"

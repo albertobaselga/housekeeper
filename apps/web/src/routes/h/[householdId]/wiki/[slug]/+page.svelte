@@ -77,7 +77,8 @@
   const feedback = writable<ActionFeedback | null>(null);
 
   // Lo que se pinta: el borrador optimista si existe; si no, los datos del load.
-  const shownTitle = $derived(optimistic?.title ?? view?.revision.title ?? data.fixture?.title ?? 'Wiki');
+  const shownTitle = $derived(optimistic?.title ?? view?.revision.title ?? data.fixture?.title ?? 'Guía de la casa');
+  const lastAuthor = $derived(view?.revisions[0]?.author ?? '');
   const shownBlocks = $derived(optimistic?.blocks ?? data.blocks);
   const shownTags = $derived(optimistic?.tags ?? view?.revision.tags ?? []);
   const shownAliases = $derived(optimistic?.aliases ?? view?.revision.aliases ?? []);
@@ -183,18 +184,17 @@
           <button class="button primary" type="button" disabled={busy} onclick={() => void dispatchState({ status: 'published' })}>Publicar</button>
         {/if}
         <button class="button secondary" type="button" disabled={busy} onclick={() => void dispatchState({ pinned: !shownPinned })}>
-          {shownPinned ? 'Desfijar' : 'Fijar en portada'}
+          {shownPinned ? 'Quitar de destacados' : 'Destacar'}
         </button>
       {/if}
     {/snippet}
     <PageHeader eyebrow={view.page.spaceName} title={shownTitle} description={optimistic ? undefined : view.revision.summary} {actions} />
 
     <p class="audit-note wiki-meta">
-      <a href={base}>← Wiki</a>
-      · Actualizada el {view.page.updatedLabel}
-      · {view.page.reads30d} lectura{view.page.reads30d === 1 ? '' : 's'} en 30 días
-      {#if shownStatus === 'draft'}· <span class="status-chip warning">Borrador</span>{/if}
-      {#if shownPinned}· <span class="status-chip success">Fijada</span>{/if}
+      <a href={base}>← Guía de la casa</a>
+      · Actualizada el {view.page.updatedLabel}{lastAuthor ? ` por ${lastAuthor}` : ''}
+      {#if shownStatus === 'draft'}· <span class="status-chip warning">Guardada sin publicar</span>{/if}
+      {#if shownPinned}· <span class="status-chip success">Destacada</span>{/if}
     </p>
 
     <ActionStatus status={feedback} />
@@ -223,28 +223,28 @@
     </article>
 
     <details class="card wiki-history">
-      <summary>Historial · {view.revisions.length} revisi{view.revisions.length === 1 ? 'ón' : 'ones'}</summary>
+      <summary>Cambios anteriores ({view.revisions.length})</summary>
       <ul class="wiki-revisions">
         {#each view.revisions as revision (revision.id)}
           <li>
-            <strong>r{revision.number}</strong>
+            <strong>Versión {revision.number}</strong>
             <span>{revision.author} · {revision.createdLabel}</span>
             {#if revision.summary}<small>{revision.summary}</small>{/if}
           </li>
         {/each}
       </ul>
       {#if view.diff}
-        <h3>Cambios de r{view.diffAgainst} a r{view.revision.number}</h3>
+        <h3>Qué cambió de la versión {view.diffAgainst} a la {view.revision.number}</h3>
         <pre class="wiki-diff">{#each view.diff as line}<span
             class={line.type}>{line.type === 'added' ? '+' : line.type === 'removed' ? '−' : ' '} {line.text}
 </span>{/each}</pre>
       {:else}
-        <p class="audit-note">Esta página solo tiene una revisión.</p>
+        <p class="audit-note">Esta nota no tiene cambios anteriores.</p>
       {/if}
     </details>
   {:else if data.fixture}
     <PageHeader eyebrow={data.fixture.space} title={data.fixture.title} description={data.fixture.summary} />
-    <p class="audit-note wiki-meta"><a href={base}>← Wiki</a> · contenido ficticio</p>
+    <p class="audit-note wiki-meta"><a href={base}>← Guía de la casa</a> · contenido ficticio</p>
     <article class="card wiki-article">
       <WikiMarkdown blocks={data.blocks} />
       <footer>Actualizado {data.fixture.updated.toLocaleLowerCase('es')} · contenido ficticio</footer>
