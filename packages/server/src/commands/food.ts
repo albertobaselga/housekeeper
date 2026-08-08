@@ -3,8 +3,8 @@ import type { PoolClient } from "pg";
 import type { UUID } from "@casa-clara/contracts";
 import {
   dinerUpsertPayloadSchema,
-  foodUpsertPayloadSchema,
-  recipeSetDetailsPayloadSchema,
+  foodCommandPayloadSchema,
+  recipeCommandPayloadSchema,
 } from "@casa-clara/contracts/schemas";
 
 import { CommandRejectedError, type CommandHandler } from "../sync.js";
@@ -88,18 +88,89 @@ export function rejectUnreviewedFoods(foods: readonly FoodFacts[]): void {
 }
 
 /**
- * `food` — upsert de alimento del catálogo (solo familia). El mapeo de
- * alérgenos del payload reemplaza por completo al existente y `reviewed`
- * gobierna `allergens_reviewed`, la llave que desbloquea su uso en recetas.
+ * Baja lógica reversible compartida por alimentos, recetas y grupos: nunca se
+ * borra nada: `archived_at` deja de listarlo y `restore` lo devuelve. Lo que ya
+ * lo usaba (recetas, plantillas de menú) no se rompe, solo degrada.
+ */
+export async function setArchived(
+  client: PoolClient,
+  options: {
+    table: string;
+    householdId: UUID;
+    idColumn: string;
+    id: UUID;
+    archived: boolean;
+    errorCode: string;
+    what: string;
+  },
+): Promise<{ resourceId: UUID }> {
+  const updated = await client.query<{ ok: boolean }>(
+    `update ${options.table}
+        set archived_at = case when $3 then statement_timestamp() else null end
+      where household_id = $1 and ${options.idColumn} = $2
+        and (archived_at is null) = $3
+      returning true as ok`,
+    [options.householdId, options.id, options.archived],
+  );
+  if ((updated.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError(
+      options.errorCode,
+      options.archived
+        ? `${options.what} no existe o ya estaba archivado`
+        : `${options.what} no existe o no estaba archivado`,
+    );
+  }
+  return { resourceId: options.id };
+}
+
+/**
+ * `food` — upsert / archive / restore del catálogo de alimentos (solo
+ * familia). En el upsert, el mapeo de alérgenos del payload reemplaza por
+ * completo al existente y `reviewed` gobierna `allergens_reviewed`, la llave
+ * que desbloquea su uso en recetas.
  */
 export const foodCommandHandler: CommandHandler = async (client, membership, envelope) => {
   requireFamilyRole(membership.role, "el catálogo de alimentos");
-  const parsed = foodUpsertPayloadSchema.safeParse(envelope.payload);
+  const parsed = foodCommandPayloadSchema.safeParse(envelope.payload);
   if (!parsed.success) {
     throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
   }
   const payload = parsed.data;
   const householdId = envelope.householdId;
+
+  if (payload.action === "archive" || payload.action === "restore") {
+    if (payload.action === "restore") {
+      // El nombre solo es único entre los NO archivados: si mientras tanto se
+      // creó otro alimento con ese nombre, se dice en vez de reventar el índice.
+      const clash = await client.query(
+        `select 1
+           from app.foods as archived
+           join app.foods as active
+             on active.household_id = archived.household_id
+            and active.id <> archived.id
+            and lower(active.name) = lower(archived.name)
+            and active.archived_at is null
+          where archived.household_id = $1 and archived.id = $2`,
+        [householdId, payload.foodId],
+      );
+      if ((clash.rowCount ?? 0) > 0) {
+        throw new CommandRejectedError(
+          "food_name_taken",
+          "Ya hay otro alimento con ese nombre; cámbiale el nombre antes de recuperarlo",
+        );
+      }
+    }
+    return setArchived(client, {
+      table: "app.foods",
+      householdId,
+      idColumn: "id",
+      id: payload.foodId,
+      archived: payload.action === "archive",
+      errorCode: "food_not_found",
+      what: "El alimento",
+    });
+  }
+
   const allergenCodes = [...new Set(payload.allergenCodes)].sort();
   await requireKnownAllergens(client, allergenCodes);
 
@@ -224,20 +295,33 @@ export const dinerCommandHandler: CommandHandler = async (client, membership, en
 };
 
 /**
- * `recipe` — set_details (solo familia): la parte estructurada de una receta
- * sobre una página wiki existente del hogar. Upsert de `app.recipes` y
- * reemplazo completo de los ingredientes. Regla dura AC-21: si algún alimento
- * usado tiene `allergens_reviewed = false` la operación se rechaza con
- * `food_unreviewed` listando los alimentos afectados.
+ * `recipe` — set_details / archive / restore (solo familia): la parte
+ * estructurada de una receta sobre una página wiki existente del hogar. Upsert
+ * de `app.recipes` y reemplazo completo de los ingredientes. Regla dura AC-21:
+ * si algún alimento usado tiene `allergens_reviewed = false` la operación se
+ * rechaza con `food_unreviewed` listando los alimentos afectados. Archivar
+ * retira la ficha del recetario SIN tocar su nota de la Guía.
  */
 export const recipeCommandHandler: CommandHandler = async (client, membership, envelope) => {
   requireFamilyRole(membership.role, "las recetas");
-  const parsed = recipeSetDetailsPayloadSchema.safeParse(envelope.payload);
+  const parsed = recipeCommandPayloadSchema.safeParse(envelope.payload);
   if (!parsed.success) {
     throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
   }
   const payload = parsed.data;
   const householdId = envelope.householdId;
+
+  if (payload.action === "archive" || payload.action === "restore") {
+    return setArchived(client, {
+      table: "app.recipes",
+      householdId,
+      idColumn: "page_id",
+      id: payload.pageId,
+      archived: payload.action === "archive",
+      errorCode: "recipe_not_found",
+      what: "La receta",
+    });
+  }
 
   const page = await client.query(
     `select 1 from app.wiki_pages where household_id = $1 and id = $2 for update`,

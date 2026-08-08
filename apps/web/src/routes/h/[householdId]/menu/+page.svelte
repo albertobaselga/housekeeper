@@ -13,6 +13,7 @@
     deleteMenuTemplate,
     duplicateMenuWeek,
     saveMenuTemplate,
+    setMenuGroupArchived,
     setMenuSlot,
     setMenuSlotNewRecipe,
     setShoppingLineChecked,
@@ -353,6 +354,22 @@
   let newGroupName = $state('');
   let newGroupDiners = $state<string[]>([]);
 
+  // Archivado discreto del grupo: nada se borra, sus comidas ya planificadas
+  // se quedan y siempre se puede recuperar. Confirmación ligera de dos taps.
+  let archiveArmedGroupId = $state<string | null>(null);
+  let archivingGroupIds = $state<Record<string, true>>({});
+
+  function setGroupArchived(groupId: string, archived: boolean): void {
+    if (!week || archivingGroupIds[groupId]) return;
+    archiveArmedGroupId = null;
+    archivingGroupIds[groupId] = true;
+    void optimistic
+      .run(setMenuGroupArchived({ householdId: week.householdId, groupId, archived }))
+      .finally(() => {
+        delete archivingGroupIds[groupId];
+      });
+  }
+
   function submitNewGroup(event: SubmitEvent): void {
     event.preventDefault();
     if (!week || !newGroupName.trim()) return;
@@ -586,6 +603,20 @@
                 <span class="status-chip warning">{diner.flags.map((flag) => flag.allergenName).join(', ')}</span>
               {/if}{:else}Sin comensales asignados{/each}
             </p>
+            {#if week.canWrite}
+              {#if archiveArmedGroupId === group.id}
+                <span class="menu-slot-actions">
+                  <button class="button secondary small-button" type="button" onclick={() => setGroupArchived(group.id, true)}>
+                    Sí, archivar «{group.name}»
+                  </button>
+                  <button class="button secondary small-button" type="button" onclick={() => (archiveArmedGroupId = null)}>
+                    Cancelar
+                  </button>
+                </span>
+              {:else}
+                <button class="archive-link" type="button" onclick={() => (archiveArmedGroupId = group.id)}>Archivar</button>
+              {/if}
+            {/if}
           </div>
 
           {#each MEALS as meal (meal)}
@@ -860,6 +891,30 @@
             {/if}
             <button class="button secondary" type="submit">Crear grupo</button>
           </form>
+
+          {#if week.archivedGroups.length}
+            <details class="archived-block">
+              <summary>Grupos archivados ({week.archivedGroups.length})</summary>
+              <p class="audit-note">Sus comidas ya planificadas siguen guardadas; el grupo vuelve tal cual al recuperarlo.</p>
+              <ul class="wiki-recent">
+                {#each week.archivedGroups as group (group.id)}
+                  <li>
+                    <div class="wiki-node-row">
+                      <span><strong>{group.name}</strong></span>
+                      <button
+                        class="button secondary small-button"
+                        type="button"
+                        disabled={archivingGroupIds[group.id]}
+                        onclick={() => setGroupArchived(group.id, false)}
+                      >
+                        Recuperar
+                      </button>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            </details>
+          {/if}
         </section>
       {/if}
     {:else if shopping}
@@ -1056,6 +1111,26 @@
   }
   .first-use-steps small {
     color: var(--ink-soft);
+  }
+
+  /* Archivar es una acción discreta: un enlace pequeño que no compite con las
+     acciones del día a día. Lo archivado vive en una lista plegada. */
+  .archive-link {
+    border: 0;
+    background: none;
+    padding: 0.2rem 0.1rem;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .archived-block {
+    margin-top: 0.75rem;
+  }
+  .archived-block > summary {
+    cursor: pointer;
+    color: var(--ink-soft);
+    font-size: 0.8rem;
   }
 
   /* Compra (P2-4): el redondeo a paquetes y el desglose por origen son

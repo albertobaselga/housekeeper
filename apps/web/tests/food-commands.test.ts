@@ -6,9 +6,12 @@ import { describe, expect, it } from 'vitest';
 import {
   commandEnvelopeSchema,
   dinerUpsertPayloadSchema,
+  foodCommandPayloadSchema,
   foodUpsertPayloadSchema,
+  menuGroupCommandPayloadSchema,
   menuGroupUpsertPayloadSchema,
   menuSlotCommandPayloadSchema,
+  recipeCommandPayloadSchema,
   recipeSetDetailsPayloadSchema,
   routineCompletePayloadSchema,
   routineUpsertPayloadSchema,
@@ -24,7 +27,10 @@ import {
   confirmMenuSlot,
   duplicateMenuWeek,
   queueFoodCommand,
+  setFoodArchived,
+  setMenuGroupArchived,
   setMenuSlot,
+  setRecipeArchived,
   setRecipeDetails,
   setShoppingChecked,
   setShoppingLineChecked,
@@ -308,6 +314,42 @@ describe('constructores de envelopes de comida y rutinas', () => {
         checked: true
       })
     ).toThrow();
+  });
+
+  it('archivar y recuperar alimentos, recetas y grupos valida contra el contrato', () => {
+    const archivedFood = setFoodArchived({ householdId: HOUSEHOLD, foodId: FOOD, archived: true }, OPTIONS);
+    expect(archivedFood.aggregateType).toBe('food');
+    expect(archivedFood.aggregateId).toBe(FOOD);
+    expect(foodCommandPayloadSchema.parse(archivedFood.payload)).toEqual({
+      action: 'archive',
+      foodId: FOOD
+    });
+    expect(
+      foodCommandPayloadSchema.parse(
+        setFoodArchived({ householdId: HOUSEHOLD, foodId: FOOD, archived: false }, OPTIONS).payload
+      )
+    ).toEqual({ action: 'restore', foodId: FOOD });
+
+    const archivedRecipe = setRecipeArchived({ householdId: HOUSEHOLD, pageId: PAGE, archived: true }, OPTIONS);
+    expect(archivedRecipe.aggregateType).toBe('recipe');
+    expect(recipeCommandPayloadSchema.parse(archivedRecipe.payload)).toEqual({
+      action: 'archive',
+      pageId: PAGE
+    });
+
+    const archivedGroup = setMenuGroupArchived({ householdId: HOUSEHOLD, groupId: GROUP, archived: true }, OPTIONS);
+    expect(archivedGroup.aggregateType).toBe('menu_group');
+    expect(menuGroupCommandPayloadSchema.parse(archivedGroup.payload)).toEqual({
+      action: 'archive',
+      groupId: GROUP
+    });
+
+    // El upsert sigue entrando por la misma unión discriminada.
+    expect(
+      menuGroupCommandPayloadSchema.parse(
+        upsertMenuGroup({ householdId: HOUSEHOLD, name: 'Casa', dinerIds: [] }, OPTIONS).payload
+      )
+    ).toMatchObject({ action: 'upsert' });
   });
 
   it('addShoppingItem a la lista personal se escribe a mano, sin catálogo', () => {

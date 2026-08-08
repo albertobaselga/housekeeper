@@ -6,6 +6,8 @@
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { formatQuantityEs, scaleQuantity } from '$lib/food/quantities';
   import {
+    setFoodArchived,
+    setRecipeArchived,
     setRecipeDetails,
     upsertDiner,
     upsertFood,
@@ -156,6 +158,25 @@
     ).then(resetFoodForm);
   }
 
+  // ── Archivado discreto (familia) ──────────────────────────────────────────
+  // Nada se borra: archivar retira de la lista y siempre se puede recuperar
+  // desde «Archivados». Confirmación ligera: el primer tap arma, el segundo
+  // archiva (mismo patrón que el borrado de plantillas del menú).
+  let archiveArmedId = $state<string | null>(null);
+
+  function archiveFood(id: string, archived: boolean): void {
+    if (!catalog) return;
+    archiveArmedId = null;
+    if (foodId === id) resetFoodForm();
+    void dispatch(setFoodArchived({ householdId: catalog.householdId, foodId: id, archived }));
+  }
+
+  function archiveRecipe(pageId: string, archived: boolean): void {
+    if (!catalog) return;
+    archiveArmedId = null;
+    void dispatch(setRecipeArchived({ householdId: catalog.householdId, pageId, archived }));
+  }
+
   // ── Catálogo: comensales con flags de alérgenos ────────────────────────────
   // P1-7 · alta progresiva: primero SOLO el nombre. Las restricciones viven
   // detrás de «¿Tiene alergias o restricciones?» y la matriz de 14 alérgenos
@@ -246,11 +267,42 @@
                 </small>
               </a>
               {#if entry.hasUnreviewedFood}<span class="status-chip warning">Alimento sin revisar</span>{/if}
+              {#if catalog.canWrite}
+                {#if archiveArmedId === `recipe:${entry.pageId}`}
+                  <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveRecipe(entry.pageId, true)}>
+                    Sí, archivar «{entry.title}»
+                  </button>
+                  <button class="button secondary small-button" type="button" onclick={() => (archiveArmedId = null)}>Cancelar</button>
+                {:else}
+                  <button class="archive-link" type="button" onclick={() => (archiveArmedId = `recipe:${entry.pageId}`)}>Archivar</button>
+                {/if}
+              {/if}
             </li>
           {:else}
             <li><p class="audit-note">Aún no hay recetas. <a href={`/h/${context.household.id}/wiki`}>Escribe la primera en la guía de la casa →</a></p></li>
           {/each}
         </ul>
+
+        {#if catalog.archivedRecipes.length}
+          <details class="archived-block">
+            <summary>Recetas archivadas ({catalog.archivedRecipes.length})</summary>
+            <p class="audit-note">La nota de la guía sigue donde estaba; solo se retiró la ficha del recetario.</p>
+            <ul class="wiki-recent">
+              {#each catalog.archivedRecipes as entry (entry.pageId)}
+                <li>
+                  <div class="wiki-node-row">
+                    <span><strong>{entry.title}</strong></span>
+                    {#if catalog.canWrite}
+                      <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveRecipe(entry.pageId, false)}>
+                        Recuperar
+                      </button>
+                    {/if}
+                  </div>
+                </li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
 
         {#if recipe}
           <article class="recipe-detail" aria-labelledby="recipe-title">
@@ -363,6 +415,14 @@
                   {/if}
                   {#if catalog.canWrite}
                     <button class="button secondary small-button" type="button" onclick={() => editFood(food.id)}>Editar</button>
+                    {#if archiveArmedId === `food:${food.id}`}
+                      <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveFood(food.id, true)}>
+                        Sí, archivar «{food.name}»
+                      </button>
+                      <button class="button secondary small-button" type="button" onclick={() => (archiveArmedId = null)}>Cancelar</button>
+                    {:else}
+                      <button class="archive-link" type="button" onclick={() => (archiveArmedId = `food:${food.id}`)}>Archivar</button>
+                    {/if}
                   {/if}
                 </div>
               </li>
@@ -370,6 +430,27 @@
               <li><p class="audit-note">Todavía no hay alimentos en el catálogo.</p></li>
             {/each}
           </ul>
+
+          {#if catalog.archivedFoods.length}
+            <details class="archived-block">
+              <summary>Alimentos archivados ({catalog.archivedFoods.length})</summary>
+              <p class="audit-note">Las recetas que ya lo usaban lo siguen pidiendo en la compra; solo deja de ofrecerse para lo nuevo.</p>
+              <ul class="wiki-recent">
+                {#each catalog.archivedFoods as food (food.id)}
+                  <li>
+                    <div class="wiki-node-row">
+                      <span><strong>{food.name}</strong></span>
+                      {#if catalog.canWrite}
+                        <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archiveFood(food.id, false)}>
+                          Recuperar
+                        </button>
+                      {/if}
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            </details>
+          {/if}
 
           {#if catalog.canWrite}
             <form class="action-form" onsubmit={submitFood}>
@@ -581,5 +662,25 @@
     padding-left: 1.1rem;
     font-size: 0.85rem;
     color: var(--ink-soft);
+  }
+
+  /* Archivar es una acción discreta: un enlace pequeño, no un botón que
+     compita con «Editar». Lo archivado vive en una lista plegada. */
+  .archive-link {
+    border: 0;
+    background: none;
+    padding: 0.2rem 0.1rem;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .archived-block {
+    margin-top: 0.75rem;
+  }
+  .archived-block > summary {
+    cursor: pointer;
+    color: var(--ink-soft);
+    font-size: 0.8rem;
   }
 </style>

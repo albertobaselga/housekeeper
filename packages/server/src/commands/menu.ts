@@ -2,30 +2,46 @@ import type { PoolClient } from "pg";
 
 import type { UUID } from "@casa-clara/contracts";
 import {
-  menuGroupUpsertPayloadSchema,
+  menuGroupCommandPayloadSchema,
   menuSlotCommandPayloadSchema,
 } from "@casa-clara/contracts/schemas";
 
 import type { ActiveMembership } from "../database.js";
 import { computeMenuSlotHash } from "../menu-hash.js";
 import { CommandConflictError, CommandRejectedError, type CommandHandler } from "../sync.js";
-import { loadFoods, rejectUnreviewedFoods, requireFamilyRole } from "./food.js";
+import { loadFoods, rejectUnreviewedFoods, requireFamilyRole, setArchived } from "./food.js";
 import { createWikiPage, createWikiSpace } from "./wiki.js";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
 /**
- * `menu_group` — upsert de grupo de comensales (solo familia). La lista
- * `dinerIds` del payload reemplaza por completo la membresía del grupo.
+ * `menu_group` — upsert / archive / restore de grupo de comensales (solo
+ * familia). En el upsert, la lista `dinerIds` del payload reemplaza por
+ * completo la membresía del grupo. Archivar retira el grupo del menú sin
+ * borrar sus comidas ya planificadas: las plantillas que lo usan degradan
+ * saltándose sus huecos, como ya hacían.
  */
 export const menuGroupCommandHandler: CommandHandler = async (client, membership, envelope) => {
   requireFamilyRole(membership.role, "los grupos del menú");
-  const parsed = menuGroupUpsertPayloadSchema.safeParse(envelope.payload);
+  const parsed = menuGroupCommandPayloadSchema.safeParse(envelope.payload);
   if (!parsed.success) {
     throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
   }
   const payload = parsed.data;
   const householdId = envelope.householdId;
+
+  if (payload.action === "archive" || payload.action === "restore") {
+    return setArchived(client, {
+      table: "app.menu_groups",
+      householdId,
+      idColumn: "id",
+      id: payload.groupId,
+      archived: payload.action === "archive",
+      errorCode: "group_not_found",
+      what: "El grupo",
+    });
+  }
+
   const dinerIds = [...new Set(payload.dinerIds)].sort();
 
   if (dinerIds.length > 0) {

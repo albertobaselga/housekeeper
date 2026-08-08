@@ -246,16 +246,23 @@ export async function buildShoppingBoard(
   householdId: UUID,
   weekStartsOn: string,
 ): Promise<ShoppingBoard> {
+  // También los archivados: si una receta todavía usa un alimento retirado del
+  // catálogo, la compra debe seguir pidiéndolo (si no, se cocina sin haberlo
+  // comprado). Para fusionar por nombre manda siempre el alimento vigente.
   const foodResult = await client.query<FoodRow>(
     `select id, name, shopping_section as section,
             package_size::text as package_size, package_unit
        from app.foods
-      where household_id = $1 and archived_at is null
-      order by name`,
+      where household_id = $1
+      order by archived_at nulls first, name`,
     [householdId],
   );
   const foodById = new Map(foodResult.rows.map((row) => [row.id, row]));
-  const foodByName = new Map(foodResult.rows.map((row) => [normalizeShoppingName(row.name), row]));
+  const foodByName = new Map<string, FoodRow>();
+  for (const row of foodResult.rows) {
+    const key = normalizeShoppingName(row.name);
+    if (!foodByName.has(key)) foodByName.set(key, row);
+  }
 
   const packagingOf = (food: FoodRow | undefined): { size: string; unit: string } | null =>
     food?.package_size && food.package_unit

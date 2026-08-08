@@ -129,6 +129,8 @@ export interface MenuWeek {
   recipeOptions: RecipeOptionView[];
   /** Semanas plantilla guardadas con nombre («Semana de cole»…). */
   templates: MenuTemplateView[];
+  /** Grupos archivados, para poder recuperarlos desde la lista plegada. */
+  archivedGroups: Array<{ id: string; name: string }>;
 }
 
 interface AllergenRow {
@@ -182,7 +184,8 @@ async function fetchRecipes(
          on page.household_id = recipe.household_id and page.id = recipe.page_id
        left join app.wiki_revisions as revision
          on revision.household_id = page.household_id and revision.id = page.current_revision_id
-      where recipe.household_id = $1 and page.archived_at is null ${filter}
+      where recipe.household_id = $1
+        and recipe.archived_at is null and page.archived_at is null ${filter}
       order by "title"`,
     params
   );
@@ -414,6 +417,13 @@ export async function loadMenuWeek(
         };
       });
 
+      const archivedGroupResult = await client.query<{ id: string; name: string }>(
+        `select id, name from app.menu_groups
+          where household_id = $1 and archived_at is not null
+          order by name`,
+        [householdId]
+      );
+
       const templateResult = await client.query<{ id: string; name: string; sourceWeekStartsOn: string }>(
         `select id, name, source_week_starts_on::text as "sourceWeekStartsOn"
            from app.menu_week_templates
@@ -445,7 +455,8 @@ export async function loadMenuWeek(
         diners,
         slots,
         recipeOptions,
-        templates: templateResult.rows
+        templates: templateResult.rows,
+        archivedGroups: archivedGroupResult.rows
       } satisfies MenuWeek;
     });
   } catch (cause) {
@@ -601,6 +612,9 @@ export interface FoodCatalog {
     allergens: Array<{ code: string; name: string }>;
     hasUnreviewedFood: boolean;
   }>;
+  /** Archivados, para la lista plegada desde la que se recuperan. */
+  archivedFoods: Array<{ id: string; name: string }>;
+  archivedRecipes: Array<{ pageId: string; title: string }>;
 }
 
 /** Alimentos con alérgenos y estado de revisión, comensales con sus flags y recetario. */
@@ -659,11 +673,32 @@ export async function loadFoodCatalog(
 
       const { recipes, ingredients } = await fetchRecipes(client, householdId, null);
 
+      const archivedFoodResult = await client.query<{ id: string; name: string }>(
+        `select id, name from app.foods
+          where household_id = $1 and archived_at is not null
+          order by name`,
+        [householdId]
+      );
+      const archivedRecipeResult = await client.query<{ pageId: string; title: string }>(
+        `select recipe.page_id as "pageId",
+                coalesce(revision.title, page.current_slug) as "title"
+           from app.recipes as recipe
+           join app.wiki_pages as page
+             on page.household_id = recipe.household_id and page.id = recipe.page_id
+           left join app.wiki_revisions as revision
+             on revision.household_id = page.household_id and revision.id = page.current_revision_id
+          where recipe.household_id = $1 and recipe.archived_at is not null
+          order by "title"`,
+        [householdId]
+      );
+
       return {
         householdId,
         role: membership.role,
         canWrite: FAMILY_ROLES.includes(membership.role),
         allergens: [...allergenNames.entries()].map(([code, name]) => ({ code, name })),
+        archivedFoods: archivedFoodResult.rows,
+        archivedRecipes: archivedRecipeResult.rows,
         foods: foodResult.rows.map((row) => ({
           id: row.id,
           name: row.name,

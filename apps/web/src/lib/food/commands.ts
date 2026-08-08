@@ -573,6 +573,61 @@ export function upsertRoutine(
   }) as CommandEnvelopeV1<RoutineUpsertPayload>;
 }
 
+// ─── Archivado (baja lógica reversible, solo familia) ────────────────────────
+// Nada se borra: `archive` lo retira de las listas y `restore` lo devuelve. Lo
+// que ya lo usaba (recetas, plantillas de menú) degrada con gracia.
+
+export interface ArchiveTogglePayload {
+  action: 'archive' | 'restore';
+}
+
+function archiveEnvelope<T extends ArchiveTogglePayload>(
+  input: { householdId: string; aggregateType: 'food' | 'recipe' | 'menu_group'; aggregateId: string },
+  payload: T,
+  options: EnvelopeOptions
+): CommandEnvelopeV1<T> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: input.aggregateType,
+    aggregateId: input.aggregateId,
+    payload
+  }) as CommandEnvelopeV1<T>;
+}
+
+export function setFoodArchived(
+  input: { householdId: string; foodId: string; archived: boolean },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<ArchiveTogglePayload & { foodId: string }> {
+  return archiveEnvelope(
+    { householdId: input.householdId, aggregateType: 'food', aggregateId: input.foodId },
+    { action: input.archived ? 'archive' : 'restore', foodId: input.foodId },
+    options
+  );
+}
+
+export function setRecipeArchived(
+  input: { householdId: string; pageId: string; archived: boolean },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<ArchiveTogglePayload & { pageId: string }> {
+  return archiveEnvelope(
+    { householdId: input.householdId, aggregateType: 'recipe', aggregateId: input.pageId },
+    { action: input.archived ? 'archive' : 'restore', pageId: input.pageId },
+    options
+  );
+}
+
+export function setMenuGroupArchived(
+  input: { householdId: string; groupId: string; archived: boolean },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<ArchiveTogglePayload & { groupId: string }> {
+  return archiveEnvelope(
+    { householdId: input.householdId, aggregateType: 'menu_group', aggregateId: input.groupId },
+    { action: input.archived ? 'archive' : 'restore', groupId: input.groupId },
+    options
+  );
+}
+
 export type { QueueOutcome };
 
 /**
