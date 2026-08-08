@@ -49,6 +49,7 @@ export const commandEnvelopeSchema = z.object({
     "membership",
     "menu_group",
     "menu_slot",
+    "menu_template",
     "payment",
     "recipe",
     "routine",
@@ -358,6 +359,25 @@ export const menuSlotSetPayloadSchema = z.object({
   acknowledgeAllergens: z.boolean().optional(),
 });
 
+/**
+ * Crear una receta nueva desde el propio hueco del menú: página wiki + receta
+ * (sin ingredientes todavía) y asignación del hueco, todo en UN comando
+ * atómico. Sin ingredientes no hay alérgenos que reconocer (AC-21 aplica en
+ * cuanto alguien les añada ingredientes con `recipe.set_details`).
+ */
+export const menuSlotSetNewRecipePayloadSchema = z.object({
+  action: z.literal("set_new_recipe"),
+  groupId: uuidSchema,
+  onDate: isoDateSchema,
+  meal: z.enum(["desayuno", "almuerzo", "comida", "merienda", "cena"]),
+  recipeTitle: z.string().trim().min(1).max(200),
+  /** Nota inicial (ingredientes en texto, pasos…) para la página wiki. */
+  recipeBody: z.string().max(10_000).optional(),
+  baseServings: z.number().int().min(1).max(50).optional(),
+  notes: z.string().max(500).optional(),
+  servingsOverride: z.number().int().min(1).max(50).optional(),
+});
+
 export const menuSlotClearPayloadSchema = z.object({
   action: z.literal("clear"),
   slotId: uuidSchema,
@@ -377,9 +397,37 @@ export const menuConfirmPayloadSchema = z.object({
 
 export const menuSlotCommandPayloadSchema = z.discriminatedUnion("action", [
   menuSlotSetPayloadSchema,
+  menuSlotSetNewRecipePayloadSchema,
   menuSlotClearPayloadSchema,
   menuWeekDuplicatePayloadSchema,
   menuConfirmPayloadSchema,
+]);
+
+// ─── Semanas de menú plantilla con nombre ────────────────────────────────────
+
+export const menuTemplateSavePayloadSchema = z.object({
+  action: z.literal("save"),
+  name: z.string().trim().min(1).max(120),
+  /** Lunes de la semana origen cuyo contenido se captura. */
+  fromWeekStartsOn: isoDateSchema,
+});
+
+export const menuTemplateApplyPayloadSchema = z.object({
+  action: z.literal("apply"),
+  templateId: uuidSchema,
+  /** Lunes de la semana destino, que debe estar vacía (rechazo week_overlap). */
+  toWeekStartsOn: isoDateSchema,
+});
+
+export const menuTemplateDeletePayloadSchema = z.object({
+  action: z.literal("delete"),
+  templateId: uuidSchema,
+});
+
+export const menuTemplateCommandPayloadSchema = z.discriminatedUnion("action", [
+  menuTemplateSavePayloadSchema,
+  menuTemplateApplyPayloadSchema,
+  menuTemplateDeletePayloadSchema,
 ]);
 
 export const shoppingAddPayloadSchema = z

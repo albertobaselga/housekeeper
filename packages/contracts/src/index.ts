@@ -134,6 +134,7 @@ export type AggregateType =
   | "membership"
   | "menu_group"
   | "menu_slot"
+  | "menu_template"
   | "payment"
   | "recipe"
   | "routine"
