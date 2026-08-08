@@ -157,10 +157,21 @@
   }
 
   // ── Catálogo: comensales con flags de alérgenos ────────────────────────────
+  // P1-7 · alta progresiva: primero SOLO el nombre. Las restricciones viven
+  // detrás de «¿Tiene alergias o restricciones?» y la matriz de 14 alérgenos
+  // solo aparece si alguien la abre. Editar a quien ya tiene restricciones la
+  // abre sola, para que no queden escondidas.
   let dinerId = $state('');
   let dinerName = $state('');
   let dinerNotes = $state('');
   let dinerSeverity = $state<Record<string, '' | AllergenSeverity>>({});
+  /** Nota por alérgeno del comensal («solo trazas», «lleva epinefrina»…). */
+  let dinerFlagNotes = $state<Record<string, string>>({});
+  let dinerAllergensOpen = $state(false);
+
+  const dinerFlagCount = $derived(
+    Object.values(dinerSeverity).filter((severity) => severity === 'high' || severity === 'medium').length
+  );
 
   function editDiner(id: string): void {
     const diner = catalog?.diners.find((candidate) => candidate.id === id);
@@ -169,6 +180,8 @@
     dinerName = diner.name;
     dinerNotes = diner.notes;
     dinerSeverity = Object.fromEntries(diner.flags.map((flag) => [flag.allergenCode, flag.severity]));
+    dinerFlagNotes = Object.fromEntries(diner.flags.map((flag) => [flag.allergenCode, flag.note]));
+    dinerAllergensOpen = diner.flags.length > 0 || diner.notes.trim().length > 0;
   }
 
   function resetDinerForm(): void {
@@ -176,6 +189,8 @@
     dinerName = '';
     dinerNotes = '';
     dinerSeverity = {};
+    dinerFlagNotes = {};
+    dinerAllergensOpen = false;
   }
 
   function submitDiner(event: SubmitEvent): void {
@@ -183,7 +198,11 @@
     if (!catalog || !dinerName.trim()) return;
     const flags = Object.entries(dinerSeverity)
       .filter((entry): entry is [string, AllergenSeverity] => entry[1] === 'high' || entry[1] === 'medium')
-      .map(([allergenCode, severity]) => ({ allergenCode, severity }));
+      .map(([allergenCode, severity]) => ({
+        allergenCode,
+        severity,
+        note: dinerFlagNotes[allergenCode] ?? ''
+      }));
     void dispatch(
       upsertDiner({
         householdId: catalog.householdId,
@@ -415,10 +434,17 @@
                     <strong>{diner.name}</strong>
                     <small>
                       {#if diner.flags.length}
-                        {diner.flags.map((flag) => `${flag.allergenName} (${flag.severity === 'high' ? 'alta' : 'media'})`).join(', ')}
+                        {diner.flags
+                          .map(
+                            (flag) =>
+                              `${flag.allergenName} (${flag.severity === 'high' ? 'no puede tomarlo' : 'mejor evitarlo'})` +
+                              (flag.note.trim() ? ` — ${flag.note.trim()}` : '')
+                          )
+                          .join(', ')}
                       {:else}
                         Sin restricciones
                       {/if}
+                      {#if diner.notes.trim()}· {diner.notes.trim()}{/if}
                     </small>
                   </span>
                   {#if catalog.canWrite}
@@ -433,28 +459,64 @@
 
           {#if catalog.canWrite}
             <form class="action-form" onsubmit={submitDiner}>
-              <h3>{dinerId ? 'Editar comensal' : 'Nuevo comensal'}</h3>
+              <h3>{dinerId ? 'Editar comensal' : 'Apuntar quién come en casa'}</h3>
               <label>Nombre
-                <input type="text" autocomplete="off" enterkeyhint="next" bind:value={dinerName} maxlength="120" required />
+                <input
+                  type="text"
+                  autocomplete="off"
+                  enterkeyhint="done"
+                  bind:value={dinerName}
+                  maxlength="120"
+                  required
+                  placeholder="Leo"
+                />
               </label>
-              <label>Notas
-                <input type="text" autocomplete="off" enterkeyhint="done" bind:value={dinerNotes} maxlength="500" />
-              </label>
-              <fieldset class="inline-check-group">
-                <legend>Restricciones por alérgeno</legend>
-                {#each catalog.allergens as allergen (allergen.code)}
-                  <label class="inline-check">
-                    {allergen.name}
-                    <select bind:value={dinerSeverity[allergen.code]}>
-                      <option value="">Sin restricción</option>
-                      <option value="medium">Media</option>
-                      <option value="high">Alta</option>
-                    </select>
-                  </label>
-                {/each}
-              </fieldset>
+              <!-- P1-7: el alta normal es solo el nombre. La matriz de 14
+                   alérgenos es una decisión demasiado grande para «apuntar que
+                   Leo no toma leche», así que solo aparece si se abre. -->
+              <details class="diner-allergens" bind:open={dinerAllergensOpen}>
+                <summary>
+                  ¿Tiene alergias o restricciones?
+                  {#if dinerFlagCount > 0}
+                    <span class="status-chip warning">{dinerFlagCount} {dinerFlagCount === 1 ? 'apuntada' : 'apuntadas'}</span>
+                  {:else}
+                    <small>Opcional. Si no las tiene, no hace falta abrir esto.</small>
+                  {/if}
+                </summary>
+                <fieldset class="inline-check-group">
+                  <legend>Qué evita y con cuánta gravedad</legend>
+                  {#each catalog.allergens as allergen (allergen.code)}
+                    <div class="diner-allergen-row">
+                      <label class="inline-check">
+                        {allergen.name}
+                        <select bind:value={dinerSeverity[allergen.code]}>
+                          <option value="">No la evita</option>
+                          <option value="medium">Mejor evitarlo</option>
+                          <option value="high">No puede tomarlo</option>
+                        </select>
+                      </label>
+                      {#if dinerSeverity[allergen.code] === 'high' || dinerSeverity[allergen.code] === 'medium'}
+                        <label class="diner-allergen-note">
+                          Nota sobre {allergen.name.toLocaleLowerCase('es')}
+                          <input
+                            type="text"
+                            autocomplete="off"
+                            enterkeyhint="next"
+                            bind:value={dinerFlagNotes[allergen.code]}
+                            maxlength="200"
+                            placeholder="Solo las trazas le sientan mal"
+                          />
+                        </label>
+                      {/if}
+                    </div>
+                  {/each}
+                </fieldset>
+                <label>Otra cosa que convenga saber
+                  <input type="text" autocomplete="off" enterkeyhint="done" bind:value={dinerNotes} maxlength="500" />
+                </label>
+              </details>
               <div class="menu-slot-actions">
-                <button class="button primary" type="submit" disabled={busy}>{dinerId ? 'Guardar comensal' : 'Crear comensal'}</button>
+                <button class="button primary" type="submit" disabled={busy}>{dinerId ? 'Guardar comensal' : 'Apuntar comensal'}</button>
                 {#if dinerId}<button class="button secondary" type="button" onclick={resetDinerForm}>Cancelar edición</button>{/if}
               </div>
             </form>
@@ -489,3 +551,35 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* Alta progresiva de comensal (P1-7): el desplegable es una decisión, no un
+     bloque de formulario más. Cerrado ocupa una línea; abierto, la matriz. */
+  .diner-allergens {
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    background: var(--surface);
+  }
+  .diner-allergens > summary {
+    cursor: pointer;
+    font-weight: 700;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .diner-allergens > summary small {
+    font-weight: 400;
+    color: var(--ink-soft);
+  }
+  .diner-allergen-row {
+    display: grid;
+    gap: 0.25rem;
+  }
+  .diner-allergen-note {
+    padding-left: 1.1rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+  }
+</style>
