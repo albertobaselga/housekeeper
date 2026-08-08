@@ -53,6 +53,74 @@ INSERT INTO app.agreement_versions (
    130000, 1100, 6500, 1440, 2400, 'Independent second-household fixture',
    '21000000-0000-4000-8000-000000000001', '2024-12-20T10:00:00Z');
 
+-- Catálogo de condiciones (migración 0021). La v1 de roble conserva el par
+-- equivalente a las columnas de 0002. La v2, que es la vigente, estrena el
+-- escenario que pidió el propietario: a esta empleada se le permiten JORNADAS
+-- pero NO horas extra, así que 'overtime' está desactivado y ella no debe ver
+-- la tarifa horaria por ninguna vía. 'sin_tarifa' existe pactado pero sin
+-- precio: tampoco lo ve.
+INSERT INTO app.extra_work_types (
+  id, household_id, agreement_id, agreement_version_id, code, name, unit,
+  rate_cents, reference_minutes, active, sort_order, created_by_membership_id
+) VALUES
+  ('13000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000001',
+   'overtime', 'Hora extraordinaria', 'per_hour', 1200, NULL, true, 10,
+   '11000000-0000-4000-8000-000000000001'),
+  ('13000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000001',
+   'worked_rest_day', 'Festivo o descanso trabajado', 'per_shift', 7000, 1440, true, 20,
+   '11000000-0000-4000-8000-000000000001'),
+  ('13000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'overtime', 'Hora extraordinaria', 'per_hour', 1400, NULL, false, 10,
+   '11000000-0000-4000-8000-000000000001'),
+  ('13000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'worked_rest_day', 'Festivo o descanso trabajado', 'per_shift', 8000, 1440, true, 20,
+   '11000000-0000-4000-8000-000000000001'),
+  ('13000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'jornada_extra', 'Jornada extra', 'per_shift', 5000, 600, true, 30,
+   '11000000-0000-4000-8000-000000000001'),
+  ('13000000-0000-4000-8000-000000000006', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'noche_de_guardia', 'Noche de guardia', 'fixed_amount', 5000, 720, true, 40,
+   '11000000-0000-4000-8000-000000000001'),
+  ('13000000-0000-4000-8000-000000000007', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'sin_tarifa', 'Acompañamiento a médico', 'fixed_amount', NULL, NULL, true, 50,
+   '11000000-0000-4000-8000-000000000001'),
+  ('23000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
+   '22000000-0000-4000-8000-000000000001', '22100000-0000-4000-8000-000000000001',
+   'overtime', 'Hora extraordinaria', 'per_hour', 1100, NULL, true, 10,
+   '21000000-0000-4000-8000-000000000001'),
+  ('23000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001',
+   '22000000-0000-4000-8000-000000000001', '22100000-0000-4000-8000-000000000001',
+   'worked_rest_day', 'Festivo o descanso trabajado', 'per_shift', 6500, 1440, true, 20,
+   '21000000-0000-4000-8000-000000000001');
+
+-- Complementos: la antigüedad es dinero para ella y suma al mes; el seguro
+-- médico lo paga la casa aparte y solo consta como condición. El plus de
+-- transporte quedó retirado en esta versión y no debe verlo nadie salvo quien
+-- administra.
+INSERT INTO app.recurring_supplements (
+  id, household_id, agreement_id, agreement_version_id, code, name, amount_cents,
+  periodicity, adds_to_pay, starts_on, ends_on, active, sort_order, created_by_membership_id
+) VALUES
+  ('14000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'antiguedad', 'Complemento de antigüedad', 3000, 'monthly', true, NULL, NULL, true, 10,
+   '11000000-0000-4000-8000-000000000001'),
+  ('14000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'seguro_medico', 'Seguro médico privado', 4500, 'monthly', false, NULL, NULL, true, 20,
+   '11000000-0000-4000-8000-000000000001'),
+  ('14000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   'plus_transporte', 'Plus de transporte', 2000, 'monthly', true, NULL, NULL, false, 30,
+   '11000000-0000-4000-8000-000000000001');
+
 INSERT INTO app.weekly_time_reports (
   id, household_id, agreement_id, employee_membership_id, week_starts_on,
   status, submitted_at, submitted_by_membership_id, confirmed_at, confirmed_by_membership_id
@@ -71,8 +139,11 @@ INSERT INTO app.time_entries (
    '12200000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003',
    '2025-03-12', '09:00', '19:00', 480, 'Fixture report with two extra hours');
 
+-- `extra_work_type_id` apunta siempre al tipo de la versión vigente el día
+-- trabajado (marzo de 2025 → v1), y su tarifa coincide con la congelada: el
+-- disparador `extra_work_events_type_freeze` de 0021 rechazaría lo contrario.
 INSERT INTO app.extra_work_events (
-  id, household_id, agreement_id, employee_membership_id, kind, worked_on,
+  id, household_id, agreement_id, employee_membership_id, extra_work_type_id, kind, worked_on,
   duration_minutes, note, origin, status, resolution, resolved_agreement_version_id,
   frozen_unit_rate_cents, frozen_amount_cents, balance_minutes,
   requested_by_membership_id, requested_at, approved_by_membership_id, approved_at,
@@ -80,7 +151,7 @@ INSERT INTO app.extra_work_events (
   resolution_reason
 ) VALUES
   ('12400000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000002',
    'worked_rest_day', '2025-03-09', 480, 'Fixture worked Sunday', 'employee_report',
    'resolved', 'money', '12100000-0000-4000-8000-000000000001', 7000, 7000, 0,
    '11000000-0000-4000-8000-000000000003', '2025-03-09T18:00:00Z',
@@ -88,7 +159,7 @@ INSERT INTO app.extra_work_events (
    '11000000-0000-4000-8000-000000000003', '2025-03-09T20:00:00Z',
    '11000000-0000-4000-8000-000000000001', '2025-03-10T09:00:00Z', 'Fixture weekly report confirmed'),
   ('12400000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000001',
    'overtime', '2025-03-12', 120, 'Fixture overtime', 'weekly_report',
    'resolved', 'money', '12100000-0000-4000-8000-000000000001', 1200, 2400, 0,
    '11000000-0000-4000-8000-000000000003', '2025-03-12T19:00:00Z',
@@ -96,7 +167,7 @@ INSERT INTO app.extra_work_events (
    '11000000-0000-4000-8000-000000000003', '2025-03-12T19:00:00Z',
    '11000000-0000-4000-8000-000000000001', '2025-03-13T09:00:00Z', 'Fixture weekly report confirmed'),
   ('12400000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000001',
    'overtime', '2025-03-18', 60, 'Fixture overtime', 'weekly_report',
    'resolved', 'money', '12100000-0000-4000-8000-000000000001', 1200, 1200, 0,
    '11000000-0000-4000-8000-000000000003', '2025-03-18T19:00:00Z',
@@ -104,7 +175,7 @@ INSERT INTO app.extra_work_events (
    '11000000-0000-4000-8000-000000000003', '2025-03-18T19:00:00Z',
    '11000000-0000-4000-8000-000000000001', '2025-03-19T09:00:00Z', 'Fixture weekly report confirmed'),
   ('12400000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000002',
    'worked_rest_day', '2025-03-23', 480, 'Fixture permanent day credit', 'employee_report',
    'resolved', 'time_off', '12100000-0000-4000-8000-000000000001', 7000, 0, 1440,
    '11000000-0000-4000-8000-000000000003', '2025-03-23T18:00:00Z',
@@ -112,7 +183,7 @@ INSERT INTO app.extra_work_events (
    '11000000-0000-4000-8000-000000000003', '2025-03-23T20:00:00Z',
    '11000000-0000-4000-8000-000000000001', '2025-03-24T09:00:00Z', 'Permanent credit selected'),
   ('12400000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000001',
    'overtime', '2025-03-27', 45, 'Unapproved performed fixture', 'employee_report',
    'performed_pending_resolution', NULL, NULL, NULL, NULL, NULL,
    '11000000-0000-4000-8000-000000000003', '2025-03-27T18:00:00Z',
