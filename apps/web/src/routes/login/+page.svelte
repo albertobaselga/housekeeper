@@ -59,6 +59,6 @@
       {/each}
     </div>
 
-    <p class="demo-note"><strong>Demo sin contraseña.</strong> La sesión usa una cookie HttpOnly efímera y solo se habilita en local. No introduzcas datos reales.</p>
+    <p class="demo-note"><strong>Demo sin contraseña.</strong> Tu sesión queda guardada de forma segura en este dispositivo y solo se habilita en local. No introduzcas datos reales.</p>
   </section>
 </main>

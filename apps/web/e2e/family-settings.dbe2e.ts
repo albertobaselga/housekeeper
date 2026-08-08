@@ -3,53 +3,55 @@ import { expect, test, type Page } from '@playwright/test';
 import { ACCOUNT_EMAILS, HOUSEHOLD, loginAs } from './helpers';
 
 // Gestión de accesos del hogar (Alberto, family_admin) contra Postgres real:
-// caducidad futura para el apoyo, revocación del acceso puntual escribiendo
-// REVOCAR (F4-03) y descarga del traspaso operativo (F4-02). Los nombres son
+// fecha límite futura para el apoyo, retirada del acceso puntual escribiendo
+// QUITAR (F4-03) y descarga del traspaso operativo (F4-02). Los nombres son
 // los display_name reales de las fixtures (`Fixture Apoyo Roble`…), no los de
 // la maqueta demo.
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 test.describe.configure({ mode: 'serial' });
 
+const ACCESS_HEADING = '¿Hasta cuándo puede entrar cada persona?';
+
 async function gotoSettings(page: Page): Promise<void> {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/settings`);
-  await expect(page.getByRole('heading', { name: 'Caducidad y revocación' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: ACCESS_HEADING })).toBeVisible();
 }
 
 function memberItem(page: Page, name: string) {
   return page
-    .locator('section', { has: page.getByRole('heading', { name: 'Caducidad y revocación' }) })
+    .locator('section', { has: page.getByRole('heading', { name: ACCESS_HEADING }) })
     .locator('li')
     .filter({ hasText: name });
 }
 
-test('Alberto fija una caducidad futura a Lucía y aparece «Con caducidad»', async ({ page }) => {
+test('Alberto pone una fecha límite futura a Lucía y aparece «Con fecha límite»', async ({ page }) => {
   await gotoSettings(page);
 
   const lucia = memberItem(page, 'Fixture Apoyo Roble');
   await expect(lucia.locator('.status-chip').filter({ hasText: 'Activo' })).toBeVisible();
 
-  await lucia.getByLabel('Nueva caducidad').fill('2031-12-31T10:00');
-  await lucia.getByRole('button', { name: 'Fijar caducidad' }).click();
+  await lucia.getByLabel('Fecha límite del acceso').fill('2031-12-31T10:00');
+  await lucia.getByRole('button', { name: 'Poner fecha límite' }).click();
 
-  await expect(lucia.locator('.status-chip').filter({ hasText: 'Con caducidad' })).toBeVisible();
-  await expect(lucia).toContainText('Caduca el');
+  await expect(lucia.locator('.status-chip').filter({ hasText: 'Con fecha límite' })).toBeVisible();
+  await expect(lucia).toContainText('Puede entrar hasta el');
 });
 
-test('Alberto revoca a Diego escribiendo REVOCAR y la base de datos le niega el hogar (F4-03)', async ({ page, browser }) => {
+test('Alberto quita el acceso a Diego escribiendo QUITAR y la base de datos le niega el hogar (F4-03)', async ({ page, browser }) => {
   await gotoSettings(page);
 
   const diego = memberItem(page, 'Fixture Visor Roble');
-  await diego.getByRole('button', { name: 'Revocar acceso', exact: true }).click();
+  await diego.getByRole('button', { name: 'Quitar el acceso', exact: true }).click();
 
   // La confirmación exige escribir la palabra exacta; hasta entonces, deshabilitado.
-  const confirmButton = diego.getByRole('button', { name: 'Revocar acceso ahora' });
+  const confirmButton = diego.getByRole('button', { name: 'Quitar el acceso ahora' });
   await expect(confirmButton).toBeDisabled();
-  await diego.getByLabel('Confirmación').fill('REVOCAR');
+  await diego.getByLabel('Confirmación').fill('QUITAR');
   await confirmButton.click();
 
-  await expect(diego.locator('.status-chip').filter({ hasText: 'Revocado' })).toBeVisible();
-  await expect(diego).toContainText('Acceso revocado el');
+  await expect(diego.locator('.status-chip').filter({ hasText: 'Sin acceso' })).toBeVisible();
+  await expect(diego).toContainText('Sin acceso desde el');
 
   // Nueva pestaña/contexto: Diego aún puede abrir el selector demo (la cáscara
   // de sesión es fixture), pero la base de datos rechaza cualquier operación
