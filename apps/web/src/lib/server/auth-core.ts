@@ -21,8 +21,16 @@ export interface AuthCoreOptions {
   extraPlugins?: BetterAuthPlugin[];
 }
 
-function buildAuth(options: AuthCoreOptions, pool: pg.Pool) {
-  return betterAuth({
+/** Plugins propios de la casa, en tupla para que la inferencia del API no se diluya. */
+type HousePlugins = [ReturnType<typeof magicLink>];
+
+/**
+ * Configuración canónica: se escribe UNA sola vez. `createAuthCore()` la reutiliza
+ * tal cual y solo concatena `extraPlugins` cuando el runtime los aporta, de modo
+ * que ningún cambio de configuración haya que escribirlo dos veces.
+ */
+function authOptions(options: AuthCoreOptions, pool: pg.Pool) {
+  return {
     database: pool,
     secret: options.secret,
     baseURL: options.baseURL,
@@ -37,8 +45,12 @@ function buildAuth(options: AuthCoreOptions, pool: pg.Pool) {
         disableSignUp: true,
         sendMagicLink: async ({ email, token, url }) => options.sendMagicLink({ email, token, url })
       })
-    ]
-  });
+    ] as HousePlugins
+  };
+}
+
+function buildAuth(options: AuthCoreOptions, pool: pg.Pool) {
+  return betterAuth(authOptions(options, pool));
 }
 
 export type AuthInstance = ReturnType<typeof buildAuth>;
@@ -54,26 +66,15 @@ export interface AuthCore {
  */
 export function createAuthCore(options: AuthCoreOptions): AuthCore {
   const pool = new pg.Pool({ connectionString: options.databaseUrl, max: 3 });
+  const base = authOptions(options, pool);
   if (!options.extraPlugins?.length) {
-    return { auth: buildAuth(options, pool), pool };
+    return { auth: betterAuth(base), pool };
   }
   // Los plugins extra (cookies de SvelteKit) no añaden endpoints propios; el
   // tipo del API público sigue siendo el de la construcción canónica.
   const auth = betterAuth({
-    database: pool,
-    secret: options.secret,
-    baseURL: options.baseURL,
-    emailAndPassword: {
-      enabled: options.demoPasswordEnabled ?? false
-    },
-    plugins: [
-      magicLink({
-        expiresIn: 600,
-        disableSignUp: true,
-        sendMagicLink: async ({ email, token, url }) => options.sendMagicLink({ email, token, url })
-      }),
-      ...options.extraPlugins
-    ]
+    ...base,
+    plugins: [...base.plugins, ...options.extraPlugins]
   }) as unknown as AuthInstance;
   return { auth, pool };
 }
