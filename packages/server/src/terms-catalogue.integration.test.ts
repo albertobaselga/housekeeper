@@ -29,7 +29,7 @@ const TYPE_REST_DAY = "13000000-0000-4000-8000-000000000004";
 const TYPE_EXTRA_SHIFT = "13000000-0000-4000-8000-000000000005";
 const TYPE_NIGHT_ON_CALL = "13000000-0000-4000-8000-000000000006";
 const TYPE_WITHOUT_RATE = "13000000-0000-4000-8000-000000000007";
-const TYPE_HOURLY_V1 = "13000000-0000-4000-8000-000000000001";
+const TYPE_REST_DAY_V1 = "13000000-0000-4000-8000-000000000002";
 
 function envelope(
   aggregateType: AggregateType,
@@ -150,9 +150,10 @@ describe.runIf(Boolean(adminUrl))("catálogo de condiciones del acuerdo", () => 
   });
 
   it("un concepto de una versión que no regía ese día se rechaza: no se revalúa el pasado ni el futuro", async () => {
-    // El concepto por horas de la v1 (12 €/h) existe y está activo, pero su
-    // versión dejó de regir el 31 de marzo de 2025.
-    const stale = await run(ADMIN, register(TYPE_HOURLY_V1, "2028-03-06", 120, "overtime"));
+    // El festivo de la v1 (70 €) existe y está activo, pero su versión dejó de
+    // regir el 31 de marzo de 2025: valorar con él sería pagar 2028 a precio de
+    // 2025.
+    const stale = await run(ADMIN, register(TYPE_REST_DAY_V1, "2028-03-06", 480));
     expect(stale).toMatchObject({
       status: "rejected",
       errorCode: "extra_work_type_not_in_force",

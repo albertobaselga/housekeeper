@@ -422,8 +422,8 @@ DECLARE
   supplements integer;
 BEGIN
   SELECT count(*)::integer INTO types FROM app.extra_work_types;
-  IF types <> 7 THEN
-    RAISE EXCEPTION 'family_admin should read the seven roble catalogued types, saw %', types;
+  IF types <> 6 THEN
+    RAISE EXCEPTION 'family_admin should read the six roble catalogued types, saw %', types;
   END IF;
 
   SELECT count(*)::integer INTO supplements FROM app.recurring_supplements;
@@ -488,12 +488,14 @@ BEGIN
     RAISE EXCEPTION 'the version in force resolved to % instead of the second one', in_force;
   END IF;
 
-  -- Cero tarifas horarias en lo que rige hoy. Esta es LA aserción del encargo.
+  -- Esta es LA aserción del encargo, y va a por todas: cero tarifas horarias
+  -- en el catálogo ENTERO que esta empleada puede leer, no solo en la versión
+  -- vigente. En su acuerdo las horas no se le permiten, y el historial tampoco
+  -- se las puede enseñar.
   SELECT count(*)::integer INTO hourly_in_force
-    FROM app.extra_work_types
-   WHERE agreement_version_id = in_force AND unit = 'per_hour';
+    FROM app.extra_work_types WHERE unit = 'per_hour';
   IF hourly_in_force <> 0 THEN
-    RAISE EXCEPTION 'the employee can still reach % hourly rate(s) in force', hourly_in_force;
+    RAISE EXCEPTION 'the employee can still reach % hourly rate(s)', hourly_in_force;
   END IF;
 
   -- Lo que sí le aplica: jornada de descanso, jornada extra y noche de guardia.

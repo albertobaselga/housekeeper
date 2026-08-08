@@ -260,6 +260,19 @@
           {/if}
 
           {#if seesAmounts}
+          <!--
+            Dos rutas propias, no dos secciones más: cada una vive en su trozo
+            de JavaScript y así ni el editor de condiciones ni la vista de
+            contrato engordan el grafo inicial de Hoy.
+          -->
+          <nav class="action-row">
+            {#if isOwnAgreement}
+              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/condiciones`}>Ver mis condiciones</a>
+            {/if}
+            {#if canCloseSettlement}
+              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/acuerdo`}>Administrar el acuerdo</a>
+            {/if}
+          </nav>
           <article class="card">
             <div class="section-heading">
               <div><p class="eyebrow">Acuerdo</p><h2>Versiones y cambios de salario</h2></div>

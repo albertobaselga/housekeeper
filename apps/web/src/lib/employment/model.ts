@@ -295,6 +295,8 @@ export interface SupplementView {
   /** true: suma a la transferencia. false: lo paga la casa aparte. */
   addsToPay: boolean;
   active: boolean;
+  startsOn: string | null;
+  endsOn: string | null;
   /** «desde el 1 sep 2026», «hasta el 31 dic 2026», null si rige toda la versión. */
   validityLabel: string | null;
 }
@@ -666,6 +668,8 @@ export function buildSupplementView(row: RecurringSupplementRow): SupplementView
     amountLabel: row.amountCents === null ? null : `${formatCents(row.amountCents)} al mes`,
     addsToPay: row.addsToPay,
     active: row.active,
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
     validityLabel: from && to ? `${from} ${to}` : (from ?? to)
   };
 }

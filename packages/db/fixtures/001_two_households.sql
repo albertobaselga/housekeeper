@@ -53,20 +53,26 @@ INSERT INTO app.agreement_versions (
    130000, 1100, 6500, 1440, 2400, 'Independent second-household fixture',
    '21000000-0000-4000-8000-000000000001', '2024-12-20T10:00:00Z');
 
--- Catálogo de condiciones (migración 0021). La v1 de roble conserva el par
--- equivalente a las columnas de 0002. La v2, que es la vigente, estrena el
--- escenario que pidió el propietario: a esta empleada se le permiten JORNADAS
--- pero NO horas extra, así que 'overtime' está desactivado y ella no debe ver
--- la tarifa horaria por ninguna vía. 'sin_tarifa' existe pactado pero sin
--- precio: tampoco lo ve.
+-- Catálogo de condiciones (migración 0021).
+--
+-- El escenario es el que pidió el propietario: a ESTA empleada se le permiten
+-- JORNADAS pero NO horas extra, y por tanto no debe poder ver una tarifa
+-- horaria por ninguna vía. Para que eso sea cierto de verdad —no solo en la
+-- versión vigente— el acuerdo del roble no cataloga ninguna hora en NINGUNA de
+-- sus versiones: la v2 tiene el concepto desactivado y la v1 ni siquiera lo
+-- tiene. Sus horas extra de 2025 son historia anterior al catálogo y por eso
+-- llevan `extra_work_type_id` nulo, valoradas con las columnas de 0002; es
+-- exactamente lo que verá un hogar real recién migrado.
+--
+-- 'sin_tarifa' existe pactado pero sin precio: tampoco lo ve.
+--
+-- El olivo sí conserva el par equivalente a las columnas de 0002 en su única
+-- versión, y allí las horas están permitidas: la invisibilidad del roble es una
+-- decisión de su acuerdo, no un efecto del modelo.
 INSERT INTO app.extra_work_types (
   id, household_id, agreement_id, agreement_version_id, code, name, unit,
   rate_cents, reference_minutes, active, sort_order, created_by_membership_id
 ) VALUES
-  ('13000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000001',
-   'overtime', 'Hora extraordinaria', 'per_hour', 1200, NULL, true, 10,
-   '11000000-0000-4000-8000-000000000001'),
   ('13000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
    '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000001',
    'worked_rest_day', 'Festivo o descanso trabajado', 'per_shift', 7000, 1440, true, 20,
@@ -159,7 +165,7 @@ INSERT INTO app.extra_work_events (
    '11000000-0000-4000-8000-000000000003', '2025-03-09T20:00:00Z',
    '11000000-0000-4000-8000-000000000001', '2025-03-10T09:00:00Z', 'Fixture weekly report confirmed'),
   ('12400000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', NULL,
    'overtime', '2025-03-12', 120, 'Fixture overtime', 'weekly_report',
    'resolved', 'money', '12100000-0000-4000-8000-000000000001', 1200, 2400, 0,
    '11000000-0000-4000-8000-000000000003', '2025-03-12T19:00:00Z',
@@ -167,7 +173,7 @@ INSERT INTO app.extra_work_events (
    '11000000-0000-4000-8000-000000000003', '2025-03-12T19:00:00Z',
    '11000000-0000-4000-8000-000000000001', '2025-03-13T09:00:00Z', 'Fixture weekly report confirmed'),
   ('12400000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', NULL,
    'overtime', '2025-03-18', 60, 'Fixture overtime', 'weekly_report',
    'resolved', 'money', '12100000-0000-4000-8000-000000000001', 1200, 1200, 0,
    '11000000-0000-4000-8000-000000000003', '2025-03-18T19:00:00Z',
@@ -183,7 +189,7 @@ INSERT INTO app.extra_work_events (
    '11000000-0000-4000-8000-000000000003', '2025-03-23T20:00:00Z',
    '11000000-0000-4000-8000-000000000001', '2025-03-24T09:00:00Z', 'Permanent credit selected'),
   ('12400000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001',
-   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', '13000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000003', NULL,
    'overtime', '2025-03-27', 45, 'Unapproved performed fixture', 'employee_report',
    'performed_pending_resolution', NULL, NULL, NULL, NULL, NULL,
    '11000000-0000-4000-8000-000000000003', '2025-03-27T18:00:00Z',
