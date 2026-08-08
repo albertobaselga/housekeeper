@@ -6,5 +6,8 @@ export default defineConfig({
     include: ['scripts/**/*.test.mjs'],
     testTimeout: 30000,
     hookTimeout: 30000,
+    // Las suites del importador y del corpus del manual comparten
+    // TEST_DATABASE_URL y recrean el esquema: en secuencia, nunca en paralelo.
+    fileParallelism: false,
   },
 });

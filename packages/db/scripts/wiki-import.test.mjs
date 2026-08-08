@@ -104,16 +104,23 @@ describe.runIf(Boolean(adminUrl))('importador por lotes de la wiki', () => {
     expect(await wikiCounts()).toEqual({ spaces: 2, pages: 9, revisions: 9, slugs: 9 });
 
     const spaces = await client.query(
-      `select slug, name, description from app.wiki_spaces order by slug`
+      `select slug, name, description, position from app.wiki_spaces order by slug`
     );
     expect(spaces.rows).toEqual([
       {
         slug: 'electrodomesticos',
         name: 'Electrodomésticos',
         description: 'Manuales y trucos de los aparatos de la casa.',
+        position: 20,
       },
-      { slug: 'rutinas', name: 'rutinas', description: '' },
+      { slug: 'rutinas', name: 'rutinas', description: '', position: 0 },
     ]);
+
+    // `pinned` del front-matter llega a la portada; el resto queda sin fijar.
+    const pinnedRows = await client.query(
+      `select current_slug from app.wiki_pages where pinned order by current_slug`
+    );
+    expect(pinnedRows.rows.map((row) => row.current_slug)).toEqual(['lavadora']);
 
     // Jerarquía: la carpeta con index.md es la página padre de sus hermanas.
     const hierarchy = await client.query(

@@ -1,5 +1,6 @@
 ---
 title: Lavadora
+pinned: true
 tags:
   - colada
   - mantenimiento
