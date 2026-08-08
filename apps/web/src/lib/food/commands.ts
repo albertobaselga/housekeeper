@@ -70,6 +70,19 @@ export interface MenuSlotSetPayload {
   acknowledgeAllergens?: boolean;
 }
 
+export interface MenuSlotSetNewRecipePayload {
+  action: 'set_new_recipe';
+  groupId: string;
+  onDate: string;
+  meal: MealSlot;
+  recipeTitle: string;
+  /** Nota inicial (ingredientes en texto, pasos…) para la página wiki. */
+  recipeBody?: string;
+  baseServings?: number;
+  notes?: string;
+  servingsOverride?: number;
+}
+
 export interface MenuSlotClearPayload {
   action: 'clear';
   slotId: string;
@@ -85,6 +98,23 @@ export interface MenuConfirmPayload {
   action: 'confirm';
   slotId: string;
   contentHash: string;
+}
+
+export interface MenuTemplateSavePayload {
+  action: 'save';
+  name: string;
+  fromWeekStartsOn: string;
+}
+
+export interface MenuTemplateApplyPayload {
+  action: 'apply';
+  templateId: string;
+  toWeekStartsOn: string;
+}
+
+export interface MenuTemplateDeletePayload {
+  action: 'delete';
+  templateId: string;
 }
 
 export interface ShoppingAddPayload {
@@ -262,6 +292,45 @@ export function setMenuSlot(
   }) as CommandEnvelopeV1<MenuSlotSetPayload>;
 }
 
+/**
+ * «Nueva receta» desde el hueco: crea la receta (página wiki + datos) y asigna
+ * el hueco en UN solo comando atómico del servidor, robusto offline (o entra
+ * todo o no entra nada, con un único recibo idempotente).
+ */
+export function setMenuSlotNewRecipe(
+  input: {
+    householdId: string;
+    groupId: string;
+    onDate: string;
+    meal: MealSlot;
+    recipeTitle: string;
+    recipeBody?: string;
+    baseServings?: number;
+    notes?: string;
+    servingsOverride?: number;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<MenuSlotSetNewRecipePayload> {
+  const recipeBody = trimmedOrUndefined(input.recipeBody);
+  const notes = trimmedOrUndefined(input.notes);
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'menu_slot',
+    payload: {
+      action: 'set_new_recipe',
+      groupId: input.groupId,
+      onDate: input.onDate,
+      meal: input.meal,
+      recipeTitle: input.recipeTitle.trim(),
+      ...(recipeBody ? { recipeBody } : {}),
+      ...(input.baseServings ? { baseServings: input.baseServings } : {}),
+      ...(notes ? { notes } : {}),
+      ...(input.servingsOverride ? { servingsOverride: input.servingsOverride } : {})
+    } satisfies MenuSlotSetNewRecipePayload
+  }) as CommandEnvelopeV1<MenuSlotSetNewRecipePayload>;
+}
+
 export function clearMenuSlot(
   input: { householdId: string; slotId: string },
   options: EnvelopeOptions = {}
@@ -312,6 +381,58 @@ export function confirmMenuSlot(
       contentHash: input.contentHash
     } satisfies MenuConfirmPayload
   }) as CommandEnvelopeV1<MenuConfirmPayload>;
+}
+
+/** Guarda la semana visible como plantilla con nombre («Semana de cole»…). */
+export function saveMenuTemplate(
+  input: { householdId: string; name: string; fromWeekStartsOn: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<MenuTemplateSavePayload> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'menu_template',
+    payload: {
+      action: 'save',
+      name: input.name.trim(),
+      fromWeekStartsOn: input.fromWeekStartsOn
+    } satisfies MenuTemplateSavePayload
+  }) as CommandEnvelopeV1<MenuTemplateSavePayload>;
+}
+
+/**
+ * Aplica una plantilla sobre el lunes destino. La semana debe estar vacía: si
+ * ya tiene contenido, el servidor rechaza con `week_overlap` (misma familia de
+ * rechazo que el duplicado semanal) y la nota unificada lo cuenta tal cual.
+ */
+export function applyMenuTemplate(
+  input: { householdId: string; templateId: string; toWeekStartsOn: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<MenuTemplateApplyPayload> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'menu_template',
+    aggregateId: input.templateId,
+    payload: {
+      action: 'apply',
+      templateId: input.templateId,
+      toWeekStartsOn: input.toWeekStartsOn
+    } satisfies MenuTemplateApplyPayload
+  }) as CommandEnvelopeV1<MenuTemplateApplyPayload>;
+}
+
+export function deleteMenuTemplate(
+  input: { householdId: string; templateId: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<MenuTemplateDeletePayload> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'menu_template',
+    aggregateId: input.templateId,
+    payload: { action: 'delete', templateId: input.templateId } satisfies MenuTemplateDeletePayload
+  }) as CommandEnvelopeV1<MenuTemplateDeletePayload>;
 }
 
 export function addShoppingItem(
