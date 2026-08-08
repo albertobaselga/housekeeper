@@ -178,6 +178,35 @@ for (const [label, script, env] of stages) {
 }
 
 if (!failed) {
+  // wiki-search.ts y wiki.server.ts llaman a similarity() y word_similarity()
+  // sin cualificar, así que el esquema de pg_trgm tiene que estar en el
+  // search_path del rol con el que corre la web. Se comprueba con ese rol, no
+  // con el propietario, que es donde importa.
+  step('búsqueda trigram desde el rol de la aplicación');
+  const appUrl = (() => {
+    const parsed = new URL(probeUrl);
+    parsed.username = 'casa_clara_app_login';
+    parsed.password = process.env.APP_DB_PASSWORD ?? 'probe-app-only';
+    return parsed.toString();
+  })();
+  try {
+    await withClient(appUrl, async (client) => {
+      const { rows } = await client.query(
+        `SELECT similarity('lavadora', 'lavadoras') AS trigram,
+                app.unaccent_es('Colchón de la habitación') AS unaccented`
+      );
+      console.log(`   similarity=${rows[0].trigram}, unaccent_es="${rows[0].unaccented}"`);
+      if (rows[0].unaccented !== 'Colchon de la habitacion') {
+        throw new Error(`app.unaccent_es devolvió "${rows[0].unaccented}"`);
+      }
+    });
+  } catch (error) {
+    console.error(`   ${error.message ?? error}`);
+    failed = 'búsqueda trigram desde el rol de la aplicación';
+  }
+}
+
+if (!failed) {
   step('estado final del forzado de RLS');
   await withClient(probeUrl, async (client) => {
     const { rows } = await client.query(

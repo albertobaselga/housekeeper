@@ -92,8 +92,14 @@ BEGIN
   --    (createrole_self_grant viene vacío), y sin SET no se puede crear un
   --    esquema AUTHORIZATION de ese rol. INHERIT FALSE para que el rol de
   --    migraciones no adquiera de paso los privilegios de Better Auth.
+  --    La separación INHERIT/SET es de PG16; antes la pertenencia implicaba
+  --    ambas y la cláusula ni siquiera se analiza.
   BEGIN
-    EXECUTE format('GRANT casa_clara_auth_login TO %I WITH INHERIT FALSE, SET TRUE', current_user);
+    IF current_setting('server_version_num')::integer >= 160000 THEN
+      EXECUTE format('GRANT casa_clara_auth_login TO %I WITH INHERIT FALSE, SET TRUE', current_user);
+    ELSE
+      EXECUTE format('GRANT casa_clara_auth_login TO %I', current_user);
+    END IF;
   EXCEPTION WHEN insufficient_privilege THEN
     RAISE NOTICE 'sin ADMIN OPTION sobre casa_clara_auth_login; el esquema casa_auth tendrá que crearse a mano';
   END;
