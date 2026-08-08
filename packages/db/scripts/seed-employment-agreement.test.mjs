@@ -110,6 +110,28 @@ describe('validación del JSON del acuerdo', () => {
       reason: 'Alta inicial del acuerdo'
     });
     expect(config.version.terms.schedule).toContain('Presencia de 08:00 a 19:00.');
+    // Sin banderas de compensación, `terms` no inventa la clave.
+    expect(config.version.terms.compensation).toBeUndefined();
+  });
+
+  it('escribe en el acuerdo qué trabajo de más admite, cuando el JSON lo dice', () => {
+    const config = normalizeAgreementConfig(
+      exampleConfig({
+        overtimeHourlyRateCents: 1000,
+        allowsHourlyOvertime: false,
+        allowsExtraShifts: true
+      })
+    );
+    expect(config.version.terms.compensation).toEqual({
+      allowsHourlyOvertime: false,
+      allowsExtraShifts: true
+    });
+
+    expect(() =>
+      normalizeAgreementConfig(
+        exampleConfig({ overtimeHourlyRateCents: 1000, allowsHourlyOvertime: 'no' })
+      )
+    ).toThrowError(/allowsHourlyOvertime tiene que ser true o false/);
   });
 
   it('firma por la casa la primera family_admin, o la que diga el JSON', () => {

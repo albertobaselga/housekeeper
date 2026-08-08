@@ -40,6 +40,8 @@
 //       "overtimeHourlyRateCents": 1000,
 //       "workedRestDayRateCents": 5000,
 //       "annualVacationDays": 30,
+//       "allowsHourlyOvertime": false,
+//       "allowsExtraShifts": true,
 //       "schedule": {
 //         "from": "08:00",
 //         "to": "19:00",
@@ -49,6 +51,11 @@
 //       }
 //     }
 //   }
+//
+// `allowsHourlyOvertime` y `allowsExtraShifts` son opcionales y quedan escritas
+// en `terms.compensation`: son parte de lo pactado y el esquema no tiene columna
+// para ellas. OJO: hoy la aplicación NO las obedece; enseña la tarifa horaria a
+// quien ve importes aunque el acuerdo diga que no hay horas sueltas.
 //
 // LA TARIFA DE HORA EXTRAORDINARIA NO SE INVENTA. Es la única condición que el
 // guion no deduce ni rellena por su cuenta: si falta, aborta con un mensaje que
@@ -102,6 +109,28 @@ function isIsoDate(value) {
  * se redactan en una frase estable. Las claves que empiezan por «_» son notas
  * internas del fichero y no viajan al acuerdo.
  */
+/**
+ * Banderas de lo pactado que el esquema todavía no tiene en columna propia y que
+ * por eso viajan en `terms.compensation`: qué formas de trabajo de más admite el
+ * acuerdo. Que estén escritas en el acuerdo es lo que permite discutirlas; que
+ * la interfaz las obedezca es otra cosa, y hoy NO lo hace (Pagos enseña la
+ * tarifa horaria a todo el que ve importes). Ver el runbook de alta de hogar.
+ */
+const COMPENSATION_FLAGS = ['allowsHourlyOvertime', 'allowsExtraShifts'];
+
+export function compensationFlags(agreement) {
+  const flags = {};
+  for (const key of COMPENSATION_FLAGS) {
+    const value = agreement?.[key];
+    if (value == null) continue;
+    if (typeof value !== 'boolean') {
+      throw new Error(`agreement.${key} tiene que ser true o false (llegó ${JSON.stringify(value)})`);
+    }
+    flags[key] = value;
+  }
+  return Object.keys(flags).length > 0 ? flags : null;
+}
+
 export function scheduleToText(schedule) {
   if (schedule == null) return null;
   if (typeof schedule === 'string') {
@@ -251,7 +280,8 @@ export function normalizeAgreementConfig(raw, { overtimeHourlyRateCents = null }
               'longBreakMinutes, effectiveHoursPerDay, weekly).'
           );
         }
-        return { schedule };
+        const compensation = compensationFlags(agreement);
+        return compensation ? { schedule, compensation } : { schedule };
       })(),
       reason: String(agreement.reason ?? DEFAULT_REASON).trim() || DEFAULT_REASON
     }
@@ -491,7 +521,10 @@ function parseArgs(argv) {
   const args = { config: null, overtimeHourlyRateCents: null, dryRun: false };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
-    if (flag === '--config') args.config = argv[++i];
+    // Un `--` suelto es el separador que algunos gestores de paquetes exigen y
+    // otros reenvían tal cual; que no sea un error de escritura.
+    if (flag === '--') continue;
+    else if (flag === '--config') args.config = argv[++i];
     else if (flag.startsWith('--config=')) args.config = flag.slice('--config='.length);
     else if (flag === '--overtime-hourly-rate-cents') args.overtimeHourlyRateCents = Number(argv[++i]);
     else if (flag.startsWith('--overtime-hourly-rate-cents=')) {
