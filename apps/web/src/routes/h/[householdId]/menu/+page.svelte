@@ -320,11 +320,15 @@
     applying = true;
     // Como en el duplicado, aquí NO se pinta antes del ACK: el resultado vive
     // en otra semana y un rechazo (week_overlap si el destino tiene contenido)
-    // lo cuenta la nota unificada con el mensaje real del servidor.
+    // lo cuenta la nota unificada. Con mensaje propio: el literal genérico del
+    // solape («se solapa con otra») describía mal ESTE caso.
     void optimistic
       .run(applyMenuTemplate({ householdId: week.householdId, templateId: applyTemplateId, toWeekStartsOn: to }), {
         settle: () => {
           templateApplied = { name: template?.name ?? 'Plantilla', from, to };
+        },
+        messageOverrides: {
+          week_overlap: 'Esa semana ya tiene comidas: elige una semana vacía o quítalas antes.'
         }
       })
       .finally(() => {
