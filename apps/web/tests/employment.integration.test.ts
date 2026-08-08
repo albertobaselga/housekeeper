@@ -126,16 +126,18 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview!.versions[1]!.salaryDiffCents).toBe('10000');
 
     // Devengo proyectado del periodo en curso: salario vigente 1.500,00 € menos
-    // la cuota del anticipo aún vivo; los gastos de marzo ya liquidados no se
-    // vuelven a reembolsar.
+    // la cuota del anticipo aún vivo, más el complemento de antigüedad (30,00 €),
+    // que sí es dinero para ella. El seguro médico que paga la casa NO entra en
+    // la transferencia por muy vigente que esté, y el plus retirado tampoco.
+    // Los gastos de marzo ya liquidados no se vuelven a reembolsar.
     expect(overview!.accrual).not.toBeNull();
     expect(overview!.accrual!.period).toBe('2026-08');
     expect(overview!.accrual!.agreementVersionId).toBe('12100000-0000-4000-8000-000000000002');
-    expect(overview!.accrual!.salaryCents).toBe('140000');
+    expect(overview!.accrual!.salaryCents).toBe('143000');
     expect(overview!.accrual!.reimbursementCents).toBe('0');
-    expect(overview!.accrual!.transferTotalCents).toBe('140000');
+    expect(overview!.accrual!.transferTotalCents).toBe('143000');
     const kinds = overview!.accrual!.lines.map((line) => line.kind);
-    expect(kinds).toEqual(['base_salary', 'advance_deduction']);
+    expect(kinds).toEqual(['base_salary', 'supplement', 'advance_deduction']);
   });
 
   it('la empleada ve su saldo de vacaciones del año en curso, con lo anulado listado pero sin contar', async () => {
