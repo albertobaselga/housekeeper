@@ -56,6 +56,10 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
           const meal = payloadField(envelope, 'meal');
           return onDate && meal ? `Hueco del menú (${meal} del ${onDate})` : 'Hueco del menú';
         }
+        case 'set_new_recipe': {
+          const title = payloadField(envelope, 'recipeTitle');
+          return title ? `Receta nueva «${title}» asignada al menú` : 'Receta nueva asignada al menú';
+        }
         case 'clear':
           return 'Vaciado de un hueco del menú';
         case 'duplicate_week':
@@ -64,6 +68,17 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
           return 'Confirmación de un hueco del menú';
         default:
           return 'Cambio en el menú';
+      }
+    case 'menu_template':
+      switch (action) {
+        case 'save':
+          return 'Semana guardada como plantilla';
+        case 'apply':
+          return 'Plantilla de semana aplicada al menú';
+        case 'delete':
+          return 'Borrado de una plantilla de semana';
+        default:
+          return 'Plantilla de semana del menú';
       }
     case 'shopping_item':
       return action === 'set_checked'

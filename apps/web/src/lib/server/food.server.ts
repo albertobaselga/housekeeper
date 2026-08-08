@@ -98,6 +98,13 @@ export interface RecipeOptionView {
   hasUnreviewedFood: boolean;
 }
 
+export interface MenuTemplateView {
+  id: string;
+  name: string;
+  /** Lunes de la semana origen de la que se capturó. */
+  sourceWeekStartsOn: string;
+}
+
 export interface MenuWeek {
   householdId: string;
   role: Role;
@@ -109,6 +116,8 @@ export interface MenuWeek {
   diners: DinerView[];
   slots: MenuSlotView[];
   recipeOptions: RecipeOptionView[];
+  /** Semanas plantilla guardadas con nombre («Semana de cole»…). */
+  templates: MenuTemplateView[];
 }
 
 interface AllergenRow {
@@ -394,6 +403,14 @@ export async function loadMenuWeek(
         };
       });
 
+      const templateResult = await client.query<{ id: string; name: string; sourceWeekStartsOn: string }>(
+        `select id, name, source_week_starts_on::text as "sourceWeekStartsOn"
+           from app.menu_week_templates
+          where household_id = $1
+          order by name`,
+        [householdId]
+      );
+
       const recipeOptions: RecipeOptionView[] = [...recipes.values()].map((core) => {
         const rows = ingredients.get(core.pageId) ?? [];
         const codes = new Set<string>();
@@ -416,7 +433,8 @@ export async function loadMenuWeek(
         groups,
         diners,
         slots,
-        recipeOptions
+        recipeOptions,
+        templates: templateResult.rows
       } satisfies MenuWeek;
     });
   } catch (cause) {

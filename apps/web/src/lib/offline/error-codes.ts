@@ -53,6 +53,8 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   duplicate_allergen: 'Ese alérgeno ya estaba declarado',
   duplicate_week: 'Esa semana ya tiene menú',
   diner_not_found: 'El comensal ya no existe',
+  template_name_taken: 'Ya hay una plantilla con ese nombre',
+  menu_week_empty: 'La semana elegida no tiene nada que guardar',
 
   // Contactos
   contact_not_found: 'El contacto ya no existe',

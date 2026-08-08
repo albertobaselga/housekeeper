@@ -151,7 +151,12 @@ async function resolveSpaceSlug(
   return availableSpaceSlug(client, householdId, slugifyWikiTitle(name));
 }
 
-async function createSpace(
+/**
+ * Creación de espacio con slug desambiguado. Exportada para que el flujo
+ * «Nueva receta desde el menú» pueda crear el espacio «Recetas» del hogar la
+ * primera vez, con el mismo camino que el comando `wiki_space.create`.
+ */
+export async function createWikiSpace(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
@@ -389,7 +394,7 @@ export const wikiSpaceCommandHandler: CommandHandler = async (client, membership
 
   switch (payload.action) {
     case "create":
-      return createSpace(client, membership, householdId, payload);
+      return createWikiSpace(client, membership, householdId, payload);
     case "set_template":
       return setSpaceTemplate(client, householdId, payload);
     case "clone_template":
@@ -397,7 +402,13 @@ export const wikiSpaceCommandHandler: CommandHandler = async (client, membership
   }
 };
 
-async function createPage(
+/**
+ * Creación de página con su revisión 1 y su slug registrado. Exportada porque
+ * el flujo «Nueva receta desde el hueco del menú» (menu.ts) crea la página
+ * wiki de la receta con EXACTAMENTE este camino, dentro de su misma
+ * transacción de comando.
+ */
+export async function createWikiPage(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
@@ -582,7 +593,7 @@ export const wikiPageCommandHandler: CommandHandler = async (client, membership,
 
   switch (payload.action) {
     case "create":
-      return createPage(client, membership, householdId, payload);
+      return createWikiPage(client, membership, householdId, payload);
     case "edit":
       return editPage(client, membership, householdId, envelope.baseRevision, payload);
     case "set_state":

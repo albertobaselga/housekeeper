@@ -3,14 +3,18 @@
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
-  import { activeMenuDayIndex, addDays, dayLabel, weekLabel } from '$lib/food/dates';
+  import { activeMenuDayIndex, addDays, dayLabel, isIsoDate, mondayOf, weekLabel } from '$lib/food/dates';
   import { formatQuantityEs } from '$lib/food/quantities';
   import {
     addShoppingItem,
+    applyMenuTemplate,
     clearMenuSlot,
     confirmMenuSlot,
+    deleteMenuTemplate,
     duplicateMenuWeek,
+    saveMenuTemplate,
     setMenuSlot,
+    setMenuSlotNewRecipe,
     setShoppingChecked,
     upsertMenuGroup,
     type MealSlot
@@ -70,6 +74,7 @@
   // pinta YA mientras el comando viaja. Se retira al llegar los datos frescos.
   type SlotDraft =
     | { kind: 'recipe'; pageId: string; title: string; notes: string; conflicts: Array<{ name: string; diners: string[] }> }
+    | { kind: 'new'; title: string; notes: string }
     | { kind: 'text'; text: string; notes: string };
   let slotDrafts = $state<Record<string, SlotDraft | null>>({});
   /** Confirmación optimista por slotId (chip «Confirmado» inmediato). */
@@ -79,12 +84,15 @@
 
   // ── Editor de hueco (asignar receta o texto) ───────────────────────────────
   let editorKey = $state<string | null>(null);
-  let editorMode = $state<'recipe' | 'text'>('recipe');
+  let editorMode = $state<'recipe' | 'new' | 'text'>('recipe');
   let editorRecipeId = $state('');
   let editorText = $state('');
   let editorNotes = $state('');
   let editorServings = $state<number | null>(null);
   let editorAcknowledge = $state(false);
+  /** «Nueva receta»: nombre y nota inicial (ingredientes en texto, pasos…). */
+  let editorNewRecipeName = $state('');
+  let editorNewRecipeBody = $state('');
 
   function openEditor(groupId: string, onDate: string, meal: MealSlot): void {
     const slot = slotFor(groupId, onDate, meal);
@@ -95,6 +103,8 @@
     editorNotes = slot?.notes ?? '';
     editorServings = slot?.servingsOverride ?? null;
     editorAcknowledge = false;
+    editorNewRecipeName = '';
+    editorNewRecipeBody = '';
   }
 
   const editorParts = $derived(editorKey ? editorKey.split(':') : null);
@@ -120,10 +130,13 @@
     event.preventDefault();
     if (!week || !editorParts || !editorKey) return;
     if (editorMode === 'recipe' && !editorRecipeId) return;
+    if (editorMode === 'new' && !editorNewRecipeName.trim()) return;
     if (editorMode === 'text' && !editorText.trim()) return;
     if (editorConflicts.length > 0 && !editorAcknowledge) return;
     const key = editorKey;
     const servings = editorServings;
+    const servingsOverride =
+      servings !== null && Number.isInteger(servings) && servings > 0 ? servings : undefined;
     const draft: SlotDraft =
       editorMode === 'recipe'
         ? {
@@ -133,18 +146,34 @@
             notes: editorNotes.trim(),
             conflicts: editorConflicts.map((conflict) => ({ name: conflict.name, diners: conflict.diners }))
           }
-        : { kind: 'text', text: editorText.trim(), notes: editorNotes.trim() };
-    const envelope = setMenuSlot({
-      householdId: week.householdId,
-      groupId: editorParts[0]!,
-      onDate: editorParts[1]!,
-      meal: editorParts[2] as MealSlot,
-      recipePageId: editorMode === 'recipe' ? editorRecipeId : undefined,
-      freeText: editorMode === 'text' ? editorText : undefined,
-      notes: editorNotes,
-      servingsOverride: servings !== null && Number.isInteger(servings) && servings > 0 ? servings : undefined,
-      acknowledgeAllergens: editorConflicts.length > 0 ? editorAcknowledge : undefined
-    });
+        : editorMode === 'new'
+          ? { kind: 'new', title: editorNewRecipeName.trim(), notes: editorNotes.trim() }
+          : { kind: 'text', text: editorText.trim(), notes: editorNotes.trim() };
+    // «Nueva receta»: UN comando atómico que crea la receta (página wiki +
+    // ficha) y asigna el hueco; offline entra entero o no entra.
+    const envelope =
+      editorMode === 'new'
+        ? setMenuSlotNewRecipe({
+            householdId: week.householdId,
+            groupId: editorParts[0]!,
+            onDate: editorParts[1]!,
+            meal: editorParts[2] as MealSlot,
+            recipeTitle: editorNewRecipeName,
+            recipeBody: editorNewRecipeBody,
+            notes: editorNotes,
+            servingsOverride
+          })
+        : setMenuSlot({
+            householdId: week.householdId,
+            groupId: editorParts[0]!,
+            onDate: editorParts[1]!,
+            meal: editorParts[2] as MealSlot,
+            recipePageId: editorMode === 'recipe' ? editorRecipeId : undefined,
+            freeText: editorMode === 'text' ? editorText : undefined,
+            notes: editorNotes,
+            servingsOverride,
+            acknowledgeAllergens: editorConflicts.length > 0 ? editorAcknowledge : undefined
+          });
     void optimistic.run(envelope, {
       apply: () => {
         slotDrafts[key] = draft;
@@ -232,10 +261,88 @@
   $effect(() => {
     // El aviso de copia pertenece a la semana de origen: al navegar, fuera.
     if (duplicated && week && week.weekStartsOn !== duplicated.from) duplicated = null;
+    // El aviso de plantilla aplicada pertenece a la semana donde se aplicó:
+    // al navegar a otra semana, fuera.
+    if (templateApplied && week && week.weekStartsOn !== templateApplied.from) templateApplied = null;
     if (week) {
       duplicateTarget = addDays(week.weekStartsOn, 7);
+      applyTarget = addDays(week.weekStartsOn, 7);
     }
   });
+
+  // ── Semanas plantilla con nombre («Semana de cole», «Semana de verano») ───
+  let templateName = $state('');
+  let savingTemplate = $state(false);
+  let applyTemplateId = $state('');
+  // Lunes destino de «Usar plantilla»: por defecto la semana siguiente, y
+  // cualquier fecha elegida se normaliza a su lunes (mismo selector que el
+  // duplicado). El servidor exige que la semana destino esté vacía.
+  let applyTarget = $state('');
+  let applying = $state(false);
+  let templateApplied = $state<{ name: string; from: string; to: string } | null>(null);
+  /** Confirmación ligera del borrado: primer tap arma, el segundo borra. */
+  let deleteArmedId = $state<string | null>(null);
+  let deletingTemplateIds = $state<Record<string, true>>({});
+
+  const applyMonday = $derived(
+    applyTarget && isIsoDate(applyTarget) ? mondayOf(applyTarget) : duplicateDefault
+  );
+
+  function submitSaveTemplate(event: SubmitEvent): void {
+    event.preventDefault();
+    if (!week || savingTemplate || !templateName.trim()) return;
+    const name = templateName;
+    savingTemplate = true;
+    void optimistic
+      .run(
+        saveMenuTemplate({ householdId: week.householdId, name, fromWeekStartsOn: week.weekStartsOn }),
+        {
+          apply: () => {
+            templateName = '';
+          },
+          revert: () => {
+            templateName = name;
+          }
+        }
+      )
+      .finally(() => {
+        savingTemplate = false;
+      });
+  }
+
+  function submitApplyTemplate(event: SubmitEvent): void {
+    event.preventDefault();
+    if (!week || applying || !applyTemplateId) return;
+    const template = week.templates.find((candidate) => candidate.id === applyTemplateId);
+    const from = week.weekStartsOn;
+    const to = applyMonday;
+    templateApplied = null;
+    applying = true;
+    // Como en el duplicado, aquí NO se pinta antes del ACK: el resultado vive
+    // en otra semana y un rechazo (week_overlap si el destino tiene contenido)
+    // lo cuenta la nota unificada con el mensaje real del servidor.
+    void optimistic
+      .run(applyMenuTemplate({ householdId: week.householdId, templateId: applyTemplateId, toWeekStartsOn: to }), {
+        settle: () => {
+          templateApplied = { name: template?.name ?? 'Plantilla', from, to };
+        }
+      })
+      .finally(() => {
+        applying = false;
+      });
+  }
+
+  function removeTemplate(templateId: string): void {
+    if (!week || deletingTemplateIds[templateId]) return;
+    deleteArmedId = null;
+    deletingTemplateIds[templateId] = true;
+    if (applyTemplateId === templateId) applyTemplateId = '';
+    void optimistic
+      .run(deleteMenuTemplate({ householdId: week.householdId, templateId }))
+      .finally(() => {
+        delete deletingTemplateIds[templateId];
+      });
+  }
 
   // ── Nuevo grupo de comensales ──────────────────────────────────────────────
   let newGroupName = $state('');
@@ -357,6 +464,12 @@
         <a href={`${base}?week=${duplicated.to}&day=${duplicated.day}`}>Ver la semana del {weekLabel(duplicated.to)} →</a>
       </p>
     {/if}
+    {#if templateApplied}
+      <p class="success-message" role="status">
+        Plantilla «{templateApplied.name}» aplicada sobre la semana del {weekLabel(templateApplied.to)}.
+        <a href={`${base}?week=${templateApplied.to}`}>Ver la semana del {weekLabel(templateApplied.to)} →</a>
+      </p>
+    {/if}
 
     <nav class="week-nav" aria-label="Cambiar de semana">
       <a class="button secondary" href={`${base}?week=${addDays(week.weekStartsOn, -7)}&day=${addDays(selectedDate ?? week.weekStartsOn, -7)}`}>← Semana anterior</a>
@@ -414,6 +527,10 @@
                         {draft.conflicts.map((conflict) => `${conflict.name} (${conflict.diners.join(', ')})`).join(', ')}
                       </p>
                     {/if}
+                  {:else if draft.kind === 'new'}
+                    <strong>{draft.title}</strong>
+                    <small>Receta nueva del recetario</small>
+                    {#if draft.notes}<small class="menu-slot-note">{draft.notes}</small>{/if}
                   {:else}
                     <strong>{draft.text}</strong>
                     {#if draft.notes}<small class="menu-slot-note">{draft.notes}</small>{/if}
@@ -460,9 +577,20 @@
               <form class="action-form menu-slot-editor" onsubmit={submitEditor}>
                 <div class="space-tabs" role="list" aria-label="Tipo de plan">
                   <button type="button" class:active={editorMode === 'recipe'} onclick={() => (editorMode = 'recipe')}>Receta</button>
+                  <button type="button" class:active={editorMode === 'new'} onclick={() => (editorMode = 'new')}>Nueva receta</button>
                   <button type="button" class:active={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Texto libre</button>
                 </div>
-                {#if editorMode === 'recipe'}
+                {#if editorMode === 'new'}
+                  <label>Nombre de la receta nueva
+                    <input type="text" autocomplete="off" enterkeyhint="next" bind:value={editorNewRecipeName} maxlength="200" required />
+                  </label>
+                  <label>Ingredientes o nota inicial (opcional)
+                    <input type="text" autocomplete="off" enterkeyhint="next" bind:value={editorNewRecipeBody} maxlength="10000" />
+                  </label>
+                  <p class="audit-note">
+                    La receta se crea en el recetario (con su página wiki) y se asigna a este hueco, todo de una vez.
+                  </p>
+                {:else if editorMode === 'recipe'}
                   <label>Receta del hogar
                     <select bind:value={editorRecipeId} required>
                       <option value="" disabled>Elige una receta</option>
@@ -518,6 +646,78 @@
       {/each}
 
       {#if week.canWrite}
+        <section class="card" aria-labelledby="templates-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">Plantillas</p><h2 id="templates-title">Semanas plantilla</h2></div>
+          </div>
+
+          <form class="action-form" onsubmit={submitSaveTemplate}>
+            <label>Guardar esta semana como plantilla
+              <input
+                type="text"
+                autocomplete="off"
+                enterkeyhint="done"
+                bind:value={templateName}
+                maxlength="120"
+                placeholder="Semana de cole"
+                required
+              />
+            </label>
+            <button class="button secondary" type="submit" disabled={savingTemplate}>
+              Guardar semana como plantilla
+            </button>
+          </form>
+
+          {#if week.templates.length}
+            <form class="action-form" onsubmit={submitApplyTemplate}>
+              <label>Usar una plantilla
+                <select bind:value={applyTemplateId} required>
+                  <option value="" disabled>Elige una plantilla</option>
+                  {#each week.templates as template (template.id)}
+                    <option value={template.id}>{template.name}</option>
+                  {/each}
+                </select>
+              </label>
+              <label>Sobre el lunes
+                <input type="date" bind:value={applyTarget} enterkeyhint="done" />
+              </label>
+              <p class="audit-note">
+                Se copiará sobre la semana del {weekLabel(applyMonday)}. La semana debe estar vacía.
+              </p>
+              <button class="button primary" type="submit" disabled={applying || !applyTemplateId}>
+                Usar plantilla
+              </button>
+            </form>
+
+            <ul class="wiki-recent">
+              {#each week.templates.filter((template) => !deletingTemplateIds[template.id]) as template (template.id)}
+                <li>
+                  <div class="wiki-node-row">
+                    <span>
+                      <strong>{template.name}</strong>
+                      <small>De la semana del {weekLabel(template.sourceWeekStartsOn)}</small>
+                    </span>
+                    {#if deleteArmedId === template.id}
+                      <button class="button secondary small-button" type="button" onclick={() => removeTemplate(template.id)}>
+                        Sí, borrar «{template.name}»
+                      </button>
+                      <button class="button secondary small-button" type="button" onclick={() => (deleteArmedId = null)}>
+                        Cancelar
+                      </button>
+                    {:else}
+                      <button class="button secondary small-button" type="button" onclick={() => (deleteArmedId = template.id)}>
+                        Borrar
+                      </button>
+                    {/if}
+                  </div>
+                </li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="audit-note">Todavía no hay plantillas guardadas en este hogar.</p>
+          {/if}
+        </section>
+
         <section class="card" aria-labelledby="new-group-title">
           <div class="section-heading"><div><p class="eyebrow">Organizar</p><h2 id="new-group-title">Nuevo grupo de comensales</h2></div></div>
           <form class="action-form" onsubmit={submitNewGroup}>
