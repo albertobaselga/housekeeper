@@ -6,7 +6,9 @@ import { defineConfig, devices } from '@playwright/test';
 // del cluster local). El globalSetup recrea el esquema, aplica fixtures y crea
 // un login sin BYPASSRLS con el que corre el servidor.
 
-const PORT = 4317;
+// Sobrescribible para ejecuciones paralelas (worktrees/CI local) sin chocar
+// con otro servidor reutilizado en el puerto por defecto.
+const PORT = Number(process.env.E2E_PORT ?? 4317);
 const adminUrl = process.env.E2E_DATABASE_URL ?? '';
 
 export const E2E_APP_LOGIN = 'e2e_casa_clara_web';
