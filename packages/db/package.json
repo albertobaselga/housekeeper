@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Migraciones PostgreSQL multi-tenant, fixtures sintéticas y pruebas de esquema/RLS.",
   "scripts": {
+    "agreement:seed": "node scripts/seed-employment-agreement.mjs",
     "bootstrap": "node scripts/bootstrap.mjs",
     "manual:import": "node scripts/import-manual.mjs",
     "migrate": "node scripts/migrate.mjs",

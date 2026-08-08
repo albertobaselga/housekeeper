@@ -94,6 +94,8 @@ pnpm --filter @casa-clara/web seed:accounts --config /ruta/fuera/del/repo/hogar.
 
 Cómo se cambia y se repone una contraseña, y qué hacer si el administrador pierde la suya, en [docs/despliegue/acceso-produccion.md](docs/despliegue/acceso-produccion.md). Sin `DATABASE_AUTH_URL` la aplicación cae al selector de cuentas sintéticas de la demo local.
 
+El alta de las cuentas es solo el segundo de siete pasos. El procedimiento entero de poner un hogar en pie —roles, migraciones, personas, **acuerdo laboral**, manual de convivencia y calendario— está en [docs/despliegue/alta-de-hogar.md](docs/despliegue/alta-de-hogar.md), con qué se verifica en cada paso y qué cambia contra Supabase.
+
 ### Pila completa con Docker Compose
 
 ```bash
