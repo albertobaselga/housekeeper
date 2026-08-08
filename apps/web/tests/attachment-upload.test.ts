@@ -73,7 +73,7 @@ describe('uploadAttachment', () => {
     await expectCode(promise, 'attachments_unavailable');
     await expect(
       uploadAttachment(HOUSEHOLD, makeFile(), fetchFn as unknown as typeof fetch)
-    ).rejects.toThrow(/no están disponibles/);
+    ).rejects.toThrow(/no está disponible/);
   });
 
   it('fallo de red → attachment_upload_failed', async () => {

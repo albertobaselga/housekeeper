@@ -8,8 +8,17 @@ describe('diccionario compartido de códigos de error', () => {
     // Empleo (histórico)
     expect(describeErrorCode('week_already_reported')).toBe('La semana ya fue enviada');
     expect(describeErrorCode('not_allowed')).toBe('Tu rol no permite esta acción');
-    // Genéricos del dispatcher
-    expect(describeErrorCode('unsupported_aggregate')).toBe('El servidor no reconoce este tipo de cambio');
+    // Genéricos del dispatcher, incluidos los que emite el propio /api/v1/sync
+    // cuando rechaza sin llegar al comando.
+    expect(describeErrorCode('unsupported_aggregate')).toBe('Casa Clara no reconoce este tipo de cambio');
+    expect(describeErrorCode('not_authorized')).toBe('Tu acceso a este hogar no lo permite');
+    expect(describeErrorCode('operation_conflict')).toBe('Otro cambio llegó antes con otro contenido');
+    expect(describeErrorCode('constraint_violation')).toBe(
+      'El cambio no encaja con lo que ya hay guardado'
+    );
+    expect(describeErrorCode('invalid_envelope')).toBe('Los datos del cambio no eran válidos');
+    expect(describeErrorCode('transient')).toBe('No se pudo guardar ahora mismo; se reintenta solo');
+    expect(describeErrorCode('internal')).toBe('Algo falló al guardar; se reintenta solo');
     // Guía de la casa (wiki)
     expect(describeErrorCode('wiki_revision_conflict')).toBe(
       'Otra persona guardó cambios mientras editabas; revisa su versión antes de guardar la tuya'
@@ -19,12 +28,12 @@ describe('diccionario compartido de códigos de error', () => {
     expect(describeErrorCode('menu_content_changed')).toBe('El menú cambió mientras confirmabas: revísalo');
     expect(describeErrorCode('allergen_conflict')).toBe('Choca con un alérgeno declarado del hogar');
     // Accesos: sus mensajes viven como messageOverrides de Ajustes (fuera del
-    // grafo inicial de Hoy); el diccionario global degrada al código crudo.
-    expect(describeErrorCode('already_revoked')).toBe('already_revoked');
+    // grafo inicial de Hoy); aquí caen en la frase genérica.
+    expect(describeErrorCode('already_revoked')).toBeNull();
   });
 
-  it('degrada con seguridad: código desconocido crudo, sin código null', () => {
-    expect(describeErrorCode('martian_error')).toBe('martian_error');
+  it('un código sin traducir nunca se escupe crudo en pantalla', () => {
+    expect(describeErrorCode('martian_error')).toBeNull();
     expect(describeErrorCode(undefined)).toBeNull();
     expect(describeErrorCode('')).toBeNull();
   });

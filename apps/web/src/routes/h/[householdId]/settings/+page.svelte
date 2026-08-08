@@ -38,8 +38,8 @@
   const MEMBERSHIP_MESSAGES: Readonly<Record<string, string>> = {
     already_revoked: 'El acceso ya estaba retirado',
     expiry_in_past: 'La fecha límite no puede estar en el pasado',
-    membership_not_found: 'La membresía ya no existe',
-    cannot_modify_self: 'No puedes cambiar tu propia membresía'
+    membership_not_found: 'Ese acceso ya no existe',
+    cannot_modify_self: 'No puedes cambiar tu propio acceso'
   };
 
   async function dispatch(envelope: Parameters<typeof optimistic.run>[0]): Promise<void> {
@@ -202,7 +202,7 @@
           </div>
         </section>
       {/if}
-      <section class="card warning-card"><p class="eyebrow">Entorno de prueba</p><h2>Datos exclusivamente sintéticos</h2><p>Las sesiones viven en memoria y desaparecen al reiniciar el servidor. Cada hogar solo puede ver lo suyo, pero esta demo no sustituye a la versión final: no introduzcas datos reales.</p></section>
+      <section class="card warning-card"><p class="eyebrow">Entorno de prueba</p><h2>Datos exclusivamente sintéticos</h2><p>Las sesiones no se guardan: al reiniciar la aplicación hay que volver a entrar. Cada hogar solo puede ver lo suyo, pero esta demo no sustituye a la versión final: no introduzcas datos reales.</p></section>
     </div>
   </div>
 </div>

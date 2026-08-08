@@ -23,10 +23,15 @@
 // Enlaces internos relativos `[texto](./otra.md)` se reescriben a
 // `[texto](wiki:slug)` para que sobrevivan a renombrados (slug histórico).
 //
-// Idempotencia: sha-256 del contenido canónico (título+cuerpo+tags+aliases);
-// el hash viaja en el summary de cada revisión como `import:<hash12>`. Una
-// página cuyo hash vigente coincide se omite; si difiere gana una revisión
-// nueva (número consecutivo, validado por el trigger append-only).
+// El resumen de cada revisión se rellena con la primera frase útil de la nota:
+// es lo que la vista pinta como subtítulo, así que tiene que leerse como
+// castellano y no como jerga.
+//
+// Idempotencia: sha-256 del contenido canónico (título+cuerpo+tags+aliases+
+// resumen); el hash recortado a doce caracteres viaja en la columna propia
+// `import_hash`, que ninguna vista lee. Una página cuyo contenido vigente da el
+// mismo hash se omite; si difiere gana una revisión nueva (número consecutivo,
+// validado por el trigger append-only).
 //
 // Lote reversible: TODO corre en una única transacción con
 // `set local row_security = off` (patrón del propietario de migraciones);
@@ -61,10 +66,55 @@ export function slugify(value) {
   return slug;
 }
 
-export function contentHash({ title, body, tags, aliases }) {
+export function contentHash({ title, body, tags, aliases, summary }) {
   return createHash('sha256')
-    .update(JSON.stringify({ title, body, tags, aliases }))
+    .update(JSON.stringify({ title, body, tags, aliases, summary: summary ?? '' }))
     .digest('hex');
+}
+
+/** Longitud máxima del subtítulo: una frase, no un párrafo. */
+const SUMMARY_MAX = 180;
+
+/**
+ * Primera frase útil de la nota, para el subtítulo que se enseña bajo el
+ * título. Se salta lo que no es prosa (encabezados, separadores, código,
+ * tablas, listas) y limpia el marcado ligero: comillas de cita, énfasis y
+ * enlaces se quedan con su texto. Si la nota no empieza por prosa (las fichas
+ * de datos pendientes arrancan con una cita), se usa esa primera línea igual,
+ * ya limpia. Devuelve cadena vacía cuando no hay nada que resumir.
+ */
+export function summaryFromBody(body) {
+  let inFence = false;
+  for (const rawLine of String(body ?? '').split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (/^(?:```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || line === '') continue;
+    if (/^#{1,6}\s/.test(line)) continue;
+    if (/^(?:[-*_]\s*){3,}$/.test(line)) continue;
+    if (line.startsWith('|')) continue;
+
+    const clean = line
+      .replace(/^>\s*/, '')
+      .replace(/^(?:[-*+]|\d+\.)\s+/, '')
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/[*_`]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (clean === '') continue;
+
+    // Corte por final de frase. El punto tiene que ir seguido de espacio o de
+    // fin de línea («1.5 kg» no termina una frase) y la frase resultante ha de
+    // tener cuerpo suficiente: un «Anexo D.» suelto no es un resumen.
+    const sentence = /^(.+?[.!?])(?:\s|$)/.exec(clean);
+    const picked = sentence && sentence[1].length >= 20 ? sentence[1] : clean;
+    return picked.length > SUMMARY_MAX
+      ? `${picked.slice(0, SUMMARY_MAX - 1).trimEnd()}…`
+      : picked;
+  }
+  return '';
 }
 
 // gray-matter (js-yaml) parsea YAML real — multilínea, comillas, anidamiento —
@@ -280,6 +330,10 @@ export async function buildPlan(rootDir) {
       linkRewrites.push({ file: page.rel, target, slug });
       return `${prefix}wiki:${slug}${suffix}`;
     });
+    // El resumen se calcula sobre el cuerpo YA reescrito y entra en el hash:
+    // así, cambiar la regla del resumen se comporta como cualquier otro cambio
+    // de contenido (una revisión nueva) en vez de quedarse a medias.
+    page.summary = summaryFromBody(page.body);
     page.hash = contentHash(page);
   }
 
@@ -372,7 +426,7 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
         const parentId = page.parentFile ? pageIdByFile.get(page.parentFile) ?? null : null;
         const existing = await client.query(
           `select p.id, p.space_id, p.status, p.parent_page_id, p.current_slug, p.pinned,
-                  r.title, r.body_markdown, r.tags, r.aliases, r.summary
+                  r.title, r.body_markdown, r.tags, r.aliases, r.summary, r.import_hash
              from app.wiki_page_slugs s
              join app.wiki_pages p on p.household_id = s.household_id and p.id = s.page_id
              left join app.wiki_revisions r
@@ -408,7 +462,10 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
             `colisión de slug entre espacios: «${page.slug}» ya pertenece a otro espacio de este hogar`
           );
         }
-        const summaryHash = /^import:([0-9a-f]{12})$/.exec(row.summary ?? '')?.[1];
+        // `import_hash` es la marca que dejó este mismo importador: si coincide,
+        // la revisión vigente ES la del corpus y no hay nada que hacer. Si no
+        // (revisión escrita a mano desde la aplicación, o base anterior a la
+        // migración 0017), se rehashea el contenido almacenado para decidir.
         const existingHash =
           row.title === null
             ? null
@@ -417,9 +474,10 @@ export async function importCorpus(client, { householdId, membershipId, dir, dry
                 body: row.body_markdown,
                 tags: row.tags,
                 aliases: row.aliases,
+                summary: row.summary,
               });
         const sameContent =
-          existingHash === page.hash || (existingHash === null && summaryHash === page.hash.slice(0, 12));
+          row.import_hash === page.hash.slice(0, 12) || existingHash === page.hash;
         const sameMeta =
           row.status === page.status &&
           (row.parent_page_id ?? null) === parentId &&
@@ -477,8 +535,9 @@ async function insertRevision(client, { householdId, membershipId, pageId, page 
   );
   const inserted = await client.query(
     `insert into app.wiki_revisions
-       (household_id, page_id, revision_number, title, body_markdown, summary, tags, aliases, authored_by_membership_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       (household_id, page_id, revision_number, title, body_markdown, summary, import_hash,
+        tags, aliases, authored_by_membership_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
      returning id`,
     [
       householdId,
@@ -486,7 +545,8 @@ async function insertRevision(client, { householdId, membershipId, pageId, page 
       next.rows[0].n,
       page.title,
       page.body,
-      `import:${page.hash.slice(0, 12)}`,
+      page.summary ?? '',
+      page.hash.slice(0, 12),
       page.tags,
       page.aliases,
       membershipId,

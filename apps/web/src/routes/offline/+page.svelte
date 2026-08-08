@@ -186,7 +186,7 @@
         </ul>
       {/if}
       {#if notes.length > 0}
-        <h3 style="margin: 0 0 0.5rem; font-size: 0.95rem; color: #1a1a1a;">Notas críticas</h3>
+        <h3 style="margin: 0 0 0.5rem; font-size: 0.95rem; color: #1a1a1a;">Qué hacer</h3>
         <ul style="list-style: none; margin: 0; padding: 0;">
           {#each notes as note (note.id)}
             <li style="padding: 0.5rem 0; border-bottom: 1px solid #eee;">

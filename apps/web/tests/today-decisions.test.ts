@@ -215,7 +215,7 @@ describe('triaje genérico del outbox', () => {
     expect(describeCommand(envelope('menu_slot', { action: 'confirm' }))).toBe('Confirmación de una comida del menú');
     expect(describeCommand(envelope('routine', { action: 'complete' }))).toBe('Rutina marcada como hecha');
     expect(describeCommand(envelope('routine_occurrence', {}))).toBe(
-      'Marca de tarea de demostración (sin efecto en el servidor)'
+      'Marca de tarea de demostración (no se guarda en la casa)'
     );
     expect(describeCommand(envelope('wiki_page', { action: 'edit' }))).toBe('Edición de una nota de la guía');
     expect(describeCommand(envelope('membership', { action: 'revoke' }))).toBe('Retirada de un acceso');
@@ -226,11 +226,11 @@ describe('triaje genérico del outbox', () => {
     expect(describeCommand(envelope('comment', {}))).toBe('Cambio pendiente');
   });
 
-  it('traduce los códigos de error propios y conserva los laborales y desconocidos', () => {
-    expect(describeError('unsupported_aggregate')).toBe('El servidor no reconoce este tipo de cambio');
+  it('traduce los códigos de error propios y los laborales, y calla ante los desconocidos', () => {
+    expect(describeError('unsupported_aggregate')).toBe('Casa Clara no reconoce este tipo de cambio');
     expect(describeError('wiki_revision_conflict')).toBe('Otra persona guardó la nota antes que tú');
     expect(describeError('week_already_reported')).toBe('La semana ya fue enviada');
-    expect(describeError('codigo_inventado')).toBe('codigo_inventado');
+    expect(describeError('codigo_inventado')).toBeNull();
     expect(describeError(undefined)).toBeNull();
   });
 

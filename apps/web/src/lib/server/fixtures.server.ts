@@ -340,7 +340,7 @@ export function getContactsFixture() {
 
 export function getEmergencyFixture() {
   return copy({
-    updatedLabel: 'Snapshot actualizado hoy · disponible sin conexión',
+    updatedLabel: 'Guardada hoy en este dispositivo · se abre sin conexión',
     contacts: CONTACTS.filter((contact) => contact.featured),
     instructions: [
       { title: 'Emergencia vital', body: 'Llama al 112. Indica la dirección y no cuelgues hasta que te lo pidan.' },

@@ -158,7 +158,7 @@ export class OptimisticActions {
     }
     return {
       tone: 'error',
-      text: cause ? `No se pudo guardar: ${cause}.` : 'No se pudo guardar: el servidor rechazó el cambio.'
+      text: cause ? `No se pudo guardar: ${cause}.` : 'No se pudo guardar el cambio.'
     };
   }
 

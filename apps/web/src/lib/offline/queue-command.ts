@@ -61,9 +61,7 @@ async function resultFor(outcome: QueueOutcome, errorCode?: string): Promise<Que
     return {
       outcome,
       ...(errorCode ? { errorCode } : {}),
-      message: cause
-        ? `No se pudo guardar: ${cause}.`
-        : 'No se pudo guardar: el servidor rechazó el cambio.'
+      message: cause ? `No se pudo guardar: ${cause}.` : 'No se pudo guardar el cambio.'
     };
   }
   if (outcome === 'conflict') {

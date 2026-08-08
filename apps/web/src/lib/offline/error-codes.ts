@@ -10,9 +10,15 @@
 
 const ERROR_CODE_LABELS: Record<string, string> = {
   // Genéricos del dispatcher
-  invalid_payload: 'El servidor rechazó el contenido',
+  invalid_payload: 'Los datos del cambio no eran válidos',
+  invalid_envelope: 'Los datos del cambio no eran válidos',
   not_allowed: 'Tu rol no permite esta acción',
-  unsupported_aggregate: 'El servidor no reconoce este tipo de cambio',
+  not_authorized: 'Tu acceso a este hogar no lo permite',
+  unsupported_aggregate: 'Casa Clara no reconoce este tipo de cambio',
+  operation_conflict: 'Otro cambio llegó antes con otro contenido',
+  constraint_violation: 'El cambio no encaja con lo que ya hay guardado',
+  transient: 'No se pudo guardar ahora mismo; se reintenta solo',
+  internal: 'Algo falló al guardar; se reintenta solo',
 
   // Expediente laboral
   week_already_reported: 'La semana ya fue enviada',
@@ -70,8 +76,18 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   group_not_found: 'El grupo ya no existe'
 };
 
-/** Etiqueta humana del código de error del servidor; conserva el código crudo si es desconocido. */
+/**
+ * Etiqueta humana del código de error, o null si no hay ninguna que dar.
+ *
+ * Un código sin traducir NO se escupe tal cual: «no_agreement_version» no le
+ * dice nada a nadie y deja la pantalla peor que sin explicación. Devolviendo
+ * null, cada sitio pone su frase llana («No se pudo guardar el cambio.») y el
+ * código crudo se queda en la consola para quien mantenga la instalación.
+ */
 export function describeErrorCode(code: string | undefined): string | null {
   if (!code) return null;
-  return ERROR_CODE_LABELS[code] ?? code;
+  const label = ERROR_CODE_LABELS[code];
+  if (label) return label;
+  console.warn('[casa-clara] código de error sin traducir:', code);
+  return null;
 }

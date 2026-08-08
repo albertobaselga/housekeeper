@@ -38,7 +38,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
 
   const declaredLength = Number(request.headers.get('content-length') ?? '0');
   if (declaredLength > MAX_ATTACHMENT_BYTES) {
-    error(413, `El adjunto supera el máximo de ${MAX_ATTACHMENT_BYTES} bytes`);
+    error(413, `El adjunto supera el máximo de ${Math.round(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MB`);
   }
 
   const contentType = request.headers.get('content-type') ?? '';
@@ -49,9 +49,9 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
     try {
       file = (await request.formData()).get('file');
     } catch {
-      error(400, 'Formulario multipart inválido');
+      error(400, 'No se pudo leer el fichero adjunto');
     }
-    if (!(file instanceof File)) error(422, 'Falta el campo "file" con el adjunto');
+    if (!(file instanceof File)) error(422, 'No llegó ningún fichero adjunto');
     bytes = new Uint8Array(await file.arrayBuffer());
     mediaType = file.type;
   } else {

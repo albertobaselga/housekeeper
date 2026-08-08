@@ -30,16 +30,16 @@ interface FeedRow {
  * ical-generator para producir un .ics interoperable (plegado, CRLF, escapado).
  */
 export const GET: RequestHandler = async ({ params }) => {
-  if (!TOKEN_PATTERN.test(params.token)) error(404, 'Feed no encontrado');
+  if (!TOKEN_PATTERN.test(params.token)) error(404, 'Ese calendario ya no existe');
   const pool = getDatabasePool();
-  if (!pool) error(404, 'Feed no encontrado');
+  if (!pool) error(404, 'Ese calendario ya no existe');
 
   const tokenHash = createHash('sha256').update(params.token).digest('hex');
   const result = await pool.query<FeedRow>(
     'select * from app_private.ics_feed_events($1)',
     [tokenHash]
   );
-  if (result.rows.length === 0) error(404, 'Feed no encontrado');
+  if (result.rows.length === 0) error(404, 'Ese calendario ya no existe');
 
   const calendar = ical({
     name: 'Casa Clara · rutinas',

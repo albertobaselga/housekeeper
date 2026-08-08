@@ -107,7 +107,7 @@ describe('queueCommand unificado: resultado veraz por ACK', () => {
     expect(record).toMatchObject({ id: envelope.operationId, status: 'conflict' });
   });
 
-  it("'rejected' con código desconocido conserva el código crudo en el mensaje", async () => {
+  it("'rejected' con código desconocido explica en castellano, sin código crudo", async () => {
     const name = databaseName('unknown-code');
     const envelope = envelopeFixture(`${OP}07`, '2026-08-07T08:00:00.000Z');
     const fetchMock = vi.fn().mockResolvedValue(ackResponse(envelope.operationId, 'rejected', 'martian_error'));
@@ -115,7 +115,10 @@ describe('queueCommand unificado: resultado veraz por ACK', () => {
     const result = await queueCommand(envelope, { fetchFn: fetchMock as unknown as typeof fetch, databaseName: name });
 
     expect(result.outcome).toBe('rejected');
-    expect(result.message).toContain('martian_error');
+    expect(result.message).toBe('No se pudo guardar el cambio.');
+    // El código sigue viajando en el resultado para el triaje; lo que no hace
+    // es asomar por la pantalla.
+    expect(result.errorCode).toBe('martian_error');
   });
 
   it('sin fetchFn y sin navegador (node): offline-first, queda en cola', async () => {

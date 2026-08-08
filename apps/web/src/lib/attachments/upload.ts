@@ -18,7 +18,7 @@ const ERROR_MESSAGES: Record<UploadAttachmentErrorCode, string> = {
   attachment_too_large: 'La foto supera el tamaño máximo (10 MB). Prueba con una imagen más ligera.',
   attachment_type_not_allowed: 'Ese tipo de fichero no está permitido: usa una foto (JPG, PNG, WebP) o un PDF.',
   attachment_infected: 'El antivirus ha puesto el fichero en cuarentena y no se ha guardado.',
-  attachments_unavailable: 'Los adjuntos no están disponibles ahora mismo en este servidor.',
+  attachments_unavailable: 'Adjuntar ficheros no está disponible ahora mismo.',
   attachment_upload_failed: 'No se pudo subir el fichero. Inténtalo de nuevo con conexión.'
 };
 
