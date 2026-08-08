@@ -176,6 +176,9 @@ importers:
 
   packages/db:
     dependencies:
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
       gray-matter:
         specifier: 4.0.3
         version: 4.0.3
