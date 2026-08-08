@@ -152,6 +152,12 @@ COMMENT ON COLUMN app.recurring_supplements.adds_to_pay IS
 CREATE INDEX recurring_supplements_version_idx
   ON app.recurring_supplements (household_id, agreement_version_id, sort_order);
 
+-- Los complementos que suman necesitan su propia clase de línea en la
+-- liquidación. Reutilizar 'adjustment' los haría pasar por correcciones
+-- manuales en el recibo, que es exactamente lo que no son: son condiciones
+-- pactadas que se repiten cada mes.
+ALTER TYPE app.settlement_line_kind ADD VALUE IF NOT EXISTS 'supplement';
+
 -- ── 4. Inmutabilidad ────────────────────────────────────────────────────────
 /*
  * El catálogo hereda la inmutabilidad de la versión que lo contiene. No hay

@@ -1,3 +1,7 @@
+import {
+  supplementsInForce,
+  type RecurringSupplement,
+} from "./agreement-terms.js";
 import { agreementVersionForDate, type AgreementVersion } from "./agreements.js";
 
 export interface SettledExtraWork {
@@ -26,11 +30,17 @@ export interface SettlementInput {
   unpaidAbsences: readonly MonetaryInput[];
   adjustments: readonly (MonetaryInput & { reason: string })[];
   expenses: readonly MonetaryInput[];
+  /**
+   * Complementos recurrentes de la versión vigente. Opcional para no romper a
+   * quien todavía no los lee; sin ellos el cálculo es el de antes.
+   */
+  supplements?: readonly RecurringSupplement[];
 }
 
 export type SettlementLineKind =
   | "base_salary"
   | "extra_work"
+  | "supplement"
   | "extra_pay"
   | "advance_deduction"
   | "unpaid_absence"
@@ -49,6 +59,17 @@ export interface SettlementLine {
   sourceHref: string;
 }
 
+/**
+ * Un complemento que la casa paga por su cuenta: consta como condición pactada
+ * y NO entra en ningún total. Viaja aparte de `lines` justamente para que sea
+ * imposible sumarlo por descuido.
+ */
+export interface HouseholdPaidSupplement {
+  id: string;
+  label: string;
+  amountCents: bigint;
+}
+
 export interface SettlementProjection {
   period: string;
   agreementVersionId: string;
@@ -57,6 +78,12 @@ export interface SettlementProjection {
   reimbursementCents: bigint;
   transferTotalCents: bigint;
   permanentCreditMinutes: number;
+  /**
+   * Lo que el hogar abona por ella fuera de la transferencia (seguro médico y
+   * parecidos). Se enseña en el recibo como información; ningún total lo
+   * incluye.
+   */
+  householdPaidSupplements: readonly HouseholdPaidSupplement[];
 }
 
 function periodBounds(period: string): { first: string; last: string } {
@@ -142,6 +169,36 @@ export function calculateSettlement(input: SettlementInput): SettlementProjectio
     });
   }
 
+  // Complementos recurrentes: los que suman se convierten en línea; los que la
+  // casa paga aparte se apartan a `householdPaidSupplements` y no rozan ningún
+  // total. Es la distinción que evita que la cuenta del mes mienta.
+  const householdPaidSupplements: HouseholdPaidSupplement[] = [];
+  for (const supplement of supplementsInForce(input.supplements ?? [], first, last)) {
+    const amount = supplement.amountCents as bigint;
+    if (amount < 0n) {
+      throw new RangeError("Un complemento no puede tener importe negativo");
+    }
+    if (!supplement.addsToPay) {
+      householdPaidSupplements.push({
+        id: supplement.id,
+        label: supplement.name,
+        amountCents: amount,
+      });
+      continue;
+    }
+    lines.push({
+      id: `supplement:${supplement.id}`,
+      kind: "supplement",
+      label: supplement.name,
+      quantity: "1",
+      unitCents: amount,
+      amountCents: amount,
+      sourceType: "complementos",
+      sourceId: supplement.id,
+      sourceHref: `/laboral/complementos/${encodeURIComponent(supplement.id)}`,
+    });
+  }
+
   lines.push(...input.extraPay.map((item) => moneyLine(item, "extra_pay", 1n, "pagas-extra")));
   lines.push(...input.advanceDeductions.map((item) => moneyLine(item, "advance_deduction", -1n, "anticipos")));
   lines.push(...input.unpaidAbsences.map((item) => moneyLine(item, "unpaid_absence", -1n, "ausencias")));
@@ -169,6 +226,7 @@ export function calculateSettlement(input: SettlementInput): SettlementProjectio
     reimbursementCents,
     transferTotalCents: salaryCents + reimbursementCents,
     permanentCreditMinutes,
+    householdPaidSupplements: Object.freeze(householdPaidSupplements),
   };
 }
 
