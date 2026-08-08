@@ -92,6 +92,22 @@ test('Alberto quita el acceso a Diego escribiendo QUITAR y la base de datos le n
   }
 });
 
+test('sin base de datos de identidad no se ofrece cambiar ni reponer contraseñas', async ({ page }) => {
+  await gotoSettings(page);
+
+  // Esta instalación tiene DATABASE_URL pero no DATABASE_AUTH_URL: hay accesos
+  // que gobernar, pero ninguna contraseña que tocar. Ofrecer los botones sería
+  // prometer algo que el entorno no puede cumplir.
+  await expect(page.getByRole('heading', { name: 'Cambiar tu contraseña' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Poner una contraseña nueva' })).toHaveCount(0);
+
+  const response = await page.request.post(`/h/${HOUSEHOLD}/settings?/changePassword`, {
+    form: { currentPassword: 'lo-que-sea-2026', newPassword: 'otra-cosa-2026', repeatPassword: 'otra-cosa-2026' },
+    failOnStatusCode: false
+  });
+  expect(response.status()).toBe(404);
+});
+
 test('Alberto descarga el traspaso operativo como ZIP (F4-02)', async ({ page }) => {
   await gotoSettings(page);
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { loadAccessOverview } from '../src/lib/server/access.server';
+import { loadAccessOverview, resolveMembershipIdentity } from '../src/lib/server/access.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -15,6 +15,7 @@ const APP_LOGIN = 'it_casa_clara_access_login';
 const ACCESS_DB = 'casaclara_access_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
+const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
 const HELPER_MEMBERSHIP = '11000000-0000-4000-8000-000000000004';
 const VIEWER_MEMBERSHIP = '11000000-0000-4000-8000-000000000005';
 
@@ -118,5 +119,32 @@ describe.runIf(Boolean(adminUrl))('vista de accesos del hogar desde Postgres baj
 
   it('sin membresía en el hogar también devuelve null', async () => {
     expect(await loadAccessOverview({ id: 'fixture:olivo:admin' }, FIXTURE_HOUSEHOLD, appPool)).toBeNull();
+  });
+
+  // La reposición de contraseñas se autoriza aquí, no en Better Auth: esta
+  // función es la reja que decide de quién puede cambiarse la contraseña.
+  describe('resolveMembershipIdentity (reposición de contraseña)', () => {
+    it('la administradora obtiene la identidad de otra persona del hogar', async () => {
+      const target = await resolveMembershipIdentity(ADMIN_USER, FIXTURE_HOUSEHOLD, EMPLOYEE_MEMBERSHIP, appPool);
+      expect(target).toEqual({ userId: 'fixture:roble:employee', name: 'Fixture Empleada Roble' });
+    });
+
+    it('no devuelve nunca la propia membresía', async () => {
+      expect(await resolveMembershipIdentity(ADMIN_USER, FIXTURE_HOUSEHOLD, ADMIN_MEMBERSHIP, appPool)).toBeNull();
+    });
+
+    it('una membresía ya revocada no se toca', async () => {
+      expect(await resolveMembershipIdentity(ADMIN_USER, FIXTURE_HOUSEHOLD, VIEWER_MEMBERSHIP, appPool)).toBeNull();
+    });
+
+    it('quien no es family_admin no obtiene ninguna identidad', async () => {
+      expect(await resolveMembershipIdentity(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, ADMIN_MEMBERSHIP, appPool)).toBeNull();
+    });
+
+    it('una administradora de otro hogar tampoco', async () => {
+      expect(
+        await resolveMembershipIdentity({ id: 'fixture:olivo:admin' }, FIXTURE_HOUSEHOLD, HELPER_MEMBERSHIP, appPool)
+      ).toBeNull();
+    });
   });
 });
