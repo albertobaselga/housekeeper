@@ -74,9 +74,9 @@ test('Ana marca dos artículos de la compra encadenados, sin esperar entre taps'
   await page.getByRole('button', { name: 'Lista de la compra' }).click();
 
   // Dos añadidos propios del spec (el formulario no bloquea la página).
-  const addForm = page.locator('form.action-form').filter({ hasText: 'Nombre libre' });
+  const addForm = page.locator('form.action-form').filter({ hasText: 'Escríbelo aquí' });
   for (const name of ['Cadena A E2E', 'Cadena B E2E']) {
-    await addForm.getByRole('textbox', { name: 'Nombre libre' }).fill(name);
+    await addForm.getByRole('textbox', { name: 'Escríbelo aquí' }).fill(name);
     await addForm.getByRole('button', { name: 'Añadir a la compra' }).click();
     // La fila aparece al instante (optimista) y después llega la del servidor.
     await expect(page.locator('.ingredient-list li').filter({ hasText: name })).toBeVisible();
@@ -144,7 +144,7 @@ test('el chip optimista de la rutina en Hoy se pinta antes del ACK y la fila no 
   // Con el ACK real (≥1,5 s después), la nota verde confirma la aplicación,
   // la fila sigue visible (atenuada) y no queda ningún banner rojo. El retardo
   // tiene que haberse aplicado de verdad: el ACK no puede llegar antes de 1,5 s.
-  await expect(page.locator('.success-message')).toContainText('Cambio sincronizado.', { timeout: 15_000 });
+  await expect(page.locator('.success-message')).toContainText('Guardado ✓', { timeout: 15_000 });
   expect(syncRequests).toBeGreaterThan(0);
   expect(chipAt - clickedAt).toBeLessThan(1000);
   expect(Date.now() - clickedAt).toBeGreaterThanOrEqual(1500);

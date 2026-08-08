@@ -22,7 +22,7 @@
 
   const NAV_ENTRIES: Readonly<Record<string, NavEntry>> = {
     today: { module: 'today', label: 'Hoy', short: 'Hoy', capability: 'emergency.read' },
-    employment: { module: 'employment', label: 'Acuerdos y pagos', short: 'Pagos', capability: 'settlement.read' },
+    employment: { module: 'employment', label: 'Pagos', short: 'Pagos', capability: 'settlement.read' },
     menu: { module: 'menu', label: 'Menú', short: 'Menú', capability: 'menu.read' },
     wiki: { module: 'wiki', label: 'Guía de la casa', short: 'Guía', capability: 'content.read' },
     routines: { module: 'routines', label: 'Rutinas', short: 'Rutinas', capability: 'routine.read' },

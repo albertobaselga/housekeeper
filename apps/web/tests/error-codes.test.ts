@@ -29,7 +29,7 @@ describe('diccionario compartido de códigos de error', () => {
   });
 
   it('el reexport histórico de lib/employment/outbox sigue funcionando', () => {
-    expect(describeFromOutbox('settlement_not_open')).toBe('La liquidación ya no está abierta');
+    expect(describeFromOutbox('settlement_not_open')).toBe('La cuenta del mes ya no está abierta');
     expect(describeFromOutbox).toBe(describeErrorCode);
   });
 });

@@ -32,7 +32,7 @@ describe('queueCommand unificado: resultado veraz por ACK', () => {
 
     const result = await queueCommand(envelope, { fetchFn: fetchMock as unknown as typeof fetch, databaseName: name });
 
-    expect(result).toEqual({ outcome: 'synced', message: 'Cambio sincronizado.' });
+    expect(result).toEqual({ outcome: 'synced', message: 'Guardado ✓' });
     expect(await listOutbox(HOUSEHOLD, name)).toHaveLength(0);
   });
 

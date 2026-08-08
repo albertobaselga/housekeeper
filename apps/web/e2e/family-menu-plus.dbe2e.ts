@@ -41,12 +41,12 @@ test('Marta crea una receta nueva desde el hueco: se asigna y aparece en el rece
   await editor.getByRole('button', { name: 'Nueva receta' }).click();
   await editor.getByLabel('Nombre de la receta nueva').fill(RECIPE_NAME);
   await editor.getByLabel('Ingredientes o nota inicial (opcional)').fill('Bechamel, jamón y pan rallado');
-  await editor.getByRole('button', { name: 'Guardar hueco' }).click();
+  await editor.getByRole('button', { name: 'Guardar', exact: true }).click();
 
   // El hueco queda asignado a la receta REAL (enlace al recetario) y la línea
   // de raciones solo existe en el render del servidor: el comando llegó.
   await expect(comidaRow.getByRole('link', { name: RECIPE_NAME })).toBeVisible();
-  await expect(comidaRow).toContainText('raciones · base');
+  await expect(comidaRow).toContainText('raciones (la receta original es para');
 
   // La receta existe en el recetario del hogar como cualquier otra.
   await page.goto(`/h/${HOUSEHOLD}/recipes`);

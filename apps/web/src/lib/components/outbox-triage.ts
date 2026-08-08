@@ -54,18 +54,18 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
         case 'set': {
           const onDate = payloadField(envelope, 'onDate');
           const meal = payloadField(envelope, 'meal');
-          return onDate && meal ? `Hueco del menú (${meal} del ${onDate})` : 'Hueco del menú';
+          return onDate && meal ? `Comida del menú (${meal} del ${onDate})` : 'Comida del menú';
         }
         case 'set_new_recipe': {
           const title = payloadField(envelope, 'recipeTitle');
           return title ? `Receta nueva «${title}» asignada al menú` : 'Receta nueva asignada al menú';
         }
         case 'clear':
-          return 'Vaciado de un hueco del menú';
+          return 'Comida del menú vaciada';
         case 'duplicate_week':
           return 'Duplicado de la semana del menú';
         case 'confirm':
-          return 'Confirmación de un hueco del menú';
+          return 'Confirmación de una comida del menú';
         default:
           return 'Cambio en el menú';
       }
@@ -120,12 +120,12 @@ const GENERIC_ERROR_LABELS: Record<string, string> = {
   unsupported_aggregate: 'El servidor no reconoce este tipo de cambio',
   not_authorized: 'Tu acceso a este hogar no lo permite',
   wiki_revision_conflict: 'Otra persona guardó la nota antes que tú',
-  menu_content_changed: 'El contenido del hueco cambió desde tu confirmación',
+  menu_content_changed: 'Esa comida del menú cambió desde tu confirmación',
   allergen_conflict: 'La receta choca con una restricción del grupo',
   food_unreviewed: 'La receta usa un alimento sin revisar',
   already_completed: 'La rutina ya estaba marcada',
   routine_not_found: 'La rutina ya no existe',
-  slot_not_found: 'El hueco del menú ya no existe',
+  slot_not_found: 'Esa comida del menú ya no existe',
   item_not_found: 'El artículo de la compra ya no existe',
   page_not_found: 'La nota de la guía ya no existe',
   space_not_found: 'El apartado de la guía ya no existe',

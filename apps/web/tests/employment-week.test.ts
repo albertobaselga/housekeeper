@@ -143,7 +143,7 @@ describe('vista de partes semanales recientes', () => {
       'Enviado · pendiente de confirmación',
       'Auto-confirmado',
       'Confirmado',
-      'Disputado'
+      'Con reparos de la familia'
     ]);
     expect(views[0]!.weekLabel).toBe('Semana del 3 ago 2026');
     expect(views[3]!.disputeReason).toBe('Faltan horas del martes');

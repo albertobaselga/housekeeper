@@ -301,7 +301,7 @@ describe('trabajo y gastos pendientes de acción', () => {
     ]);
     expect(views[0]!.durationLabel).toBe('1 h 30 min');
     expect(views[1]!.kindLabel).toBe('Festivo o descanso trabajado');
-    expect(views[2]!.statusLabel).toBe('Realizada sin aceptación previa');
+    expect(views[2]!.statusLabel).toBe('Hecha sin acordarla antes · falta decidir la compensación');
   });
 
   it('presenta los gastos pendientes con importe en céntimos formateado', () => {

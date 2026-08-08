@@ -453,7 +453,7 @@
     <PageHeader
       eyebrow={`Semana del ${weekLabel(week.weekStartsOn)}`}
       title="Menú de la casa"
-      description="Cinco franjas por grupo de comensales, con las restricciones a la vista."
+      description="Las comidas de cada día por grupo de comensales, con las alergias a la vista."
       actions={weekActions}
     />
 
@@ -479,7 +479,7 @@
     <div class="space-tabs" role="list" aria-label="Secciones del menú">
       <button type="button" class:active={tab === 'menu'} onclick={() => (tab = 'menu')}>Menú semanal</button>
       <button type="button" class:active={tab === 'compra'} onclick={() => (tab = 'compra')}>Lista de la compra</button>
-      <a class="tab-link" href={`/h/${context.household.id}/recipes`}>Recetas</a>
+      <a class="tab-link" href={`/h/${context.household.id}/recipes`}>Recetas y comensales</a>
     </div>
 
     {#if tab === 'menu'}
@@ -517,13 +517,13 @@
                 <small>{MEAL_LABEL[meal]}</small>
                 {#if draftPending}
                   {#if draft === null || draft === undefined}
-                    <span class="audit-note">Sin plan</span>
+                    <span class="audit-note">Sin decidir</span>
                   {:else if draft.kind === 'recipe'}
                     <strong><a href={`/h/${context.household.id}/recipes?receta=${draft.pageId}`}>{draft.title}</a></strong>
                     {#if draft.notes}<small class="menu-slot-note">{draft.notes}</small>{/if}
                     {#if draft.conflicts.length}
                       <p class="queued-note" role="alert">
-                        Incompatibilidad de alérgenos:
+                        ⚠ Este plato lleva algo que no todos pueden tomar:
                         {draft.conflicts.map((conflict) => `${conflict.name} (${conflict.diners.join(', ')})`).join(', ')}
                       </p>
                     {/if}
@@ -537,16 +537,16 @@
                   {/if}
                 {:else if slot?.recipe}
                   <strong><a href={`/h/${context.household.id}/recipes?receta=${slot.recipe.pageId}`}>{slot.recipe.title}</a></strong>
-                  <small>{slot.servingsOverride ?? (group.diners.length > 0 ? group.diners.length : slot.recipe.baseServings)} raciones · base {slot.recipe.baseServings}</small>
+                  <small>{slot.servingsOverride ?? (group.diners.length > 0 ? group.diners.length : slot.recipe.baseServings)} raciones (la receta original es para {slot.recipe.baseServings})</small>
                 {:else if slot}
                   <strong>{slot.freeText}</strong>
                 {:else}
-                  <span class="audit-note">Sin plan</span>
+                  <span class="audit-note">Sin decidir</span>
                 {/if}
                 {#if !draftPending && slot?.notes}<small class="menu-slot-note">{slot.notes}</small>{/if}
                 {#if !draftPending && slot && slot.conflicts.length}
                   <p class="queued-note" role="alert">
-                    Incompatibilidad de alérgenos:
+                    ⚠ Este plato lleva algo que no todos pueden tomar:
                     {slot.conflicts.map((conflict) => `${conflict.allergenName} (${conflict.dinerName})`).join(', ')}
                   </p>
                 {/if}
@@ -578,7 +578,7 @@
                 <div class="space-tabs" role="list" aria-label="Tipo de plan">
                   <button type="button" class:active={editorMode === 'recipe'} onclick={() => (editorMode = 'recipe')}>Receta</button>
                   <button type="button" class:active={editorMode === 'new'} onclick={() => (editorMode = 'new')}>Nueva receta</button>
-                  <button type="button" class:active={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Texto libre</button>
+                  <button type="button" class:active={editorMode === 'text'} onclick={() => (editorMode = 'text')}>Escribir a mano</button>
                 </div>
                 {#if editorMode === 'new'}
                   <label>Nombre de la receta nueva
@@ -605,19 +605,19 @@
                     <p class="queued-note" role="alert">Esta receta usa algún alimento con alérgenos sin revisar.</p>
                   {/if}
                 {:else}
-                  <label>Plan en texto libre
+                  <label>El plato, escrito a mano
                     <input type="text" autocomplete="off" enterkeyhint="next" bind:value={editorText} maxlength="300" required />
                   </label>
                 {/if}
                 <label>Notas
                   <input type="text" autocomplete="off" enterkeyhint="next" bind:value={editorNotes} maxlength="500" />
                 </label>
-                <label>Raciones (vacío = comensales del grupo)
+                <label>Raciones (si lo dejas vacío: las personas del grupo)
                   <input type="number" inputmode="numeric" enterkeyhint="done" min="1" max="50" bind:value={editorServings} />
                 </label>
                 {#if editorConflicts.length > 0}
                   <div class="allergen-block" role="alert">
-                    <strong>Bloqueado por incompatibilidad de alérgenos</strong>
+                    <strong>⚠ Este plato lleva algo que no todos pueden tomar</strong>
                     <ul>
                       {#each editorConflicts as conflict (conflict.code)}
                         <li>{conflict.name} — afecta a {conflict.diners.join(', ')}</li>
@@ -625,13 +625,13 @@
                     </ul>
                     <label class="inline-check">
                       <input type="checkbox" bind:checked={editorAcknowledge} />
-                      Sé que hay una incompatibilidad y asumo la decisión
+                      Lo sé y aun así quiero apuntarlo
                     </label>
                   </div>
                 {/if}
                 <div class="menu-slot-actions">
                   <button class="button primary" type="submit" disabled={editorConflicts.length > 0 && !editorAcknowledge}>
-                    Guardar hueco
+                    Guardar
                   </button>
                   <button class="button secondary" type="button" onclick={() => (editorKey = null)}>Cancelar</button>
                 </div>
@@ -640,8 +640,43 @@
           {/each}
         </section>
       {:else}
-        <section class="card">
-          <p class="audit-note">Todavía no hay grupos de comensales en este hogar.</p>
+        <!-- P1-7 (revisión UX v3): el primer uso guiaba a un callejón sin
+             salida. La guía cuenta el orden real (comensales → grupo → menú)
+             y enlaza al sitio donde se hace cada paso. -->
+        <section class="card" aria-labelledby="menu-first-use-title">
+          <div class="section-heading">
+            <div><p class="eyebrow">Primer uso</p><h2 id="menu-first-use-title">Para empezar con el menú</h2></div>
+          </div>
+          {#if week.canWrite}
+            <p class="audit-note">
+              El menú se organiza por grupos de comensales (quiénes comen juntos). Se prepara en dos pasos:
+            </p>
+            <ol class="first-use-steps">
+              <li>
+                <span>
+                  <strong>1 · Apunta quién come en casa</strong>
+                  <small>Con sus alergias, si las tiene. Se hace en «Recetas y comensales».</small>
+                </span>
+                {#if week.diners.length > 0}
+                  <span class="status-chip success">Hecho · {week.diners.length} {week.diners.length === 1 ? 'persona' : 'personas'}</span>
+                {:else}
+                  <a class="button primary small-button" href={`/h/${context.household.id}/recipes#diners-title`}>Apuntar comensales</a>
+                {/if}
+              </li>
+              <li>
+                <span>
+                  <strong>2 · Crea el grupo «Casa» con esas personas</strong>
+                  <small>Con el formulario de aquí abajo. Después ya podrás planificar las comidas.</small>
+                </span>
+                <a class="button {week.diners.length > 0 ? 'primary' : 'secondary'} small-button" href="#new-group-title">Crear el grupo</a>
+              </li>
+            </ol>
+          {:else}
+            <p class="audit-note">
+              La familia todavía no ha preparado el menú. En cuanto haya un grupo de comensales,
+              aquí verás las comidas de la semana.
+            </p>
+          {/if}
         </section>
       {/each}
 
@@ -720,9 +755,16 @@
 
         <section class="card" aria-labelledby="new-group-title">
           <div class="section-heading"><div><p class="eyebrow">Organizar</p><h2 id="new-group-title">Nuevo grupo de comensales</h2></div></div>
+          {#if week.diners.length === 0}
+            <!-- Atajo visible al alta real (vive en «Recetas y comensales»). -->
+            <p class="audit-note">
+              Todavía no hay personas apuntadas.
+              <a href={`/h/${context.household.id}/recipes#diners-title`}>Apunta primero los comensales →</a>
+            </p>
+          {/if}
           <form class="action-form" onsubmit={submitNewGroup}>
             <label>Nombre
-              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={newGroupName} maxlength="120" required />
+              <input type="text" autocomplete="off" enterkeyhint="done" bind:value={newGroupName} maxlength="120" required placeholder="Casa" />
             </label>
             {#if week.diners.length}
               <fieldset class="inline-check-group">
@@ -783,18 +825,18 @@
 
       {#if shopping.canWrite}
         <section class="card" aria-labelledby="shopping-add-title">
-          <div class="section-heading"><div><p class="eyebrow">Añadir a mano</p><h2 id="shopping-add-title">Nuevo añadido</h2></div></div>
+          <div class="section-heading"><div><p class="eyebrow">Lista de la compra</p><h2 id="shopping-add-title">Añadir otra cosa</h2></div></div>
           <form class="action-form" onsubmit={submitShoppingItem}>
-            <label>Alimento del catálogo
+            <label>¿Qué es? (elige o escríbelo)
               <select bind:value={itemFoodId}>
-                <option value="">— Nombre libre —</option>
+                <option value="">— Otra cosa: escríbela abajo —</option>
                 {#each shopping.foods as food (food.id)}
                   <option value={food.id}>{food.name}</option>
                 {/each}
               </select>
             </label>
             {#if !itemFoodId}
-              <label>Nombre libre
+              <label>Escríbelo aquí
                 <input type="text" autocomplete="off" enterkeyhint="next" bind:value={itemName} maxlength="120" />
               </label>
             {/if}
@@ -848,8 +890,31 @@
 </div>
 
 <style>
-  /* La pestaña «Recetas» es un enlace a su ruta propia con el mismo aspecto
-     que las pestañas de sección del menú. */
+  /* Guía de primer uso (P1-7): pasos numerados con su acción al lado. */
+  .first-use-steps {
+    margin: 0.75rem 0 0;
+    padding-left: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.85rem;
+  }
+  .first-use-steps li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  .first-use-steps li > span:first-child {
+    display: grid;
+    gap: 0.15rem;
+  }
+  .first-use-steps small {
+    color: var(--ink-soft);
+  }
+
+  /* La pestaña «Recetas y comensales» es un enlace a su ruta propia con el
+     mismo aspecto que las pestañas de sección del menú. */
   .space-tabs a.tab-link {
     flex: 0 0 auto;
     border: 1px solid var(--line);

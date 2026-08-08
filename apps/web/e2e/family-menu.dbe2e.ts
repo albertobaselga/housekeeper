@@ -41,20 +41,20 @@ test('Marta asigna la receta con leche al grupo Casa: bloqueo de alérgenos y re
 
   // El bloqueo aparece con el comensal afectado y el guardado queda inhabilitado.
   const block = editor.locator('.allergen-block');
-  await expect(block).toContainText('Bloqueado por incompatibilidad de alérgenos');
+  await expect(block).toContainText('Este plato lleva algo que no todos pueden tomar');
   await expect(block).toContainText('Leche y derivados (lactosa) — afecta a Leo (comensal E2E)');
-  await expect(editor.getByRole('button', { name: 'Guardar hueco' })).toBeDisabled();
+  await expect(editor.getByRole('button', { name: 'Guardar', exact: true })).toBeDisabled();
 
   // Reconocimiento explícito → guardar. El hueco se pinta AL INSTANTE
   // (optimista) con su alerta, y después llega la confirmación del servidor.
-  await block.getByRole('checkbox', { name: /asumo la decisión/ }).check();
-  await editor.getByRole('button', { name: 'Guardar hueco' }).click();
+  await block.getByRole('checkbox', { name: /aun así quiero apuntarlo/ }).check();
+  await editor.getByRole('button', { name: 'Guardar', exact: true }).click();
   await expect(comidaRow.getByRole('link', { name: 'Arroz con leche (E2E)' })).toBeVisible();
-  await expect(comidaRow.getByRole('alert')).toContainText('Incompatibilidad de alérgenos');
+  await expect(comidaRow.getByRole('alert')).toContainText('Este plato lleva algo');
   await expect(comidaRow.getByRole('alert')).toContainText('Leo (comensal E2E)');
   // La línea de raciones solo existe en el render del servidor: garantiza que
   // el comando quedó aplicado antes de cerrar el contexto del test.
-  await expect(comidaRow).toContainText('raciones · base');
+  await expect(comidaRow).toContainText('raciones (la receta original es para');
 });
 
 test('Marta asigna la receta compatible y confirma el hueco', async ({ page }) => {
@@ -67,7 +67,7 @@ test('Marta asigna la receta compatible y confirma el hueco', async ({ page }) =
   const editor = groupCard.locator('form.menu-slot-editor');
   await editor.getByLabel('Receta del hogar').selectOption(E2E_SEED.recipePages.sinAlergenos);
   await expect(editor.locator('.allergen-block')).toHaveCount(0);
-  await editor.getByRole('button', { name: 'Guardar hueco' }).click();
+  await editor.getByRole('button', { name: 'Guardar', exact: true }).click();
   await expect(cenaRow.getByRole('link', { name: 'Pollo asado (E2E)' })).toBeVisible();
 
   // Confirmación bloqueante ligada al hash del contenido leído en esta carga.
@@ -118,8 +118,8 @@ test('Marta añade un artículo manual a la compra y lo marca (AC-24)', async ({
   // La parte derivada del menú de esta semana ya está presente.
   await expect(page.locator('.ingredient-list li').filter({ hasText: 'Leche entera E2E' })).toContainText('del menú');
 
-  const addForm = page.locator('form.action-form').filter({ hasText: 'Nombre libre' });
-  await addForm.getByRole('textbox', { name: 'Nombre libre' }).fill('Servilletas E2E');
+  const addForm = page.locator('form.action-form').filter({ hasText: 'Escríbelo aquí' });
+  await addForm.getByRole('textbox', { name: 'Escríbelo aquí' }).fill('Servilletas E2E');
   await addForm.getByLabel('Cantidad').fill('2');
   await addForm.getByLabel('Unidad').fill('paquetes');
   await addForm.getByLabel('Sección').fill('hogar');

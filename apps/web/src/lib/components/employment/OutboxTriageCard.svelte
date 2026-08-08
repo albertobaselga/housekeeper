@@ -62,12 +62,12 @@
 {#if records.length > 0}
   <article class="card">
     <div class="section-heading">
-      <div><p class="eyebrow">Cambios sin sincronizar</p><h2>Pendientes de tu decisión</h2></div>
+      <div><p class="eyebrow">Cambios sin guardar</p><h2>Pendientes de tu decisión</h2></div>
       <span class="status-chip warning">{records.length} sin resolver</span>
     </div>
     <p class="audit-note">
-      Un conflicto suele significar que el servidor ya tiene otro estado más reciente:
-      revisa el expediente antes de reintentar. Descartar elimina el cambio solo de este dispositivo.
+      Suele significar que ya hay un dato más reciente guardado: revisa la página antes de
+      reintentar. Descartar elimina el cambio solo de este dispositivo.
     </p>
     <div class="ledger-list">
       {#each records as record (record.id)}
@@ -75,7 +75,7 @@
           <span>
             <strong>{describeEmploymentCommand(record.envelope)}</strong>
             <small>
-              {record.status === 'conflict' ? 'Conflicto con el servidor' : 'Rechazado por el servidor'}
+              {record.status === 'conflict' ? 'Hay una versión más reciente guardada' : 'El cambio no se pudo aplicar'}
               {#if describeErrorCode(record.lastErrorCode)}
                 · {describeErrorCode(record.lastErrorCode)}
               {/if}

@@ -83,7 +83,7 @@ export function buildWeekEntries(
     seen.add(row.workedOn);
     const minutes = typeof row.minutes === 'number' ? row.minutes : Number(row.minutes.trim());
     if (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_DAY_MINUTES) {
-      return { ok: false, error: 'Los minutos deben ser un entero entre 0 y 1440.' };
+      return { ok: false, error: 'El tiempo de cada día debe estar entre 0 y 24 horas.' };
     }
     const note = row.note.trim();
     if (note.length > 500) {

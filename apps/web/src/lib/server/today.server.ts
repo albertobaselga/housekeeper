@@ -179,10 +179,10 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
       } else if (extra.status === 'performed_pending_resolution') {
         items.push({
           key: `extra-${extra.id}`,
-          title: 'Jornada extra por resolver',
+          title: 'Jornada extra hecha: falta decidir la compensación',
           detail: extraDetail(extra),
           href: `${base}/employment#extra-${extra.id}`,
-          cta: 'Resolver'
+          cta: 'Decidir'
         });
       }
     }
@@ -206,8 +206,8 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
         key: 'menu-unconfirmed',
         title:
           sorted.length === 1
-            ? `Hueco del menú sin confirmar (${MEAL_LABELS[first.meal].toLocaleLowerCase('es')} del ${dateLabel(first.onDate)})`
-            : `${sorted.length} huecos del menú sin confirmar`,
+            ? `Comida del menú sin confirmar (${MEAL_LABELS[first.meal].toLocaleLowerCase('es')} del ${dateLabel(first.onDate)})`
+            : `${sorted.length} comidas del menú sin confirmar`,
         detail:
           sorted.length === 1
             ? 'La cocina espera la confirmación.'
@@ -223,7 +223,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
       if (settlement.status === 'closed' && parseCents(settlement.pendingCents) > 0n) {
         items.push({
           key: `liquidacion-${settlement.id}`,
-          title: `Liquidación de ${periodLabel(settlement.periodStart.slice(0, 7)).toLocaleLowerCase('es')} pendiente de pago`,
+          title: `Cuenta de ${periodLabel(settlement.periodStart.slice(0, 7)).toLocaleLowerCase('es')} pendiente de pago`,
           detail: `Pendiente ${formatCents(settlement.pendingCents)} · vence el ${dateLabel(settlement.dueOn)}`,
           href: `${base}/employment`,
           cta: 'Registrar pago'

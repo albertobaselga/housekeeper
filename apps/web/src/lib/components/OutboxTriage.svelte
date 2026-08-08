@@ -61,13 +61,13 @@
 {#if records.length > 0}
   <article class="card outbox-triage">
     <div class="section-heading">
-      <div><p class="eyebrow">Cambios sin sincronizar</p><h2>Revisión necesaria</h2></div>
+      <div><p class="eyebrow">Cambios sin guardar</p><h2>Revisión necesaria</h2></div>
       <span class="status-chip warning">{records.length} sin resolver</span>
     </div>
     <p class="audit-note">
-      Estos cambios no llegaron al servidor. Un conflicto suele significar que ya existe un estado
-      más reciente: revisa la pantalla correspondiente antes de reintentar. Descartar elimina el
-      cambio solo de este dispositivo.
+      Estos cambios no llegaron a guardarse. Suele significar que ya hay un dato más reciente:
+      revisa la pantalla correspondiente antes de reintentar. Descartar elimina el cambio solo de
+      este dispositivo.
     </p>
     <div class="ledger-list">
       {#each records as record (record.id)}
@@ -75,7 +75,7 @@
           <span>
             <strong>{describeCommand(record.envelope)}</strong>
             <small>
-              {record.status === 'conflict' ? 'Conflicto con el servidor' : 'Rechazado por el servidor'}
+              {record.status === 'conflict' ? 'Hay una versión más reciente guardada' : 'El cambio no se pudo aplicar'}
               {#if describeError(record.lastErrorCode)}
                 · {describeError(record.lastErrorCode)}
               {/if}

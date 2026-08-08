@@ -20,10 +20,17 @@ function centsToEuroInput(cents: bigint): string {
   return `${units},${(cents % 100n).toString().padStart(2, '0')}`;
 }
 
+// La página pinta el vencimiento en fecha humana (P3-2): "2026-08-31" → "31 ago 2026".
+function dueDateLabel(iso: string): string {
+  const [year, month, day] = iso.split('-').map(Number);
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${day} ${months[month! - 1]} ${year}`;
+}
+
 async function gotoEmployment(page: Page): Promise<void> {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { name: 'Acuerdos y pagos' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pagos', exact: true })).toBeVisible();
 }
 
 test('Alberto acepta la jornada solicitada y resuelve el festivo como descanso: el saldo permanente sube', async ({ page }) => {
@@ -44,13 +51,13 @@ test('Alberto acepta la jornada solicitada y resuelve el festivo como descanso: 
 
   // 2) Resuelve el festivo trabajado como compensación en descanso, con motivo.
   const resolvableRow = extrasCard.locator('.ledger-list > div').filter({ hasText: 'Festivo trabajado E2E' });
-  await expect(resolvableRow).toContainText('Realizada sin aceptación previa');
-  await resolvableRow.getByRole('button', { name: 'Resolver' }).click();
+  await expect(resolvableRow).toContainText('Hecha sin acordarla antes');
+  await resolvableRow.getByRole('button', { name: 'Decidir compensación' }).click();
   const resolveForm = extrasCard.locator('form.action-form');
   await expect(resolveForm).toBeVisible();
   await resolveForm.getByLabel('Compensación').selectOption('time_off');
   await resolveForm.getByLabel('Motivo').fill('Descanso pactado con Ana E2E');
-  await resolveForm.getByRole('button', { name: 'Confirmar resolución' }).click();
+  await resolveForm.getByRole('button', { name: 'Confirmar la decisión' }).click();
 
   // La jornada resuelta desaparece de pendientes y el crédito PERMANENTE sube
   // (worked_rest_day_credit_minutes = 1440 de la versión vigente: 1 día más).
@@ -85,12 +92,12 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
   await expect(openForm).toBeVisible();
   const dueOn = await openForm.getByLabel('Vencimiento').inputValue();
   expect(dueOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  await openForm.getByRole('button', { name: /Abrir liquidación de/ }).click();
+  await openForm.getByRole('button', { name: /Empezar la cuenta de/ }).click();
 
   // La liquidación nueva aparece abierta, con su vencimiento y botón de cierre.
-  const closeButton = page.getByRole('button', { name: 'Cerrar liquidación' });
+  const closeButton = page.getByRole('button', { name: 'Cerrar el mes' });
   await expect(closeButton).toBeVisible();
-  await expect(page.locator('article.card').filter({ hasText: 'Historial con pagos' })).toContainText(`vence el ${dueOn}`);
+  await expect(page.locator('article.card').filter({ hasText: 'Historial con pagos' })).toContainText(`vence el ${dueDateLabel(dueOn)}`);
   await expect(openForm).toHaveCount(0);
 
   // 2) Cerrar: el servidor materializa las líneas desde los hechos del mes.

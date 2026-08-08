@@ -24,7 +24,7 @@ test('Marta añade un contacto y aparece en Emergencias y en la búsqueda', asyn
   await form.getByRole('button', { name: 'Crear contacto' }).click();
 
   // Ack real del servidor y recarga de datos: el contacto entra en su grupo.
-  await expect(page.locator('.success-message')).toContainText('sincronizado');
+  await expect(page.locator('.success-message')).toContainText('Guardado ✓');
   const card = page.locator('.contact-card').filter({ hasText: 'Abuela Rosa E2E' });
   await expect(card).toBeVisible();
   await expect(card.getByRole('link', { name: 'Llamar a Abuela Rosa E2E' })).toHaveAttribute(

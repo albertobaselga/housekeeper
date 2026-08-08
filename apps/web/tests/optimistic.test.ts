@@ -42,11 +42,11 @@ function recordFixture(operationId: string, status: OutboxRecord['status'], last
 
 describe('OptimisticActions: patrón wiki reutilizable', () => {
   it('synced: apply ANTES del envío, invalidate selectivo y settle después', async () => {
-    const { optimistic, queueCommandFn, invalidateFn } = actions({ outcome: 'synced', message: 'Cambio sincronizado.' });
+    const { optimistic, queueCommandFn, invalidateFn } = actions({ outcome: 'synced', message: 'Guardado ✓' });
     const order: string[] = [];
     queueCommandFn.mockImplementation(async () => {
       order.push('queue');
-      return { outcome: 'synced', message: 'Cambio sincronizado.' };
+      return { outcome: 'synced', message: 'Guardado ✓' };
     });
 
     const outcome = await optimistic.run(envelopeFixture(`${OP}01`, '2026-08-07T08:00:00.000Z'), {
@@ -58,7 +58,7 @@ describe('OptimisticActions: patrón wiki reutilizable', () => {
     expect(outcome).toBe('synced');
     expect(order).toEqual(['apply', 'queue', 'settle']);
     expect(invalidateFn).toHaveBeenCalledWith('cc:test');
-    expect(get(optimistic.status)).toEqual({ tone: 'success', text: 'Cambio sincronizado.' });
+    expect(get(optimistic.status)).toEqual({ tone: 'success', text: 'Guardado ✓' });
   });
 
   it('rejected: reversión inmediata y nota roja con el mensaje veraz', async () => {
@@ -93,7 +93,7 @@ describe('OptimisticActions: patrón wiki reutilizable', () => {
     expect(hooks.settle).toHaveBeenCalledOnce();
     expect(hooks.revert).not.toHaveBeenCalled();
     expect(invalidateFn).toHaveBeenCalledWith('cc:test');
-    expect(get(optimistic.status)).toEqual({ tone: 'success', text: 'Cambio sincronizado.' });
+    expect(get(optimistic.status)).toEqual({ tone: 'success', text: 'Guardado ✓' });
   });
 
   it('queued → rechazado en un flush posterior: revert y causa traducida', async () => {

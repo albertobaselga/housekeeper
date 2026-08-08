@@ -157,7 +157,7 @@ export class OptimisticActions {
       }
       this.tracked = remaining;
       if (settled.length > 0) {
-        this.status.set({ tone: 'success', text: 'Cambio sincronizado.' });
+        this.status.set({ tone: 'success', text: 'Guardado ✓' });
         await this.options.invalidateFn(this.options.invalidateToken);
         for (const hooks of settled) hooks.settle?.();
       }
