@@ -10,6 +10,74 @@
 -- roble context for every role.
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- Aislamiento estructural de los roles de ejecución.
+--
+-- La migración 0018 levanta FORCE ROW LEVEL SECURITY cuando el propietario del
+-- esquema no puede puentear RLS (Supabase). FORCE sólo somete al PROPIETARIO a
+-- sus propias políticas, así que quitarlo no debería cambiar nada para
+-- casa_clara_app ni casa_clara_worker. Este bloque convierte ese «no debería»
+-- en tres condiciones verificables, y falla si alguna deja de cumplirse:
+--
+--   1. Ninguno de los dos roles es superusuario ni tiene BYPASSRLS.
+--   2. Ninguno de los dos posee tablas de app/app_private, ni pertenece
+--      (directamente o por transitividad) a ningún rol que las posea. Sin
+--      propiedad, FORCE es irrelevante para ellos.
+--   3. Todas las tablas de app/app_private siguen con RLS ACTIVADA.
+--
+-- El resto del fichero comprueba el efecto observable: quién ve qué fila.
+-- ─────────────────────────────────────────────────────────────────────────────
+DO $assert_runtime_roles_are_subject_to_rls$
+DECLARE
+  runtime_role text;
+  privileged integer;
+  owned integer;
+  owner_membership integer;
+  unprotected integer;
+BEGIN
+  FOREACH runtime_role IN ARRAY ARRAY['casa_clara_app', 'casa_clara_worker'] LOOP
+    SELECT count(*)::integer INTO privileged
+      FROM pg_catalog.pg_roles
+     WHERE rolname = runtime_role
+       AND (rolsuper OR rolbypassrls OR rolcreatedb OR rolcreaterole OR rolreplication);
+    IF privileged <> 0 THEN
+      RAISE EXCEPTION '% carries a role attribute that would let it escape RLS', runtime_role;
+    END IF;
+
+    SELECT count(*)::integer INTO owned
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname IN ('app', 'app_private')
+       AND relation.relkind = 'r'
+       AND relation.relowner = runtime_role::regrole;
+    IF owned <> 0 THEN
+      RAISE EXCEPTION '% owns % tenant tables; FORCE RLS would be its only protection', runtime_role, owned;
+    END IF;
+
+    SELECT count(DISTINCT relation.relowner)::integer INTO owner_membership
+      FROM pg_catalog.pg_class AS relation
+      JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+     WHERE namespace.nspname IN ('app', 'app_private')
+       AND relation.relkind = 'r'
+       AND (pg_catalog.pg_has_role(runtime_role, relation.relowner, 'USAGE')
+            OR pg_catalog.pg_has_role(runtime_role, relation.relowner, 'MEMBER'));
+    IF owner_membership <> 0 THEN
+      RAISE EXCEPTION '% can act as the owner of % tenant table owner role(s)', runtime_role, owner_membership;
+    END IF;
+  END LOOP;
+
+  SELECT count(*)::integer INTO unprotected
+    FROM pg_catalog.pg_class AS relation
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+   WHERE namespace.nspname IN ('app', 'app_private')
+     AND relation.relkind = 'r'
+     AND NOT relation.relrowsecurity;
+  IF unprotected <> 0 THEN
+    RAISE EXCEPTION '% tenant tables have row level security disabled', unprotected;
+  END IF;
+END
+$assert_runtime_roles_are_subject_to_rls$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Seed (superuser, RLS off): wiki, menu and routines for roble; a parallel set
 -- plus one settlement and one expense for olivo so the cross-tenant assertions
 -- have real rows to leak. UUID prefixes aa* (roble) / ab* (olivo) are exclusive
@@ -433,4 +501,63 @@ BEGIN
   END;
 END
 $assert_worker_contract$;
+COMMIT;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Lo que la migración 0018 concede al propietario del esquema y NO concede a
+-- los roles de ejecución. Con FORCE levantado, el propietario puede leer con
+-- `row_security = off`; casa_clara_app y casa_clara_worker no pueden, ni pueden
+-- recuperar esa latitud tocando las tablas. Los tres intentos son fallos
+-- esperados con SQLSTATE 42501: si alguno dejara de fallar, la matriz se pone
+-- roja aunque todos los recuentos de filas de arriba sigan cuadrando.
+-- ─────────────────────────────────────────────────────────────────────────────
+BEGIN;
+SET LOCAL ROLE casa_clara_app;
+DO $assert_app_cannot_bypass_rls$
+BEGIN
+  BEGIN
+    SET LOCAL row_security = off;
+    PERFORM 1 FROM app.settlements;
+    RAISE EXCEPTION 'casa_clara_app read app.settlements with row_security = off';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  BEGIN
+    EXECUTE 'ALTER TABLE app.settlements NO FORCE ROW LEVEL SECURITY';
+    RAISE EXCEPTION 'casa_clara_app was able to relax FORCE RLS on app.settlements';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  BEGIN
+    EXECUTE 'ALTER TABLE app.settlements DISABLE ROW LEVEL SECURITY';
+    RAISE EXCEPTION 'casa_clara_app was able to disable RLS on app.settlements';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END
+$assert_app_cannot_bypass_rls$;
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE casa_clara_worker;
+DO $assert_worker_cannot_bypass_rls$
+BEGIN
+  BEGIN
+    SET LOCAL row_security = off;
+    PERFORM 1 FROM app_private.job_queue;
+    RAISE EXCEPTION 'casa_clara_worker read app_private.job_queue with row_security = off';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  BEGIN
+    EXECUTE 'ALTER TABLE app_private.job_queue NO FORCE ROW LEVEL SECURITY';
+    RAISE EXCEPTION 'casa_clara_worker was able to relax FORCE RLS on app_private.job_queue';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+END
+$assert_worker_cannot_bypass_rls$;
 COMMIT;
