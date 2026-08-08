@@ -153,6 +153,61 @@ export const expenseResolvePayloadSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
+/**
+ * Vacaciones. Los días son NATURALES (es la unidad del contrato) y el año se
+ * acota a un rango con sentido para un hogar: fuera de él lo que hay es un
+ * dedazo en el teclado, no un periodo.
+ */
+export const vacationRecordPayloadSchema = z
+  .object({
+    action: z.literal("record"),
+    agreementId: uuidSchema,
+    startsOn: isoDateSchema,
+    endsOn: isoDateSchema,
+    note: z.string().trim().max(500).optional(),
+  })
+  .refine((value) => value.endsOn >= value.startsOn, {
+    message: "Las vacaciones no pueden acabar antes de empezar",
+    path: ["endsOn"],
+  })
+  .refine(
+    (value) =>
+      (Date.parse(`${value.endsOn}T00:00:00Z`) - Date.parse(`${value.startsOn}T00:00:00Z`)) /
+        86_400_000 <=
+      365,
+    { message: "Un periodo de vacaciones no puede durar más de un año", path: ["endsOn"] },
+  );
+
+export const vacationVoidPayloadSchema = z.object({
+  action: z.literal("void"),
+  vacationPeriodId: uuidSchema,
+  reason: z.string().trim().min(1).max(500),
+});
+
+/**
+ * Unión sin `discriminatedUnion` a propósito: `vacationRecordPayloadSchema`
+ * lleva `.refine`, y un ZodEffects no puede ser miembro de una unión
+ * discriminada. La unión normal prueba las dos ramas y devuelve el error de la
+ * que más encaje, que aquí basta porque solo hay dos acciones.
+ */
+export const vacationCommandPayloadSchema = z.union([
+  vacationRecordPayloadSchema,
+  vacationVoidPayloadSchema,
+]);
+
+/** El derecho anual solo cambia apilando una versión nueva del acuerdo. */
+export const agreementSetVacationEntitlementPayloadSchema = z.object({
+  action: z.literal("set_vacation_entitlement"),
+  agreementId: uuidSchema,
+  annualVacationDays: z.number().int().min(0).max(365),
+  effectiveFrom: isoDateSchema,
+  reason: z.string().trim().min(1).max(500),
+});
+
+export const agreementCommandPayloadSchema = z.discriminatedUnion("action", [
+  agreementSetVacationEntitlementPayloadSchema,
+]);
+
 export const settlementOpenPayloadSchema = z.object({
   action: z.literal("open"),
   agreementId: uuidSchema,

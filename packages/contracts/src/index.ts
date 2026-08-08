@@ -289,6 +289,51 @@ export interface SettlementReceiptConfirmPayloadV1 {
   note?: string;
 }
 
+/**
+ * `aggregateType: "agreement"` — cambio del derecho anual de vacaciones.
+ *
+ * No edita la versión vigente: las versiones del acuerdo son inmutables, así
+ * que el servidor APILA una versión nueva que copia el resto de los términos
+ * (salario, tarifas, jornada) y solo cambia los días. Es el mismo camino que
+ * seguiría una subida de sueldo, y por eso el historial de «Versiones y
+ * cambios» explica también por qué cambiaron las vacaciones.
+ */
+export interface AgreementSetVacationEntitlementPayloadV1 {
+  action: "set_vacation_entitlement";
+  agreementId: UUID;
+  /** Días naturales al año, no laborables. */
+  annualVacationDays: number;
+  /** Fecha de entrada en vigor; nunca retroactiva. */
+  effectiveFrom: ISODate;
+  reason: string;
+}
+
+/**
+ * `aggregateType: "leave_request"` — la familia apunta un periodo de
+ * vacaciones YA disfrutado o acordado. No hay solicitud ni aprobación: el
+ * hogar decidió que los días los anota quien administra, y la empleada los ve.
+ */
+export interface VacationRecordPayloadV1 {
+  action: "record";
+  agreementId: UUID;
+  /** Primer día natural, incluido. */
+  startsOn: ISODate;
+  /** Último día natural, incluido. */
+  endsOn: ISODate;
+  note?: string;
+}
+
+/**
+ * `aggregateType: "leave_request"` — corrección de un periodo mal apuntado.
+ * Anula, no borra: la fila se queda en el expediente con quién la anuló,
+ * cuándo y por qué, y deja de contar en el saldo.
+ */
+export interface VacationVoidPayloadV1 {
+  action: "void";
+  vacationPeriodId: UUID;
+  reason: string;
+}
+
 /** `aggregateType: "wiki_space"` — creación de un espacio (solo familia). */
 export interface WikiSpaceCreatePayloadV1 {
   action: "create";
