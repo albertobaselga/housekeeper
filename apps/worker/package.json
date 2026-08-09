@@ -28,7 +28,7 @@
     "@types/pg": "8.20.4",
     "@types/web-push": "3.6.4",
     "tsx": "4.20.5",
-    "typescript": "5.9.2",
+    "typescript": "6.0.3",
     "vitest": "3.2.4"
   }
 }
