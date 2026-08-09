@@ -5,20 +5,32 @@ import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 /**
  * Objetivo de despliegue, elegido por variable de entorno en tiempo de BUILD.
  *
- *   DEPLOY_TARGET=node    (por omisión) → @sveltejs/adapter-node
- *   DEPLOY_TARGET=vercel                → @sveltejs/adapter-vercel
+ *   DEPLOY_TARGET=node      → @sveltejs/adapter-node
+ *   DEPLOY_TARGET=vercel    → @sveltejs/adapter-vercel
+ *   (sin DEPLOY_TARGET)     → `vercel` si la build corre en Vercel, si no `node`
  *
- * El valor por omisión es `node` a propósito: la demo local, las imágenes de
- * `infra/docker`, los Compose autogestionados y las suites e2e viven de
- * `node build`, y ninguna de esas rutas debe cambiar porque exista un segundo
- * objetivo. Vercel se selecciona explícitamente (variable de entorno del
- * proyecto o `DEPLOY_TARGET=vercel pnpm --filter web build`).
+ * Fuera de Vercel el valor por omisión es `node` a propósito: la demo local,
+ * las imágenes de `infra/docker`, los Compose autogestionados y las suites e2e
+ * viven de `node build`, y ninguna de esas rutas debe cambiar porque exista un
+ * segundo objetivo.
+ *
+ * Dentro de Vercel el defecto se invierte solo. Vercel exporta `VERCEL=1` en
+ * toda build suya, así que la plataforma se reconoce a sí misma sin que haya
+ * que acordarse de declarar nada en el panel. Olvidarlo construía con
+ * adapter-node, que deja el resultado en `build/` y no en `.vercel/output`, y
+ * el despliegue moría con «No Output Directory named "public" found» después
+ * de una build en verde: un fallo tardío y con un mensaje que no menciona al
+ * adaptador. `DEPLOY_TARGET` explícito sigue mandando sobre la detección, de
+ * modo que `DEPLOY_TARGET=node` permite construir el servidor autónomo también
+ * desde Vercel.
  *
  * Región: el ADR 0001 exige residencia en la UE. `regions` se fija aquí y no
  * en el panel para que el requisito viaje con el código; VERCEL_REGION permite
  * cambiar de `fra1` a `cdg1` sin tocar el fichero.
  */
-const target = (process.env.DEPLOY_TARGET ?? 'node').trim().toLowerCase();
+const runningOnVercel = (process.env.VERCEL ?? '').trim() !== '';
+const declaredTarget = (process.env.DEPLOY_TARGET ?? '').trim();
+const target = (declaredTarget || (runningOnVercel ? 'vercel' : 'node')).toLowerCase();
 const region = (process.env.VERCEL_DEPLOY_REGION ?? 'fra1').trim();
 const runtime = (process.env.VERCEL_NODE_RUNTIME ?? 'nodejs24.x').trim();
 // La subida de adjuntos escanea con ClamAV con un tope de 30 s
@@ -44,7 +56,7 @@ function selectAdapter() {
       });
     default:
       throw new Error(
-        `DEPLOY_TARGET="${target}" no es un objetivo conocido; usa "node" (por omisión) o "vercel"`
+        `DEPLOY_TARGET="${declaredTarget}" no es un objetivo conocido; usa "node" o "vercel"`
       );
   }
 }

@@ -262,13 +262,18 @@ aviso de rutina de verdad.
    - *Install Command*: `pnpm install --frozen-lockfile`
    - *Build Command*: `pnpm --filter @casa-clara/web build`
    - *Output Directory*: `apps/web/.vercel/output` (lo detecta el adaptador).
+
+   El adaptador se elige solo: `svelte.config.js` mira `VERCEL`, que la
+   plataforma exporta en toda build suya, y pasa a `@sveltejs/adapter-vercel`
+   sin que haya que declarar nada en el panel. `DEPLOY_TARGET` sigue mandando
+   si se declara, así que `DEPLOY_TARGET=node` construye el servidor autónomo
+   también desde Vercel.
 2. **Node**: el repo fija 24.18.0 y `engines: node >=24 <25`. Seleccionar
    **Node 24.x** en *Project Settings → Node.js Version*. El adaptador está
    configurado con `runtime: 'nodejs24.x'`.
 3. **Variables** (todas en *Production*, ver `.env.example`):
 
    ```
-   DEPLOY_TARGET=vercel            # ← sin esto se construye con adapter-node
    DATABASE_URL=…:6543/postgres    # pooler, modo transacción
    DATABASE_AUTH_URL=…:6543/postgres
    BETTER_AUTH_SECRET=…
@@ -308,7 +313,16 @@ aviso de rutina de verdad.
 
 Y se comprobó lo que no se rompe: `pnpm --filter @casa-clara/web build` sigue
 produciendo `build/` con adapter-node por omisión, y `DEPLOY_TARGET=vercel`
-produce `.vercel/output` con las 31 rutas y una sola función.
+produce `.vercel/output` con las 34 rutas y una sola función.
+
+### 5.2 Si el despliegue muere con «No Output Directory named "public"»
+
+Ese mensaje no habla de ficheros estáticos: es que la build se hizo con
+adapter-node —deja el resultado en `build/`— y Vercel, al no encontrar
+`.vercel/output`, buscó la carpeta estática de reserva. Ocurría cuando faltaba
+`DEPLOY_TARGET=vercel` en el panel; desde que `svelte.config.js` detecta la
+variable `VERCEL` no debería volver a pasar. Si reaparece, revisar que no haya
+un `DEPLOY_TARGET=node` heredado en las variables del proyecto.
 
 ---
 
