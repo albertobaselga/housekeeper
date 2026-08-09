@@ -206,9 +206,12 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
 .chip {
   display: inline-flex; align-items: center;
   border-radius: 999px; padding: .28rem .6rem;
-  font-size: .7rem; font-weight: 750; white-space: nowrap;
+  font-size: .7rem; font-weight: 750;
   background: var(--canvas-deep); color: var(--ink-soft);
   vertical-align: middle;
+  /* Los chips largos (los literales de la app) parten de línea antes que
+     empujar la página a lo ancho en un móvil. */
+  max-width: 100%; white-space: normal; text-wrap: balance;
 }
 .chip.familia { background: var(--primary-soft); color: var(--primary); }
 .chip.interna { background: var(--accent-soft); color: var(--accent); }
@@ -316,6 +319,8 @@ thead th { border-top: 0; }
     <nav aria-label="Índice del manual">
       <a href="#inicio">Qué es Casa Clara</a>
       <a href="#primeros-pasos">Primeros pasos</a>
+      <a class="sub" href="#pp-entrar">Entrar</a>
+      <a class="sub" href="#pp-contrasena">Tu contraseña</a>
       <a href="#familia-admin">Familia · administración</a>
       <a class="sub" href="#fa-hoy">Hoy y decisiones</a>
       <a class="sub" href="#fa-menu">Menú y semanas plantilla</a>
@@ -324,6 +329,8 @@ thead th { border-top: 0; }
       <a class="sub" href="#fa-guia">Guía de la casa</a>
       <a class="sub" href="#fa-manual">El manual de la casa, dentro</a>
       <a class="sub" href="#fa-pagos">Pagos</a>
+      <a class="sub" href="#fa-acuerdo">Condiciones del acuerdo</a>
+      <a class="sub" href="#fa-vacaciones">Vacaciones</a>
       <a class="sub" href="#fa-calendario">Calendario</a>
       <a class="sub" href="#fa-ajustes">Ajustes y accesos</a>
       <a class="sub" href="#fa-contactos">Contactos y Emergencias</a>
@@ -347,8 +354,8 @@ thead th { border-top: 0; }
     el <strong>menú semanal</strong> con su lista de la compra, las <strong>rutinas</strong>,
     la <strong>Guía de la casa</strong> (las instrucciones escritas del hogar), el
     <strong>calendario</strong>, los <strong>contactos</strong> y <strong>Pagos</strong>:
-    el acuerdo, la nómina y los gastos de la empleada de hogar, con las cuentas de cada
-    mes trazables línea a línea.
+    el acuerdo y sus condiciones, la nómina, los gastos y las vacaciones de la empleada
+    de hogar, con las cuentas de cada mes trazables línea a línea.
   </p>
   <div class="tarjeta principio">
     <h3>El principio de la casa</h3>
@@ -359,8 +366,8 @@ thead th { border-top: 0; }
     </p>
   </div>
   <p>
-    Cada persona entra con su propio acceso y ve exactamente lo que le corresponde.
-    Este manual está organizado por esos papeles:
+    Cada persona entra con <strong>su usuario y su contraseña</strong> y ve exactamente
+    lo que le corresponde. Este manual está organizado por esos papeles:
     <span class="chip familia">Familia</span>
     <span class="chip interna">Interna</span>
     <span class="chip apoyo">Apoyo</span>
@@ -379,31 +386,103 @@ thead th { border-top: 0; }
   <p class="eyebrow">Para empezar</p>
   <h2>Primeros pasos</h2>
 
-  <h3>Entrar: sin contraseñas</h3>
+  <h3 id="pp-entrar">Entrar: tu usuario y tu contraseña</h3>
   <p>
-    En Casa Clara no hay contraseñas que recordar. En la pantalla de acceso escribes
-    el correo con el que te invitaron al hogar y pulsas
-    <span class="ui">Enviarme un enlace de acceso</span>. Te llega un correo con un
-    enlace que <strong>caduca en 10 minutos</strong>; al abrirlo, ya estás dentro.
+    Se entra con un <strong>nombre de usuario</strong> —<span class="ui">alberto</span>,
+    <span class="ui">ana</span>, <span class="ui">marta</span>…— y una
+    <strong>contraseña</strong>. Nada de correos: en un móvil, teclear tu nombre es
+    mucho más rápido y no hay erratas que valgan. Escribe los dos campos y pulsa
+    <span class="ui">Entrar</span>.
   </p>
   <figure class="captura">
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Entrar · Casa Clara</span></div>
       <img src="capturas/login.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla de acceso de Casa Clara con las cinco cuentas de demostración: Alberto (administrador familiar), Marta (miembro de la familia), Ana (empleada interna), Lucía (apoyo del hogar) y Diego (acceso puntual).">
+           alt="Pantalla de acceso de Casa Clara con el título «Entra en tu casa», el texto «Escribe tu nombre de usuario y tu contraseña. Si no la recuerdas, pídesela a quien administra la casa: te pondrá una nueva en un momento», los campos Tu nombre de usuario (con «ana» escrito) y Tu contraseña, y el botón Entrar.">
     </div>
     <figcaption>
-      La pantalla de acceso. En este entorno de demostración se entra eligiendo
-      una cuenta; en el uso normal se entra con el enlace que llega por correo.
+      La pantalla de acceso: dos campos y un botón. La propia pantalla dice qué hacer
+      si no recuerdas la contraseña.
     </figcaption>
   </figure>
+  <div class="fila">
+    <div class="texto">
+      <div class="tarjeta">
+        <h4>Tres cosas que conviene saber desde el primer día</h4>
+        <ul>
+          <li><strong>Nadie se da de alta solo.</strong> Las cuentas las crea quien monta el hogar y la contraseña inicial se entrega <strong>en persona</strong>. No hay registro público.</li>
+          <li><strong>No hay «he olvidado mi contraseña» por correo.</strong> Es una decisión, no un olvido: se repone cara a cara (más abajo).</li>
+          <li><strong>Deja que la guarde el móvil.</strong> Los campos están preparados para que el gestor de contraseñas del teléfono la ofrezca y la rellene sola.</li>
+        </ul>
+      </div>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Entrar · móvil</span></div>
+        <img src="capturas/login-movil.png" loading="lazy" width="780" height="1688"
+             alt="La misma pantalla de acceso en el móvil: la tarjeta «Entra en tu casa» con los campos Tu nombre de usuario y Tu contraseña y el botón Entrar ocupando todo el ancho.">
+      </div>
+      <figcaption>La misma pantalla en el móvil, que es por donde entra casi todo el mundo.</figcaption>
+    </figure>
+  </div>
+
+  <h3 id="pp-contrasena">Tu contraseña: cambiarla y recuperarla</h3>
+  <p>
+    Cualquiera —familia, interna, apoyo o acceso puntual— tiene su propia pantalla
+    <span class="ui">Tu contraseña</span>: en el ordenador, abajo en la barra lateral;
+    en el móvil, dentro de <span class="ui">Más</span>. Se escribe la de ahora, la
+    nueva dos veces (<strong>mínimo 10 caracteres</strong>) y
+    <span class="ui">Cambiar mi contraseña</span>.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Tu contraseña · Casa Clara</span></div>
+      <img src="capturas/familia-contrasena.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla Tu contraseña en el ordenador, con la entrada «Tu contraseña» resaltada al final de la barra lateral y la tarjeta Cambiar tu contraseña con los tres campos y el botón Cambiar mi contraseña.">
+    </div>
+    <figcaption>
+      <span class="ui">Tu contraseña</span> vive al final de la barra lateral, encima de
+      <span class="ui">Ajustes del hogar</span>.
+    </figcaption>
+  </figure>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        Al cambiarla <strong>se cierran tus sesiones en los demás dispositivos</strong>.
+        Es deliberado: si se te quedó abierta en un móvil prestado o alguien llegó a
+        saberla, deja de servir en ese mismo momento.
+      </p>
+      <p>
+        <strong>Larga antes que rara.</strong> Tres o cuatro palabras que solo
+        signifiquen algo para ti («la-parra-del-abuelo-2019») valen más que
+        <span class="ui">Xk9$m</span> y se recuerdan mejor. Y cada quien la suya: una
+        contraseña compartida no es una contraseña.
+      </p>
+      <p>
+        <strong>Si la olvidas</strong>, no hay autoservicio ni correo de recuperación.
+        Se la pides a quien administra la casa y te pone una nueva en un minuto
+        (<a href="#fa-reponer">cómo se hace</a>). Te la dirá en persona; cámbiala tú
+        desde <span class="ui">Tu contraseña</span> en cuanto entres.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Tu contraseña · móvil</span></div>
+        <img src="capturas/interna-contrasena-movil.png" loading="lazy" width="780" height="1688"
+             alt="Pantalla Tu contraseña en el móvil de Ana: el texto «Solo tú la conoces. Nadie de la casa puede verla; quien administra el hogar únicamente puede ponerte una nueva si la pierdes», los campos Tu contraseña de ahora, Contraseña nueva (mínimo 10 caracteres) y Repite la contraseña nueva, y el botón Cambiar mi contraseña.">
+      </div>
+      <figcaption><span class="ui">Tu contraseña</span> en el móvil: la misma pantalla para los cinco papeles.</figcaption>
+    </figure>
+  </div>
 
   <h3>Qué es un hogar</h3>
   <p>
     Todo en Casa Clara vive dentro de un <strong>hogar</strong>: su menú, sus rutinas,
-    su Guía, sus pagos. Solo ves los hogares a los que te han invitado, y cada
+    su Guía, sus pagos. Solo ves los hogares a los que te han dado acceso, y cada
     hogar solo ve lo suyo. Quien administra el hogar decide quién entra, con qué
-    papel y hasta cuándo.
+    papel y hasta cuándo. La contraseña solo dice <strong>quién eres</strong>; lo que
+    puedes hacer dentro lo decide tu papel en la casa, que se comprueba en cada
+    pantalla.
   </p>
 
   <h3>Moverse por la app</h3>
@@ -432,6 +511,11 @@ thead th { border-top: 0; }
         Arriba está el buscador <span class="ui">Buscar en toda la casa…</span>
         (atajo <kbd>⌘ K</kbd> en el ordenador): encuentra notas de la Guía,
         contactos y más.
+      </p>
+      <p>
+        Al final de la barra lateral (y de la hoja <span class="ui">Más</span>) está
+        <span class="ui">Tu contraseña</span>, que tienen los cinco papeles, y justo
+        debajo tu nombre con <span class="ui">Salir</span>.
       </p>
       <p>
         El punto verde de la esquina superior indica el estado de guardado:
@@ -777,15 +861,19 @@ thead th { border-top: 0; }
   <p>
     <span class="ui">Pagos</span> reúne todo lo económico de la relación laboral con
     la empleada: el acuerdo y sus versiones, los días trabajados, las jornadas extra,
-    los gastos, la <strong>cuenta de cada mes</strong> y los pagos. Arriba, la tira de
-    resumen: <span class="ui">Mes en curso</span>, <span class="ui">Total salarial</span>,
-    <span class="ui">Reembolsos</span> y <span class="ui">Total previsto</span>.
+    los gastos, las <strong>vacaciones</strong>, la <strong>cuenta de cada mes</strong>
+    y los pagos. Arriba, la tira de resumen:
+    <span class="ui">Mes en curso</span>, <span class="ui">Total salarial</span>,
+    <span class="ui">Reembolsos</span> y <span class="ui">Total previsto</span>. Y en
+    medio de la página, dos enlaces que llevan a sus pantallas propias:
+    <span class="ui">Administrar el acuerdo</span> (solo la administración) y
+    <span class="ui">Ver mis condiciones</span> (solo la empleada, sobre su acuerdo).
   </p>
   <figure class="captura">
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Pagos · vista de administración</span></div>
       <img src="capturas/familia-pagos.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla Pagos de Alberto: cabecera con el campo Vencimiento y el botón Empezar la cuenta de agosto 2026, tira de resumen con Total previsto 1.400 euros, tarjeta Pendientes de acordar o compensar con botones Decidir compensación y Aceptar, y a la derecha los saldos Tiempo y compensación con el descanso compensatorio como crédito permanente sin caducidad.">
+           alt="Pantalla Pagos de Alberto: cabecera con el campo Vencimiento y el botón Empezar la cuenta de agosto 2026, tira de resumen con Total previsto 1.430 euros, tarjeta Pendientes de acordar o compensar con botones Decidir compensación y Aceptar, y a la derecha los saldos Tiempo y compensación con el descanso compensatorio como crédito permanente sin caducidad y el anticipo pendiente de 200 de 400 euros.">
     </div>
     <figcaption>
       Las decisiones, arriba. A la derecha, los saldos: el descanso compensatorio es un
@@ -803,12 +891,36 @@ thead th { border-top: 0; }
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Pagos · lo que va sumando el mes</span></div>
       <img src="capturas/familia-pagos-cuenta.png" loading="lazy" width="2560" height="1600"
-           alt="Tarjeta «Lo que va sumando agosto 2026» con el chip Sin cerrar, las líneas Salario acordado 2026-08 (1.500 euros) y Anticipo · cuota mensual (−100 euros), y el Total previsto del mes de 1.400 euros; debajo, Versiones y cambios de salario con la v1 histórica y la v2 vigente.">
+           alt="Tarjeta «Lo que va sumando agosto 2026» con el chip Sin cerrar, las líneas Salario acordado 2026-08 (1.500 euros), Complemento de antigüedad (+30 euros) y Anticipo · cuota mensual (−100 euros), el Total previsto del mes de 1.430 euros y la nota «Además, la casa paga aparte: Seguro médico privado (45,00 €). No entra en la transferencia»; debajo empieza la tarjeta de vacaciones.">
     </div>
     <figcaption>
       Mientras el mes está <span class="chip alerta">Sin cerrar</span>, la cuenta va
-      sumando a la vista y cada importe dice de dónde sale. Debajo, cada cambio de
-      salario con su fecha.
+      sumando a la vista y cada importe dice de dónde sale. Debajo del total, en una
+      línea aparte, lo que la casa paga por su cuenta y <strong>no</strong> viaja en la
+      transferencia.
+    </figcaption>
+  </figure>
+  <div class="tarjeta">
+    <h4>Dinero que se transfiere y dinero que no</h4>
+    <p>
+      Los complementos pactados son de dos clases y la cuenta del mes no los mezcla:
+      los que <strong>suman al pago</strong> (una antigüedad, un plus) entran como una
+      línea más del total; los que <strong>paga la casa aparte</strong> (un seguro
+      médico, por ejemplo) constan como condición de la empleada pero se cuentan
+      <strong>debajo del total</strong>, porque meterlos dentro haría que la cuenta
+      mintiera sobre lo que se transfiere.
+    </p>
+  </div>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Pagos · versiones del acuerdo</span></div>
+      <img src="capturas/familia-pagos-versiones.png" loading="lazy" width="2560" height="1600"
+           alt="Tarjeta «Versiones y cambios de salario» con la v1 (desde el 3 feb 2025, 1.400 euros, Histórica) y la v2 (desde el 1 abr 2025, 1.500 euros, Vigente, +100 euros), cada una resumiendo sus días de vacaciones, sus tarifas de trabajo extra y sus complementos; encima, el botón Administrar el acuerdo.">
+    </div>
+    <figcaption>
+      Cada versión del acuerdo, con su fecha, su motivo, sus tarifas y sus
+      complementos. La diferencia de salario aparece calculada
+      (<span class="ui">+100,00 €</span>).
     </figcaption>
   </figure>
   <figure class="captura">
@@ -830,6 +942,159 @@ thead th { border-top: 0; }
       Registrar una transferencia no confirma por sí solo que la otra parte la haya
       recibido: el cobro lo confirma la empleada por separado. Las dos huellas quedan
       registradas.
+    </p>
+  </div>
+
+  <h3 id="fa-acuerdo">Condiciones del acuerdo: lo que se pacta, y cómo se cambia</h3>
+  <p>
+    Desde <span class="ui">Pagos</span> → <span class="ui">Administrar el acuerdo</span>
+    se da de alta y se edita lo pactado con la empleada. Es la pantalla donde vive el
+    salario, la jornada, los días de vacaciones y —lo más importante— <strong>qué
+    trabajo de más admite este acuerdo y a cuánto se paga cada cosa</strong>. Su
+    subtítulo lo resume: <em>«Cada cambio crea una versión nueva. Lo ya pactado no se
+    reescribe nunca.»</em>
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Condiciones del acuerdo</span></div>
+      <img src="capturas/familia-acuerdo.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla Condiciones del acuerdo con el acuerdo de Ana desde el 3 feb 2025 marcado como Activo: la v2 vigente de 1.500 euros resumiendo su catálogo (Hora extraordinaria desactivado · no lo ve, Festivo o descanso trabajado 80 euros por jornada, Jornada extra 50 euros por jornada, Noche de guardia 50 euros cada vez, Acompañamiento a médico sin tarifa · no la ve, Complemento de antigüedad 30 euros al mes que suma al pago, Seguro médico privado 45 euros al mes que paga la casa, Plus de transporte retirado), la v1 histórica de 1.400 euros, el botón Cambiar las condiciones y la tarjeta Nuevo acuerdo.">
+    </div>
+    <figcaption>
+      Cada versión, con todo su catálogo escrito en plata: qué está activo, qué está
+      desactivado, qué no tiene tarifa y qué complementos hay. Junto a cada concepto,
+      la app dice si la empleada lo ve o no.
+    </figcaption>
+  </figure>
+  <h4>Dar de alta el acuerdo</h4>
+  <p>
+    Si el hogar todavía no tiene acuerdo con esa persona,
+    <span class="ui">Nuevo acuerdo</span> → <span class="ui">Dar de alta un acuerdo</span>
+    pide la <span class="ui">Empleada</span>, la fecha en que
+    <span class="ui">El acuerdo empieza</span>, desde cuándo rige
+    <span class="ui">La primera versión</span>, el <span class="ui">Salario mensual</span>,
+    la <span class="ui">Jornada semanal (minutos)</span>, las
+    <span class="ui">Vacaciones al año (días naturales)</span> y un
+    <span class="ui">Motivo</span>. Debajo, los mismos catálogos que se explican aquí.
+    Cuando ya hay un acuerdo activo para todo el mundo, la tarjeta lo dice: «No hay
+    ninguna empleada interna sin acuerdo activo.»
+  </p>
+  <h4>Tipos de trabajo extra</h4>
+  <p>
+    El catálogo es lo que se puede pedir y cobrar de más. Cada fila tiene:
+  </p>
+  <ul>
+    <li><span class="ui">Código</span> y <span class="ui">Nombre</span>: el nombre es lo que verá la casa («Jornada extra», «Noche de guardia»).</li>
+    <li><span class="ui">Se paga</span>: <span class="ui">Por hora</span>, <span class="ui">Por jornada</span> o <span class="ui">Importe fijo por supuesto</span>.</li>
+    <li><span class="ui">Tarifa</span>: el precio. <strong>Dejarla vacía es un dato legítimo</strong>: un concepto puede quedar pactado sin precio, y entonces la empleada no lo ve.</li>
+    <li><span class="ui">Duración de la jornada (minutos)</span>, para lo que no se paga por hora: cuánto dura «una jornada» a estos efectos.</li>
+    <li><span class="ui">Se lo permito</span>: la casilla que activa o desactiva ese concepto.</li>
+  </ul>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Versión nueva · trabajo extra</span></div>
+      <img src="capturas/familia-acuerdo-version.png" loading="lazy" width="2560" height="1600"
+           alt="Formulario Versión nueva con el bloque Trabajo extra y el aviso «Lo que esté desactivado o sin tarifa no lo verá la empleada, ni en sus condiciones ni al registrar trabajo»: la fila overtime (Hora extraordinaria, Por hora, 14,00) con la casilla Se lo permito sin marcar, y las filas worked_rest_day (80,00 por jornada, 1440 minutos), jornada_extra (50,00 por jornada, 600 minutos), noche_de_guardia (Importe fijo, 50,00) y sin_tarifa (Acompañamiento a médico, Importe fijo, sin tarifa), todas marcadas.">
+    </div>
+    <figcaption>
+      El catálogo, en el editor. Arriba, la hora extraordinaria con su tarifa escrita
+      pero <strong>sin permitir</strong>: aunque el número esté ahí, la empleada no lo
+      ve en ninguna pantalla.
+    </figcaption>
+  </figure>
+  <div class="tarjeta principio">
+    <h4>Lo que no se le permite, no lo ve</h4>
+    <p>
+      El propio formulario lo advierte: <em>«Lo que esté desactivado o sin tarifa no lo
+      verá la empleada, ni en sus condiciones ni al registrar trabajo.»</em> Si el
+      acuerdo dice que no hay horas sueltas, en su móvil <strong>no aparece el precio
+      por hora en ninguna parte</strong>: ni en sus condiciones, ni en el desplegable
+      de registrar una jornada extra. No es que se esconda un botón; es que ese dato no
+      llega a su dispositivo.
+    </p>
+  </div>
+  <h4>Complementos recurrentes</h4>
+  <p>
+    Lo que se repite todos los meses. Además del <span class="ui">Código</span>,
+    el <span class="ui">Nombre</span>, el <span class="ui">Importe al mes</span> y
+    las fechas opcionales <span class="ui">Desde</span> y <span class="ui">Hasta</span>,
+    la clave está en <span class="ui">Quién lo cobra</span>:
+  </p>
+  <ul>
+    <li><span class="ui">Suma a su transferencia</span> — es dinero para ella y entra como una línea más en la cuenta del mes.</li>
+    <li><span class="ui">Lo paga la casa aparte</span> — «consta en sus condiciones pero <strong>NO</strong> entra en la transferencia del mes». Es el caso típico de un seguro médico contratado por la familia.</li>
+  </ul>
+  <p>
+    La casilla <span class="ui">Vigente</span> retira un complemento sin borrarlo: deja
+    de aplicarse a partir de la versión nueva, y lo anterior sigue como estaba.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Versión nueva · complementos</span></div>
+      <img src="capturas/familia-acuerdo-complementos.png" loading="lazy" width="2560" height="1600"
+           alt="Bloque Complementos del formulario Versión nueva con el aviso «Lo paga la casa consta en sus condiciones pero NO entra en la transferencia del mes»: antiguedad (30,00, Suma a su transferencia, Vigente marcado), seguro_medico (45,00, Lo paga la casa, Vigente marcado) y plus_transporte (20,00, Suma a su transferencia, Vigente sin marcar), los botones Añadir complemento y Guardar como versión nueva.">
+    </div>
+    <figcaption>
+      Los complementos del acuerdo y, abajo del todo, el botón que cierra la operación:
+      <span class="ui">Guardar como versión nueva</span>.
+    </figcaption>
+  </figure>
+  <h4>Cambiar lo pactado crea una versión, nunca corrige la anterior</h4>
+  <ol class="pasos">
+    <li>Pulsa <span class="ui">Cambiar las condiciones</span>. El formulario aparece <strong>relleno con lo que rige hoy</strong>: no se parte de cero.</li>
+    <li>Cambia lo que haga falta —salario, jornada, vacaciones, tarifas, complementos— y pon la fecha en <span class="ui">Entra en vigor el</span>.</li>
+    <li>Escribe el <span class="ui">Motivo del cambio</span>. Es obligatorio: dentro de un año, ese texto es lo que explicará por qué subió el sueldo.</li>
+    <li><span class="ui">Guardar como versión nueva</span>. La app confirma: «Versión nueva añadida. La anterior sigue en el historial.»</li>
+  </ol>
+  <p>
+    Lo anterior <strong>sigue valiendo para todo lo trabajado antes</strong>. Una
+    jornada extra de marzo se seguirá pagando con la tarifa de marzo aunque el catálogo
+    cambie en abril: las tarifas se congelan con la versión vigente el día que se
+    trabajó. Y lo que se borre de un catálogo deja de existir <em>a partir de esa
+    fecha</em>, no antes.
+  </p>
+
+  <h3 id="fa-vacaciones">Vacaciones: derecho, días disfrutados y saldo</h3>
+  <p>
+    El <strong>derecho anual</strong> —cuántos días naturales de vacaciones al año—
+    forma parte de las condiciones del acuerdo, igual que el salario: se pone al dar
+    de alta el acuerdo y cambiarlo exige una versión nueva. Los <strong>días
+    disfrutados</strong> los apunta la familia en <span class="ui">Pagos</span>, en la
+    tarjeta <span class="ui">Días disfrutados y días que quedan</span>.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Pagos · vacaciones</span></div>
+      <img src="capturas/familia-vacaciones.png" loading="lazy" width="2560" height="1600"
+           alt="Tarjeta Vacaciones 2026 «Días disfrutados y días que quedan» con el chip verde «22 de 30 días disfrutados · quedan 8», un periodo del 1 al 4 oct 2026 anulado con el motivo «Al final no se cogieron: las fechas eran otras · no cuenta en el saldo», el del 1 al 15 jul 2026 (Quincena de julio, 15 días) y el del 1 al 7 mar 2026 (Semana Santa en el pueblo, 7 días) con su botón Anular, y el formulario Apuntar vacaciones con Primer día, Último día y Nota.">
+    </div>
+    <figcaption>
+      El saldo del año en curso arriba, los periodos debajo y el formulario al final.
+      El periodo anulado se queda a la vista, con su motivo y sin contar.
+    </figcaption>
+  </figure>
+  <ol class="pasos">
+    <li><strong>Apuntar:</strong> <span class="ui">Primer día</span>, <span class="ui">Último día</span> y una <span class="ui">Nota (opcional)</span> («Quincena de agosto», «Puente de mayo») → <span class="ui">Apuntar vacaciones</span>.</li>
+    <li><strong>Se cuentan días naturales</strong>, festivos y fines de semana incluidos: del 1 al 15 son 15 días, y la propia pantalla lo dice para que no haya sorpresas.</li>
+    <li><strong>Anular, no borrar:</strong> si te equivocaste de fechas, <span class="ui">Anular</span> pide un motivo («Por qué se anula») y el periodo <strong>se queda en la lista tachado</strong>, con quién lo anuló y por qué. «El periodo no se borra.»</li>
+  </ol>
+  <div class="tarjeta">
+    <h4>El primer año y el último se prorratean</h4>
+    <p>
+      Si el acuerdo empezó a mitad de año, el derecho de ese año no es el completo sino
+      la parte proporcional, y la tarjeta lo explica en una línea debajo del saldo. Lo
+      mismo el año en que el acuerdo termina. El 1 de enero el contador vuelve a
+      empezar.
+    </p>
+  </div>
+  <div class="tarjeta">
+    <h4>Si se pasan los días, se ve; no se rechaza</h4>
+    <p>
+      Cuando lo apuntado supera el derecho del año, Casa Clara <strong>no bloquea el
+      registro</strong>: enseña el saldo en negativo con un aviso —«Se han apuntado más
+      días de los que reconoce el acuerdo. Casa Clara no lo corrige sola: lo enseña
+      para que lo habléis y decidáis qué hacer»—. Un día de más puede estar pactado de
+      palabra; el programa no es quién para negarlo.
     </p>
   </div>
 
@@ -887,14 +1152,49 @@ thead th { border-top: 0; }
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Ajustes del hogar</span></div>
       <img src="capturas/familia-ajustes.png" loading="lazy" width="2560" height="1600"
-           alt="Ajustes del hogar bajo el título «¿Hasta cuándo puede entrar cada persona?»: Alberto (administrador familiar, Activo, Tu acceso), Marta, Ana y Lucía con chip Activo, y para cada una el campo Fecha límite del acceso con los botones Poner fecha límite y Quitar el acceso.">
+           alt="Ajustes del hogar bajo el título «¿Hasta cuándo puede entrar cada persona?»: Alberto (administrador familiar, Activo, Tu acceso), Marta, Ana y Lucía con chip Activo, y para cada una el campo Fecha límite del acceso con los botones Poner fecha límite, Quitar el acceso y Poner una contraseña nueva.">
     </div>
-    <figcaption>Fecha límite y retirada de acceso, persona a persona.</figcaption>
+    <figcaption>Fecha límite, retirada de acceso y reposición de contraseña, persona a persona.</figcaption>
   </figure>
   <ul>
     <li><strong>Acceso temporal:</strong> elige fecha y hora en <span class="ui">Fecha límite del acceso</span> y pulsa <span class="ui">Poner fecha límite</span> (ideal para canguros o ayudas puntuales). <span class="ui">Quitar la fecha límite</span> lo vuelve indefinido. Cuando pasa la fecha, la puerta se cierra sola.</li>
     <li><strong>Quitar un acceso:</strong> <span class="ui">Quitar el acceso</span> abre la confirmación, que avisa de que «es inmediato y no se puede deshacer desde esta pantalla» y que la persona dejará de entrar «también en los dispositivos donde ya tenga la sesión abierta». Hay que escribir <strong>QUITAR</strong> en el campo <span class="ui">Confirmación</span> y rematar con <span class="ui">Quitar el acceso ahora</span>.</li>
   </ul>
+  <h4 id="fa-reponer">Reponer la contraseña de otra persona</h4>
+  <p>
+    Es la única red de recuperación que hay, y está aquí: en la tarjeta de esa persona,
+    <span class="ui">Poner una contraseña nueva</span>. Solo puede hacerlo quien
+    administra el hogar, y <strong>no puede reponer la suya propia</strong> (para eso
+    está <span class="ui">Tu contraseña</span>) ni la de alguien a quien ya se le
+    retiró el acceso.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Ajustes · reponer una contraseña</span></div>
+      <img src="capturas/familia-ajustes-contrasena.png" loading="lazy" width="2560" height="1600"
+           alt="Formulario de reposición dentro de Ajustes del hogar: el aviso «Vas a poner una contraseña nueva a Marta. Díctasela en persona y pídele que la cambie desde Tu contraseña en cuanto entre. Al hacerlo, Marta saldrá de todos los dispositivos donde tuviera la sesión abierta y tendrá que entrar con la contraseña nueva. Escribe REPONER para confirmar», los campos Contraseña nueva (mínimo 10 caracteres), Repite la contraseña nueva y Confirmación, y el botón Poner la contraseña nueva.">
+    </div>
+    <figcaption>
+      Reponer una contraseña es un acto deliberado: hay que escribir
+      <strong>REPONER</strong> para confirmarlo.
+    </figcaption>
+  </figure>
+  <ol class="pasos">
+    <li>Pulsa <span class="ui">Poner una contraseña nueva</span> en la tarjeta de esa persona.</li>
+    <li>Escribe la contraseña nueva dos veces (mínimo 10 caracteres) y la palabra <strong>REPONER</strong> en <span class="ui">Confirmación</span>.</li>
+    <li><span class="ui">Poner la contraseña nueva</span>. <strong>Todas sus sesiones se cierran</strong>: si tenía la app abierta en el móvil, se le pedirá entrar de nuevo. Es exactamente lo que se quiere al reponer una contraseña.</li>
+    <li>Díctasela <strong>en persona</strong> y pídele que la cambie desde <span class="ui">Tu contraseña</span> en cuanto entre. Nada de WhatsApp, correo ni una nota en la nevera.</li>
+  </ol>
+  <div class="tarjeta principio">
+    <h4>Dos personas que administren, siempre</h4>
+    <p>
+      Si solo hay una y pierde su contraseña, <strong>no queda nadie que se la
+      reponga</strong>: no hay recuperación por correo ni contraseña maestra, y eso es
+      deliberado (una puerta trasera para vosotros lo es para cualquiera). Tener dos
+      cuentas con papel de administración no es una comodidad: es la red de seguridad
+      de la casa. Se reponen la contraseña mutuamente en un minuto.
+    </p>
+  </div>
   <h4>Traspaso operativo de la casa</h4>
   <p>
     Si la casa cambia de manos, llega una sustitución o alguien se va de vacaciones,
@@ -965,11 +1265,16 @@ thead th { border-top: 0; }
   </p>
   <p>Lo que queda reservado a la administración:</p>
   <ul>
-    <li>No ve <span class="ui">Ajustes del hogar</span>: no invita, no pone fechas límite ni quita accesos.</li>
+    <li>No ve <span class="ui">Ajustes del hogar</span>: no pone fechas límite, no quita accesos y no repone la contraseña de nadie.</li>
     <li>No ve la lista <span class="ui">Personal</span> de la compra: esa es de la persona interna y de quien administra.</li>
     <li>No enlaza calendarios (los ve, pero no los gestiona).</li>
     <li>En <span class="ui">Pagos</span> puede revisar las jornadas extra y los gastos pendientes, pero <strong>sin ningún importe</strong> y sin botones de decisión: no acepta jornadas, no aprueba gastos, no cierra el mes ni registra pagos.</li>
+    <li>No entra en <span class="ui">Condiciones del acuerdo</span> ni ve el saldo de vacaciones: eso es de la administración y de la propia empleada.</li>
   </ul>
+  <p>
+    Sí tiene, como todo el mundo, su pantalla <span class="ui">Tu contraseña</span>
+    para cambiar la suya.
+  </p>
   <figure class="captura">
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Pagos · vista de miembro</span></div>
@@ -995,7 +1300,8 @@ thead th { border-top: 0; }
     y para el mínimo de toques: su día en <span class="ui">Hoy</span>, el menú, la
     compra —con su lista <span class="ui">Personal</span>—, la Guía de la casa y
     <span class="ui">Pagos</span>, donde ve lo suyo completo, con los mismos importes
-    que ve quien administra.
+    que ve quien administra. Tiene además, como todo el mundo,
+    <span class="ui">Tu contraseña</span> dentro de <span class="ui">Más</span>.
   </p>
 
   <div class="fila">
@@ -1050,7 +1356,7 @@ thead th { border-top: 0; }
     <div class="texto">
       <h3>Jornadas extra, gastos y compensaciones</h3>
       <ul>
-        <li><strong>Registrar una jornada extra:</strong> <span class="ui">Tipo</span> (<span class="ui">Horas extraordinarias</span> o <span class="ui">Festivo o descanso trabajado</span>), <span class="ui">Fecha</span>, <span class="ui">Horas</span>, <span class="ui">Y minutos</span> y <span class="ui">Nota (opcional)</span> → <span class="ui">Registrar jornada extra</span>. Queda «Solicitada» a la espera de la familia.</li>
+        <li><strong>Registrar una jornada extra:</strong> <span class="ui">Tipo</span>, <span class="ui">Fecha</span> y <span class="ui">Nota (opcional)</span> → <span class="ui">Registrar jornada extra</span>. Queda «Solicitada» a la espera de la familia. El desplegable <span class="ui">Tipo</span> <strong>solo ofrece lo que su acuerdo permite y tiene tarifa</strong>: si no hay horas sueltas pactadas, ahí no aparecen. Cuando el concepto se paga por jornada, la app dice cuánto dura esa jornada «según lo pactado» y no hay que teclear horas.</li>
         <li><strong>Cuando la haces:</strong> si la jornada ya estaba aceptada, márcala con <span class="ui">Marcar realizada</span>.</li>
         <li><strong>Gastos adelantados:</strong> <span class="ui">Añadir gasto</span> con <span class="ui">Fecha</span>, <span class="ui">Importe (€)</span>, <span class="ui">Descripción</span> y <span class="ui">Foto del justificante (opcional)</span>. Aprobado, vuelve como reembolso en la cuenta del mes.</li>
         <li><strong>Compensaciones de descanso:</strong> cuando una jornada se decide «con descanso», se apunta como crédito a tu favor. Ese crédito es <strong>permanente: nunca caduca</strong>; en Saldos aparece como «Crédito permanente · sin caducidad».</li>
@@ -1075,9 +1381,77 @@ thead th { border-top: 0; }
       <div class="ventana">
         <div class="ventana-barra"><i></i><i></i><i></i><span>Pagos · jornadas extra</span></div>
         <img src="capturas/interna-jornada-movil.png" loading="lazy" width="780" height="1688"
-             alt="Jornadas extra en el móvil de Ana: las tres pendientes de acordar o compensar con el botón Marcar realizada, y debajo el formulario Registrar jornada extra completo, con Tipo, Fecha, Horas, Y minutos, Nota (opcional) y su botón.">
+             alt="Jornadas extra en el móvil de Ana: las pendientes de acordar o compensar con el botón Marcar realizada, y debajo el formulario Registrar jornada extra con el desplegable Tipo (Festivo o descanso trabajado), la Fecha, la aclaración «jornada de 1 día, según lo pactado», la Nota (opcional) y su botón.">
       </div>
-      <figcaption>Registrar una jornada extra desde el móvil, en horas y minutos.</figcaption>
+      <figcaption>Registrar una jornada extra desde el móvil: se elige el tipo pactado y la fecha.</figcaption>
+    </figure>
+  </div>
+
+  <h3 id="in-condiciones">Mis condiciones: lo que está pactado, en plata</h3>
+  <p>
+    Desde <span class="ui">Pagos</span> → <span class="ui">Ver mis condiciones</span>,
+    Ana tiene su contrato explicado en lenguaje llano: <em>«Lo que está pactado ahora
+    mismo, tal y como se aplica a tu pago.»</em> Arriba, <span class="ui">Lo básico</span>
+    —salario al mes, jornada y vacaciones al año— con la versión y la fecha desde la que
+    rige.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Mis condiciones · vista de la empleada</span></div>
+      <img src="capturas/interna-condiciones.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla Mis condiciones de Ana: la tarjeta Lo básico, vigente desde el 1 abr 2025 con el chip Versión 2, con Salario al mes 1.500,00 euros, Jornada 40 h a la semana y Vacaciones 30 días naturales al año; debajo, Trabajo extra «Qué puedes hacer y a cuánto se paga» con Festivo o descanso trabajado 80,00 euros por jornada, Jornada extra 50,00 euros por jornada y Noche de guardia 50,00 euros cada vez. No aparece ninguna tarifa por hora.">
+    </div>
+    <figcaption>
+      Sus condiciones, con la versión que rige. Fíjate en lo que <strong>no</strong>
+      está: no hay ni rastro de un precio por hora, porque su acuerdo no le permite
+      horas sueltas.
+    </figcaption>
+  </figure>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Mis condiciones · complementos</span></div>
+      <img src="capturas/interna-condiciones-extra.png" loading="lazy" width="2560" height="1600"
+           alt="Continuación de Mis condiciones: el bloque Trabajo extra con los tres conceptos que sí le aplican y, debajo, Complementos «Lo que se suma y lo que paga la casa» con Complemento de antigüedad 30,00 euros al mes («Se suma a tu transferencia») y Seguro médico privado 45,00 euros al mes («Lo paga la casa por su cuenta: consta como condición tuya, pero no viaja en la transferencia»).">
+    </div>
+    <figcaption>
+      Los complementos, separados con todas las letras: lo que se suma a su
+      transferencia y lo que paga la casa por su cuenta.
+    </figcaption>
+  </figure>
+  <div class="tarjeta principio">
+    <h4>Solo lo que le aplica llega hasta aquí</h4>
+    <p>
+      La lista no está filtrada en la pantalla: <strong>lo que no le aplica no sale
+      siquiera de la base de datos</strong>. Un concepto desactivado, o pactado sin
+      tarifa, no aparece ni en sus condiciones ni al registrar trabajo. Y si el acuerdo
+      no contempla ningún trabajo extra, la app lo dice en vez de callarse: «Tu acuerdo
+      no contempla trabajo extra por ahora.»
+    </p>
+  </div>
+
+  <div class="fila">
+    <div class="texto">
+      <h3>Sus vacaciones</h3>
+      <p>
+        En <span class="ui">Pagos</span>, la tarjeta
+        <span class="ui">Días disfrutados y días que quedan</span> le enseña el saldo
+        del año en curso y los periodos apuntados, con los anulados a la vista y su
+        motivo.
+      </p>
+      <p>
+        Ana <strong>mira, pero no escribe</strong>: los días los apunta la familia. No
+        verá el formulario <span class="ui">Apuntar vacaciones</span> ni los botones
+        <span class="ui">Anular</span>. Si el saldo no le cuadra, es una conversación,
+        no un formulario.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Vacaciones · móvil</span></div>
+        <img src="capturas/interna-vacaciones-movil.png" loading="lazy" width="780" height="1688"
+             alt="Tarjeta Vacaciones 2026 en el móvil de Ana con el chip «22 de 30 días disfrutados · quedan 8» y los tres periodos —uno anulado con su motivo, la quincena de julio de 15 días y la Semana Santa de 7 días— sin ningún botón de anular ni formulario para apuntar.">
+      </div>
+      <figcaption>El mismo saldo que ve la familia, sin los botones de escritura.</figcaption>
     </figure>
   </div>
 
@@ -1212,10 +1586,13 @@ thead th { border-top: 0; }
       <tr><td>Lista «Personal»</td><td>Sí</td><td>—</td><td>Sí (es la suya)</td><td>—</td><td>—</td></tr>
       <tr><td>Guía de la casa</td><td>Escribe y publica</td><td>Escribe y publica</td><td>Escribe; ve lo no publicado</td><td>Lee lo publicado</td><td>—</td></tr>
       <tr><td>Pagos</td><td>Decide todo</td><td>Jornadas y gastos, sin importes</td><td>Lo suyo, completo</td><td>—</td><td>—</td></tr>
+      <tr><td>Condiciones del acuerdo</td><td>Crea y cambia (versión nueva)</td><td>—</td><td>Ve las suyas, sin lo que no le aplica</td><td>—</td><td>—</td></tr>
+      <tr><td>Vacaciones</td><td>Apunta, anula y ve el saldo</td><td>—</td><td>Ve su saldo y sus periodos</td><td>—</td><td>—</td></tr>
       <tr><td>Calendario</td><td>Enlaza y ve</td><td>Ve</td><td>Ve</td><td>—</td><td>Ve</td></tr>
       <tr><td>Contactos</td><td>Edita</td><td>Edita</td><td>Consulta</td><td>Consulta</td><td>Consulta</td></tr>
       <tr><td>Emergencias</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
-      <tr><td>Ajustes del hogar</td><td>Sí</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+      <tr><td>Tu contraseña</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Ajustes del hogar</td><td>Sí (y repone contraseñas)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
     </tbody>
   </table>
   </div>
@@ -1280,11 +1657,20 @@ thead th { border-top: 0; }
     <strong>versión nueva</strong> del acuerdo con su fecha; las tarifas de cada
     jornada se congelan al decidir su compensación, aunque el salario cambie después.
   </p>
+  <p>
+    Lo mismo vale para <strong>las condiciones enteras</strong>, no solo para el
+    sueldo: el catálogo de trabajo extra, sus tarifas y los complementos viajan dentro
+    de la versión. Cambiar cualquiera de ellos apila una versión nueva con su motivo y
+    su autoría, y las anteriores no se tocan nunca. Los <strong>periodos de
+    vacaciones</strong> siguen la misma regla: se anulan con un motivo, no se borran.
+  </p>
 
   <h3>Privacidad</h3>
   <ul>
     <li><strong>Cada hogar, lo suyo.</strong> La separación entre hogares está garantizada en la propia base de datos, no solo en la pantalla.</li>
     <li><strong>Cada papel, lo justo.</strong> Los importes, por ejemplo, solo los ven la administración y la propia empleada; y la lista «Personal» de la compra, solo la persona interna y quien administra. No es que se oculten botones: es que la base de datos no devuelve esos datos a quien no le corresponden.</li>
+    <li><strong>Y dentro del acuerdo, solo lo pactado.</strong> Del catálogo de condiciones, a la empleada le llega únicamente lo que su acuerdo le permite y tiene tarifa. Una tarifa desactivada no está escondida en su móvil: no llega a él.</li>
+    <li><strong>Tu contraseña es tuya.</strong> Nadie de la casa puede verla, tampoco quien administra: lo único que puede hacer es <em>ponerte otra</em>, y al hacerlo se cierran todas tus sesiones. Casa Clara no envía correos a nadie en ningún momento.</li>
     <li><strong>Calendarios enlazados, no copiados.</strong> Casa Clara lee los calendarios que la familia enlaza y guarda solo los eventos de una ventana corta alrededor de hoy. Dejar de mostrar un calendario borra sus eventos de la casa, y quitarlo del todo se los lleva con él.</li>
     <li><strong>Demostraciones siempre sintéticas.</strong> Los entornos de prueba avisan («Entorno sintético: no introduzcas datos reales») y no admiten datos de personas reales.</li>
   </ul>
@@ -1307,14 +1693,39 @@ thead th { border-top: 0; }
       </p>
     </dd>
 
-    <dt>No me llega el enlace de acceso.</dt>
+    <dt>He olvidado mi contraseña.</dt>
     <dd>
       <p>
-        Revisa la carpeta de spam y comprueba que escribiste exactamente el correo
-        con el que te invitaron: por seguridad, la app responde lo mismo exista o no
-        la cuenta. Recuerda que cada enlace <strong>caduca a los 10 minutos</strong>;
-        si se pasó, pide otro. Si sigue sin llegar, pide a quien administra el hogar
-        que confirme tu correo.
+        No hay «he olvidado mi contraseña» por correo, y no es un olvido de la app:
+        Casa Clara no manda correos a nadie. Pídesela a quien administra la casa: entra
+        en <span class="ui">Ajustes del hogar</span> → tu tarjeta →
+        <span class="ui">Poner una contraseña nueva</span> y te la dice
+        <strong>en persona</strong>. Cámbiala tú desde <span class="ui">Tu
+        contraseña</span> en cuanto entres.
+      </p>
+      <p>
+        Por eso conviene que <strong>haya dos personas con papel de
+        administración</strong>: si solo hay una y es justo la que la pierde, no queda
+        nadie dentro que pueda reponerla.
+      </p>
+    </dd>
+
+    <dt>¿Puede alguien ver mi contraseña?</dt>
+    <dd>
+      <p>
+        No. Nadie de la casa, tampoco quien administra. Lo único que puede hacer es
+        <strong>ponerte una nueva</strong>, y eso deja rastro evidente: se cierran todas
+        tus sesiones y tendrás que volver a entrar. Si te pasa sin haberlo pedido,
+        pregunta.
+      </p>
+    </dd>
+
+    <dt>Cambié mi contraseña y se me ha cerrado la sesión del otro móvil.</dt>
+    <dd>
+      <p>
+        Es lo previsto. Al cambiar la contraseña —o al reponértela quien administra— se
+        cierran las sesiones abiertas en los demás dispositivos. Entra otra vez en ellos
+        con la nueva.
       </p>
     </dd>
 
@@ -1336,6 +1747,49 @@ thead th { border-top: 0; }
         <span class="ui">Reintentar</span> o <span class="ui">Descartar</span>.
         Con las confirmaciones del menú pasa igual: si el plato cambió después de
         confirmarse, la confirmación caduca sola y se pide de nuevo.
+      </p>
+    </dd>
+
+    <dt>Hay que subirle el sueldo. ¿Dónde se cambia?</dt>
+    <dd>
+      <p>
+        En <span class="ui">Pagos</span> → <span class="ui">Administrar el acuerdo</span>
+        → <span class="ui">Cambiar las condiciones</span>. El formulario ya viene
+        relleno con lo que rige hoy: cambias el importe, pones la fecha en
+        <span class="ui">Entra en vigor el</span>, escribes el motivo y pulsas
+        <span class="ui">Guardar como versión nueva</span>. La versión anterior no se
+        toca: todo lo trabajado antes se sigue pagando como estaba pactado entonces.
+      </p>
+    </dd>
+
+    <dt>En mis condiciones no aparece el precio por hora. ¿Falta un dato?</dt>
+    <dd>
+      <p>
+        No: es que ese concepto no está pactado en tu acuerdo, o está pactado sin
+        tarifa. Casa Clara solo enseña lo que te aplica y tiene precio, para que nadie
+        cuente con un cobro que no existe. Si crees que debería estar, es una
+        conversación con la familia: se añade desde
+        <span class="ui">Administrar el acuerdo</span> y nace como versión nueva.
+      </p>
+    </dd>
+
+    <dt>Nos hemos pasado de días de vacaciones. ¿Qué hace la app?</dt>
+    <dd>
+      <p>
+        Enseñarlo, no impedirlo. El saldo aparece en negativo con el aviso de que «se
+        han apuntado más días de los que reconoce el acuerdo… lo enseña para que lo
+        habléis y decidáis qué hacer». Un día de más puede estar acordado de palabra;
+        el programa no lo corrige por su cuenta.
+      </p>
+    </dd>
+
+    <dt>Apunté unas vacaciones con las fechas mal. ¿Se borran?</dt>
+    <dd>
+      <p>
+        No se borran: se <strong>anulan</strong>. Pulsa <span class="ui">Anular</span>,
+        escribe por qué y apunta el periodo bueno. El anulado se queda en la lista, con
+        su motivo y sin contar en el saldo, para que dentro de seis meses se entienda
+        qué pasó.
       </p>
     </dd>
 
