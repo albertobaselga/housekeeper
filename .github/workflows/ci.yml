@@ -126,7 +126,11 @@ jobs:
       # NOSUPERUSER + NOBYPASSRLS y las extensiones fuera de `public`.
       - name: Reproduce a Supabase-shaped install from scratch
         env:
-          PROBE_ADMIN_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci
+          # La base tiene que ser una que EXISTA en el clúster: la sonda solo se
+          # conecta aquí para crear el rol y su base desechable. Apuntaba a
+          # `casaclara_ci`, que no existe —el servicio crea `casaclara_ci_db`—,
+          # así que este paso nunca llegó a ejecutarse desde que se añadió.
+          PROBE_ADMIN_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_db
         run: pnpm --filter @casa-clara/db probe:supabase
 
   integration:
