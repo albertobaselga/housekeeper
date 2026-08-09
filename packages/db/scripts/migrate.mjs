@@ -60,7 +60,11 @@ function stripOuterTransaction(filename, content) {
 // Applies every pending migration, each atomically together with its tracking row.
 // Re-running against an up-to-date database performs no changes; a checksum drift
 // on an already-applied file aborts instead of silently diverging.
-export async function applyMigrations(client, { log = () => {} } = {}) {
+// `until` detiene la aplicación DESPUÉS del fichero indicado. Solo existe para
+// que las pruebas puedan dejar una base en un punto intermedio, sembrar datos y
+// seguir migrando: una migración puede pasar con las tablas vacías y romperse
+// con historial (le ocurrió a 0021 con los eventos de trabajo extra).
+export async function applyMigrations(client, { log = () => {}, until = null } = {}) {
   await client.query("SELECT pg_advisory_lock(hashtext('casa_clara_schema_migrations'))");
   try {
     await client.query(TRACKING_TABLE_DDL);
@@ -108,6 +112,7 @@ export async function applyMigrations(client, { log = () => {} } = {}) {
       }
       appliedCount += 1;
       log(`applied ${filename}`);
+      if (until && filename === until) break;
     }
     // Una pasada final para que una migración futura que vuelva a forzar no deje
     // la base en un estado donde la siguiente función definer no se pueda crear.

@@ -512,6 +512,16 @@ UPDATE app.extra_work_events AS event
          app.agreement_version_in_force(event.household_id, event.agreement_id, event.worked_on)
        );
 
+/*
+ * El UPDATE de arriba deja pendientes las comprobaciones diferidas de las
+ * claves ajenas de la tabla; con la tabla vacía no hay ninguna y no se nota,
+ * pero en cuanto hay historial PostgreSQL rechaza el ALTER TABLE siguiente con
+ * «cannot ALTER TABLE ... because it has pending trigger events». Forzarlas
+ * ahora vacía esa cola sin relajar ninguna garantía: si algo no cuadrara,
+ * fallaría aquí y la migración entera se desharía.
+ */
+SET CONSTRAINTS ALL IMMEDIATE;
+
 ALTER TABLE app.extra_work_events ENABLE TRIGGER extra_work_events_type_freeze;
 ALTER TABLE app.extra_work_events ENABLE TRIGGER extra_work_state_machine;
 
