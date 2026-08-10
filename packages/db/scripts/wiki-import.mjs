@@ -49,6 +49,10 @@ import matter from 'gray-matter';
 import pg from 'pg';
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// Las dos vistas propias de la Guía (`/wiki/libro`, `/wiki/progreso`) cuelgan
+// de la misma ruta que las notas: una nota con esos slugs quedaría inalcanzable
+// para siempre. La base lo impide con un CHECK; aquí se dice antes y mejor.
+const RESERVED_SLUGS = new Set(['libro', 'progreso']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE_KEYS = new Set(['title', 'slug', 'tags', 'aliases', 'status', 'pinned']);
 const SPACE_KEYS = new Set(['name', 'description', 'position']);
@@ -186,6 +190,11 @@ function parsePageFile(raw, { fallbackSlug }) {
     slug = data.slug;
   } else {
     slug = slugify(fallbackSlug);
+  }
+  if (RESERVED_SLUGS.has(slug)) {
+    throw new Error(
+      `«${slug}» es un slug reservado de la Guía (modo libro y progreso); dale otro título o un «slug» propio`
+    );
   }
   return {
     title: data.title.trim(),
