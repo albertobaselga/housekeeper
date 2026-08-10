@@ -49,7 +49,7 @@ export type OutboxStatus = 'pending' | 'conflict' | 'rejected';
  * sin subir, el comando quedaría esperando y se descarta desde el triaje.
  *
  * La espera tampoco puede ser eterna cuando la subida falla una y otra vez
- * (antivirus caído, almacén sin credenciales, fichero rechazado): tras
+ * (almacén caído o sin credenciales, fichero rechazado): tras
  * MAX_BLOB_UPLOAD_ATTEMPTS intentos —o al primer rechazo definitivo— el
  * registro pasa a `rejected` con `lastErrorCode` y aparece en el triaje con un
  * mensaje veraz, en vez de quedarse «pendiente» para siempre sin que nadie lo
@@ -81,7 +81,7 @@ export interface OutboxRecord {
 /**
  * Intentos de subida de una foto pendiente antes de dar el comando por
  * bloqueado y mandarlo al triaje. Cinco pasadas de flush cubren de sobra un
- * corte transitorio del antivirus o del almacén sin dejar el gasto atrapado.
+ * corte transitorio del almacén sin dejar el gasto atrapado.
  */
 export const MAX_BLOB_UPLOAD_ATTEMPTS = 5;
 

@@ -59,6 +59,15 @@ describe('de dónde sale la raíz del proyecto', () => {
     expect(readSupabaseStorageConfig({ SUPABASE_URL: CONFIG.url })).toBeNull();
   });
 
+  it('con clave pero sin proyecto deducible no se adivina: null y aviso en el registro', () => {
+    expect(
+      readSupabaseStorageConfig({
+        SUPABASE_SERVICE_ROLE_KEY: 'k',
+        DATABASE_URL: 'postgresql://casa@127.0.0.1:5432/casaclara'
+      })
+    ).toBeNull();
+  });
+
   it('acepta el nombre nuevo de la clave secreta', () => {
     expect(readSupabaseStorageConfig({ SUPABASE_URL: CONFIG.url, SUPABASE_SECRET_KEY: 'sb_secret_x' })?.serviceKey).toBe(
       'sb_secret_x'

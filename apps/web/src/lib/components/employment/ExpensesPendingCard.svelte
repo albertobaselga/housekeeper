@@ -127,8 +127,8 @@
     receiptAttached = false;
 
     // Con red la foto viaja PRIMERO: el comando del gasto referencia el objeto
-    // ya confirmado. Si la subida falla (tamaño, tipo, cuarentena o un 503 sin
-    // S3/ClamAV configurados) el alta del gasto NO se bloquea: se registra sin
+    // ya confirmado. Si la subida falla (tamaño, tipo, o un 503 sin almacén de
+    // documentos configurado) el alta del gasto NO se bloquea: se registra sin
     // justificante y el mensaje explica qué pasó con la foto.
     let receiptStorageObjectId: string | undefined;
     let pendingBlob: OutboxPendingBlob | undefined;
@@ -384,7 +384,9 @@
       {#if receiptNotice}<p class="queued-note" role="status">{receiptNotice}</p>{/if}
       {#if expenseError}<p class="queued-note" role="alert">{expenseError}</p>{/if}
       <div class="action-row">
-        <button class="button primary small-button" type="submit" disabled={uploadBusy}>Añadir gasto</button>
+        <!-- También mientras se prepara la foto: si no, el gasto podría salir
+             sin el justificante que se está reduciendo en ese momento. -->
+        <button class="button primary small-button" type="submit" disabled={uploadBusy || receiptBusy}>Añadir gasto</button>
         {#if expenseSent}
           <span class="status-chip {receiptWaiting ? 'warning' : 'success'}">
             {receiptWaiting

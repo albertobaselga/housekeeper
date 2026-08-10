@@ -70,7 +70,13 @@ export function readSupabaseStorageConfig(
   if (!serviceKey) return null;
   const declaredUrl = environment.SUPABASE_URL?.trim();
   const url = (declaredUrl || supabaseUrlFromDatabaseUrl(environment.DATABASE_URL?.trim()) || '').replace(/\/+$/, '');
-  if (!url) return null;
+  if (!url) {
+    // Hay clave pero no se sabe a qué proyecto apunta: una equivocación de
+    // configuración, no una decisión. Se deja dicho en el registro en vez de
+    // caer en silencio al camino S3 (que probablemente tampoco esté puesto).
+    log.warn('supabase service key set but no project url could be resolved');
+    return null;
+  }
   const bucket = environment.SUPABASE_STORAGE_BUCKET?.trim() || environment.S3_PRIVATE_BUCKET?.trim() || 'casaclara';
   return { url, serviceKey, bucket };
 }
