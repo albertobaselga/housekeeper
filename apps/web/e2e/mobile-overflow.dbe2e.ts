@@ -43,6 +43,28 @@ const ROUTES: readonly OverflowRoute[] = [
   },
   { path: 'recipes', label: 'Recetas', as: 'admin' },
   { path: 'routines', label: 'Rutinas', as: 'admin' },
+  // Los subcontroles de «¿Cuándo toca?» nacen ocultos —revelado progresivo—, así
+  // que la vista de reposo no los mide. Son justo las filas anchas: siete
+  // botones de día y cuatro de temporada, cada uno con su objetivo táctil de
+  // 44 px. A 320 px tienen que envolver, no desbordar.
+  {
+    path: 'routines',
+    label: 'Rutinas · días de la semana',
+    as: 'admin',
+    reveal: async (page) => {
+      await page.getByRole('radio', { name: 'Días fijos de la semana' }).check();
+      await expect(page.getByRole('button', { name: 'miércoles' })).toBeVisible();
+    }
+  },
+  {
+    path: 'routines',
+    label: 'Rutinas · temporadas',
+    as: 'admin',
+    reveal: async (page) => {
+      await page.getByRole('radio', { name: 'Por temporada' }).check();
+      await expect(page.getByRole('button', { name: 'Primavera' })).toBeVisible();
+    }
+  },
   { path: 'wiki', label: 'Guía de la casa', as: 'admin' },
   {
     path: 'wiki/lavadora',

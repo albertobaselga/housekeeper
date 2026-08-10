@@ -91,10 +91,16 @@ test('Ana ve la rutina de audiencia empleada y no la de familia (RLS por audienc
 
 // Bug original cazado por esta batería (envelope 'routine_occurrence' vs
 // handler 'routine' → rejected/unsupported_aggregate) ya corregido en
-// src/lib/food/commands.ts. Semántica real al completar: la función definer de
-// la 0009 AVANZA la recurrencia, así que la rutina pasa a mostrar la próxima
-// fecha (sin chip «Hecha» para la nueva ocurrencia) y jamás un conflicto.
-test('Ana completa la rutina de audiencia empleada y la recurrencia avanza', async ({ page }) => {
+// src/lib/food/commands.ts.
+//
+// La semántica al completar CAMBIÓ con la ola de recurrencia y este es el
+// cambio, no un efecto colateral. Antes, la definer de la 0009 avanzaba la
+// recurrencia desde la ocurrencia completada y el botón reaparecía al instante
+// para la fecha nueva: la cinta de correr —una rutina diaria con cinco días
+// perdidos avanzaba un día por pulsación y seguía vencida—. Ahora las
+// ocurrencias se generan desde la regla: marcada la de hoy, hoy ya no queda
+// nada que hacer y el botón se va hasta la próxima.
+test('Ana completa su rutina y hoy deja de pedírsela: se acabó la cinta de correr', async ({ page }) => {
   await loginAs(page, 'employee');
   await page.goto(`/h/${HOUSEHOLD}/routines`);
 
@@ -105,10 +111,10 @@ test('Ana completa la rutina de audiencia empleada y la recurrencia avanza', asy
   await routineItem.getByRole('button', { name: 'Marcar hecha' }).click();
 
   await expect(page.locator('.status-banner')).toHaveCount(0);
+  // La segunda línea pasa de «la próxima, hoy» a la ocurrencia siguiente.
   await expect(dueLine).not.toHaveText(before);
-  // Feedback visible del resultado: chip «Hecha ✓ · próxima el X» en la fila,
-  // y el botón sigue disponible para la NUEVA ocurrencia ya avanzada.
+  // Feedback visible con la MISMA fecha que confirmó el servidor.
   await expect(routineItem.locator('.status-chip').filter({ hasText: 'Hecha ✓ · próxima el' })).toBeVisible();
-  await expect(routineItem.getByRole('button', { name: 'Marcar hecha' })).toBeVisible();
-  await expect(routineItem.getByRole('button', { name: 'Marcar hecha' })).toBeEnabled();
+  // Y nada que volver a marcar hoy: no hay segunda ocurrencia el mismo día.
+  await expect(routineItem.getByRole('button', { name: 'Marcar hecha' })).toHaveCount(0);
 });
