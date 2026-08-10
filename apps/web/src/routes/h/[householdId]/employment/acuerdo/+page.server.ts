@@ -98,15 +98,24 @@ function readSupplements(form: FormData): RecurringSupplementInputV1[] | { messa
         message: `El importe de «${text(form, `supplement.${index}.name`) || code}» no es válido.`
       };
     }
+    // Sin valor por defecto a propósito: quien pacta un complemento tiene que
+    // decir explícitamente si es dinero para ella o gasto de la casa. Un
+    // defecto silencioso aquí es una transferencia inflada o mermada, y como la
+    // fila es inmutable el error solo se corrige apilando otra versión. Por eso
+    // cualquier valor que no sea uno de los dos es un ERROR y no un `false`: si
+    // el formulario y este lector vuelven a dejar de entenderse, se verá.
+    const payer = text(form, `supplement.${index}.addsToPay`);
+    if (payer !== 'suma' && payer !== 'casa') {
+      return {
+        message: `Di quién cobra «${text(form, `supplement.${index}.name`) || code}»: si suma a su transferencia o lo paga la casa aparte.`
+      };
+    }
     supplements.push({
       code,
       name: text(form, `supplement.${index}.name`),
       amountCents,
       periodicity: 'monthly',
-      // Sin valor por defecto a propósito: quien pacta un complemento tiene que
-      // decir explícitamente si es dinero para ella o gasto de la casa. Un
-      // defecto silencioso aquí es una transferencia inflada o mermada.
-      addsToPay: form.get(`supplement.${index}.addsToPay`) === 'suma',
+      addsToPay: payer === 'suma',
       startsOn: optionalDate(form, `supplement.${index}.startsOn`),
       endsOn: optionalDate(form, `supplement.${index}.endsOn`),
       active: form.get(`supplement.${index}.active`) === 'on'

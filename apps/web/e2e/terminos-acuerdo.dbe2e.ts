@@ -106,6 +106,19 @@ test('Alberto cambia una tarifa y nace una versión nueva: la anterior sigue int
   // La v3 rige y la v2 queda como histórica CON SU TARIFA DE ENTONCES: lo ya
   // trabajado bajo ella no se revaloriza.
   await expect(versions.filter({ hasText: 'v3' })).toContainText('Jornada extra: 60,00 € por jornada');
+  /*
+   * Y los complementos llegan a la v3 con el MISMO pagador. El `<select>` de
+   * «Quién lo cobra» mandaba «true»/«false» y el servidor comparaba con «suma»,
+   * así que la comparación no se cumplía nunca y cada versión apilada convertía
+   * la antigüedad en un gasto de la casa: 30 € que dejaban de transferirse en
+   * silencio, sobre una fila inmutable.
+   */
+  await expect(versions.filter({ hasText: 'v3' })).toContainText(
+    'Complemento de antigüedad: 30,00 € al mes (suma al pago)'
+  );
+  await expect(versions.filter({ hasText: 'v3' })).toContainText(
+    'Seguro médico privado: 45,00 € al mes (lo paga la casa)'
+  );
   await expect(versions.filter({ hasText: 'v2' })).toContainText('Jornada extra: 50,00 € por jornada');
   await expect(versions.filter({ hasText: 'v2' })).toContainText('Histórica');
 
