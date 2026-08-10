@@ -7,9 +7,6 @@ x-app-environment: &app-environment
   S3_PRIVATE_BUCKET: ${S3_BUCKET:-casaclara-local}
   S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-casaclara-local}
   S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-local-object-storage-only}
-  SMTP_HOST: mailpit
-  SMTP_PORT: "1025"
-  SMTP_FROM: ${SMTP_FROM:-Casa Clara local <no-reply@casaclara.test>}
   CLAMAV_HOST: clamav
   CLAMAV_PORT: "3310"
 
@@ -80,8 +77,6 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-      mailpit:
-        condition: service_healthy
       clamav:
         condition: service_healthy
     healthcheck:
@@ -113,8 +108,6 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
-      mailpit:
-        condition: service_healthy
       clamav:
         condition: service_healthy
     healthcheck:
@@ -196,30 +189,6 @@ services:
         mc anonymous set none "local/$${S3_BUCKET}"
     security_opt:
       - no-new-privileges:true
-    networks:
-      - data
-
-  mailpit:
-    image: axllent/mailpit:v1.30.0
-    restart: unless-stopped
-    environment:
-      MP_DATABASE: /data/mailpit.db
-      MP_MAX_MESSAGES: "500"
-    ports:
-      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
-      - "127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025"
-    volumes:
-      - mailpit_data:/data
-    read_only: true
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=32m
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8025/livez"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
     networks:
       - data
 
@@ -350,7 +319,6 @@ networks:
 volumes:
   postgres_data: {}
   minio_data: {}
-  mailpit_data: {}
   clamav_signatures: {}
   caddy_data: {}
   caddy_config: {}

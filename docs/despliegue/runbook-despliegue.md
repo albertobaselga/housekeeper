@@ -23,8 +23,9 @@
 ## 0. Antes de empezar
 
 - [ ] Repositorio **privado** en GitHub.
-- [ ] Dominio propio con SPF, DKIM y DMARC en el proveedor de correo elegido.
-      Sin ellos los enlaces mágicos van a spam y la app queda inutilizable.
+- [ ] Dominio propio. **Sin proveedor de correo**: la aplicación no manda
+      correo a nadie (migración 0029) y el acceso es por contraseña, así que no
+      hay SPF, DKIM ni DMARC que configurar para ella.
 - [ ] Un gestor de contraseñas donde guardar lo que se genere en §1.
 - [ ] `pnpm install` y el repo en verde: `pnpm lint`, `pnpm --filter web check`,
       `pnpm test:unit`, `pnpm --filter web verify:bundle`.
@@ -177,8 +178,7 @@ fly secrets set -a casaclara-worker \
   DATABASE_URL='postgresql://casa_clara_worker_login:…@db.PROYECTO.supabase.co:6543/postgres' \
   S3_ENDPOINT='https://PROYECTO.supabase.co/storage/v1/s3' \
   S3_REGION='eu-central-1' S3_PRIVATE_BUCKET='casaclara' \
-  S3_ACCESS_KEY_ID='…' S3_SECRET_ACCESS_KEY='…' \
-  SMTP_HOST='…' SMTP_PORT='587' SMTP_FROM='Casa Clara <no-reply@casa.ejemplo.es>'
+  S3_ACCESS_KEY_ID='…' S3_SECRET_ACCESS_KEY='…'
 fly deploy --config infra/fly/worker.fly.toml
 
 fly launch --no-deploy --copy-config --config infra/fly/clamav.fly.toml
@@ -312,9 +312,13 @@ aviso de rutina de verdad.
    BETTER_AUTH_URL=https://casa.ejemplo.es
    SNAPSHOT_SIGNING_KEY_B64=…
    S3_ENDPOINT= S3_REGION= S3_PRIVATE_BUCKET= S3_ACCESS_KEY_ID= S3_SECRET_ACCESS_KEY=
-   SMTP_HOST= SMTP_PORT=587 SMTP_FROM=
    CLAMAV_HOST= CLAMAV_PORT=3311 CLAMAV_TLS=true CLAMAV_TOKEN=
    ```
+
+   `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM` estaban aquí y **ya no van**: no hay
+   correo (0029). Si siguen puestas en el panel de un despliegue antiguo, se
+   borran: nadie las lee, y una variable sin lector solo sirve para hacer creer
+   que hay un canal que no existe.
 
    **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `CASA_CLARA_FIXTURE_LOGIN`: su
    ausencia es el estado seguro, y ahora está además impuesta. Definir
@@ -414,11 +418,8 @@ Una vez creado el hogar:
 ## 7. Humo posterior al despliegue
 
 - [ ] `GET https://casa.ejemplo.es/api/health` → `{"status":"ok",…}`
-- [ ] Enlace mágico a una bandeja real: llega, y el enlace apunta al dominio
-      definitivo (no a `localhost:3000`). **Un SMTP mal configurado no da error
-      visible**: el formulario responde siempre `{ sent: true }` para no
-      filtrar qué cuentas existen.
-- [ ] Login y las pantallas de Hoy, Guía, Calendario y Menú.
+- [ ] Login con nombre y contraseña, y las pantallas de Hoy, Guía, Calendario
+      y Menú. No hay correo en el camino de acceso ni en ningún otro sitio.
 - [ ] Subir un justificante y volver a verlo desde la cuenta del mes.
 - [ ] El banner de datos sintéticos **no** aparece, y el acceso demo con
       contraseña devuelve 403.
@@ -494,10 +495,9 @@ lo que hay que revisar es cómo se subió ese despliegue.
 `ALLOW_SYNTHETIC_DATA_ONLY` **no se define en producción**, y su ausencia es
 segura:
 
-- **Nada de producción depende de que esté puesta.** Sus cuatro consumidores
-  tratan «sin definir» como el comportamiento normal: el banner no se pinta, la
-  política de correo del worker deja pasar la entrada intacta, y las semillas
-  demo se niegan a ejecutarse.
+- **Nada de producción depende de que esté puesta.** Sus consumidores tratan
+  «sin definir» como el comportamiento normal: el banner no se pinta y las
+  semillas demo se niegan a ejecutarse.
 - **Apagarla no enciende ningún camino peligroso; enciende una guarda.** La
   única comprobación que se invierte es la del acceso demo con contraseña:
   `demoPasswordBlocked` devuelve **true** —bloqueado— precisamente cuando la
@@ -506,8 +506,9 @@ segura:
 - Los booleanos se comparan contra la cadena `'true'` exactamente: `TRUE`, `1`
   o `yes` cuentan como falso.
 
-**Hueco conocido que sigue abierto (W-7):** la guarda de destinatarios
-sintéticos solo cubre el correo del **worker**. El enlace mágico de la web no
-pasa por ella, así que un staging declarado sintético **sí** enviaría un enlace
-a una dirección real si alguien la escribe. No afecta a producción —donde la
-bandera no está puesta— pero contradice el control 9 en staging.
+**Hueco W-7, cerrado por retirada.** La guarda de destinatarios sintéticos solo
+cubría el correo del worker, y el enlace mágico de la web no pasaba por ella:
+un staging declarado sintético podía mandar un enlace a una dirección real. Ya
+no hay por dónde: ni enlace mágico (el acceso es por contraseña) ni salida de
+correo (0029). No queda nada que guardar, así que la guarda se fue con lo que
+guardaba.
