@@ -151,6 +151,30 @@ export interface VacationPeriodRow {
   voidReason: string | null;
 }
 
+/**
+ * Concepto apuntado a mano (migración 0022) tal y como sale de Postgres.
+ *
+ * `period` es el mes al que se imputa DE VERDAD y `requestedPeriod` el que se
+ * pidió: distintos solo cuando aquel ya estaba cerrado. La `deferralNote` viene
+ * congelada de la fila, no se recalcula aquí: la frase que se guardó el día del
+ * apunte es la que debe leerse siempre.
+ */
+export interface ManualAdjustmentRow {
+  id: string;
+  /** `YYYY-MM`. */
+  period: string;
+  /** `YYYY-MM`. */
+  requestedPeriod: string;
+  label: string;
+  reason: string;
+  /** Con signo: positivo suma, negativo resta. */
+  amountCents: string;
+  addsToPay: boolean;
+  deferralNote: string;
+  status: 'recorded' | 'voided';
+  voidReason: string | null;
+}
+
 export interface ResolvedExtraWorkRow {
   id: string;
   kind: 'overtime' | 'worked_rest_day';
@@ -380,6 +404,37 @@ export interface AccrualView {
    * sumarlo por descuido.
    */
   householdPaidSupplements: { id: string; label: string; amountLabel: string }[];
+  /**
+   * Conceptos apuntados a mano que NO mueven la transferencia. Mismo trato y
+   * mismo motivo que `householdPaidSupplements`: fuera de `lines` para que
+   * ningún total pueda sumarlos por descuido, pero a la vista, porque forman
+   * parte de lo que se decidió sobre este mes.
+   */
+  notedAdjustments: { id: string; label: string; reason: string; amountLabel: string }[];
+}
+
+/**
+ * Un concepto apuntado a mano, listo para pintar en su lista. Lleva ya
+ * resueltas las dos frases que la interfaz no debería componer por su cuenta:
+ * a qué mes va y por qué no fue al que se pidió.
+ */
+export interface ManualAdjustmentView {
+  id: string;
+  period: string;
+  /** «Abril 2026». */
+  periodLabel: string;
+  label: string;
+  reason: string;
+  amountCents: string;
+  /** Con signo siempre: «+150,00 €» / «−50,00 €». */
+  amountLabel: string;
+  addsToPay: boolean;
+  /** «Se suma a la transferencia» / «Consta, no se transfiere». */
+  transferLabel: string;
+  /** Frase congelada del aplazamiento, o cadena vacía si cayó en su mes. */
+  deferralNote: string;
+  voided: boolean;
+  voidReason: string | null;
 }
 
 export interface SettlementLineView {
@@ -568,6 +623,13 @@ export interface EmploymentOverview {
   recentReports: WeeklyReportView[];
   /** Vacaciones del año natural en curso; null si no hay acuerdo visible. */
   vacations: VacationView | null;
+  /**
+   * Conceptos apuntados a mano, del mes más reciente al más antiguo, con los
+   * anulados incluidos: la lista es el rastro, no el resultado. La RLS de 0022
+   * la enseña a quien administra y a la propia empleada; a nadie más le llega
+   * ninguna fila.
+   */
+  manualAdjustments: ManualAdjustmentView[];
   balances: {
     compensation: CompensationBalanceView[];
     advances: AdvanceBalanceView[];
@@ -616,6 +678,8 @@ export function sourceAnchor(sourceType: string, sourceId: string): string | nul
       return `#anticipo-${sourceId}`;
     case 'gastos':
       return `#gasto-${sourceId}`;
+    case 'ajustes':
+      return `#concepto-${sourceId}`;
     default:
       return null;
   }
@@ -783,6 +847,10 @@ export function toDomainVersions(rows: readonly AgreementVersionRow[]): DomainAg
 }
 
 function accrualDetail(line: SettlementLine): string {
+  // El motivo de un concepto apuntado a mano viaja en `note`, aparte de la
+  // etiqueta, precisamente para poder enseñarlo como explicación de la línea en
+  // vez de pegarlo al título con dos puntos.
+  if (line.note) return line.note;
   switch (line.kind) {
     case 'base_salary':
       return 'Salario mensual de la versión vigente';
@@ -807,6 +875,12 @@ export interface AccrualFacts {
   expenses: readonly ApprovedExpenseRow[];
   /** Complementos de la versión vigente el primer día del periodo. */
   supplements?: readonly RecurringSupplementRow[];
+  /**
+   * Conceptos apuntados a mano IMPUTADOS a este mes y sin anular. Se filtran
+   * por el mes que decidió quien los apuntó, no por ninguna fecha de hecho:
+   * eso es exactamente lo que significa «que se contabilicen el mes que toque».
+   */
+  adjustments?: readonly ManualAdjustmentRow[];
 }
 
 /**
@@ -858,7 +932,15 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       extraPay: [],
       advanceDeductions,
       unpaidAbsences: [],
-      adjustments: [],
+      adjustments: (facts.adjustments ?? [])
+        .filter((row) => row.status === 'recorded')
+        .map((row) => ({
+          id: row.id,
+          label: row.label,
+          reason: row.reason,
+          amountCents: parseCents(row.amountCents),
+          addsToPay: row.addsToPay
+        })),
       expenses,
       supplements: (facts.supplements ?? []).map((row) => ({
         id: row.id,
@@ -883,7 +965,9 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
         ? `extra-${line.sourceId}`
         : line.sourceType === 'gastos'
           ? `gasto-${line.sourceId}`
-          : null;
+          : line.sourceType === 'ajustes'
+            ? `linea-concepto-${line.sourceId}`
+            : null;
     return {
       id: line.id,
       anchorId,
@@ -914,8 +998,46 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       id: item.id,
       label: item.label,
       amountLabel: formatCents(item.amountCents)
+    })),
+    notedAdjustments: projection.notedAdjustments.map((item) => ({
+      id: item.id,
+      label: item.label,
+      reason: item.reason,
+      amountLabel: formatCents(item.amountCents, { signed: true })
     }))
   };
+}
+
+const TRANSFER_LABELS = {
+  adds: 'Se suma a la transferencia',
+  noted: 'Consta, no se transfiere'
+} as const;
+
+/**
+ * Lista de conceptos apuntados a mano, del mes más reciente al más antiguo.
+ * Los anulados vienen dentro, no fuera: la corrección es parte del rastro y
+ * esconderla convertiría la lista en un resumen, que es justo lo contrario de
+ * lo que un expediente append-only promete.
+ */
+export function buildManualAdjustmentViews(
+  rows: readonly ManualAdjustmentRow[]
+): ManualAdjustmentView[] {
+  return [...rows]
+    .sort((left, right) => right.period.localeCompare(left.period))
+    .map((row) => ({
+      id: row.id,
+      period: row.period,
+      periodLabel: periodLabel(row.period),
+      label: row.label,
+      reason: row.reason,
+      amountCents: row.amountCents,
+      amountLabel: formatCents(row.amountCents, { signed: true }),
+      addsToPay: row.addsToPay,
+      transferLabel: row.addsToPay ? TRANSFER_LABELS.adds : TRANSFER_LABELS.noted,
+      deferralNote: row.deferralNote,
+      voided: row.status === 'voided',
+      voidReason: row.voidReason
+    }));
 }
 
 export function settlementLineHref(row: SettlementLineRow): string | null {

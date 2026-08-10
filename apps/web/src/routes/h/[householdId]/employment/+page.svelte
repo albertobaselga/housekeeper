@@ -3,6 +3,7 @@
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
   import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
+  import ManualAdjustmentsCard from '$lib/components/employment/ManualAdjustmentsCard.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
   import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
@@ -11,6 +12,7 @@
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { openSettlement } from '$lib/employment/commands';
+  import { currentPeriod } from '$lib/employment/model';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -234,6 +236,15 @@
                     {#each overview.accrual.householdPaidSupplements as supplement, index (supplement.id)}{index > 0 ? ', ' : ''}{supplement.label} ({supplement.amountLabel}){/each}. No entra en la transferencia.
                   </p>
                 {/if}
+                <!-- Mismo criterio: conceptos apuntados a mano que constan sin
+                     mover la transferencia. Debajo del total y nunca dentro,
+                     porque sumarlos haría que la cuenta mintiera. -->
+                {#if overview.accrual.notedAdjustments.length > 0}
+                  <p class="audit-note">
+                    También consta, sin cambiar la transferencia:
+                    {#each overview.accrual.notedAdjustments as noted, index (noted.id)}{index > 0 ? ', ' : ''}{noted.label} ({noted.amountLabel}, {noted.reason}){/each}.
+                  </p>
+                {/if}
               {:else}
                 <p class="audit-note">El acuerdo todavía no está en vigor este mes.</p>
               {/if}
@@ -244,6 +255,20 @@
           <!-- Vacaciones del año en curso: saldo, lo apuntado y el formulario
                de la familia. Va con el resto del expediente porque quien mira
                «cuántos días quedan» está mirando lo pactado, no la nómina. -->
+          <!-- Conceptos apuntados a mano: va pegado a la cuenta del mes porque
+               es donde acaban sus importes. La empleada lo ve en solo lectura
+               (la RLS de 0022 le enseña sus filas); apunta y anula quien
+               administra, que es quien cierra la cuenta. -->
+          {#if agreement && seesAmounts}
+            <ManualAdjustmentsCard
+              householdId={overview.householdId}
+              agreementId={agreement.id}
+              adjustments={overview.manualAdjustments}
+              currentPeriod={overview.accrual?.period ?? currentPeriod()}
+              canRecord={canCloseSettlement}
+            />
+          {/if}
+
           {#if agreement && overview.vacations}
             <VacationsCard
               householdId={overview.householdId}
