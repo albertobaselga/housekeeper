@@ -11,7 +11,8 @@
 > | Web (SvelteKit) | Vercel, región `fra1` | Ninguna ruta necesita estado en proceso ni larga duración |
 > | Base de datos | Supabase, región UE | Postgres gestionado con copias del proveedor |
 > | Adjuntos | Supabase Storage (endpoint S3) | El código ya habla S3 con `forcePathStyle` |
-> | Worker + ClamAV | Host aparte (Fly.io u otro) | El worker es un demonio; ClamAV no cabe en serverless |
+> | Cola de trabajos | Host aparte (§4.1–§4.5) **o** `pg_cron` llamando a la web (§4.6) | El demonio conserva `/health` y el sondeo de 1 s; el planificador en la base no cuesta nada ni añade proveedor |
+> | ClamAV | Host aparte | No cabe en serverless |
 >
 > **Bloqueo previo del ADR 0001**: revisión legal, política de retención y
 > residencia UE. Este runbook cubre la residencia; los otros dos no son
@@ -151,11 +152,22 @@ problema en el runtime de Node de Vercel.
 
 ---
 
-## 4. Desplegar el worker y ClamAV
+## 4. Ejecutar la cola de trabajos (y ClamAV)
 
-El worker se despliega **tal cual**: mismo bucle de sondeo, mismo `/health`,
-mismo `/metrics`, mismo apagado ordenado. No se convierte en función ni se
-trocea.
+Hay **dos maneras** de que los trabajos encolados se ejecuten de verdad, y son
+excluyentes solo en el sentido de que basta con una:
+
+- **Con host propio** (§4.1–§4.5): el worker se despliega **tal cual**, mismo
+  bucle de sondeo, mismo `/health`, mismo `/metrics`, mismo apagado ordenado.
+  No se convierte en función ni se trocea. Es también el único sitio donde cabe
+  ClamAV, así que resuelve los adjuntos de paso.
+- **Sin host propio** (§4.6): el planificador vive en la propia base
+  (`pg_cron` + `pg_net`) y llama cada pocos minutos a un endpoint de la web que
+  vacía la cola con los mismos manejadores. Coste cero, ningún proveedor más.
+  Los adjuntos siguen necesitando un ClamAV en alguna parte.
+
+Los dos pueden convivir sin coordinarse: el reclamo usa
+`for update skip locked`.
 
 ### 4.1 Con Fly.io
 
@@ -248,6 +260,26 @@ mano, con la conexión directa:
 insert into app.job_queue (household_id, job_type, run_at, payload)
 values ('<uuid-del-hogar>', 'ics.sync_all', now(), '{}'::jsonb);
 ```
+
+Con el drenaje de §4.6 el agujero es más pequeño: ese endpoint re-arma las dos
+cadenas periódicas en **cada** pasada, no solo al arrancar, así que basta con
+que exista una fila cualquiera en la cola —el alta del hogar ya deja varias—
+para que se enganchen solas. La siembra manual sigue siendo necesaria únicamente
+en el caso extremo de una cola completamente vacía.
+
+### 4.6 Sin host propio: el planificador en la base
+
+`pg_cron` dispara cada cinco minutos una llamada con `pg_net` a
+`POST /api/v1/jobs/run`, protegida por un secreto compartido que vive en el
+Vault de Supabase (nunca en el SQL del cron). El endpoint ejecuta trabajos
+durante un presupuesto de tiempo, para limpio y deja lo que sobra para la
+pasada siguiente.
+
+**Los comandos exactos, la justificación de la frecuencia y el diagnóstico
+están en [`docs/runbooks/planificador-cola.md`](../runbooks/planificador-cola.md).**
+Resumen de lo que hay que tener a mano: `JOB_RUNNER_TOKEN` y
+`WORKER_DATABASE_URL` en Vercel (§6b y §1 de `.env.example`), y el token
+también en `vault.create_secret`.
 
 Criterio de salida del paso 4: el calendario se sincroniza solo y llega un
 aviso de rutina de verdad.
