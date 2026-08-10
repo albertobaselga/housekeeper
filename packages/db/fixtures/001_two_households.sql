@@ -127,6 +127,57 @@ INSERT INTO app.recurring_supplements (
    'plus_transporte', 'Plus de transporte', 2000, 'monthly', true, NULL, NULL, false, 30,
    '11000000-0000-4000-8000-000000000001');
 
+-- Horario pactado (migración 0025). Tres casos a propósito, uno por versión:
+--
+--   · Roble v1 — NINGÚN horario. Es el «si aplica» del encargo puesto en los
+--     datos: hay contratos que no lo declaran, y entonces la empleada no debe
+--     ver una sección vacía ni un hueco con guiones. También es lo que verá
+--     cualquier hogar ya dado de alta antes de esta migración.
+--
+--   · Roble v2 — el caso completo y COHERENTE. Jornada tipo de 08:00 a 16:30
+--     con hora y media de descanso al mediodía (7 h efectivas), el sábado se
+--     termina a las 14:30 (5 h efectivas) y el domingo se libra. Suma
+--     5×420 + 300 = 2400 minutos a la semana, exactamente los
+--     `contracted_weekly_minutes` de esa versión: la pantalla no debe avisar de
+--     nada.
+--
+--     El sábado es UNA fila que solo cambia `ends_at`: ni repite la hora de
+--     entrada ni el descanso, porque no cambian. Es la forma que pedía el
+--     encargo, «excepciones por día sin obligar a rellenar los siete».
+--
+--   · Olivo v1 — el caso INCOHERENTE, que existe para que la comparación con la
+--     jornada contratada tenga algo que denunciar. De 08:00 a 20:00 con dos
+--     horas de descanso (10 h efectivas) y solo el domingo libre suman 3600
+--     minutos frente a los 2400 contratados. No es un descuido de la fixture:
+--     es el hecho que la pantalla tiene que decir en voz alta en vez de callar.
+INSERT INTO app.agreement_schedules (
+  id, household_id, agreement_id, agreement_version_id,
+  starts_at, ends_at, long_break_minutes, note, created_by_membership_id
+) VALUES
+  ('15000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
+   '08:00', '16:30', 90, 'El descanso largo se toma al mediodía, después de comer.',
+   '11000000-0000-4000-8000-000000000001'),
+  ('25000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
+   '22000000-0000-4000-8000-000000000001', '22100000-0000-4000-8000-000000000001',
+   '08:00', '20:00', 120, '', '21000000-0000-4000-8000-000000000001');
+
+INSERT INTO app.agreement_schedule_days (
+  id, household_id, agreement_id, schedule_id,
+  weekday, works, starts_at, ends_at, long_break_minutes, note, created_by_membership_id
+) VALUES
+  -- Sábado: se termina antes. Solo cambia la hora de salida.
+  ('16000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '15000000-0000-4000-8000-000000000001',
+   6, true, NULL, '14:30', NULL, '', '11000000-0000-4000-8000-000000000001'),
+  -- Domingo: libranza. Un día libre no declara horas.
+  ('16000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000001', '15000000-0000-4000-8000-000000000001',
+   7, false, NULL, NULL, NULL, '', '11000000-0000-4000-8000-000000000001'),
+  ('26000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
+   '22000000-0000-4000-8000-000000000001', '25000000-0000-4000-8000-000000000001',
+   7, false, NULL, NULL, NULL, '', '21000000-0000-4000-8000-000000000001');
+
 INSERT INTO app.weekly_time_reports (
   id, household_id, agreement_id, employee_membership_id, week_starts_on,
   status, submitted_at, submitted_by_membership_id, confirmed_at, confirmed_by_membership_id
