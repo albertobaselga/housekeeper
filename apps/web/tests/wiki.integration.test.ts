@@ -5,7 +5,14 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { loadWikiHome, loadWikiPage, searchWikiPages } from '../src/lib/server/wiki.server';
+import {
+  loadGuideBook,
+  loadGuideProgress,
+  loadWikiHome,
+  loadWikiPage,
+  markGuideNoteRead,
+  searchWikiPages
+} from '../src/lib/server/wiki.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -182,7 +189,6 @@ describe.runIf(Boolean(adminUrl))('wiki desde Postgres bajo RLS', () => {
     const home = await loadWikiHome(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
     expect(home).not.toBeNull();
     expect(home!.canWrite).toBe(true);
-    expect(home!.canPublish).toBe(true);
 
     const space = home!.spaces.find((candidate) => candidate.slug === 'equipamiento');
     expect(space).toBeDefined();
@@ -204,19 +210,19 @@ describe.runIf(Boolean(adminUrl))('wiki desde Postgres bajo RLS', () => {
     expect(home!.recent.map((entry) => entry.slug)).toContain('lavadora');
   });
 
-  it('la empleada escribe pero no publica; el helper ve publicadas sin borradores', async () => {
-    const employee = await loadWikiHome(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool);
-    expect(employee!.canWrite).toBe(true);
-    expect(employee!.canPublish).toBe(false);
-    const employeeSlugs = employee!.spaces.flatMap((space) => space.pages.map((page) => page.slug));
-    expect(employeeSlugs).toContain('caldera-borrador');
-
-    const helper = await loadWikiHome(HELPER_USER, FIXTURE_HOUSEHOLD, appPool);
-    expect(helper).not.toBeNull();
-    expect(helper!.canWrite).toBe(false);
-    const helperSlugs = helper!.spaces.flatMap((space) => space.pages.map((page) => page.slug));
-    expect(helperSlugs).toContain('lavadora');
-    expect(helperSlugs).not.toContain('caldera-borrador');
+  it('nadie fuera de la administración escribe la Guía, y los borradores son suyos', async () => {
+    // La Guía es también el manual de acogida: la escribe quien administra.
+    // Para la interna y el apoyo la portada llega SIN un solo control de
+    // escritura, y los borradores ajenos ni siquiera existen.
+    for (const reader of [EMPLOYEE_USER, HELPER_USER]) {
+      const home = await loadWikiHome(reader, FIXTURE_HOUSEHOLD, appPool);
+      expect(home).not.toBeNull();
+      expect(home!.canWrite).toBe(false);
+      expect(home!.searchGaps).toEqual([]);
+      const slugs = home!.spaces.flatMap((space) => space.pages.map((page) => page.slug));
+      expect(slugs).toContain('lavadora');
+      expect(slugs).not.toContain('caldera-borrador');
+    }
   });
 
   it('el viewer no ve nada: RLS devuelve cero filas', async () => {
@@ -305,5 +311,160 @@ describe.runIf(Boolean(adminUrl))('wiki desde Postgres bajo RLS', () => {
 
     const asHelper = await searchWikiPages(HELPER_USER, FIXTURE_HOUSEHOLD, 'caldera', {}, appPool);
     expect(asHelper).toEqual([]);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Modo libro y progreso de lectura. Van al final del fichero a propósito:
+  // abrir el libro registra lectura anónima y las pruebas de arriba cuentan
+  // esas lecturas con números absolutos.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it('el libro solo lleva notas publicadas de la Guía, en orden de capítulo', async () => {
+    const loaded = await loadGuideBook(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, 'lavadora', appPool);
+    expect(loaded!.kind).toBe('book');
+    if (loaded!.kind !== 'book') return;
+
+    const { book } = loaded!;
+    expect(book.outline.summary.total).toBe(2);
+    expect(book.outline.order.map((note) => note.slug)).toEqual(['lavadora', 'lavadora-filtro']);
+    expect(book.note.order).toBe(1);
+    expect(book.note.chapterName).toBe('Equipamiento');
+    expect(book.previous).toBeNull();
+    expect(book.next!.slug).toBe('lavadora-filtro');
+    // El borrador no está: no se le puede pedir a nadie que lea lo que no está.
+    expect(book.outline.order.some((note) => note.slug === 'caldera-borrador')).toBe(false);
+  });
+
+  it('sin nota concreta el libro lleva a por dónde toca seguir; un slug viejo redirige', async () => {
+    expect(await loadGuideBook(HELPER_USER, FIXTURE_HOUSEHOLD, null, appPool)).toEqual({
+      kind: 'redirect',
+      slug: 'lavadora'
+    });
+    expect(await loadGuideBook(HELPER_USER, FIXTURE_HOUSEHOLD, 'lavadora-vieja', appPool)).toEqual({
+      kind: 'redirect',
+      slug: 'lavadora'
+    });
+    expect(await loadGuideBook(HELPER_USER, FIXTURE_HOUSEHOLD, 'no-existe', appPool)).toEqual({
+      kind: 'not_found'
+    });
+  });
+
+  it('marcar leída es del lector: cuenta para quien lee y para nadie más', async () => {
+    expect(await markGuideNoteRead(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, PAGE_LAVADORA, appPool)).toBe(true);
+    // Repetir no cambia nada; un borrador no cuenta como lectura de acogida.
+    expect(await markGuideNoteRead(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, PAGE_LAVADORA, appPool)).toBe(true);
+    expect(await markGuideNoteRead(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, PAGE_DRAFT, appPool)).toBe(false);
+
+    const mine = await loadGuideProgress(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(mine!.canWrite).toBe(false);
+    // Quien lee no ve el avance de la casa: no es asunto suyo.
+    expect(mine!.household).toBeNull();
+    expect(mine!.outline.summary).toMatchObject({ total: 2, read: 1, changed: 0, complete: false });
+    expect(mine!.outline.summary.nextSlug).toBe('lavadora-filtro');
+
+    // El progreso del apoyo sigue a cero: cada cual ve el suyo.
+    const helper = await loadGuideProgress(HELPER_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(helper!.outline.summary).toMatchObject({ total: 2, read: 0 });
+  });
+
+  it('la administración ve cuentas por apartado, nunca el detalle de la lectura ajena', async () => {
+    const view = await loadGuideProgress(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(view!.canWrite).toBe(true);
+    // Su propio avance sigue siendo suyo: la lectura de la interna no se le suma.
+    expect(view!.outline.summary.read).toBe(0);
+
+    const employee = view!.household!.find((person) => person.name.includes('Empleada'));
+    expect(employee).toBeDefined();
+    expect(employee!.total).toBe(2);
+    expect(employee!.read).toBe(1);
+    expect(employee!.complete).toBe(false);
+    expect(employee!.chapters.map((chapter) => chapter.name)).toEqual(['Equipamiento']);
+
+    // Y en ningún sitio hay una nota concreta ni una fecha: solo cuentas.
+    const serialized = JSON.stringify(view!.household);
+    expect(serialized).not.toContain(PAGE_LAVADORA);
+    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+
+    // La administración tampoco aparece en el resumen: esto es acogida.
+    expect(view!.household!.some((person) => person.roleLabel === 'Administración')).toBe(false);
+  });
+
+  it('la nota suelta enseña el estado de lectura y por dónde seguir', async () => {
+    const result = await loadWikiPage(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, 'lavadora', appPool);
+    if (result!.kind !== 'page') throw new Error('se esperaba la nota');
+    expect(result!.reading).toEqual({ state: 'read', counts: true });
+    expect(result!.neighbours.next!.slug).toBe('lavadora-filtro');
+    expect(result!.neighbours.previous).toBeNull();
+    expect(result!.canWrite).toBe(false);
+  });
+
+  it('cambiar las palabras devuelve la nota a pendiente; la cosmética no', async () => {
+    const cosmetic = await adminPool.connect();
+    try {
+      await cosmetic.query('begin');
+      await cosmetic.query('set local row_security = off');
+      await cosmetic.query('alter table app.wiki_revisions disable trigger wiki_revisions_append_only');
+      await cosmetic.query(
+        `insert into app.wiki_revisions (household_id, page_id, revision_number, title, body_markdown, authored_by_membership_id)
+         values ($1, $2, 3, 'Lavadora · programa corto',
+                 'Usa el programa **Mixto 40°**, para media carga.
+
+El detergente va en el compartimento II!
+No uses el programa rápido para toallas.',
+                 $3)`,
+        [FIXTURE_HOUSEHOLD, PAGE_LAVADORA, ADMIN_MEMBERSHIP]
+      );
+      await cosmetic.query(
+        `update app.wiki_pages
+            set current_revision_id = (select id from app.wiki_revisions
+                                        where page_id = $1 and revision_number = 3)
+          where id = $1`,
+        [PAGE_LAVADORA]
+      );
+      await cosmetic.query('alter table app.wiki_revisions enable trigger wiki_revisions_append_only');
+      await cosmetic.query('commit');
+    } finally {
+      cosmetic.release();
+    }
+
+    // Solo ha cambiado el marcado y la puntuación: la lectura sigue vigente.
+    let mine = await loadGuideProgress(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(mine!.outline.summary).toMatchObject({ read: 1, changed: 0 });
+
+    const rewrite = await adminPool.connect();
+    try {
+      await rewrite.query('begin');
+      await rewrite.query('set local row_security = off');
+      await rewrite.query('alter table app.wiki_revisions disable trigger wiki_revisions_append_only');
+      await rewrite.query(
+        `insert into app.wiki_revisions (household_id, page_id, revision_number, title, body_markdown, authored_by_membership_id)
+         values ($1, $2, 4, 'Lavadora · programa corto',
+                 'La lavadora nueva solo admite el programa ecológico de tres horas.', $3)`,
+        [FIXTURE_HOUSEHOLD, PAGE_LAVADORA, ADMIN_MEMBERSHIP]
+      );
+      await rewrite.query(
+        `update app.wiki_pages
+            set current_revision_id = (select id from app.wiki_revisions
+                                        where page_id = $1 and revision_number = 4)
+          where id = $1`,
+        [PAGE_LAVADORA]
+      );
+      await rewrite.query('alter table app.wiki_revisions enable trigger wiki_revisions_append_only');
+      await rewrite.query('commit');
+    } finally {
+      rewrite.release();
+    }
+
+    // Ahora sí: la nota vuelve a la lista, pero como «cambió», no como «nunca
+    // leída», que sería falso.
+    mine = await loadGuideProgress(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(mine!.outline.summary).toMatchObject({ read: 1, changed: 1 });
+    expect(mine!.outline.order[0]!.state).toBe('changed');
+
+    // Y el hito de acogida no se revoca por corregir una nota: para la casa,
+    // esa nota sigue contando como leída una vez.
+    const view = await loadGuideProgress(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    const employee = view!.household!.find((person) => person.name.includes('Empleada'))!;
+    expect(employee.read).toBe(1);
   });
 });

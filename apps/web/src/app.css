@@ -955,4 +955,56 @@
   .ingredient-list li.checked span { color: var(--ink-faint); text-decoration: line-through; }
   .ingredient-editor-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(8rem, 100%), 1fr)); gap: .5rem; align-items: end; border-top: 1px solid var(--line); padding-top: .6rem; }
   .recipe-detail .ingredient-list .status-chip { margin-left: .4rem; }
+
+  /* ───────────────────────────────────────────────────────────────────────────
+     Guía de la casa: modo libro y avance de lectura.
+     Una columna de ancho de lectura, la navegación siempre al alcance del
+     pulgar en móvil y nada que se salga a lo ancho en 390 px.
+     ─────────────────────────────────────────────────────────────────────────── */
+  .book-wrap { max-width: 46rem; }
+  .book-topbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; margin-bottom: .8rem; font-size: .78rem; }
+  .book-topbar a { color: var(--ink-soft); }
+  .book-progress { display: grid; gap: .35rem; margin-bottom: .9rem; }
+  .book-progress-bar { overflow: hidden; height: .4rem; border-radius: 999px; background: var(--line); }
+  .book-progress-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--primary); transition: width .25s ease; }
+  .book-page { padding-bottom: 1.4rem; }
+  .book-page h1 { margin: .15rem 0 .4rem; font-size: clamp(1.35rem, 4.5vw, 1.85rem); line-height: 1.2; }
+  .book-page h1:focus-visible { outline: .18rem solid var(--primary); outline-offset: .3rem; }
+  .book-page .wiki-markdown { font-size: 1rem; line-height: 1.7; }
+  .book-page .wiki-markdown pre, .book-page .wiki-markdown code { overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+  .book-flag { display: flex; align-items: center; gap: .4rem; margin: .3rem 0 .6rem; font-size: .78rem; font-weight: 700; }
+  .book-flag.success { color: var(--success); }
+  .book-flag.warning { color: var(--warning); }
+  .book-end { display: grid; gap: .5rem; margin-top: 1.6rem; border-top: 1px solid var(--line); padding-top: .8rem; }
+  .book-end .text-button { justify-self: start; text-align: left; }
+  .book-nav { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-top: 1rem; }
+  .book-nav .button { min-height: 2.9rem; }
+  .book-nav-placeholder { flex: 0 0 auto; }
+  .book-index { margin-top: 1.2rem; }
+  .book-index > summary { cursor: pointer; font-weight: 750; }
+  .book-chapters { display: grid; gap: .9rem; margin: 1rem 0 0; padding: 0; list-style: none; counter-reset: capitulo; }
+  .book-chapter-title { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
+  .book-chapter-title small { color: var(--ink-soft); font-size: .7rem; white-space: nowrap; }
+  .book-chapter-notes { display: grid; gap: .15rem; margin: .35rem 0 0; padding: 0; list-style: none; }
+  .book-chapter-notes a { display: flex; align-items: baseline; gap: .45rem; border-radius: .4rem; padding: .22rem .3rem; color: var(--ink-soft); font-size: .82rem; text-decoration: none; }
+  .book-chapter-notes a:hover { background: var(--primary-pale); }
+  .book-chapter-notes li.current a { background: var(--primary-pale); color: var(--ink); font-weight: 700; }
+  .book-mark { flex: 0 0 .9rem; color: var(--primary); font-weight: 800; }
+
+  .guide-reading-card { display: grid; gap: .7rem; }
+  .guide-chapter-list { display: grid; gap: .3rem; margin: .2rem 0 0; padding: 0; list-style: none; font-size: .82rem; }
+  .guide-chapter-list li { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; border-top: 1px solid var(--line); padding-top: .3rem; }
+  .guide-chapter-name { min-width: 0; overflow-wrap: anywhere; }
+  .guide-chapter-count { color: var(--ink-soft); font-size: .74rem; white-space: nowrap; }
+  .guide-chapter-count.done { color: var(--success); font-weight: 750; }
+  .guide-people { display: grid; gap: 1rem; margin-top: .6rem; }
+  .guide-person { display: grid; gap: .5rem; border: 1px solid var(--line); border-radius: .8rem; padding: .8rem; }
+  .guide-person small { color: var(--ink-soft); font-size: .7rem; }
+
+  @media (max-width: 36rem) {
+    .book-nav { position: sticky; bottom: calc(4.6rem + env(safe-area-inset-bottom)); z-index: 2; border-radius: 999px; background: rgb(255 253 248 / .97); padding: .3rem; box-shadow: var(--shadow-sm); backdrop-filter: blur(1rem); }
+    .book-nav .button { flex: 1 1 0; justify-content: center; min-width: 0; }
+    .book-nav-placeholder { flex: 1 1 0; }
+    .book-topbar { font-size: .74rem; }
+  }
 }
