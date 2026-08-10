@@ -122,6 +122,10 @@ export async function ensureBucket(config: SupabaseStorageConfig, fetchFn: typeo
       // Lo importante de esta llamada. Un bucket público dejaría los
       // justificantes del hogar accesibles a quien adivine la clave.
       public: false,
+      // Los mismos límites que aplica la tubería, repetidos en el bucket como
+      // segunda línea. OJO al acoplamiento: se fijan al CREARLO, así que si
+      // algún día se admite un tipo nuevo hay que ampliarlos también en el
+      // panel de Supabase (queda dicho en el runbook, §3.1).
       file_size_limit: MAX_ATTACHMENT_BYTES,
       allowed_mime_types: Object.keys(ALLOWED_ATTACHMENT_TYPES)
     })
@@ -166,10 +170,12 @@ export function createSupabaseStorageClient(
         ...authHeaders(config),
         'content-type': contentType,
         // La clave es determinista (sha-256 del contenido), así que reescribir
-        // es escribir exactamente los mismos bytes: `x-upsert` evita que una
+        // es escribir exactamente los mismos bytes: `x-upsert` evita que un
         // reintento tras un corte muera con un 409 espurio.
-        'x-upsert': 'true',
-        'cache-control': 'no-store'
+        'x-upsert': 'true'
+        // Sin `cache-control`: el bucket es privado y los bytes solo salen por
+        // nuestra ruta, que ya responde `private, no-store`. Lo que Storage
+        // guarde como metadato de caché no lo ve nadie.
       },
       body: bytes as unknown as BodyInit
     });

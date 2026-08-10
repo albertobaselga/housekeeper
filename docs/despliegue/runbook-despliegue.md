@@ -148,6 +148,12 @@ SUPABASE_STORAGE_BUCKET=casaclara           # por omisión, `casaclara`
 `casaclara` debe aparecer con **Public: No**. Si por lo que sea se hubiera
 creado público, cambiarlo ahí mismo.
 
+**Acoplamiento que hay que recordar**: al crearlo, la app le pone al bucket el
+mismo límite de tamaño y la misma lista de tipos que aplica la tubería. Esos
+valores se fijan **una vez**, así que si algún día se admite un tipo nuevo de
+justificante hay que ampliarlo también en Storage → el bucket → *Edit bucket*.
+Si no, la subida fallará con un 503 honesto que no explicará por qué.
+
 ### 3.2 Camino alternativo: compatibilidad S3
 
 Sigue soportado y es el que usa el worker (copias de seguridad) y Compose con
