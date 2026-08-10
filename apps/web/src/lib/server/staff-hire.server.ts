@@ -6,7 +6,7 @@ import type { AgreementCreateInputV1 } from '@casa-clara/contracts';
 import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { explain, insertAgreementWithFirstVersion } from './agreement-terms.server';
-import { AUTH_MEMBER_ROLE, MIN_PASSWORD_LENGTH, type AuthInstance } from './auth-core';
+import { AUTH_MEMBER_ROLE, type AuthInstance } from './auth-core';
 import { getAuth } from './auth.server';
 import { getDatabasePool } from './db.server';
 
@@ -137,7 +137,7 @@ export async function hireHouseholdMember(
   }
 
   const password = generateInitialPassword();
-  let createdUserId: string | null = null;
+  let createdUserId = '';
   try {
     const created = await auth.api.createUser({
       body: {
@@ -233,5 +233,3 @@ export async function hireHouseholdMember(
     return { ok: false, message: explain(cause) };
   }
 }
-
-export { MIN_PASSWORD_LENGTH };
