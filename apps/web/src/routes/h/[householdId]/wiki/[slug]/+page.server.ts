@@ -1,5 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
 
+import { demoOrUnavailable } from '$lib/server/data-source.server';
 import { getWikiFixture } from '$lib/server/fixtures.server';
 import { loadWikiPage } from '$lib/server/wiki.server';
 import { parseWikiMarkdown } from '$lib/wiki/markdown';
@@ -28,12 +29,15 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     };
   }
 
-  // Sin base de datos (o sin membresía autorizada): la demo sirve la fixture.
-  const fixture = getWikiFixture().pages.find((page) => page.id === params.slug) ?? null;
-  if (!fixture) error(404, 'Esta nota no está en la guía de esta casa.');
-  return {
-    view: null,
-    blocks: parseWikiMarkdown(fixture.body, { wikiBasePath: base }),
-    fixture
-  };
+  // Con base de datos configurada aquí no hay maqueta que servir: 503 honesto
+  // y registrado (data-source.server.ts). Sin base, la demostración sigue.
+  return demoOrUnavailable(() => {
+    const fixture = getWikiFixture().pages.find((page) => page.id === params.slug) ?? null;
+    if (!fixture) error(404, 'Esta nota no está en la guía de esta casa.');
+    return {
+      view: null,
+      blocks: parseWikiMarkdown(fixture.body, { wikiBasePath: base }),
+      fixture
+    };
+  });
 };

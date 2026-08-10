@@ -3,6 +3,7 @@ import { error, fail } from '@sveltejs/kit';
 import { loadAccessOverview, resolveMembershipIdentity } from '$lib/server/access.server';
 import { getAuth } from '$lib/server/auth.server';
 import { MIN_PASSWORD_LENGTH } from '$lib/server/auth-core';
+import { fixturesAllowed } from '$lib/server/data-source.server';
 import { getSettingsFixture } from '$lib/server/fixtures.server';
 import { canDownloadHandover } from '$lib/server/handover.server';
 import type { Actions, PageServerLoad } from './$types';
@@ -27,8 +28,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   // Patrón wiki (latencia): `invalidate('cc:settings')` re-ejecuta solo este load.
   depends('cc:settings');
   // Ambas secciones reales (accesos y traspaso) solo existen para el
-  // family_admin con base de datos; en cualquier otro caso son null/false y la
-  // página conserva únicamente la maqueta de demostración.
+  // family_admin con base de datos; en cualquier otro caso son null/false.
   const access = locals.user
     ? await loadAccessOverview({ id: locals.user.id }, params.householdId)
     : null;
@@ -36,7 +36,11 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     ? await canDownloadHandover({ id: locals.user.id }, params.householdId)
     : false;
   return {
-    settings: getSettingsFixture(),
+    // La maqueta de Ajustes es un censo de personas inventadas —nombre, inicial
+    // y rol— presentado como si fuera el de la casa. Con hogar real detrás no
+    // se sirve: la sección de accesos es la única que puede hablar de personas,
+    // y esa sale de la base bajo RLS.
+    settings: fixturesAllowed() ? getSettingsFixture() : null,
     access,
     handover: canHandover ? { householdId: params.householdId } : null,
     // Sin instalación real de identidad no hay contraseñas que cambiar: la demo

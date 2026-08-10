@@ -8,9 +8,11 @@ import {
   deleteOfflineBlob,
   listOfflineBlobs,
   listOutbox,
+  readCriticalSnapshot,
   saveCriticalSnapshot,
   updateOutboxStatuses
 } from './idb';
+import { isSavedHouseholdData, snapshotProvenance } from './saved';
 import { deriveSyncState, type SyncPresentation } from './sync-state';
 import { verifySnapshotSignature } from './verify';
 
@@ -310,7 +312,14 @@ export function startSyncMonitor(snapshot: CriticalSnapshotV1, snapshotPublicKey
           return;
         }
       }
-      await saveCriticalSnapshot(snapshot);
+      // Un paquete PARCIAL (hogar real que el servidor no pudo leer) no pisa
+      // al último bueno guardado: ese es justamente el que sostiene
+      // Emergencias mientras dure la avería. Guardarlo encima cambiaría un
+      // corte temporal por una pérdida de los teléfonos de la casa.
+      const keepStored =
+        snapshotProvenance(snapshot) === 'partial' &&
+        isSavedHouseholdData(await readCriticalSnapshot(snapshot.householdId));
+      if (!keepStored) await saveCriticalSnapshot(snapshot);
       await flushOutbox();
     } catch {
       syncStatus.set(deriveSyncState({ online: navigator.onLine, pendingCount: 0, storageError: true }));
