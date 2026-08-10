@@ -85,10 +85,26 @@ export function registerExtra(
     workedOn: string;
     durationMinutes: number;
     note?: string;
+    /**
+     * Compensación decidida en el mismo gesto, solo para quien administra: se
+     * apunta una jornada que YA ocurrió y se cierra ahí. El importe lo sigue
+     * congelando el concepto del catálogo; aquí solo viaja la decisión y el
+     * motivo. Si el motivo llega vacío no se manda nada: el contrato lo exige y
+     * el hecho se apunta como pendiente, que es lo honesto.
+     */
+    resolveNow?: {
+      resolution: NonNullable<ExtraWorkRegisterPayloadV1['resolveNow']>['resolution'];
+      reason: string;
+    };
   },
   options: EnvelopeOptions = {}
 ): CommandEnvelopeV1<ExtraWorkRegisterPayloadV1> {
   const note = trimmedOrUndefined(input.note);
+  const reason = trimmedOrUndefined(input.resolveNow?.reason);
+  const resolveNow =
+    input.resolveNow && reason
+      ? { resolveNow: { resolution: input.resolveNow.resolution, reason } }
+      : {};
   return createCommandEnvelope({
     ...options,
     householdId: input.householdId,
@@ -100,7 +116,8 @@ export function registerExtra(
       kind: input.kind,
       workedOn: input.workedOn,
       durationMinutes: input.durationMinutes,
-      ...(note ? { note } : {})
+      ...(note ? { note } : {}),
+      ...resolveNow
     } satisfies ExtraWorkRegisterPayloadV1
   }) as CommandEnvelopeV1<ExtraWorkRegisterPayloadV1>;
 }

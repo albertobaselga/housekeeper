@@ -32,6 +32,17 @@
   );
 
   const canRegisterExtra = $derived(isOwnAgreement && can(context.role, 'work.register.self'));
+  // Apuntar trabajo a nombre de otra persona es cosa de quien administra: misma
+  // capacidad con la que ya acepta y decide compensaciones. El servidor lo
+  // vuelve a comprobar por rol; esto solo decide qué se dibuja.
+  const canRegisterForEmployee = $derived(agreement !== null && can(context.role, 'work.confirm'));
+  // Quién es la persona del expediente que se está mirando. Si la RLS no dejó
+  // ver su perfil (solo quien administra los ve), el modelo ya puso una
+  // etiqueta neutra en su lugar.
+  const selectedEmployeeLabel = $derived(
+    overview?.agreements.find((option) => option.id === agreement?.id)?.employeeLabel ??
+      'la empleada'
+  );
   // El parte semanal es siempre de la propia empleada: misma capacidad que
   // registrar su trabajo, y solo sobre su propio acuerdo.
   const canSubmitWeek = $derived(canRegisterExtra);
@@ -163,10 +174,27 @@
         </section>
       {/if}
 
+      <!-- Un hogar puede emplear a varias personas a la vez. Cuando así es,
+           quien administra elige de quién es el expediente que mira; la
+           elección viaja en la URL para poder volver a ella. A la empleada la
+           RLS solo le devuelve su acuerdo, así que no ve ningún selector. -->
+      {#if overview.agreements.length > 1}
+        <nav class="action-row" aria-label="Elegir de quién es el expediente">
+          {#each overview.agreements as option (option.id)}
+            <a
+              class="button {option.id === agreement?.id ? 'primary' : 'secondary'} small-button"
+              href={`?empleada=${option.id}`}
+              aria-current={option.id === agreement?.id ? 'page' : undefined}
+              data-sveltekit-noscroll
+            >{option.employeeLabel}{option.active ? '' : ' (acuerdo terminado)'}</a>
+          {/each}
+        </nav>
+      {/if}
+
       <OutboxTriageCard householdId={overview.householdId} />
 
       {#snippet pendingDecisionCards()}
-        {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra)}
+        {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra || canRegisterForEmployee)}
           <ExtraWorkPendingCard
             householdId={overview.householdId}
             agreementId={agreement.id}
@@ -174,6 +202,8 @@
             types={overview.registrableTypes}
             ownMembershipId={context.user.membershipId}
             canRegister={canRegisterExtra}
+            canRegisterForEmployee={canRegisterForEmployee}
+            employeeLabel={selectedEmployeeLabel}
             canConfirm={canConfirmWork}
           />
         {/if}
@@ -218,6 +248,9 @@
                         <strong>{line.concept}</strong>
                         <small>
                           {#if line.href}<a href={line.href}>{line.detail || 'Ver origen'}</a>{:else}{line.detail}{/if}
+                          <!-- Una jornada que apuntó la familia lo dice también
+                               aquí, ya valorada con la tarifa congelada. -->
+                          {#if line.originLabel}&nbsp;· {line.originLabel}{/if}
                         </small>
                       </span>
                       <strong>{line.amountLabel}</strong>
@@ -284,7 +317,9 @@
           </nav>
           <article class="card">
             <div class="section-heading">
-              <div><p class="eyebrow">Acuerdo</p><h2>Versiones y cambios de salario</h2></div>
+              <!-- Con varias personas empleadas, «Acuerdo» a secas no dice de
+                   quién: el nombre elegido va en el epígrafe. -->
+              <div><p class="eyebrow">{overview.agreements.length > 1 ? `Acuerdo de ${selectedEmployeeLabel}` : 'Acuerdo'}</p><h2>Versiones y cambios de salario</h2></div>
               {#if overview.agreement}
                 <span class="status-chip {overview.agreement.status === 'active' ? 'success' : 'warning'}">{overview.agreement.status === 'active' ? 'Activo' : 'Finalizado'}</span>
               {/if}

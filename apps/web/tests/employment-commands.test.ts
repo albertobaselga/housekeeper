@@ -85,6 +85,52 @@ describe('constructores de envelopes del expediente laboral', () => {
     });
   });
 
+  it('registerExtra lleva la resolución en el acto con el concepto y el motivo limpio', () => {
+    const envelope = registerExtra(
+      {
+        householdId: HOUSEHOLD,
+        agreementId: AGREEMENT,
+        extraWorkTypeId: '13000000-0000-4000-8000-000000000005',
+        kind: 'overtime',
+        workedOn: '2026-08-09',
+        durationMinutes: 600,
+        note: 'Se quedó el puente',
+        resolveNow: { resolution: 'money', reason: '  Se le paga con agosto  ' }
+      },
+      OPTIONS
+    );
+    expect(commandEnvelopeSchema.parse(envelope)).toBeTruthy();
+    // Ni un importe en el payload: la tarifa la congela el servidor desde el
+    // concepto del catálogo vigente el día trabajado.
+    expect(extraWorkRegisterPayloadSchema.parse(envelope.payload)).toEqual({
+      action: 'register',
+      agreementId: AGREEMENT,
+      extraWorkTypeId: '13000000-0000-4000-8000-000000000005',
+      kind: 'overtime',
+      workedOn: '2026-08-09',
+      durationMinutes: 600,
+      note: 'Se quedó el puente',
+      resolveNow: { resolution: 'money', reason: 'Se le paga con agosto' }
+    });
+  });
+
+  it('registerExtra sin motivo deja la jornada pendiente en vez de mandar una resolución muda', () => {
+    const envelope = registerExtra(
+      {
+        householdId: HOUSEHOLD,
+        agreementId: AGREEMENT,
+        kind: 'worked_rest_day',
+        workedOn: '2026-08-09',
+        durationMinutes: 480,
+        resolveNow: { resolution: 'time_off', reason: '   ' }
+      },
+      OPTIONS
+    );
+    // El contrato exige motivo no vacío: mandarlo en blanco sería un rechazo
+    // seguro, y apuntar la jornada como pendiente es lo que de verdad pasó.
+    expect(extraWorkRegisterPayloadSchema.parse(envelope.payload)).not.toHaveProperty('resolveNow');
+  });
+
   it('acceptExtra y markExtraPerformed anclan el aggregateId al evento', () => {
     const accept = acceptExtra({ householdId: HOUSEHOLD, extraWorkEventId: ENTITY }, OPTIONS);
     expect(commandEnvelopeSchema.parse(accept)).toBeTruthy();

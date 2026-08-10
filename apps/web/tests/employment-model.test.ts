@@ -5,6 +5,7 @@ import {
   buildAccrual,
   centsToEuroInput,
   buildAdvanceBalanceViews,
+  buildAgreementOptionViews,
   buildAgreementVersionViews,
   buildCompensationBalanceViews,
   buildPendingExpenseViews,
@@ -280,6 +281,7 @@ describe('devengo del periodo en curso', () => {
           workedOn: '2026-08-03',
           durationMinutes: 120,
           note: 'Cena tardía',
+          origin: 'employee_report',
           resolution: 'money',
           frozenUnitRateCents: '1400',
           frozenAmountCents: '2800',
@@ -292,6 +294,9 @@ describe('devengo del periodo en curso', () => {
           workedOn: '2026-08-09',
           durationMinutes: 480,
           note: '',
+          // Esta la apuntó la familia a su nombre: el devengo tiene que poder
+          // decirlo sin cambiar ni un céntimo del cálculo.
+          origin: 'family_request',
           resolution: 'time_off',
           frozenUnitRateCents: '8000',
           frozenAmountCents: '0',
@@ -333,6 +338,17 @@ describe('devengo del periodo en curso', () => {
     expect(accrual!.lines[3]!.href).toBe('#anticipo-a1');
     expect(accrual!.lines[3]!.amountLabel).toBe('−100,00 €');
     expect(accrual!.lines[1]!.detail).toBe('2 h × 14,00 €');
+    // El origen viaja con la línea de la jornada y solo con ella: el salario,
+    // el anticipo y el gasto no tienen a quién atribuirse.
+    expect(accrual!.lines[1]!.originLabel).toBe('La apuntó la empleada');
+    expect(accrual!.lines[2]!.originLabel).toBe('La apuntó la familia');
+    expect(accrual!.lines.map((line) => line.originLabel)).toEqual([
+      null,
+      'La apuntó la empleada',
+      'La apuntó la familia',
+      null,
+      null
+    ]);
   });
 
   it('limita la cuota del anticipo al saldo pendiente y omite anticipos saldados', () => {
@@ -461,9 +477,9 @@ describe('liquidaciones y saldos', () => {
 describe('trabajo y gastos pendientes de acción', () => {
   it('marca qué acción admite cada jornada extra según su estado', () => {
     const views = buildPendingExtraViews([
-      { id: 'e1', kind: 'overtime', typeName: null, workedOn: '2026-08-05', durationMinutes: 90, note: '', status: 'requested', employeeMembershipId: 'm1' },
-      { id: 'e2', kind: 'worked_rest_day', typeName: null, workedOn: '2026-08-09', durationMinutes: 480, note: 'Domingo', status: 'accepted', employeeMembershipId: 'm1' },
-      { id: 'e3', kind: 'overtime', typeName: null, workedOn: '2026-08-10', durationMinutes: 45, note: '', status: 'performed_pending_resolution', employeeMembershipId: 'm1' }
+      { id: 'e1', kind: 'overtime', typeName: null, workedOn: '2026-08-05', durationMinutes: 90, note: '', origin: 'employee_report', status: 'requested', employeeMembershipId: 'm1' },
+      { id: 'e2', kind: 'worked_rest_day', typeName: null, workedOn: '2026-08-09', durationMinutes: 480, note: 'Domingo', origin: 'family_request', status: 'accepted', employeeMembershipId: 'm1' },
+      { id: 'e3', kind: 'overtime', typeName: null, workedOn: '2026-08-10', durationMinutes: 45, note: '', origin: 'weekly_report', status: 'performed_pending_resolution', employeeMembershipId: 'm1' }
     ]);
     expect(views.map((view) => [view.acceptable, view.performable, view.resolvable])).toEqual([
       [true, true, false],
@@ -473,6 +489,57 @@ describe('trabajo y gastos pendientes de acción', () => {
     expect(views[0]!.durationLabel).toBe('1 h 30 min');
     expect(views[1]!.kindLabel).toBe('Festivo o descanso trabajado');
     expect(views[2]!.statusLabel).toBe('Hecha sin acordarla antes · falta decidir la compensación');
+    // Quién apuntó cada jornada, dicho igual para las dos partes.
+    expect(views.map((view) => view.originLabel)).toEqual([
+      'La apuntó la empleada',
+      'La apuntó la familia',
+      'Viene del parte semanal'
+    ]);
+  });
+
+  it('nombra a cada persona empleada del hogar y no inventa nombre cuando la RLS lo oculta', () => {
+    const options = buildAgreementOptionViews([
+      {
+        id: 'ac1',
+        status: 'active',
+        startsOn: '2025-02-03',
+        endsOn: null,
+        employeeMembershipId: 'm1',
+        employeeName: 'Nombre Inventado Uno'
+      },
+      {
+        id: 'ac2',
+        status: 'ended',
+        startsOn: '2024-01-07',
+        endsOn: '2025-06-30',
+        employeeMembershipId: 'm2',
+        // Sin perfil visible: quien no administra no lee el nombre de los
+        // demás. La etiqueta neutra es preferible a enseñar un identificador.
+        employeeName: null
+      }
+    ]);
+    expect(options).toEqual([
+      {
+        id: 'ac1',
+        employeeMembershipId: 'm1',
+        employeeLabel: 'Nombre Inventado Uno',
+        status: 'active',
+        active: true,
+        startsOn: '2025-02-03',
+        endsOn: null,
+        periodLabel: 'Desde el 3 feb 2025'
+      },
+      {
+        id: 'ac2',
+        employeeMembershipId: 'm2',
+        employeeLabel: 'Empleada del hogar',
+        status: 'ended',
+        active: false,
+        startsOn: '2024-01-07',
+        endsOn: '2025-06-30',
+        periodLabel: 'Del 7 ene 2024 al 30 jun 2025'
+      }
+    ]);
   });
 
   it('presenta los gastos pendientes con importe en céntimos formateado', () => {

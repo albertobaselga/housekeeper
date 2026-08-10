@@ -151,6 +151,17 @@ export interface VacationPeriodRow {
   voidReason: string | null;
 }
 
+/**
+ * Quién apuntó la jornada. Viaja con el hecho hasta la pantalla porque no es lo
+ * mismo que una jornada la anote la empleada a que se la apunte la familia: el
+ * expediente tiene que decir de dónde salió cada línea.
+ */
+export type ExtraWorkOrigin =
+  | 'employee_report'
+  | 'family_request'
+  | 'weekly_report'
+  | 'system_import';
+
 export interface ResolvedExtraWorkRow {
   id: string;
   kind: 'overtime' | 'worked_rest_day';
@@ -159,6 +170,7 @@ export interface ResolvedExtraWorkRow {
   workedOn: string;
   durationMinutes: number;
   note: string;
+  origin: ExtraWorkOrigin;
   resolution: 'money' | 'time_off';
   frozenUnitRateCents: string;
   frozenAmountCents: string;
@@ -195,8 +207,23 @@ export interface PendingExtraWorkRow {
   workedOn: string;
   durationMinutes: number;
   note: string;
+  origin: ExtraWorkOrigin;
   status: PendingExtraWorkStatus;
   employeeMembershipId: string;
+}
+
+/**
+ * Acuerdo del hogar tal y como sale de Postgres. `employeeName` es null cuando
+ * la RLS no deja leer el perfil de esa persona (solo quien administra los ve
+ * todos); la vista pone entonces una etiqueta neutra, nunca un hueco.
+ */
+export interface AgreementRow {
+  id: string;
+  status: string;
+  startsOn: string;
+  endsOn: string | null;
+  employeeMembershipId: string;
+  employeeName: string | null;
 }
 
 export interface PendingExpenseRow {
@@ -360,6 +387,11 @@ export interface AccrualLineView {
   sourceType: string;
   sourceId: string;
   href: string | null;
+  /**
+   * De dónde salió la jornada extra que produjo esta línea; null en el resto de
+   * líneas (salario, anticipos, gastos), que no tienen a quién atribuir.
+   */
+  originLabel: string | null;
 }
 
 export interface AccrualView {
@@ -505,6 +537,9 @@ export interface PendingExtraWorkView {
   durationMinutes: number;
   durationLabel: string;
   note: string;
+  origin: ExtraWorkOrigin;
+  /** «La apuntó la familia», «La apuntó la empleada»… Nunca vacío. */
+  originLabel: string;
   status: PendingExtraWorkStatus;
   statusLabel: string;
   employeeMembershipId: string;
@@ -538,16 +573,35 @@ export interface WeeklyReportView {
   disputeReason: string | null;
 }
 
+/**
+ * Una persona empleada entre las que el hogar puede tener a la vez. Es lo que
+ * se pinta en el selector de quien administra: nombre, si el acuerdo sigue vivo
+ * y desde cuándo. No lleva ni un importe: elegir a quién se mira no es todavía
+ * mirar sus cuentas.
+ */
+export interface AgreementOptionView {
+  id: string;
+  employeeMembershipId: string;
+  /** Nombre del perfil, o «Empleada del hogar» si la RLS no dejó leerlo. */
+  employeeLabel: string;
+  status: string;
+  active: boolean;
+  startsOn: string;
+  endsOn: string | null;
+  /** «Desde el 3 feb 2025» o «Del 3 feb 2025 al 1 jul 2026». */
+  periodLabel: string;
+}
+
 export interface EmploymentOverview {
   householdId: string;
   hasEmploymentData: boolean;
-  agreement: {
-    id: string;
-    status: string;
-    startsOn: string;
-    endsOn: string | null;
-    employeeMembershipId: string;
-  } | null;
+  agreement: AgreementRow | null;
+  /**
+   * Todos los acuerdos que quien mira puede ver, para poder elegir de quién es
+   * el expediente. A la empleada la RLS solo le devuelve el suyo, así que su
+   * lista tiene exactamente un elemento y no hay nada que elegir.
+   */
+  agreements: AgreementOptionView[];
   versions: AgreementVersionView[];
   /**
    * Condiciones de la versión vigente hoy, en lenguaje llano. null si no hay
@@ -580,6 +634,23 @@ const EXTRA_WORK_LABELS: Record<ResolvedExtraWorkRow['kind'], string> = {
   overtime: 'Horas extraordinarias',
   worked_rest_day: 'Festivo o descanso trabajado'
 };
+
+/**
+ * Origen del hecho en lenguaje de casa. Se dice en tercera persona («la
+ * empleada», «la familia») porque la misma frase la leen las dos partes: quien
+ * administra tiene que ver quién apuntó cada jornada y ella tiene que ver
+ * cuáles le apuntaron sin haberlas pedido.
+ */
+const EXTRA_WORK_ORIGIN_LABELS: Record<ExtraWorkOrigin, string> = {
+  employee_report: 'La apuntó la empleada',
+  family_request: 'La apuntó la familia',
+  weekly_report: 'Viene del parte semanal',
+  system_import: 'Viene de una importación'
+};
+
+export function extraWorkOriginLabel(origin: ExtraWorkOrigin | null | undefined): string {
+  return (origin && EXTRA_WORK_ORIGIN_LABELS[origin]) || 'Origen sin registrar';
+}
 
 const BALANCE_TYPE_LABELS: Record<string, string> = {
   vacation: 'Vacaciones',
@@ -719,6 +790,30 @@ export function buildAgreementTermsView(input: {
     paidSupplements: supplements.filter((view) => view.addsToPay),
     householdPaidSupplements: supplements.filter((view) => !view.addsToPay)
   };
+}
+
+/**
+ * Las personas que el hogar emplea, en el orden en que llegan de Postgres
+ * (activo primero). El nombre puede faltar por RLS —quien no administra no lee
+ * el perfil de los demás—; en ese caso se dice «Empleada del hogar» en vez de
+ * dejar un hueco o, peor, inventar un identificador en pantalla.
+ */
+export function buildAgreementOptionViews(
+  rows: readonly AgreementRow[]
+): AgreementOptionView[] {
+  return rows.map((row) => ({
+    id: row.id,
+    employeeMembershipId: row.employeeMembershipId,
+    employeeLabel: row.employeeName?.trim() || 'Empleada del hogar',
+    status: row.status,
+    active: row.status === 'active',
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
+    periodLabel:
+      row.endsOn === null
+        ? `Desde el ${dateLabel(row.startsOn)}`
+        : `Del ${dateLabel(row.startsOn)} al ${dateLabel(row.endsOn)}`
+  }));
 }
 
 export function buildAgreementVersionViews(
@@ -877,6 +972,10 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
     throw cause;
   }
 
+  // El origen se recupera del hecho, no de la línea: el motor de dominio
+  // calcula dinero y no tiene por qué saber quién apuntó la jornada.
+  const originByExtraId = new Map(facts.extras.map((row) => [row.id, row.origin]));
+
   const lines: AccrualLineView[] = projection.lines.map((line) => {
     const anchorId =
       line.sourceType === 'jornadas-extra'
@@ -884,6 +983,8 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
         : line.sourceType === 'gastos'
           ? `gasto-${line.sourceId}`
           : null;
+    const origin =
+      line.sourceType === 'jornadas-extra' ? originByExtraId.get(line.sourceId) : undefined;
     return {
       id: line.id,
       anchorId,
@@ -894,7 +995,8 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
       sourceType: line.sourceType,
       sourceId: line.sourceId,
-      href: sourceAnchor(line.sourceType, line.sourceId)
+      href: sourceAnchor(line.sourceType, line.sourceId),
+      originLabel: origin === undefined ? null : extraWorkOriginLabel(origin)
     };
   });
 
@@ -1023,6 +1125,8 @@ export function buildPendingExtraViews(
     durationMinutes: row.durationMinutes,
     durationLabel: formatMinutes(row.durationMinutes),
     note: row.note,
+    origin: row.origin,
+    originLabel: extraWorkOriginLabel(row.origin),
     status: row.status,
     statusLabel: PENDING_EXTRA_STATUS_LABELS[row.status] ?? row.status,
     employeeMembershipId: row.employeeMembershipId,
