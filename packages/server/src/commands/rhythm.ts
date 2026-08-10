@@ -6,6 +6,7 @@ import type { UUID } from "@casa-clara/contracts";
 import {
   icsFeedCommandPayloadSchema,
   routineCompletePayloadSchema,
+  routineUncompletePayloadSchema,
   routineUpsertPayloadSchema,
   type RoutineUpsertPayload,
   type RoutineUpsertV2Payload,
@@ -351,7 +352,12 @@ function routineUpsertRequest(payload: RoutineUpsertPayload): RoutineUpsertReque
       };
 }
 
-/** Los `due_on` ya registrados, dentro de la ventana que mira el generador. */
+/**
+ * Los `due_on` VIVOS ya registrados, dentro de la ventana que mira el
+ * generador. Las finalizaciones anuladas (0031) no cuentan: es justamente lo
+ * que hace que deshacer devuelva la rutina al día que le tocaba sin que nadie
+ * recalcule una fecha nueva.
+ */
 async function completedDueOns(
   client: PoolClient,
   householdId: UUID,
@@ -361,7 +367,8 @@ async function completedDueOns(
   const result = await client.query<{ due_on: string }>(
     `select due_on::text as due_on
        from app.routine_completions
-      where household_id = $1 and routine_id = $2 and due_on >= $3::date`,
+      where household_id = $1 and routine_id = $2 and due_on >= $3::date
+        and voided_at is null`,
     [householdId, routineId, addDays(todayISO, -PENDING_LOOKBACK_DAYS)],
   );
   return new Set(result.rows.map((row) => row.due_on));
@@ -485,9 +492,83 @@ async function upsertRoutine(
   return { resourceId: routineId };
 }
 
-interface RoutineCompletePayload {
+interface RoutineOccurrencePayload {
   routineId: UUID;
   dueOn: string;
+}
+
+/** Las columnas de patrón y política tal y como se leen para completar o deshacer. */
+interface RoutineScheduleRow {
+  id: string;
+  title: string;
+  audience: RoutineAudience;
+  pattern: string | null;
+  anchor_on: string | null;
+  repeat_every: number | null;
+  weekdays: number[] | null;
+  month_day: number | null;
+  months: number[] | null;
+  ends_on: string | null;
+  overdue_policy: RoutineOverduePolicy;
+  next_due_on: string | null;
+  archived: boolean;
+}
+
+const ROUTINE_SCHEDULE_SELECT = `select id, title, audience::text as audience,
+            pattern::text as pattern, anchor_on::text as anchor_on, repeat_every,
+            weekdays::int[] as weekdays, month_day::int as month_day, months::int[] as months,
+            ends_on::text as ends_on, overdue_policy::text as overdue_policy,
+            next_due_on::text as next_due_on,
+            archived_at is not null as archived
+       from app.routines
+      where household_id = $1 and id = $2`;
+
+/**
+ * Carga la rutina con su regla. La audiencia manda vía RLS: si la rutina no es
+ * visible para el actor (p. ej. el apoyo ante una rutina 'employee'), «no
+ * visible» y «no existe» colapsan en el mismo rechazo, que es lo que se quiere.
+ */
+async function loadRoutineSchedule(
+  client: PoolClient,
+  householdId: UUID,
+  routineId: UUID,
+): Promise<RoutineScheduleRow> {
+  const loaded = await client.query<RoutineScheduleRow>(ROUTINE_SCHEDULE_SELECT, [
+    householdId,
+    routineId,
+  ]);
+  const routine = loaded.rows[0];
+  if (!routine || routine.archived) {
+    throw new CommandRejectedError("routine_not_found", "La rutina no existe o no es visible");
+  }
+  return routine;
+}
+
+/**
+ * Refresca la caché `next_due_on` desde la regla y TODAS las finalizaciones
+ * vivas. Es el mismo cálculo tras marcar y tras deshacer, y por eso vive en un
+ * solo sitio: si las dos rutas calcularan la fecha por su cuenta, deshacer
+ * podría dejar la casa mirando un día distinto del que tenía.
+ *
+ * La escritura de `app.routines` es solo familiar por RLS, pero la empleada y
+ * el apoyo también marcan; `app.set_routine_due_hint` (0023) es la definer que
+ * lo permite y solo actualiza una columna. Su guardián exige que exista alguna
+ * finalización de la rutina en este hogar: una anulada sigue existiendo, así
+ * que deshacer también puede refrescar.
+ */
+async function refreshDueHint(
+  client: PoolClient,
+  householdId: UUID,
+  routine: RoutineScheduleRow,
+  schedule: RoutineSchedule,
+): Promise<string | null> {
+  const today = await householdToday(client);
+  const completed = await completedDueOns(client, householdId, routine.id as UUID, today);
+  const nextDueOn = nextDueHintFor(schedule, routine.overdue_policy, completed, today);
+  if (nextDueOn !== null && nextDueOn !== routine.next_due_on) {
+    await client.query("select app.set_routine_due_hint($1, $2::date)", [routine.id, nextDueOn]);
+  }
+  return nextDueOn;
 }
 
 /** Fila de patrón ya leída → regla del generador. */
@@ -549,40 +630,9 @@ async function completeRoutine(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
-  payload: RoutineCompletePayload,
+  payload: RoutineOccurrencePayload,
 ): Promise<{ resourceId: UUID }> {
-  // La audiencia manda vía RLS: si la rutina no es visible para el actor
-  // (p. ej. helper ante una rutina 'employee'), "no visible" y "no existe"
-  // colapsan en el mismo rechazo.
-  const loaded = await client.query<{
-    id: string;
-    title: string;
-    audience: RoutineAudience;
-    pattern: string | null;
-    anchor_on: string | null;
-    repeat_every: number | null;
-    weekdays: number[] | null;
-    month_day: number | null;
-    months: number[] | null;
-    ends_on: string | null;
-    overdue_policy: RoutineOverduePolicy;
-    next_due_on: string | null;
-    archived: boolean;
-  }>(
-    `select id, title, audience::text as audience,
-            pattern::text as pattern, anchor_on::text as anchor_on, repeat_every,
-            weekdays::int[] as weekdays, month_day::int as month_day, months::int[] as months,
-            ends_on::text as ends_on, overdue_policy::text as overdue_policy,
-            next_due_on::text as next_due_on,
-            archived_at is not null as archived
-       from app.routines
-      where household_id = $1 and id = $2`,
-    [householdId, payload.routineId],
-  );
-  const routine = loaded.rows[0];
-  if (!routine || routine.archived) {
-    throw new CommandRejectedError("routine_not_found", "La rutina no existe o no es visible");
-  }
+  const routine = await loadRoutineSchedule(client, householdId, payload.routineId);
   // Único rechazo nuevo de §2.9: una rutina que aún no tiene día no se puede
   // dar por hecha, porque no hay ocurrencia que marcar. El `dueOn` en cambio
   // sigue siendo deliberadamente permisivo (una finalización es un hecho).
@@ -594,48 +644,146 @@ async function completeRoutine(
   }
   const schedule = scheduleFromRow(routine);
 
-  const existing = await client.query(
-    `select 1 from app.routine_completions
+  const existing = await client.query<{ voided: boolean }>(
+    `select voided_at is not null as voided
+       from app.routine_completions
       where household_id = $1 and routine_id = $2 and due_on = $3`,
     [householdId, payload.routineId, payload.dueOn],
   );
-  if ((existing.rowCount ?? 0) > 0) {
+  const previous = existing.rows[0];
+  if (previous && !previous.voided) {
     throw new CommandRejectedError("already_completed", "La ocurrencia ya está completada");
   }
 
-  try {
-    await client.query(
-      `insert into app.routine_completions
-         (household_id, routine_id, due_on, completed_by_membership_id)
-       values ($1, $2, $3, $4)`,
+  if (previous) {
+    // La ocurrencia se marcó, se deshizo y ahora se hace de verdad. La clave
+    // primaria es (hogar, rutina, ocurrencia): no cabe una fila más, así que se
+    // REVIVE la que hay. Sin esto, deshacer sería una trampa —la ocurrencia
+    // quedaría bloqueada para siempre— y esa es la mitad silenciosa de E5.1.
+    const revived = await client.query(
+      `update app.routine_completions
+          set voided_at = null,
+              voided_by_membership_id = null,
+              completed_at = statement_timestamp(),
+              completed_by_membership_id = $4
+        where household_id = $1 and routine_id = $2 and due_on = $3
+          and voided_at is not null`,
       [householdId, payload.routineId, payload.dueOn, membership.id],
     );
-  } catch (error) {
-    if ((error as { code?: string }).code === "23505") {
+    if ((revived.rowCount ?? 0) === 0) {
+      // La RLS no devolvió fila: o alguien la revivió entre medias (y entonces
+      // ya está completada) o el actor no puede escribirla.
       throw new CommandRejectedError("already_completed", "La ocurrencia ya está completada");
     }
-    throw error;
+  } else {
+    try {
+      await client.query(
+        `insert into app.routine_completions
+           (household_id, routine_id, due_on, completed_by_membership_id)
+         values ($1, $2, $3, $4)`,
+        [householdId, payload.routineId, payload.dueOn, membership.id],
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") {
+        throw new CommandRejectedError("already_completed", "La ocurrencia ya está completada");
+      }
+      throw error;
+    }
   }
 
   // El calendario NO se mueve al marcar: las ocurrencias se generan desde el
   // ancla, así que lo único que hay que refrescar es la caché. Se recalcula
-  // desde la regla y TODAS las finalizaciones, no desde la ocurrencia que
+  // desde la regla y TODAS las finalizaciones vivas, no desde la ocurrencia que
   // acaba de entrar: así marcar tarde deja de empujar la serie un intervalo
   // por toque (la cinta de correr de §2.9) y completar una atrasada limpia la
   // atrasada en vez de inventarse una fecha.
-  //
-  // La escritura de `app.routines` es solo familiar por RLS, pero la empleada y
-  // el apoyo también completan; `app.set_routine_due_hint` (0023) es la definer
-  // que lo permite, y ahora solo actualiza una columna: exige contexto y una
-  // finalización real de este hogar, que es la que se acaba de insertar.
-  const today = await householdToday(client);
-  const completed = await completedDueOns(client, householdId, payload.routineId, today);
-  const nextDueOn = nextDueHintFor(schedule, routine.overdue_policy, completed, today);
+  const nextDueOn = await refreshDueHint(client, householdId, routine, schedule);
   if (nextDueOn !== null && nextDueOn !== routine.next_due_on) {
-    await client.query("select app.set_routine_due_hint($1, $2::date)", [
-      payload.routineId,
+    await enqueueRoutineDue(
+      client,
+      householdId,
+      { id: routine.id, title: routine.title, audience: routine.audience },
       nextDueOn,
-    ]);
+    );
+  }
+
+  return { resourceId: routine.id };
+}
+
+/**
+ * Deshacer un marcado hecho por error (E5.1). No es una operación de auditoría
+ * con motivo: es la salida de un toque accidental, y por eso no pide nada más
+ * que qué ocurrencia era.
+ *
+ * Tres cosas que este comando hace y conviene no confundir:
+ *
+ *   · NO BORRA. Anota la anulación con su autoría (`voided_at`,
+ *     `voided_by_membership_id`) y la finalización deja de contar. El historial
+ *     de E2 sigue pudiendo enseñar que alguien la marcó y quién la deshizo.
+ *   · RESTAURA la fecha, no la recalcula. `refreshDueHint` vuelve a preguntar a
+ *     `pendingFor` con el conjunto de finalizaciones vivas SIN la anulada, que
+ *     es exactamente el conjunto que había antes de marcar; el resultado es,
+ *     por construcción, la fecha que la rutina tenía.
+ *   · NO decide quién puede. Eso lo decide la política `routine_completions_void`
+ *     de la 0031: su autor o `family_admin`. Aquí solo se traduce «la RLS no me
+ *     dejó tocar la fila» a un rechazo con nombre, porque un `UPDATE` que no
+ *     afecta filas no distingue solo por sí mismo entre «no existe» y «no es
+ *     tuya».
+ */
+async function uncompleteRoutine(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  payload: RoutineOccurrencePayload,
+): Promise<{ resourceId: UUID }> {
+  const routine = await loadRoutineSchedule(client, householdId, payload.routineId);
+  const schedule = scheduleFromRow(routine);
+
+  const existing = await client.query<{ voided: boolean; mine: boolean }>(
+    `select voided_at is not null as voided,
+            completed_by_membership_id = $4 as mine
+       from app.routine_completions
+      where household_id = $1 and routine_id = $2 and due_on = $3`,
+    [householdId, payload.routineId, payload.dueOn, membership.id],
+  );
+  const previous = existing.rows[0];
+  if (!previous) {
+    throw new CommandRejectedError(
+      "completion_not_found",
+      "Esa ocurrencia no está marcada como hecha",
+    );
+  }
+  // Deshacer dos veces es un no-op idempotente y no un error: el segundo toque
+  // suele ser el mismo dedo, o un envelope que la cola sin conexión reintenta.
+  if (previous.voided) return { resourceId: routine.id };
+  if (!previous.mine && membership.role !== "family_admin") {
+    throw new CommandRejectedError(
+      "not_allowed",
+      "Solo quien marcó la rutina, o la administración, puede deshacerlo",
+    );
+  }
+
+  const voided = await client.query(
+    `update app.routine_completions
+        set voided_at = statement_timestamp(),
+            voided_by_membership_id = $4
+      where household_id = $1 and routine_id = $2 and due_on = $3
+        and voided_at is null`,
+    [householdId, payload.routineId, payload.dueOn, membership.id],
+  );
+  if ((voided.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError(
+      "not_allowed",
+      "Solo quien marcó la rutina, o la administración, puede deshacerlo",
+    );
+  }
+
+  // La rutina vuelve a estar pendiente para el día que le tocaba, y el aviso de
+  // ese día vuelve a tener sentido. Si la fecha restaurada ya pasó, `enqueue`
+  // la programa para el instante actual (`greatest(...)`) y el barrido la
+  // recoge en el siguiente drenaje.
+  const nextDueOn = await refreshDueHint(client, householdId, routine, schedule);
+  if (nextDueOn !== null && nextDueOn !== routine.next_due_on) {
     await enqueueRoutineDue(
       client,
       householdId,
@@ -659,6 +807,8 @@ async function completeRoutine(
  *
  * Completar ya no avanza nada: refresca la caché `next_due_on` recalculada
  * desde la regla con `pendingFor`, y encola el aviso de la siguiente si cambió.
+ * Deshacer (E5.1) hace el mismo cálculo sin la finalización anulada, de modo
+ * que la rutina recupera la fecha que tenía en vez de estrenar una.
  */
 export const routineCommandHandler: CommandHandler = async (client, membership, envelope) => {
   const action = (envelope.payload as { action?: unknown } | null | undefined)?.action;
@@ -675,6 +825,13 @@ export const routineCommandHandler: CommandHandler = async (client, membership, 
       throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
     }
     return completeRoutine(client, membership, envelope.householdId, parsed.data);
+  }
+  if (action === "uncomplete") {
+    const parsed = routineUncompletePayloadSchema.safeParse(envelope.payload);
+    if (!parsed.success) {
+      throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
+    }
+    return uncompleteRoutine(client, membership, envelope.householdId, parsed.data);
   }
   throw new CommandRejectedError("invalid_payload", "Acción de rutina no soportada");
 };

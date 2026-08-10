@@ -971,6 +971,23 @@ export const routineCompletePayloadSchema = z.object({
   dueOn: isoDateSchema,
 });
 
+/**
+ * Deshacer un marcado hecho por error (enmienda E5.1). Misma forma que
+ * `complete` y con la MISMA permisividad sobre `dueOn`: identifica la
+ * ocurrencia, no la valida.
+ *
+ * SIN CAMPO DE MOTIVO, y no por olvido: es un error de dedo, no una corrección
+ * contable. El expediente laboral sí exige motivo al anular
+ * (`extraWorkResolvePayloadSchema`, `manualAdjustmentVoidPayloadSchema`) porque
+ * allí se anula dinero; aquí se anula «he tocado donde no era». Añadir el campo
+ * abriría la puerta a hacerlo obligatorio, y entonces nadie desharía nada.
+ */
+export const routineUncompletePayloadSchema = z.object({
+  action: z.literal("uncomplete"),
+  routineId: uuidSchema,
+  dueOn: isoDateSchema,
+});
+
 export const icsFeedCreatePayloadSchema = z.object({
   action: z.literal("create"),
   audience: z.enum(["family", "employee", "all"]),
