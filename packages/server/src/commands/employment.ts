@@ -1,5 +1,6 @@
 import type { CommandHandlers } from "../sync.js";
 import { extraWorkCommandHandler } from "./extra-work.js";
+import { manualAdjustmentCommandHandler } from "./manual-adjustment.js";
 import { recordPaymentHandler } from "./payment.js";
 import { settlementCommandHandler } from "./settlement.js";
 import { submitWeeklyReportHandler } from "./time-entry.js";
@@ -17,4 +18,5 @@ export const employmentCommandHandlers: CommandHandlers = {
   payment: recordPaymentHandler,
   leave_request: vacationCommandHandler,
   agreement: agreementCommandHandler,
+  manual_adjustment: manualAdjustmentCommandHandler,
 };

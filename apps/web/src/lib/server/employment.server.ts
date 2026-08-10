@@ -9,6 +9,7 @@ import {
   buildAgreementVersionViews,
   buildExtraWorkTypeView,
   buildCompensationBalanceViews,
+  buildManualAdjustmentViews,
   buildPendingExpenseViews,
   buildPendingExtraViews,
   buildSettlementViews,
@@ -24,6 +25,7 @@ import {
   type CompensationBalanceRow,
   type EmploymentOverview,
   type ExtraWorkTypeRow,
+  type ManualAdjustmentRow,
   type PaymentRow,
   type RecurringSupplementRow,
   type PendingExpenseRow,
@@ -101,6 +103,7 @@ export async function loadEmploymentOverview(
           pendingExpenses: [],
           recentReports: [],
           vacations: null,
+          manualAdjustments: [],
           balances: { compensation: [], advances: [] }
         } satisfies EmploymentOverview;
       }
@@ -176,6 +179,31 @@ export async function loadEmploymentOverview(
             and starts_on <= $4 and ends_on >= $3
           order by starts_on desc`,
         [householdId, agreement.id, `${vacationYear}-01-01`, `${vacationYear}-12-31`]
+      );
+
+      // Conceptos apuntados a mano (0022). Se piden por `period_month` —el mes
+      // que decidió quien los apuntó— y no por la fecha en que se escribieron:
+      // un concepto de marzo apuntado en abril pertenece a la cuenta de marzo.
+      // La ventana llega hasta un año atrás y no corta por delante, porque un
+      // concepto puede estar imputado a un mes que aún no ha llegado (elegido a
+      // propósito o aplazado por un cierre). Los anulados vienen también: se
+      // listan tachados y el devengo los descarta.
+      const manualAdjustments = await client.query<ManualAdjustmentRow>(
+        `select id,
+                to_char(period_month, 'YYYY-MM') as "period",
+                to_char(requested_period_month, 'YYYY-MM') as "requestedPeriod",
+                label,
+                reason,
+                amount_cents::text as "amountCents",
+                adds_to_pay as "addsToPay",
+                deferral_note as "deferralNote",
+                status::text as "status",
+                void_reason as "voidReason"
+           from app.manual_adjustments
+          where household_id = $1 and agreement_id = $2
+            and period_month >= (date_trunc('month', $3::date) - interval '11 months')::date
+          order by period_month desc, recorded_at desc`,
+        [householdId, agreement.id, first]
       );
 
       const extras = await client.query<ResolvedExtraWorkRow>(
@@ -424,7 +452,8 @@ export async function loadEmploymentOverview(
           expenses: expenses.rows,
           supplements: supplements.rows.filter(
             (row) => row.agreementVersionId === (versionInForce?.id ?? '')
-          )
+          ),
+          adjustments: manualAdjustments.rows.filter((row) => row.period === period)
         }),
         settlements: buildSettlementViews(
           settlements.rows,
@@ -450,6 +479,7 @@ export async function loadEmploymentOverview(
                 agreementEndsOn: agreement.endsOn,
                 periods: vacationPeriods.rows
               }),
+        manualAdjustments: buildManualAdjustmentViews(manualAdjustments.rows),
         balances: {
           compensation: buildCompensationBalanceViews(compensation.rows),
           advances: buildAdvanceBalanceViews(advances.rows)

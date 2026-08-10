@@ -131,6 +131,7 @@ export type AggregateType =
   | "food"
   | "ics_feed"
   | "leave_request"
+  | "manual_adjustment"
   | "membership"
   | "menu_group"
   | "menu_slot"
@@ -395,6 +396,46 @@ export interface VacationRecordPayloadV1 {
 export interface VacationVoidPayloadV1 {
   action: "void";
   vacationPeriodId: UUID;
+  reason: string;
+}
+
+/**
+ * `aggregateType: "manual_adjustment"` — un importe suelto que no nace de
+ * ningún hecho del sistema (una gratificación, un descuento acordado, la parte
+ * proporcional de algo) y que se imputa a la cuenta de un mes concreto.
+ *
+ * `period` es el mes ELEGIDO por quien lo apunta. Puede ser el mes en curso,
+ * aunque su liquidación ya esté abierta. Si ese mes ya está CERRADO el servidor
+ * no reescribe la cuenta: imputa el concepto al primer mes posterior que siga
+ * abierto y lo deja dicho en la propia fila.
+ */
+export interface ManualAdjustmentRecordPayloadV1 {
+  action: "record";
+  agreementId: UUID;
+  /** Mes al que se pide imputar, `YYYY-MM`. */
+  period: string;
+  /** Cómo se llama el concepto en la cuenta. */
+  label: string;
+  /** Por qué existe. Obligatorio: un importe suelto sin motivo es una discusión. */
+  reason: string;
+  /** Con signo: positivo suma a la cuenta del mes, negativo resta. Nunca cero. */
+  amountCents: MoneyCents;
+  /**
+   * `true`: el importe mueve la transferencia del mes. `false`: consta y no la
+   * toca, porque ese dinero se movió por otro sitio (un anticipo devuelto en
+   * mano). Misma semántica que `adds_to_pay` en los complementos recurrentes.
+   */
+  addsToPay: boolean;
+}
+
+/**
+ * `aggregateType: "manual_adjustment"` — corrección de un concepto mal
+ * apuntado. Anula, no borra. No se puede anular lo que ya entró en una cuenta
+ * cerrada: para eso se apunta el contrario en un mes abierto.
+ */
+export interface ManualAdjustmentVoidPayloadV1 {
+  action: "void";
+  manualAdjustmentId: UUID;
   reason: string;
 }
 

@@ -11,6 +11,8 @@ import {
   extraWorkMarkPerformedPayloadSchema,
   extraWorkRegisterPayloadSchema,
   extraWorkResolvePayloadSchema,
+  manualAdjustmentRecordPayloadSchema,
+  manualAdjustmentVoidPayloadSchema,
   paymentRecordPayloadSchema,
   settlementClosePayloadSchema,
   settlementOpenPayloadSchema,
@@ -26,12 +28,14 @@ import {
   openSettlement,
   parseEuroInput,
   queueEmploymentCommand,
+  recordManualAdjustment,
   recordPayment,
   registerExtra,
   resolveExpense,
   resolveExtra,
   submitExpense,
-  submitWeek
+  submitWeek,
+  voidManualAdjustment
 } from '../src/lib/employment/commands';
 import { listOutbox } from '../src/lib/offline/idb';
 
@@ -189,6 +193,92 @@ describe('constructores de envelopes del expediente laboral', () => {
   it('genera operationId y occurredAt válidos cuando no se inyectan', () => {
     const envelope = acceptExtra({ householdId: HOUSEHOLD, extraWorkEventId: ENTITY });
     expect(commandEnvelopeSchema.parse(envelope)).toBeTruthy();
+  });
+});
+
+describe('conceptos apuntados a mano', () => {
+  it('el signo es una decisión aparte del importe y viaja ya aplicado', () => {
+    const suma = recordManualAdjustment({
+      householdId: HOUSEHOLD,
+      agreementId: AGREEMENT,
+      period: '2026-09',
+      label: '  Gratificación de verano  ',
+      reason: '  Acordada el 2 de septiembre  ',
+      amountCents: '15000',
+      direction: 'adds',
+      addsToPay: true
+    });
+    expect(commandEnvelopeSchema.parse(suma).aggregateType).toBe('manual_adjustment');
+    expect(manualAdjustmentRecordPayloadSchema.parse(suma.payload)).toEqual({
+      action: 'record',
+      agreementId: AGREEMENT,
+      period: '2026-09',
+      // Sin los espacios con los que se teclea: la etiqueta es un título.
+      label: 'Gratificación de verano',
+      reason: 'Acordada el 2 de septiembre',
+      amountCents: '15000',
+      addsToPay: true
+    });
+
+    const resta = recordManualAdjustment({
+      householdId: HOUSEHOLD,
+      agreementId: AGREEMENT,
+      period: '2026-09',
+      label: 'Descuento acordado',
+      reason: 'Rotura de la vitrocerámica, a medias',
+      // El formulario nunca manda un menos: manda la magnitud y la dirección.
+      amountCents: '5000',
+      direction: 'subtracts',
+      addsToPay: true
+    });
+    expect(manualAdjustmentRecordPayloadSchema.parse(resta.payload)).toMatchObject({
+      amountCents: '-5000'
+    });
+  });
+
+  it('el que no es dinero para ella viaja con addsToPay en falso', () => {
+    const envelope = recordManualAdjustment({
+      householdId: HOUSEHOLD,
+      agreementId: AGREEMENT,
+      period: '2026-09',
+      label: 'Anticipo devuelto en mano',
+      reason: 'Devolvió 200 € en efectivo',
+      amountCents: '20000',
+      direction: 'subtracts',
+      addsToPay: false
+    });
+    expect(manualAdjustmentRecordPayloadSchema.parse(envelope.payload)).toMatchObject({
+      amountCents: '-20000',
+      addsToPay: false
+    });
+  });
+
+  it('anular nombra el concepto en el aggregateId y exige motivo', () => {
+    const envelope = voidManualAdjustment({
+      householdId: HOUSEHOLD,
+      manualAdjustmentId: ENTITY,
+      reason: '  Se apuntó dos veces  '
+    });
+    expect(commandEnvelopeSchema.parse(envelope).aggregateId).toBe(ENTITY);
+    expect(manualAdjustmentVoidPayloadSchema.parse(envelope.payload)).toEqual({
+      action: 'void',
+      manualAdjustmentId: ENTITY,
+      reason: 'Se apuntó dos veces'
+    });
+  });
+
+  it('el esquema rechaza el importe cero: no es un concepto, es un apunte a medias', () => {
+    const envelope = recordManualAdjustment({
+      householdId: HOUSEHOLD,
+      agreementId: AGREEMENT,
+      period: '2026-09',
+      label: 'Nada',
+      reason: 'Nada',
+      amountCents: '0',
+      direction: 'adds',
+      addsToPay: true
+    });
+    expect(manualAdjustmentRecordPayloadSchema.safeParse(envelope.payload).success).toBe(false);
   });
 });
 

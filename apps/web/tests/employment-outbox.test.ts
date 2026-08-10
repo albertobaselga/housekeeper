@@ -5,10 +5,12 @@ import { commandEnvelopeSchema } from '@casa-clara/contracts/schemas';
 
 import {
   openSettlement,
+  recordManualAdjustment,
   recordPayment,
   registerExtra,
   resolveExpense,
-  submitWeek
+  submitWeek,
+  voidManualAdjustment
 } from '../src/lib/employment/commands';
 import {
   describeEmploymentCommand,
@@ -87,6 +89,29 @@ describe('descripciones humanas de comandos del expediente', () => {
         })
       )
     ).toBe('Decisión sobre un gasto');
+    expect(
+      describeEmploymentCommand(
+        recordManualAdjustment({
+          householdId: HOUSEHOLD,
+          agreementId: AGREEMENT,
+          period: '2026-09',
+          label: 'Gratificación de verano',
+          reason: 'Acordada el 2 de septiembre',
+          amountCents: '15000',
+          direction: 'adds',
+          addsToPay: true
+        })
+      )
+    ).toBe('Concepto «Gratificación de verano» para 2026-09');
+    expect(
+      describeEmploymentCommand(
+        voidManualAdjustment({
+          householdId: HOUSEHOLD,
+          manualAdjustmentId: ENTITY,
+          reason: 'Se apuntó dos veces'
+        })
+      )
+    ).toBe('Anulación de un concepto apuntado a mano');
     // El fixture genérico es un gasto sin action: descripción de envío.
     expect(describeEmploymentCommand(envelopeFixture(crypto.randomUUID(), '2026-08-07T08:00:00.000Z'))).toBe(
       'Gasto enviado'

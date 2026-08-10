@@ -331,6 +331,7 @@ thead th { border-top: 0; }
       <a class="sub" href="#fa-pagos">Pagos</a>
       <a class="sub" href="#fa-acuerdo">Condiciones del acuerdo</a>
       <a class="sub" href="#fa-vacaciones">Vacaciones</a>
+      <a class="sub" href="#fa-conceptos">Conceptos a mano</a>
       <a class="sub" href="#fa-calendario">Calendario</a>
       <a class="sub" href="#fa-ajustes">Ajustes y accesos</a>
       <a class="sub" href="#fa-contactos">Contactos y Emergencias</a>
@@ -1098,6 +1099,61 @@ thead th { border-top: 0; }
     </p>
   </div>
 
+  <h3 id="fa-conceptos">Conceptos a mano: lo que no sale de ningún hecho</h3>
+  <p>
+    Hay importes que no vienen de una jornada, ni de un gasto, ni del acuerdo: una
+    gratificación que se decide en una conversación, un descuento hablado, la parte
+    proporcional de algo, un anticipo que se devolvió en efectivo. Para eso está la
+    tarjeta <span class="ui">Importes sueltos imputados al mes que toque</span>, en
+    <span class="ui">Pagos</span>. Se apunta el importe <strong>con su motivo</strong> y
+    <strong>eligiendo en qué mes cuenta</strong>.
+  </p>
+  <ol class="pasos">
+    <li><span class="ui">Cómo se llama en la cuenta</span>: el título de la línea («Gratificación de verano», «Descuento acordado»). Es lo que se leerá en el recibo dentro de un año.</li>
+    <li><span class="ui">Importe (€)</span> siempre en positivo, y al lado <span class="ui">Suma o resta</span>. El signo se elige, no se teclea.</li>
+    <li><span class="ui">Mes en el que cuenta</span>: el mes en curso es lo normal, pero puede ser otro. Es la respuesta a «que se contabilice el mes que toque».</li>
+    <li><span class="ui">Dinero que recibe ella</span>: <em>Sí</em> cambia la transferencia del mes; <em>No</em> deja constancia sin tocarla.</li>
+    <li><span class="ui">Por qué</span>: obligatorio. Un importe suelto sin explicación es lo que convierte una cuenta en una discusión.</li>
+  </ol>
+  <div class="tarjeta">
+    <h4>Sumar no es transferir</h4>
+    <p>
+      El ejemplo que lo explica: Ana devolvió en mano los 200 € de un anticipo. Conviene
+      que <strong>conste</strong>, pero descontarlos otra vez de la transferencia sería
+      <strong>cobrárselos dos veces</strong>. Con <span class="ui">Dinero que recibe
+      ella: No</span> el concepto aparece en la cuenta del mes —«También consta, sin
+      cambiar la transferencia»— y ningún total lo toca. Es la misma distinción que ya
+      hacen los complementos que paga la casa por su cuenta.
+    </p>
+  </div>
+  <div class="tarjeta">
+    <h4>Una cuenta cerrada no se reescribe</h4>
+    <p>
+      Si el mes que eliges ya está <strong>cerrado</strong>, Casa Clara no rechaza el
+      apunte ni rehace aquella cuenta: <strong>lo imputa al primer mes abierto
+      siguiente</strong> y la fila lo dice con todas las letras —«Se pidió para marzo de
+      2026, pero esa cuenta ya estaba cerrada: se imputa a abril de 2026»—. El recibo de
+      marzo ya se generó y pudo estar pagado; un número que cambia después de haberse
+      enseñado es justo lo que destruye la confianza en una cuenta.
+    </p>
+  </div>
+  <div class="tarjeta">
+    <h4>Anular, no borrar</h4>
+    <p>
+      Un concepto mal apuntado se <span class="ui">Anular</span> con su motivo y
+      <strong>se queda en la lista</strong>, con quién lo anuló y por qué, sin contar en
+      ningún total. Lo que ya entró en una cuenta <strong>cerrada</strong> no se puede
+      anular: para corregirlo se apunta el concepto contrario en un mes abierto, y la
+      aplicación lo dice así cuando lo intentas.
+    </p>
+  </div>
+  <p>
+    Los conceptos los apunta y los anula <strong>quien administra</strong>. La empleada
+    <strong>los ve todos</strong> —en la lista y en la cuenta de su mes, con su etiqueta
+    y su motivo—, incluidos los que solo constan. Enterarse de que se ha decidido algo
+    sobre su dinero no es un detalle: es el motivo por el que esto existe.
+  </p>
+
   <h3 id="fa-calendario">Calendario: enlazar los calendarios de verdad</h3>
   <p>
     <span class="ui">Calendario</span> muestra <strong>los próximos 30 días</strong>
@@ -1360,6 +1416,7 @@ thead th { border-top: 0; }
         <li><strong>Cuando la haces:</strong> si la jornada ya estaba aceptada, márcala con <span class="ui">Marcar realizada</span>.</li>
         <li><strong>Gastos adelantados:</strong> <span class="ui">Añadir gasto</span> con <span class="ui">Fecha</span>, <span class="ui">Importe (€)</span>, <span class="ui">Descripción</span> y <span class="ui">Foto del justificante (opcional)</span>. Aprobado, vuelve como reembolso en la cuenta del mes.</li>
         <li><strong>Compensaciones de descanso:</strong> cuando una jornada se decide «con descanso», se apunta como crédito a tu favor. Ese crédito es <strong>permanente: nunca caduca</strong>; en Saldos aparece como «Crédito permanente · sin caducidad».</li>
+        <li><strong>Conceptos apuntados a mano:</strong> gratificaciones, descuentos acordados o partes proporcionales que la familia imputa a un mes concreto. Los ves en la tarjeta <span class="ui">Importes sueltos imputados al mes que toque</span> y en la cuenta de su mes, con su motivo. Los que dicen «Consta, no se transfiere» son cosas que quedan por escrito sin mover el pago —por ejemplo, un anticipo que ya devolviste en mano—.</li>
         <li><strong>Cobros:</strong> cuando la familia paga la cuenta del mes, confirmas tú con <span class="ui">Confirmar cobro</span>. Tu confirmación queda registrada aparte del pago.</li>
         <li><strong>Tu copia:</strong> <span class="ui">Descargar mi expediente (PDF + CSV)</span> te da un ZIP con las cuentas de cada mes, pagos, jornadas, semanas, gastos y saldos. Es tuyo y te lo llevas cuando quieras.</li>
       </ul>
