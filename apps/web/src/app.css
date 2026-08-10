@@ -771,25 +771,12 @@
   .routine-group button.done > span { border-color: var(--success); background: var(--success); }
   .routine-group button.done strong { color: var(--ink-faint); text-decoration: line-through; }
 
-  .calendar-layout { display: grid; grid-template-columns: minmax(20rem, 1fr) minmax(18rem, .8fr); gap: 1rem; }
-  .mini-calendar header { display: flex; align-items: center; justify-content: space-between; }
-  .mini-calendar header button { width: 2rem; height: 2rem; border: 1px solid var(--line); border-radius: .5rem; }
-  .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
-  .week-labels { margin-top: 1rem; color: var(--ink-faint); font-size: .68rem; font-weight: 750; }
-  .dates { gap: .2rem; margin-top: .4rem; }
-  .dates button { aspect-ratio: 1; border-radius: 50%; font-size: .77rem; }
-  .dates button:hover { background: var(--primary-soft); }
-  .dates button.muted { color: var(--line-strong); }
-  .dates button.today { background: var(--primary); color: white; font-weight: 800; }
-  .event-list article { display: grid; grid-template-columns: .6rem 4rem minmax(0, 1fr); align-items: center; gap: .65rem; border-top: 1px solid var(--line); padding: .85rem 0; }
-  .event-list .section-heading + article { margin-top: .7rem; }
-  .event-list time, .event-list article > div { display: grid; }
-  .event-list time strong { font-size: .75rem; }
-  .event-list article > div strong { font-size: .83rem; }
-  .event-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--accent); }
-  .event-dot.activity { background: #6e5b8b; }
-  .event-dot.home { background: var(--success); }
-  .event-dot.health { background: var(--danger); }
+  /* El calendario dejó de tener CSS aquí: su rejilla de maqueta (.mini-calendar,
+     .calendar-grid, .dates) pintaba un mes de fechas inventadas y se retiró al
+     construir la rejilla real con datos del hogar (enmienda E1 de
+     docs/rutinas-y-calendario.md). Lo que la sustituye vive en el <style> de
+     routes/h/[householdId]/calendar/+page.svelte, con alcance de componente,
+     porque no lo comparte ninguna otra pantalla. */
 
   .contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.1rem; }
   /* Acciones del directorio real: llamar + editar/archivar (solo familia). */
@@ -893,7 +880,7 @@
     .bottom-nav a.active, .bottom-nav .more-button.active { color: var(--primary); }
     .bottom-nav .nav-symbol { font-size: 1rem; }
     .page-wrap { padding-top: 1.8rem; padding-bottom: 6.5rem; }
-    .hero-grid, .content-grid, .menu-layout, .recipe-layout, .wiki-layout, .calendar-layout, .emergency-layout, .settings-layout { grid-template-columns: minmax(0, 1fr); }
+    .hero-grid, .content-grid, .menu-layout, .recipe-layout, .wiki-layout, .emergency-layout, .settings-layout { grid-template-columns: minmax(0, 1fr); }
     .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .summary-strip > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
     .summary-strip > div:nth-child(4) { border-top: 1px solid var(--line); }
