@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { PAYER_CHOICES, type PayerChoice } from '$lib/employment/payer';
   import { centsToEuroInput } from '$lib/employment/model';
   import type {
     AgreementVersionAdminView,
@@ -28,18 +29,7 @@
     active: boolean;
   };
 
-  /**
-   * `addsToPay` viaja como TEXTO, no como booleano, y los valores son los que el
-   * servidor lee («suma» / «casa»). Con `<option value={true}>` Svelte escribe
-   * `value="true"` en el HTML, el formulario envía la cadena «true» y la
-   * comparación del servidor —`=== 'suma'`— nunca se cumplía: todo complemento
-   * pactado como dinero para ella se guardaba como gasto de la casa y no llegaba
-   * jamás a la transferencia. Y la fila es inmutable, así que solo se corrige
-   * apilando otra versión. Que el valor del `<option>` sea literalmente lo que
-   * el servidor espera es lo que impide que vuelva a pasar.
-   */
-  type PayerChoice = 'suma' | 'casa';
-
+  /** `addsToPay` viaja como texto, y por la misma constante que lee el servidor. */
   type SupplementDraft = {
     code: string;
     name: string;
@@ -79,7 +69,7 @@
         code: supplement.code,
         name: supplement.name,
         amount: supplement.amountCents === null ? '' : centsToEuroInput(supplement.amountCents),
-        addsToPay: supplement.addsToPay ? 'suma' : 'casa',
+        addsToPay: supplement.addsToPay ? PAYER_CHOICES.addsToPay : PAYER_CHOICES.paidByHousehold,
         startsOn: supplement.startsOn ?? '',
         endsOn: supplement.endsOn ?? '',
         active: supplement.active
@@ -99,7 +89,7 @@
     code: '',
     name: '',
     amount: '',
-    addsToPay: 'suma',
+    addsToPay: PAYER_CHOICES.addsToPay,
     startsOn: '',
     endsOn: '',
     active: true
@@ -319,8 +309,8 @@
               </label>
               <label>Quién lo cobra
                 <select name={`supplement.${index}.addsToPay`} bind:value={supplement.addsToPay}>
-                  <option value="suma">Suma a su transferencia</option>
-                  <option value="casa">Lo paga la casa aparte</option>
+                  <option value={PAYER_CHOICES.addsToPay}>Suma a su transferencia</option>
+                  <option value={PAYER_CHOICES.paidByHousehold}>Lo paga la casa aparte</option>
                 </select>
               </label>
               <label>Desde (opcional)
@@ -481,8 +471,8 @@
               </label>
               <label>Quién lo cobra
                 <select name={`supplement.${index}.addsToPay`} bind:value={supplement.addsToPay}>
-                  <option value="suma">Suma a su transferencia</option>
-                  <option value="casa">Lo paga la casa aparte</option>
+                  <option value={PAYER_CHOICES.addsToPay}>Suma a su transferencia</option>
+                  <option value={PAYER_CHOICES.paidByHousehold}>Lo paga la casa aparte</option>
                 </select>
               </label>
               <label>Desde (opcional)

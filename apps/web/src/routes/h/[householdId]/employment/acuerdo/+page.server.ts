@@ -8,6 +8,7 @@ import type {
 import { agreementCreateInputSchema, agreementTermsInputSchema } from '@casa-clara/contracts/schemas';
 
 import { parseEuroInput } from '$lib/employment/commands';
+import { PAYER_CHOICES } from '$lib/employment/payer';
 import {
   createAgreement,
   loadAgreementAdmin,
@@ -105,7 +106,7 @@ function readSupplements(form: FormData): RecurringSupplementInputV1[] | { messa
     // cualquier valor que no sea uno de los dos es un ERROR y no un `false`: si
     // el formulario y este lector vuelven a dejar de entenderse, se verá.
     const payer = text(form, `supplement.${index}.addsToPay`);
-    if (payer !== 'suma' && payer !== 'casa') {
+    if (payer !== PAYER_CHOICES.addsToPay && payer !== PAYER_CHOICES.paidByHousehold) {
       return {
         message: `Di quién cobra «${text(form, `supplement.${index}.name`) || code}»: si suma a su transferencia o lo paga la casa aparte.`
       };
@@ -115,7 +116,7 @@ function readSupplements(form: FormData): RecurringSupplementInputV1[] | { messa
       name: text(form, `supplement.${index}.name`),
       amountCents,
       periodicity: 'monthly',
-      addsToPay: payer === 'suma',
+      addsToPay: payer === PAYER_CHOICES.addsToPay,
       startsOn: optionalDate(form, `supplement.${index}.startsOn`),
       endsOn: optionalDate(form, `supplement.${index}.endsOn`),
       active: form.get(`supplement.${index}.active`) === 'on'
