@@ -139,6 +139,7 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
 // completa» es del acuerdo de su compañera. Ninguno de los dos vale para el
 // acuerdo del otro, y esa frontera la guarda el servidor.
 const TYPE_JORNADA_EXTRA = '13000000-0000-4000-8000-000000000005';
+const TYPE_JORNADA_COMPLETA = '13000000-0000-4000-8000-000000000008';
 const AGREEMENT_SEGUNDA = '12000000-0000-4000-8000-000000000002';
 
 test('Alberto apunta una jornada a nombre de Ana y la cierra en el acto, con el concepto del catálogo', async ({ page }) => {
@@ -190,6 +191,10 @@ test('Alberto cambia de empleada y el expediente entero es el de la otra', async
     'Jornada completa · 60,00 € por jornada',
     'Media jornada · 30,00 € por jornada'
   ]);
+  // Y el desplegable señala uno de los suyos: sin salir de la página, el
+  // catálogo cambió bajo los pies del formulario y no puede quedarse apuntando
+  // a un concepto del acuerdo anterior.
+  await expect(registerForm.getByLabel('Tipo')).toHaveValue(TYPE_JORNADA_COMPLETA);
   await expect(extrasCard).not.toContainText('Se quedó el sábado E2E');
   await expect(page.locator('article.card').filter({ hasText: 'Versiones y cambios de salario' }))
     .toContainText('Acuerdo de Fixture Segunda Empleada Roble');

@@ -68,9 +68,18 @@
   let resolveResolution = $state<'money' | 'time_off'>('money');
   let resolveReason = $state('');
 
-  // svelte-ignore state_referenced_locally -- el catálogo no cambia dentro de la página
+  // svelte-ignore state_referenced_locally -- el primer valor sale del catálogo de entrada
   let registerTypeId = $state<string>(types[0]?.id ?? '');
   const registerType = $derived(types.find((type) => type.id === registerTypeId) ?? null);
+  // El catálogo SÍ cambia sin recargar la página: quien administra pasa de una
+  // empleada a otra y los conceptos son distintos. Sin esto, el desplegable se
+  // quedaría señalando un concepto del acuerdo anterior —que el servidor
+  // rechazaría— y el formulario no diría por qué no hace nada.
+  $effect(() => {
+    if (!types.some((type) => type.id === registerTypeId)) {
+      registerTypeId = types[0]?.id ?? '';
+    }
+  });
   let registerDate = $state(new Date().toISOString().slice(0, 10));
   // P2-7 (revisión UX v3): la duración se pide en horas y minutos; el contrato
   // sigue viajando en minutos (durationMinutes) sin cambios.
