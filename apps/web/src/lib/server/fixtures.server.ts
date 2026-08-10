@@ -34,7 +34,8 @@ const DEMO_USERS: DemoUser[] = [
     initials: 'A',
     email: 'alberto.admin@casaclara.demo',
     role: 'family_admin',
-    householdIds: [HOUSEHOLD.id]
+    householdIds: [HOUSEHOLD.id],
+    households: [HOUSEHOLD]
   },
   {
     id: 'fixture:roble:family',
@@ -43,7 +44,8 @@ const DEMO_USERS: DemoUser[] = [
     initials: 'M',
     email: 'marta.familia@casaclara.demo',
     role: 'family_member',
-    householdIds: [HOUSEHOLD.id]
+    householdIds: [HOUSEHOLD.id],
+    households: [HOUSEHOLD]
   },
   {
     id: 'fixture:roble:employee',
@@ -52,7 +54,8 @@ const DEMO_USERS: DemoUser[] = [
     initials: 'AN',
     email: 'ana.empleada@casaclara.demo',
     role: 'employee_live_in',
-    householdIds: [HOUSEHOLD.id]
+    householdIds: [HOUSEHOLD.id],
+    households: [HOUSEHOLD]
   },
   {
     id: 'fixture:roble:helper',
@@ -61,7 +64,8 @@ const DEMO_USERS: DemoUser[] = [
     initials: 'L',
     email: 'lucia.apoyo@casaclara.demo',
     role: 'helper',
-    householdIds: [HOUSEHOLD.id]
+    householdIds: [HOUSEHOLD.id],
+    households: [HOUSEHOLD]
   },
   {
     id: 'fixture:roble:viewer',
@@ -70,7 +74,8 @@ const DEMO_USERS: DemoUser[] = [
     initials: 'D',
     email: 'diego.canguro@casaclara.demo',
     role: 'viewer',
-    householdIds: [HOUSEHOLD.id]
+    householdIds: [HOUSEHOLD.id],
+    households: [HOUSEHOLD]
   }
 ];
 
