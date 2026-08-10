@@ -111,7 +111,7 @@ export function scanWithClamAv(bytes: Uint8Array, options: ClamAvOptions): Promi
 }
 
 /** Solo lo del almacén: sin escáner y sin nada más. */
-type StorageBackend = Pick<AttachmentDependencies, 'bucket' | 'putObject' | 'getObject'> &
+export type StorageBackend = Pick<AttachmentDependencies, 'bucket' | 'putObject' | 'getObject'> &
   Required<Pick<AttachmentDependencies, 'getObjectStream'>>;
 
 /**
@@ -205,11 +205,29 @@ function createScanner(
 export function createAttachmentDependencies(
   environment: Partial<Record<string, string>> = env
 ): AttachmentDependencies | null {
-  const supabase = readSupabaseStorageConfig(environment);
-  const storage: StorageBackend | null = supabase
-    ? createSupabaseStorageClient(supabase)
-    : createS3Backend(environment);
+  const storage = createStorageBackend(environment);
   if (!storage) return null;
   const scan = createScanner(environment);
   return { ...storage, ...(scan ? { scan } : {}) };
+}
+
+/**
+ * El almacén SOLO, sin antivirus: los dos caminos y su preferencia, en un único
+ * sitio.
+ *
+ * Existe aparte de `createAttachmentDependencies` porque el drenaje de la cola
+ * (`job-runner.server.ts`) también sube objetos —el PDF del recibo— y no tiene
+ * nada que escanear. Antes exigía las cuatro `S3_*` por su cuenta, y eso
+ * convertía el camino recomendado del despliegue real (Supabase Storage por su
+ * clave de servicio, sin credenciales S3) en una cola que no se vaciaba nunca:
+ * el endpoint devolvía 503 en cada pasada del cron. Es exactamente el mismo
+ * modo de fallo que tuvo parada la cola por `SMTP_HOST`, y la única forma de no
+ * repetirlo es que la pregunta «¿hay dónde guardar un objeto?» se conteste una
+ * vez.
+ */
+export function createStorageBackend(
+  environment: Partial<Record<string, string>> = env
+): StorageBackend | null {
+  const supabase = readSupabaseStorageConfig(environment);
+  return supabase ? createSupabaseStorageClient(supabase) : createS3Backend(environment);
 }

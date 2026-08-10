@@ -125,10 +125,12 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
     workerUrl.password = 'integration-only';
     workerPool = new pg.Pool({ connectionString: workerUrl.toString(), max: 4 });
 
-    // Los valores de S3 son de relleno: los trabajos de esta suite son los de
-    // SQL puro y su cliente se construye dentro del efecto, así que nada sale
-    // de la máquina. El endpoint sí construye el catálogo REAL de manejadores
-    // con ellos, que es lo que interesa comprobar.
+    // El almacén es un doble que revienta si alguien lo usa: los trabajos de
+    // esta suite son los de SQL puro y ninguno sube nada. El endpoint sí
+    // construye el catálogo REAL de manejadores con él, que es lo que interesa
+    // comprobar; que el PDF del recibo llegue al almacén se prueba donde vive
+    // el almacén, no aquí.
+    const noStorage = () => Promise.reject(new Error('esta batería no sube objetos'));
     config = {
       databaseUrl: workerUrl.toString(),
       token: TOKEN,
@@ -136,11 +138,10 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       maxAttempts: 5,
       leaseMs: undefined,
       storage: {
-        endpoint: 'https://s3.invalid',
-        region: 'eu-west-1',
         bucket: 'casaclara-test',
-        accessKeyId: 'test',
-        secretAccessKey: 'test'
+        putObject: noStorage,
+        getObject: noStorage,
+        getObjectStream: noStorage
       }
     };
   }, 180_000);
@@ -323,13 +324,32 @@ describe('secreto compartido y configuración del drenaje', () => {
       token: TOKEN,
       budgetMs: 8_000,
       maxAttempts: 5,
-      storage: { region: 'eu-west-1' }
+      storage: { bucket: 'casaclara' }
     });
 
     for (const missing of Object.keys(complete)) {
       const partial = { ...complete, [missing]: '  ' };
       expect(loadJobRunnerConfig(partial), missing).toBeNull();
     }
+  });
+
+  it('con Supabase Storage y sin credenciales S3 el drenaje también arranca', () => {
+    // El mismo defecto que el de SMTP, por el otro lado. El despliegue real
+    // guarda los adjuntos en Supabase Storage con su clave de servicio y NO
+    // tiene credenciales S3 ningunas: exigir aquí las cuatro `S3_*` dejaba la
+    // cola sin vaciarse con el almacén perfectamente configurado al lado.
+    const supabase = {
+      WORKER_DATABASE_URL: 'postgresql://casa_clara_worker_login@db.invalid:6543/postgres',
+      JOB_RUNNER_TOKEN: TOKEN,
+      SUPABASE_URL: 'https://proyecto.supabase.invalid',
+      SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_de_prueba'
+    };
+    expect(loadJobRunnerConfig(supabase)).toMatchObject({ storage: { bucket: 'casaclara' } });
+    // Y sin ninguno de los dos caminos sigue sin arrancar: un drenaje sin
+    // almacén mandaría los recibos a `dead` en silencio.
+    expect(
+      loadJobRunnerConfig({ ...supabase, SUPABASE_SERVICE_ROLE_KEY: '  ' })
+    ).toBeNull();
   });
 
   it('SIN remitente SMTP el drenaje arranca igual: era la exigencia que paraba la cola', () => {
@@ -346,10 +366,16 @@ describe('secreto compartido y configuración del drenaje', () => {
       S3_SECRET_ACCESS_KEY: 'secret'
     };
     expect(loadJobRunnerConfig(withoutMail)).not.toBeNull();
-    // Y declararlos tampoco cambia nada: son variables sin lector.
-    expect(
-      loadJobRunnerConfig({ ...withoutMail, SMTP_HOST: 'smtp.invalid', SMTP_FROM: 'x@invalid' })
-    ).toEqual(loadJobRunnerConfig(withoutMail));
+    // Y declararlos tampoco cambia nada: son variables sin lector. Se comparan
+    // los valores y no el objeto entero porque el almacén trae funciones, y dos
+    // llamadas devuelven dos cierres distintos aunque digan lo mismo.
+    const { storage: _sinCorreo, ...sinCorreo } = loadJobRunnerConfig(withoutMail)!;
+    const { storage: _conCorreo, ...conCorreo } = loadJobRunnerConfig({
+      ...withoutMail,
+      SMTP_HOST: 'smtp.invalid',
+      SMTP_FROM: 'x@invalid'
+    })!;
+    expect(conCorreo).toEqual(sinCorreo);
   });
 
   it('el presupuesto y los intentos se pueden ajustar, y un valor absurdo cae al defecto', () => {

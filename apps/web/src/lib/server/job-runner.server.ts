@@ -38,13 +38,13 @@ import {
   createJobHandlers,
   ensureIcsSyncScheduled,
   ensurePruneDiscoveryScheduled,
-  objectStore,
-  putPrivateObject,
   reclaimStaleJobs,
   runOneJob,
   type JobHandler
 } from '@casa-clara/worker/jobs';
 import { createLogger, errorCode } from '@casa-clara/server';
+
+import { createStorageBackend, type StorageBackend } from './attachment-deps.server';
 
 const log = createLogger('web:jobs');
 
@@ -65,13 +65,13 @@ export interface JobRunnerConfig {
   budgetMs: number;
   maxAttempts: number;
   leaseMs: number | undefined;
-  storage: {
-    endpoint: string;
-    region: string;
-    bucket: string;
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
+  /**
+   * Dónde se guardan los objetos que produce la cola (hoy, el PDF del recibo).
+   * Es EL MISMO almacén que usan los adjuntos y lo elige la misma función, así
+   * que Supabase Storage y S3 valen los dos y ninguno de los dos hay que
+   * declararlo aquí por segunda vez.
+   */
+  storage: StorageBackend;
 }
 
 function positiveInteger(raw: string | undefined, fallback: number): number {
@@ -87,12 +87,25 @@ function positiveInteger(raw: string | undefined, fallback: number): number {
  * haría en silencio. Sin configuración completa el endpoint responde 503 y la
  * cola espera intacta.
  *
- * Aquí se exigían además `SMTP_HOST` y `SMTP_FROM`, y esa exigencia tenía la
- * cola de producción parada: sin remitente configurado el endpoint devolvía 503
- * en cada pasada del cron y no se vaciaba nada —ni los recibos, ni la
- * sincronización de calendarios, ni la poda—. Se fueron con la migración 0029,
- * que retiró la salida de correo entera: ya no queda ningún trabajo que la
- * necesite, así que pedirla era bloquear la casa por una pieza que no existe.
+ * Dos exigencias de más han tenido esta cola parada, y las dos por lo mismo:
+ * pedir aquí, a mano, una configuración que en realidad ya no hacía falta o que
+ * se declaraba de otra manera.
+ *
+ *  1. `SMTP_HOST` y `SMTP_FROM`. Sin remitente configurado el endpoint devolvía
+ *     503 en cada pasada del cron y no se vaciaba nada —ni los recibos, ni la
+ *     sincronización de calendarios, ni la poda—. Se fueron con la migración
+ *     0029, que retiró la salida de correo entera: ya no queda ningún trabajo
+ *     que la necesite, así que pedirla era bloquear la casa por una pieza que
+ *     no existe.
+ *  2. Las cuatro `S3_*`. El despliegue real guarda los adjuntos en Supabase
+ *     Storage por su clave de servicio y no tiene credenciales S3 ningunas;
+ *     exigirlas aquí dejaba la cola igual de parada, con el almacén perfectamente
+ *     configurado al lado. El almacén ya no se declara dos veces: lo elige
+ *     `createStorageBackend`, el mismo que usan los adjuntos, y admite los dos
+ *     caminos.
+ *
+ * Lo que sí se sigue exigiendo es que HAYA almacén: un drenaje sin él mandaría
+ * los recibos a `dead` en silencio, que es peor que no drenar.
  *
  * `WORKER_DATABASE_URL` y no `DATABASE_URL`: la cola solo la puede tocar el rol
  * `casa_clara_worker` (0005). El rol de la aplicación no tiene ni un GRANT
@@ -103,11 +116,8 @@ export function loadJobRunnerConfig(
 ): JobRunnerConfig | null {
   const databaseUrl = environment.WORKER_DATABASE_URL?.trim();
   const token = environment.JOB_RUNNER_TOKEN?.trim();
-  const endpoint = environment.S3_ENDPOINT?.trim();
-  const bucket = environment.S3_PRIVATE_BUCKET?.trim();
-  const accessKeyId = environment.S3_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = environment.S3_SECRET_ACCESS_KEY?.trim();
-  if (!databaseUrl || !token || !endpoint || !bucket || !accessKeyId || !secretAccessKey) {
+  const storage = createStorageBackend(environment);
+  if (!databaseUrl || !token || !storage) {
     return null;
   }
   return {
@@ -118,13 +128,7 @@ export function loadJobRunnerConfig(
     maxAttempts: positiveInteger(environment.WORKER_MAX_JOB_ATTEMPTS, 5),
     // Sin declarar (o con un valor absurdo) manda el arriendo de la cola.
     leaseMs: positiveInteger(environment.JOB_RUNNER_LEASE_MS, 0) || undefined,
-    storage: {
-      endpoint,
-      region: environment.S3_REGION?.trim() || 'eu-west-1',
-      bucket,
-      accessKeyId,
-      secretAccessKey
-    }
+    storage
   };
 }
 
@@ -269,17 +273,14 @@ export async function runJobDrainRequest(
   }
 
   const pool = overrides.pool ?? jobRunnerPool(config.databaseUrl);
-  // El cliente de S3 se construye la primera vez que hace falta subir algo: la
-  // pasada normal no genera ningún PDF y no tiene por qué pagarlo.
-  let storageClient: ReturnType<typeof objectStore> | null = null;
   const handlers =
     overrides.handlers ??
     createJobHandlers({
       pool,
-      uploadDocument: (key, body, contentType) => {
-        storageClient ??= objectStore(config.storage);
-        return putPrivateObject(storageClient, config.storage.bucket, key, body, contentType);
-      },
+      // El almacén no abre nada hasta el primer PUT: por el camino de Supabase
+      // es HTTP y por el de S3 el SDK se importa bajo demanda. La pasada normal
+      // no genera ningún PDF y no paga ninguna de las dos cosas.
+      uploadDocument: (key, body, contentType) => config.storage.putObject(key, body, contentType),
       log,
       errorCode
     });

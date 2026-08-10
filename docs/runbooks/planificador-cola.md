@@ -123,18 +123,26 @@ allí, con un token DISTINTO):
 | `JOB_RUNNER_LEASE_MS` | `300000` | opcional (por omisión 5 min) |
 | `WORKER_MAX_JOB_ATTEMPTS` | `5` | opcional, mismo defecto que el demonio |
 
-Las cuatro `S3_*` ya estaban en la lista de variables de la web (§5 de
-`.env.example`); el drenaje las necesita también, porque de ahí sale el PDF del
-recibo. **Sin todas ellas el endpoint responde 503 y no toca la cola**: un
-drenaje a medias mandaría los recibos a `dead` por falta de almacén, en
-silencio.
+El drenaje necesita además **un almacén de objetos**, porque de ahí sale el PDF
+del recibo. Vale cualquiera de los dos caminos de §3 de `.env.example` —la clave
+de servicio de Supabase (`SUPABASE_SERVICE_ROLE_KEY`) o las cuatro `S3_*`— y lo
+elige la misma función que lo elige para los adjuntos, así que no hay que
+declarar nada por segunda vez. **Sin ninguno de los dos el endpoint responde 503
+y no toca la cola**: un drenaje a medias mandaría los recibos a `dead` por falta
+de almacén, en silencio.
 
-> **`SMTP_HOST` y `SMTP_FROM` ya NO se piden** (11/08/2026). Estuvieron en esta
-> lista, y esa exigencia era exactamente lo que tenía la cola de producción
-> parada: sin remitente configurado —y no lo hay, porque no hay correo— el
-> endpoint devolvía 503 en cada pasada del cron y no se vaciaba nada. La
-> migración 0029 retiró la salida de correo entera; si siguen puestas en el
-> panel de Vercel, se borran.
+> **Dos exigencias que se han retirado de esta lista** (11/08/2026), las dos
+> porque tenían la cola de producción parada por una configuración que en
+> realidad no faltaba:
+>
+> - **`SMTP_HOST` y `SMTP_FROM`.** Sin remitente configurado —y no lo hay,
+>   porque no hay correo— el endpoint devolvía 503 en cada pasada del cron y no
+>   se vaciaba nada. La migración 0029 retiró la salida de correo entera; si
+>   siguen puestas en el panel de Vercel, se borran.
+> - **Las cuatro `S3_*` en concreto.** El despliegue recomendado guarda los
+>   adjuntos en Supabase Storage y no tiene credenciales S3 ningunas: pedirlas
+>   aquí dejaba la cola sin vaciarse con el almacén perfectamente configurado al
+>   lado. Ahora se pide almacén, no una marca de almacén.
 
 ### Por qué `WORKER_DATABASE_URL` y no `DATABASE_URL`
 
