@@ -14,6 +14,7 @@ INSERT INTO app.user_profiles (user_id, display_name) VALUES
   ('fixture:roble:employee', 'Fixture Empleada Roble'),
   ('fixture:roble:helper', 'Fixture Apoyo Roble'),
   ('fixture:roble:viewer', 'Fixture Visor Roble'),
+  ('fixture:roble:employee2', 'Fixture Segunda Empleada Roble'),
   ('fixture:olivo:admin', 'Fixture Admin Olivo'),
   ('fixture:olivo:employee', 'Fixture Empleada Olivo');
 
@@ -23,6 +24,10 @@ INSERT INTO app.household_memberships (id, household_id, user_id, role) VALUES
   ('11000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001', 'fixture:roble:employee', 'employee_live_in'),
   ('11000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000001', 'fixture:roble:helper', 'helper'),
   ('11000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001', 'fixture:roble:viewer', 'viewer'),
+  -- Segunda empleada del MISMO hogar: el modelo admite varios acuerdos activos
+  -- a la vez y la administración tiene que poder elegir a quién apunta cada
+  -- cosa. Aquí está para que eso se pruebe de verdad, no de palabra.
+  ('11000000-0000-4000-8000-000000000006', '10000000-0000-4000-8000-000000000001', 'fixture:roble:employee2', 'employee_live_in'),
   ('21000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'fixture:olivo:admin', 'family_admin'),
   ('21000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', 'fixture:olivo:employee', 'employee_live_in');
 
@@ -31,6 +36,11 @@ INSERT INTO app.employment_agreements (
 ) VALUES
   ('12000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
    '11000000-0000-4000-8000-000000000003', '2025-02-03', '11000000-0000-4000-8000-000000000001'),
+  -- Empieza ANTES que el primero a propósito: el orden por defecto del
+  -- expediente (activo primero, luego `starts_on desc`) no debe cambiar por
+  -- añadir una compañera, y quien administra la alcanza eligiéndola.
+  ('12000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+   '11000000-0000-4000-8000-000000000006', '2025-01-07', '11000000-0000-4000-8000-000000000001'),
   ('22000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
    '21000000-0000-4000-8000-000000000002', '2025-01-01', '21000000-0000-4000-8000-000000000001');
 
@@ -48,6 +58,10 @@ INSERT INTO app.agreement_versions (
    '12000000-0000-4000-8000-000000000001', 2, '2025-04-01',
    150000, 1400, 8000, 1440, 2400, 'Future fixture agreement',
    '11000000-0000-4000-8000-000000000001', '2025-03-20T10:00:00Z'),
+  ('12100000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000002', 1, '2025-01-07',
+   90000, 0, 4000, 1440, 1200, 'Second Roble employee fixture',
+   '11000000-0000-4000-8000-000000000001', '2025-01-05T10:00:00Z'),
   ('22100000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
    '22000000-0000-4000-8000-000000000001', 1, '2025-01-01',
    130000, 1100, 6500, 1440, 2400, 'Independent second-household fixture',
@@ -96,6 +110,18 @@ INSERT INTO app.extra_work_types (
   ('13000000-0000-4000-8000-000000000007', '10000000-0000-4000-8000-000000000001',
    '12000000-0000-4000-8000-000000000001', '12100000-0000-4000-8000-000000000002',
    'sin_tarifa', 'Acompañamiento a médico', 'fixed_amount', NULL, NULL, true, 50,
+   '11000000-0000-4000-8000-000000000001'),
+  -- Catálogo de la segunda empleada del roble: dos jornadas y ninguna hora,
+  -- que es como se pacta de verdad en una casa. Sus conceptos son SUYOS: la
+  -- administración no puede apuntarle un concepto del acuerdo de su compañera
+  -- (el servidor lo rechaza) ni ella ve los de nadie más (la RLS lo impide).
+  ('13000000-0000-4000-8000-000000000008', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000002', '12100000-0000-4000-8000-000000000003',
+   'jornada_completa', 'Jornada completa', 'per_shift', 6000, 600, true, 10,
+   '11000000-0000-4000-8000-000000000001'),
+  ('13000000-0000-4000-8000-000000000009', '10000000-0000-4000-8000-000000000001',
+   '12000000-0000-4000-8000-000000000002', '12100000-0000-4000-8000-000000000003',
+   'media_jornada', 'Media jornada', 'per_shift', 3000, 300, true, 20,
    '11000000-0000-4000-8000-000000000001'),
   ('23000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
    '22000000-0000-4000-8000-000000000001', '22100000-0000-4000-8000-000000000001',

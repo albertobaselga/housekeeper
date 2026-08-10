@@ -121,6 +121,19 @@ export const extraWorkRegisterPayloadSchema = z.object({
   workedOn: isoDateSchema,
   durationMinutes: z.number().int().min(1).max(24 * 60),
   note: z.string().max(500).optional(),
+  /**
+   * Resolución en el acto, solo para quien administra: apuntar una jornada que
+   * YA ocurrió y decidir su compensación en el mismo hecho. El servidor no se
+   * salta la máquina de estados por ello —encadena las transiciones que hagan
+   * falta, cada una firmada por quien administra— y la tarifa la sigue
+   * congelando el concepto del catálogo, nunca este payload.
+   */
+  resolveNow: z
+    .object({
+      resolution: z.enum(["money", "time_off"]),
+      reason: z.string().trim().min(1).max(500),
+    })
+    .optional(),
 });
 
 export const extraWorkAcceptPayloadSchema = z.object({

@@ -222,10 +222,12 @@ BEGIN
   END IF;
 
   -- Full read surface of the administrator over roble.
+  -- Dos acuerdos activos y sus tres versiones: el hogar puede emplear a más de
+  -- una persona y quien administra las ve a todas.
   IF (SELECT count(*) FROM app.settlement_lines) <> 8
      OR (SELECT count(*) FROM app.payments) <> 2
-     OR (SELECT count(*) FROM app.employment_agreements) <> 1
-     OR (SELECT count(*) FROM app.agreement_versions) <> 2
+     OR (SELECT count(*) FROM app.employment_agreements) <> 2
+     OR (SELECT count(*) FROM app.agreement_versions) <> 3
      OR (SELECT count(*) FROM app.expenses) <> 2
      OR (SELECT count(*) FROM app.wiki_pages) <> 2
      OR (SELECT count(*) FROM app.wiki_revisions) <> 2
@@ -278,7 +280,7 @@ SELECT app.set_household_context(
 DO $assert_family_member_rls$
 BEGIN
   IF (SELECT count(*) FROM app.households) <> 1
-     OR (SELECT count(*) FROM app.employment_agreements) <> 1
+     OR (SELECT count(*) FROM app.employment_agreements) <> 2
      OR (SELECT count(*) FROM app.expenses) <> 2
      OR (SELECT count(*) FROM app.wiki_pages) <> 2
      OR (SELECT count(*) FROM app.wiki_pages WHERE status = 'draft') <> 1
@@ -337,6 +339,17 @@ BEGIN
   IF (SELECT count(*) FROM app.routines) <> 2
      OR (SELECT count(*) FROM app.routines WHERE audience = 'family') <> 0 THEN
     RAISE EXCEPTION 'employee_live_in must not see family-audience routines';
+  END IF;
+  -- Con DOS empleadas en el hogar, «ve su expediente» significa «ve el suyo y
+  -- nada del de su compañera»: ni el acuerdo, ni sus versiones, ni el catálogo
+  -- de conceptos con el que se le pagan las jornadas.
+  IF (SELECT count(*) FROM app.employment_agreements
+       WHERE employee_membership_id <> '11000000-0000-4000-8000-000000000003') <> 0
+     OR (SELECT count(*) FROM app.agreement_versions
+          WHERE agreement_id = '12000000-0000-4000-8000-000000000002') <> 0
+     OR (SELECT count(*) FROM app.extra_work_types
+          WHERE agreement_id = '12000000-0000-4000-8000-000000000002') <> 0 THEN
+    RAISE EXCEPTION 'employee_live_in leaked the other employee record';
   END IF;
   IF (SELECT count(*) FROM app.settlements WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0
      OR (SELECT count(*) FROM app.expenses WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0

@@ -26,6 +26,7 @@ type RegisterPayload = {
   workedOn: string;
   durationMinutes: number;
   note?: string | undefined;
+  resolveNow?: { resolution: "money" | "time_off"; reason: string } | undefined;
 };
 
 /**
@@ -205,8 +206,28 @@ async function registerExtraWork(
 
   // El trigger constraint diferido exige que el estado inicial tenga su
   // transición seq 1 (NULL -> requested) dentro de la misma transacción.
-  await appendTransition(client, householdId, eventId, membership.id, null, "requested", "Jornada extra registrada");
-  return { resourceId: eventId };
+  await appendTransition(
+    client,
+    householdId,
+    eventId,
+    membership.id,
+    null,
+    "requested",
+    origin === "family_request" ? "Jornada extra apuntada por la familia" : "Jornada extra registrada",
+  );
+
+  if (!payload.resolveNow) return { resourceId: eventId };
+
+  // Apuntar por otra persona algo que ya ocurrió y decidir su compensación es
+  // UN solo gesto de quien administra, no tres. La empleada no está delante
+  // para «marcar realizada», así que se encadenan aquí las transiciones que
+  // faltan —cada una firmada por quien administra, ninguna saltada— en la misma
+  // transacción que el alta: o consta todo, o no consta nada.
+  if (membership.role !== "family_admin") {
+    throw new CommandRejectedError("not_allowed", "Solo la familia administradora resuelve jornadas extra");
+  }
+  const event = await requireExtraWorkEvent(client, householdId, eventId as UUID, true);
+  return applyResolution(client, membership, householdId, event, payload.resolveNow);
 }
 
 async function acceptExtraWork(
@@ -315,21 +336,21 @@ async function dismissExtraWork(
   return { resourceId: event.id };
 }
 
-async function resolveExtraWork(
+/**
+ * Resolución de un evento YA cargado. Vive aparte de `resolveExtraWork` porque
+ * la administración también resuelve en el acto lo que acaba de apuntar (una
+ * jornada de la semana pasada no pasa por `accepted` ni por «marcar
+ * realizada»): el mismo camino, las mismas transiciones firmadas y la misma
+ * tarifa congelada, se llegue desde un comando `resolve` o desde un `register`
+ * con `resolveNow`.
+ */
+async function applyResolution(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
-  payload: ResolvePayload,
+  event: ExtraWorkEventRow,
+  payload: { resolution: "money" | "time_off"; reason: string },
 ): Promise<{ resourceId: UUID }> {
-  if (membership.role !== "family_admin") {
-    throw new CommandRejectedError("not_allowed", "Solo la familia administradora resuelve jornadas extra");
-  }
-
-  const event = await requireExtraWorkEvent(client, householdId, payload.extraWorkEventId, true);
-  if (!RESOLVABLE_STATUSES.includes(event.status)) {
-    throw new CommandRejectedError("extra_work_not_resolvable", `Estado ${event.status} no admite resolución`);
-  }
-
   await enforceTransitionHistoryImmediately(client);
 
   let status = event.status;
@@ -505,11 +526,29 @@ async function resolveExtraWork(
   return { resourceId: event.id };
 }
 
+async function resolveExtraWork(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  payload: ResolvePayload,
+): Promise<{ resourceId: UUID }> {
+  if (membership.role !== "family_admin") {
+    throw new CommandRejectedError("not_allowed", "Solo la familia administradora resuelve jornadas extra");
+  }
+
+  const event = await requireExtraWorkEvent(client, householdId, payload.extraWorkEventId, true);
+  if (!RESOLVABLE_STATUSES.includes(event.status)) {
+    throw new CommandRejectedError("extra_work_not_resolvable", `Estado ${event.status} no admite resolución`);
+  }
+
+  return applyResolution(client, membership, householdId, event, payload);
+}
+
 /**
- * `extra_work`: registro (empleada u origen familiar), aceptación (solo la
- * familia administradora), marca de trabajo realizado (solo la empleada del
- * evento), resolución y descarte —reject/cancel— (solo la familia
- * administradora) de jornadas extra.
+ * `extra_work`: registro (empleada u origen familiar, con resolución en el acto
+ * opcional para quien administra), aceptación (solo la familia administradora),
+ * marca de trabajo realizado (solo la empleada del evento), resolución y
+ * descarte —reject/cancel— (solo la familia administradora) de jornadas extra.
  * Cada acción recorre la máquina de estados del trigger paso a paso —
  * transición firmada por quien ejecuta antes de cada UPDATE — y la resolución
  * congela la tarifa vigente el día trabajado usando el motor puro de dominio.
