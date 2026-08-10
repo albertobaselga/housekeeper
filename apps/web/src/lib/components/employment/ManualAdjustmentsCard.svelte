@@ -279,6 +279,12 @@
         <label>Mes en el que cuenta
           <input type="month" bind:value={period} required />
         </label>
+        <!--
+          El desplegable liga BOOLEANOS, no cadenas, y el comando los recibe
+          tipados: aquí no hay ida y vuelta por un formulario del servidor donde
+          `true` se convertiría en «true» y una comparación mal escrita pudiera
+          guardar como «no se transfiere» un importe que sí es dinero para ella.
+        -->
         <label>Dinero que recibe ella
           <select bind:value={addsToPay}>
             <option value={true}>Sí: cambia la transferencia del mes</option>
