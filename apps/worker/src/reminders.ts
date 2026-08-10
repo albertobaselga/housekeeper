@@ -64,7 +64,7 @@ function formatDateEs(isoDate: string): string {
 
 function reminderEmailBody(state: SettlementReminderState): { subject: string; text: string } {
   return {
-    subject: `Casa Clara: liquidación pendiente de pago (vence el ${formatDateEs(state.dueOn)})`,
+    subject: `Liquidación pendiente de pago (vence el ${formatDateEs(state.dueOn)})`,
     text: [
       "Hola:",
       "",
@@ -75,7 +75,7 @@ function reminderEmailBody(state: SettlementReminderState): { subject: string; t
       "Este aviso automático se repetirá cada 3 días hasta que el pago se complete",
       "y la empleada confirme el cobro.",
       "",
-      "— Casa Clara",
+      "— Gestión del personal doméstico",
     ].join("\n"),
   };
 }
