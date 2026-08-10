@@ -86,7 +86,7 @@ function attachUrlFor(base: string): string {
   return url.toString();
 }
 
-describe.runIf(Boolean(adminUrl))('subida de adjuntos bajo RLS con antivirus inyectado', () => {
+describe.runIf(Boolean(adminUrl))('subida de adjuntos bajo RLS, con y sin antivirus', () => {
   let adminPool: pg.Pool;
   let appPool: pg.Pool;
 
@@ -178,6 +178,41 @@ describe.runIf(Boolean(adminUrl))('subida de adjuntos bajo RLS con antivirus iny
     expect(row!.objectKey).toBe(`${FIXTURE_HOUSEHOLD}/attachments/${result.sha256.slice(0, 16)}.jpg`);
     expect(row!.objectKey).toMatch(WORKER_KEY_PATTERN);
     expect(puts[0]!.key).toBe(row!.objectKey);
+  });
+
+  // El despliegue real (Vercel + Supabase) no tiene dónde correr clamd. Sin
+  // escáner la subida NO se cae ni se inventa un veredicto: sube, y todas las
+  // garantías que no dependían del antivirus —RLS, sha, clave, tipo real—
+  // siguen exactamente igual.
+  it('sin escáner configurado sube y registra igual, bajo la misma RLS', async () => {
+    const bytes = jpegBytes(11);
+    const { deps, puts } = fakeDeps();
+    delete (deps as { scan?: unknown }).scan;
+    const result = await uploadAttachment(ADMIN_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, deps, appPool);
+
+    expect(puts).toHaveLength(1);
+    const row = await storedRow(result.storageObjectId);
+    expect(row!.sha256).toBe(sha256Of(bytes));
+    expect(row!.mediaType).toBe('image/jpeg');
+    expect(row!.createdBy).toBe(ADMIN_MEMBERSHIP);
+    expect(row!.objectKey).toMatch(WORKER_KEY_PATTERN);
+  });
+
+  it('sin escáner, un ejecutable disfrazado de foto SIGUE sin entrar', async () => {
+    const before = await storageObjectCount();
+    const { deps, puts } = fakeDeps();
+    delete (deps as { scan?: unknown }).scan;
+    await expect(
+      uploadAttachment(
+        ADMIN_USER,
+        FIXTURE_HOUSEHOLD,
+        { bytes: Uint8Array.from([0x4d, 0x5a, 0x90, 0x00, 0x03]), mediaType: 'image/jpeg' },
+        deps,
+        appPool
+      )
+    ).rejects.toMatchObject({ code: 'attachment_signature_mismatch' });
+    expect(puts).toHaveLength(0);
+    expect(await storageObjectCount()).toBe(before);
   });
 
   it('repetir el mismo contenido es idempotente: mismo objeto, sin re-subida', async () => {
