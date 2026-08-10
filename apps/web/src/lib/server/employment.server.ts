@@ -29,6 +29,8 @@ import {
   type PendingExpenseRow,
   type PendingExtraWorkRow,
   type ResolvedExtraWorkRow,
+  type ScheduleDayRow,
+  type ScheduleRow,
   type SettlementLineRow,
   type SettlementRow,
   type VacationPeriodRow,
@@ -154,6 +156,43 @@ export async function loadEmploymentOverview(
            from app.recurring_supplements
           where household_id = $1 and agreement_id = $2
           order by sort_order, code`,
+        [householdId, agreement.id]
+      );
+
+      /*
+       * Horario de todas las versiones visibles (0025). No se filtra por
+       * versión aquí: el historial tiene que poder enseñar cómo cambió el
+       * horario, igual que enseña cómo cambió el salario.
+       *
+       * Las horas salen ya como «HH:MM» de `to_char`. Dejar que pg entregue el
+       * `time` completo obligaría a cada lector —vista, guion, prueba— a
+       * recortar los segundos por su cuenta, y basta con que uno se olvide para
+       * que en pantalla aparezca «08:00:00».
+       */
+      const schedules = await client.query<ScheduleRow>(
+        `select schedule.id,
+                schedule.agreement_version_id as "agreementVersionId",
+                to_char(schedule.starts_at, 'HH24:MI') as "startsAt",
+                to_char(schedule.ends_at, 'HH24:MI') as "endsAt",
+                schedule.long_break_minutes as "longBreakMinutes",
+                schedule.note
+           from app.agreement_schedules as schedule
+          where schedule.household_id = $1 and schedule.agreement_id = $2`,
+        [householdId, agreement.id]
+      );
+
+      const scheduleDays = await client.query<ScheduleDayRow>(
+        `select day.id,
+                day.schedule_id as "scheduleId",
+                day.weekday,
+                day.works,
+                to_char(day.starts_at, 'HH24:MI') as "startsAt",
+                to_char(day.ends_at, 'HH24:MI') as "endsAt",
+                day.long_break_minutes as "longBreakMinutes",
+                day.note
+           from app.agreement_schedule_days as day
+          where day.household_id = $1 and day.agreement_id = $2
+          order by day.weekday`,
         [householdId, agreement.id]
       );
 
@@ -391,7 +430,9 @@ export async function loadEmploymentOverview(
         ? buildAgreementTermsView({
             version: versionInForce,
             types: extraWorkTypes.rows,
-            supplements: supplements.rows
+            supplements: supplements.rows,
+            schedules: schedules.rows,
+            scheduleDays: scheduleDays.rows
           })
         : null;
 

@@ -1,10 +1,19 @@
 import {
   calculateSettlement,
+  describeSchedule,
+  resolveWeek,
+  scheduleCoherence,
+  spokenDuration,
+  spokenTime,
   vacationYearBalance,
+  weekdayName,
+  type AgreementSchedule,
   type AgreementVersion as DomainAgreementVersion,
   type MonetaryInput,
+  type ScheduleDay as DomainScheduleDay,
   type SettledExtraWork,
-  type SettlementLine
+  type SettlementLine,
+  type Weekday
 } from '@casa-clara/domain';
 
 /**
@@ -139,6 +148,32 @@ export interface RecurringSupplementRow {
   startsOn: string | null;
   endsOn: string | null;
   active: boolean;
+}
+
+/**
+ * Horario pactado en una versión (migración 0025). Las horas llegan ya como
+ * «HH:MM»: la consulta las formatea con `to_char` en vez de dejar que pg
+ * entregue el `time` completo y que cada lector recorte los segundos por su
+ * cuenta.
+ */
+export interface ScheduleRow {
+  id: string;
+  agreementVersionId: string;
+  startsAt: string;
+  endsAt: string;
+  longBreakMinutes: number;
+  note: string;
+}
+
+export interface ScheduleDayRow {
+  id: string;
+  scheduleId: string;
+  weekday: number;
+  works: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  longBreakMinutes: number | null;
+  note: string;
 }
 
 export interface VacationPeriodRow {
@@ -301,6 +336,65 @@ export interface SupplementView {
   validityLabel: string | null;
 }
 
+/** Un día de la semana ya resuelto contra la jornada tipo. */
+export interface ScheduleDayView {
+  weekday: number;
+  /** «Lunes», «Sábado». */
+  weekdayLabel: string;
+  works: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  longBreakMinutes: number;
+  effectiveMinutes: number;
+  /** «8:00 a 16:30» o «Libra». */
+  hoursLabel: string;
+  /** Minutos efectivos en palabras: «7 h», «5 h», «—» si libra. */
+  effectiveLabel: string;
+  /** true si este día NO es la jornada tipo. */
+  differs: boolean;
+  note: string;
+}
+
+/**
+ * El horario de una versión, listo para pintar.
+ *
+ * Que este objeto sea `null` en `AgreementTermsView` es el «si aplica» del
+ * encargo llegando hasta la plantilla: sin horario pactado no hay fila en
+ * Postgres, no hay vista, y la página no enseña ni sección vacía ni guiones.
+ */
+export interface ScheduleView {
+  id: string;
+  /**
+   * El horario en una frase de castellano llano. Es lo único que la empleada
+   * necesita leer; la tabla día a día es para quien administra.
+   */
+  sentence: string;
+  startsAt: string;
+  endsAt: string;
+  /** «De 8:00 a 16:30». */
+  spanLabel: string;
+  longBreakMinutes: number;
+  /** «hora y media», null si no se pactó descanso. */
+  breakLabel: string | null;
+  note: string;
+  /** Los siete días resueltos, de lunes a domingo. */
+  days: ScheduleDayView[];
+  /** «Domingo», «Sábado y domingo»; vacío si no se declara ninguna libranza. */
+  restDayLabels: string[];
+  weeklyMinutes: number;
+  /** «40 h a la semana». */
+  weeklyLabel: string;
+  contractedWeeklyMinutes: number;
+  contractedLabel: string;
+  matchesContract: boolean;
+  /**
+   * null cuando cuadra. Cuando no, la frase que lo dice sin rodeos: callarlo
+   * sería dejar que dos condiciones del mismo contrato se contradigan en
+   * silencio.
+   */
+  mismatchLabel: string | null;
+}
+
 /**
  * Las condiciones de contrato en lenguaje llano: lo que la empleada tiene que
  * poder leer sin preguntar. Se construye SIEMPRE desde las filas que la RLS
@@ -319,6 +413,8 @@ export interface AgreementTermsView {
   paidSupplements: SupplementView[];
   /** Complementos que la casa paga por su cuenta; constan, no se transfieren. */
   householdPaidSupplements: SupplementView[];
+  /** null = este contrato no declara horario; no hay sección que enseñar. */
+  schedule: ScheduleView | null;
 }
 
 export interface AgreementVersionView {
@@ -685,6 +781,96 @@ export function weeklyHoursLabel(minutes: number): string {
   return `${hours} h${rest > 0 ? ` ${rest} min` : ''} a la semana`;
 }
 
+/** «7 h», «7 h 30 min». Sin la coletilla semanal, para una celda de tabla. */
+function hoursLabel(minutes: number): string {
+  const hours = Math.trunc(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest} min`;
+  return `${hours} h${rest > 0 ? ` ${rest} min` : ''}`;
+}
+
+/**
+ * El horario de una versión, resuelto y redactado.
+ *
+ * La frase y los minutos salen del motor puro (`@casa-clara/domain`), no de
+ * aquí: son las mismas reglas que aplican el guion de alta y las pruebas, y
+ * reescribirlas en la capa de vista sería tener dos horarios distintos según
+ * quién los mire.
+ *
+ * La comparación con la jornada contratada se calcula SIEMPRE, cuadre o no. No
+ * hay tolerancia: los dos lados son minutos enteros, así que cualquier
+ * diferencia es real y merece decirse.
+ */
+export function buildScheduleView(input: {
+  schedule: ScheduleRow;
+  days: readonly ScheduleDayRow[];
+  contractedWeeklyMinutes: number;
+}): ScheduleView {
+  const mine = input.days
+    .filter((row) => row.scheduleId === input.schedule.id)
+    .map(
+      (row): DomainScheduleDay => ({
+        weekday: row.weekday as Weekday,
+        works: row.works,
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+        longBreakMinutes: row.longBreakMinutes,
+        note: row.note
+      })
+    );
+  const pure: AgreementSchedule = {
+    startsAt: input.schedule.startsAt,
+    endsAt: input.schedule.endsAt,
+    longBreakMinutes: input.schedule.longBreakMinutes,
+    note: input.schedule.note,
+    days: mine
+  };
+
+  const week = resolveWeek(pure);
+  const coherence = scheduleCoherence(pure, input.contractedWeeklyMinutes);
+  const excess = coherence.differenceMinutes > 0;
+
+  return {
+    id: input.schedule.id,
+    sentence: describeSchedule(pure),
+    startsAt: input.schedule.startsAt,
+    endsAt: input.schedule.endsAt,
+    spanLabel: `De ${spokenTime(input.schedule.startsAt)} a ${spokenTime(input.schedule.endsAt)}`,
+    longBreakMinutes: input.schedule.longBreakMinutes,
+    breakLabel:
+      input.schedule.longBreakMinutes > 0 ? spokenDuration(input.schedule.longBreakMinutes) : null,
+    note: input.schedule.note,
+    days: week.map((day) => ({
+      weekday: day.weekday,
+      weekdayLabel: `${weekdayName(day.weekday)[0]!.toLocaleUpperCase('es')}${weekdayName(day.weekday).slice(1)}`,
+      works: day.works,
+      startsAt: day.startsAt,
+      endsAt: day.endsAt,
+      longBreakMinutes: day.longBreakMinutes,
+      effectiveMinutes: day.effectiveMinutes,
+      hoursLabel: day.works
+        ? `${spokenTime(day.startsAt!)} a ${spokenTime(day.endsAt!)}`
+        : 'Libra',
+      effectiveLabel: day.works ? hoursLabel(day.effectiveMinutes) : '—',
+      differs: day.differs,
+      note: day.note
+    })),
+    restDayLabels: week
+      .filter((day) => !day.works)
+      .map((day) => `${weekdayName(day.weekday)[0]!.toLocaleUpperCase('es')}${weekdayName(day.weekday).slice(1)}`),
+    weeklyMinutes: coherence.weeklyMinutes,
+    weeklyLabel: weeklyHoursLabel(coherence.weeklyMinutes),
+    contractedWeeklyMinutes: coherence.contractedWeeklyMinutes,
+    contractedLabel: weeklyHoursLabel(coherence.contractedWeeklyMinutes),
+    matchesContract: coherence.matches,
+    mismatchLabel: coherence.matches
+      ? null
+      : `El horario suma ${hoursLabel(coherence.weeklyMinutes)} a la semana y la jornada contratada ` +
+        `dice ${hoursLabel(coherence.contractedWeeklyMinutes)}: ` +
+        `${excess ? 'sobran' : 'faltan'} ${hoursLabel(Math.abs(coherence.differenceMinutes))}.`
+  };
+}
+
 /**
  * Condiciones de la versión indicada. Lo que llega aquí ya pasó por la RLS: si
  * la persona que preguntó es la empleada, `types` no contiene los conceptos
@@ -695,6 +881,8 @@ export function buildAgreementTermsView(input: {
   version: AgreementVersionRow;
   types: readonly ExtraWorkTypeRow[];
   supplements: readonly RecurringSupplementRow[];
+  schedules?: readonly ScheduleRow[];
+  scheduleDays?: readonly ScheduleDayRow[];
 }): AgreementTermsView {
   const mine = input.types
     .filter((row) => row.agreementVersionId === input.version.id)
@@ -717,7 +905,22 @@ export function buildAgreementTermsView(input: {
     } al año`,
     extraWorkTypes: mine,
     paidSupplements: supplements.filter((view) => view.addsToPay),
-    householdPaidSupplements: supplements.filter((view) => !view.addsToPay)
+    householdPaidSupplements: supplements.filter((view) => !view.addsToPay),
+    // Sin fila de horario en esta versión no hay vista, y sin vista la página
+    // no enseña sección. El «si aplica» viaja como null desde Postgres hasta la
+    // plantilla sin que nadie tenga que acordarse de comprobarlo dos veces.
+    schedule: (() => {
+      const row = (input.schedules ?? []).find(
+        (candidate) => candidate.agreementVersionId === input.version.id
+      );
+      return row
+        ? buildScheduleView({
+            schedule: row,
+            days: input.scheduleDays ?? [],
+            contractedWeeklyMinutes: input.version.contractedWeeklyMinutes
+          })
+        : null;
+    })()
   };
 }
 

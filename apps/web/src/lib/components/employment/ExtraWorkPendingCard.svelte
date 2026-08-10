@@ -231,7 +231,7 @@
 
   {#if canRegister && types.length === 0}
     <div class="ledger-list"><div><span><strong>Sin trabajo extra disponible</strong><small>
-Este acuerdo no permite registrar trabajo extra por ahora. Cuando se pacte un concepto con su tarifa, aparecerá aquí.</small></span></div></div>
+Este contrato no permite registrar trabajo extra por ahora. Cuando se pacte un concepto con su tarifa, aparecerá aquí.</small></span></div></div>
   {:else if canRegister}
     <form class="action-form" onsubmit={submitRegister}>
       <h3>Registrar jornada extra</h3>

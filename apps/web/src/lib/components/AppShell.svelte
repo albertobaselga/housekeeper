@@ -24,7 +24,10 @@
 
   const NAV_ENTRIES: Readonly<Record<string, NavEntry>> = {
     today: { module: 'today', label: 'Hoy', short: 'Hoy', capability: 'emergency.read' },
-    employment: { module: 'employment', label: 'Pagos', short: 'Pagos', capability: 'settlement.read' },
+    // El nombre visible de la sección es «Contrato» (decisión del propietario);
+    // la ruta, la capacidad y las tablas siguen llamándose employment. Es un
+    // cambio de idioma de cara a la persona, no de arquitectura.
+    employment: { module: 'employment', label: 'Contrato', short: 'Contrato', capability: 'settlement.read' },
     menu: { module: 'menu', label: 'Menú', short: 'Menú', capability: 'menu.read' },
     wiki: { module: 'wiki', label: 'Guía de la casa', short: 'Guía', capability: 'content.read' },
     routines: { module: 'routines', label: 'Rutinas', short: 'Rutinas', capability: 'routine.read' },
@@ -35,7 +38,7 @@
 
   // Orden por rol según el mapa del informe heurístico (H-02/H-12): quien
   // trabaja la casa (registra jornadas o no gestiona pagos) lleva Rutinas al
-  // frente; la familia prioriza Menú, Pagos y Agenda. Recetas deja de ser
+  // frente; la familia prioriza Menú, Contrato y Agenda. Recetas deja de ser
   // destino de primer nivel: vive dentro de Menú y sigue accesible por URL.
   const handsOnOrder = ['today', 'routines', 'menu', 'employment', 'wiki', 'calendar', 'contacts'];
   const familyOrder = ['today', 'menu', 'employment', 'calendar', 'wiki', 'routines', 'contacts'];

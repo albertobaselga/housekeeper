@@ -253,6 +253,98 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview!.balances).toEqual({ compensation: [], advances: [] });
   });
 
+  it('la empleada ve su horario en lenguaje llano y nadie más lo alcanza', async () => {
+    const employee = await loadEmploymentOverview(
+      { id: 'fixture:roble:employee' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    const schedule = employee!.terms!.schedule;
+    expect(schedule).not.toBeNull();
+    expect(schedule!.sentence).toBe(
+      'De 8:00 a 16:30, con hora y media de descanso al mediodía. Sábado hasta las 14:30. Domingo libre.'
+    );
+    expect(schedule!.restDayLabels).toEqual(['Domingo']);
+    // Cuadra con los 2400 minutos contratados de esa versión: sin aviso.
+    expect(schedule!.mismatchLabel).toBeNull();
+
+    const admin = await loadEmploymentOverview(
+      { id: 'fixture:roble:admin' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    expect(admin!.terms!.schedule!.sentence).toBe(schedule!.sentence);
+
+    /*
+     * PRUEBA NEGATIVA. La frontera es la de `agreement_versions_read`: quien no
+     * administra y no es la interesada no ve el horario. Y no se comprueba
+     * mirando la vista —que podría estar null por otra razón— sino contando las
+     * filas que Postgres deja salir a cada rol.
+     */
+    for (const [user, membership] of [
+      ['fixture:roble:family', '11000000-0000-4000-8000-000000000002'],
+      ['fixture:roble:helper', '11000000-0000-4000-8000-000000000004'],
+      ['fixture:roble:viewer', '11000000-0000-4000-8000-000000000005']
+    ] as const) {
+      const client = await appPool.connect();
+      try {
+        await client.query('begin');
+        await client.query(`select set_config('app.user_id', $1, true)`, [user]);
+        await client.query('select app.set_household_context($1, $2)', [
+          FIXTURE_HOUSEHOLD,
+          membership
+        ]);
+        const schedules = await client.query('select count(*)::int as total from app.agreement_schedules');
+        const days = await client.query('select count(*)::int as total from app.agreement_schedule_days');
+        expect(schedules.rows[0]!.total, `${user} alcanzó una jornada tipo`).toBe(0);
+        expect(days.rows[0]!.total, `${user} alcanzó un día del horario`).toBe(0);
+      } finally {
+        await client.query('rollback').catch(() => {});
+        client.release();
+      }
+    }
+
+    // Cruce entre hogares: la empleada del olivo tiene SU horario y ni una sola
+    // fila del roble, aunque pregunte por el identificador del vecino.
+    const client = await appPool.connect();
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.user_id', 'fixture:olivo:employee', true)`);
+      await client.query('select app.set_household_context($1, $2)', [
+        '20000000-0000-4000-8000-000000000001',
+        '21000000-0000-4000-8000-000000000002'
+      ]);
+      const own = await client.query('select count(*)::int as total from app.agreement_schedules');
+      expect(own.rows[0]!.total).toBe(1);
+      const alien = await client.query(
+        'select count(*)::int as total from app.agreement_schedules where household_id = $1',
+        [FIXTURE_HOUSEHOLD]
+      );
+      expect(alien.rows[0]!.total).toBe(0);
+    } finally {
+      await client.query('rollback').catch(() => {});
+      client.release();
+    }
+  });
+
+  it('el horario que no cuadra con la jornada contratada se denuncia en la vista', async () => {
+    // El olivo lo tiene así a propósito: de 8:00 a 20:00 con dos horas de
+    // descanso y solo el domingo libre son 60 h frente a las 40 contratadas.
+    const overview = await loadEmploymentOverview(
+      { id: 'fixture:olivo:employee' },
+      '20000000-0000-4000-8000-000000000001',
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    const schedule = overview!.terms!.schedule!;
+    expect(schedule.matchesContract).toBe(false);
+    expect(schedule.mismatchLabel).toBe(
+      'El horario suma 60 h a la semana y la jornada contratada dice 40 h: sobran 20 h.'
+    );
+  });
+
   it('un usuario sin membresía en el hogar recibe null y la página cae a la fixture', async () => {
     const overview = await loadEmploymentOverview(
       { id: 'fixture:olivo:employee' },

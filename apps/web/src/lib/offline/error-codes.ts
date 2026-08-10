@@ -27,7 +27,7 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   // Expediente laboral
   week_already_reported: 'La semana ya fue enviada',
   week_overlap: 'La semana se solapa con otra ya registrada',
-  agreement_not_found: 'El acuerdo no existe o no es visible',
+  agreement_not_found: 'El contrato no existe o no es visible',
   extra_work_not_found: 'La jornada extra ya no existe',
   extra_work_not_requested: 'La jornada ya no admite aceptación',
   extra_work_not_performable: 'La jornada ya no admite marcarse como realizada',
@@ -41,7 +41,7 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   receipt_already_confirmed: 'El cobro ya estaba confirmado',
   unsupported_period: 'El periodo no es un mes natural',
   expense_not_pending: 'El gasto ya fue resuelto',
-  no_agreement_version: 'No hay versión de acuerdo vigente',
+  no_agreement_version: 'No hay versión del contrato vigente',
 
   // Guía de la casa (wiki)
   wiki_revision_conflict: 'Otra persona guardó cambios mientras editabas; revisa su versión antes de guardar la tuya',
