@@ -1,6 +1,7 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import { PAYER_CHOICES, type PayerChoice } from '$lib/employment/payer';
   import { centsToEuroInput } from '$lib/employment/model';
   import type {
     AgreementVersionAdminView,
@@ -28,11 +29,12 @@
     active: boolean;
   };
 
+  /** `addsToPay` viaja como texto, y por la misma constante que lee el servidor. */
   type SupplementDraft = {
     code: string;
     name: string;
     amount: string;
-    addsToPay: boolean;
+    addsToPay: PayerChoice;
     startsOn: string;
     endsOn: string;
     active: boolean;
@@ -67,7 +69,7 @@
         code: supplement.code,
         name: supplement.name,
         amount: supplement.amountCents === null ? '' : centsToEuroInput(supplement.amountCents),
-        addsToPay: supplement.addsToPay,
+        addsToPay: supplement.addsToPay ? PAYER_CHOICES.addsToPay : PAYER_CHOICES.paidByHousehold,
         startsOn: supplement.startsOn ?? '',
         endsOn: supplement.endsOn ?? '',
         active: supplement.active
@@ -87,7 +89,7 @@
     code: '',
     name: '',
     amount: '',
-    addsToPay: true,
+    addsToPay: PAYER_CHOICES.addsToPay,
     startsOn: '',
     endsOn: '',
     active: true
@@ -117,6 +119,15 @@
     drafts = { ...drafts, [agreementId]: draftFromVersion(current, today) };
     openAgreementId = agreementId;
   }
+
+  /**
+   * Cuántos conceptos del alta podría registrar ella de verdad. Es la misma
+   * condición que la política `extra_work_types_employee_read` de 0021 —activo Y
+   * con tarifa—, calculada aquí solo para poder avisar antes de enviar.
+   */
+  const registrableCount = $derived(
+    createDraft.types.filter((type) => type.active && type.rate.trim() !== '').length
+  );
 
   function addType(draft: Draft): void {
     draft.types = [...draft.types, { ...EMPTY_TYPE }];
@@ -298,8 +309,8 @@
               </label>
               <label>Quién lo cobra
                 <select name={`supplement.${index}.addsToPay`} bind:value={supplement.addsToPay}>
-                  <option value={true}>Suma a su transferencia</option>
-                  <option value={false}>Lo paga la casa aparte</option>
+                  <option value={PAYER_CHOICES.addsToPay}>Suma a su transferencia</option>
+                  <option value={PAYER_CHOICES.paidByHousehold}>Lo paga la casa aparte</option>
                 </select>
               </label>
               <label>Desde (opcional)
@@ -388,13 +399,20 @@
           </label>
 
           <h3>Trabajo extra</h3>
+          <p>
+            <small>
+              Lo que esté desactivado o sin tarifa no lo verá la empleada, ni en sus
+              condiciones ni al registrar trabajo. Para que no haya horas sueltas, no
+              añadas ningún concepto «por hora»: sin fila no hay tarifa horaria que ver.
+            </small>
+          </p>
           {#each createDraft.types as type, index (index)}
             <div class="form-grid">
               <label>Código
-                <input type="text" name={`type.${index}.code`} bind:value={type.code} required placeholder="jornada_extra" />
+                <input type="text" name={`type.${index}.code`} bind:value={type.code} required placeholder="jornada_extra" pattern="[a-z][a-z0-9_]{'{'}1,38{'}'}[a-z0-9]" />
               </label>
               <label>Nombre
-                <input type="text" name={`type.${index}.name`} bind:value={type.name} required maxlength="80" />
+                <input type="text" name={`type.${index}.name`} bind:value={type.name} required maxlength="80" placeholder="Jornada extra" />
               </label>
               <label>Se paga
                 <select name={`type.${index}.unit`} bind:value={type.unit}>
@@ -404,7 +422,7 @@
                 </select>
               </label>
               <label>Tarifa (vacío = sin tarifa)
-                <input type="text" inputmode="decimal" name={`type.${index}.rate`} bind:value={type.rate} />
+                <input type="text" inputmode="decimal" name={`type.${index}.rate`} bind:value={type.rate} placeholder="sin tarifa" />
               </label>
               {#if type.unit !== 'per_hour'}
                 <label>Duración de la jornada (minutos)
@@ -417,34 +435,57 @@
                 <input type="checkbox" name={`type.${index}.active`} bind:checked={type.active} />
                 Se lo permito
               </label>
+              <button class="button secondary small-button" type="button" onclick={() => removeType(createDraft, index)}>Quitar</button>
             </div>
           {/each}
           <div class="action-row">
             <button class="button secondary small-button" type="button" onclick={() => addType(createDraft)}>Añadir tipo</button>
           </div>
+          <!--
+            El aviso que evita el alta muda. Un acuerdo sin ningún concepto activo
+            y con tarifa deja a la empleada sin poder registrar nada, y la versión
+            es inmutable: la corrección solo puede entrar en vigor más adelante, y
+            los días de en medio se quedan así para siempre. Que se vea ANTES de
+            enviar, no después.
+          -->
+          {#if registrableCount === 0}
+            <p class="form-error" role="status">
+              Ningún concepto activo y con tarifa: con este acuerdo no podrá registrar
+              ninguna jornada extra, y eso no se arregla hacia atrás. Si es lo que
+              quieres, adelante; si no, revísalo antes de dar de alta.
+            </p>
+          {/if}
 
           <h3>Complementos</h3>
+          <p><small>«Lo paga la casa» consta en sus condiciones pero NO entra en la transferencia del mes.</small></p>
           {#each createDraft.supplements as supplement, index (index)}
             <div class="form-grid">
               <label>Código
-                <input type="text" name={`supplement.${index}.code`} bind:value={supplement.code} required />
+                <input type="text" name={`supplement.${index}.code`} bind:value={supplement.code} required placeholder="antiguedad" pattern="[a-z][a-z0-9_]{'{'}1,38{'}'}[a-z0-9]" />
               </label>
               <label>Nombre
-                <input type="text" name={`supplement.${index}.name`} bind:value={supplement.name} required maxlength="80" />
+                <input type="text" name={`supplement.${index}.name`} bind:value={supplement.name} required maxlength="80" placeholder="Complemento de antigüedad" />
               </label>
               <label>Importe al mes
-                <input type="text" inputmode="decimal" name={`supplement.${index}.amount`} bind:value={supplement.amount} />
+                <input type="text" inputmode="decimal" name={`supplement.${index}.amount`} bind:value={supplement.amount} placeholder="30,00" />
               </label>
               <label>Quién lo cobra
                 <select name={`supplement.${index}.addsToPay`} bind:value={supplement.addsToPay}>
-                  <option value={true}>Suma a su transferencia</option>
-                  <option value={false}>Lo paga la casa aparte</option>
+                  <option value={PAYER_CHOICES.addsToPay}>Suma a su transferencia</option>
+                  <option value={PAYER_CHOICES.paidByHousehold}>Lo paga la casa aparte</option>
                 </select>
+              </label>
+              <label>Desde (opcional)
+                <input type="date" name={`supplement.${index}.startsOn`} bind:value={supplement.startsOn} />
+              </label>
+              <label>Hasta (opcional)
+                <input type="date" name={`supplement.${index}.endsOn`} bind:value={supplement.endsOn} />
               </label>
               <label class="check-label">
                 <input type="checkbox" name={`supplement.${index}.active`} bind:checked={supplement.active} />
                 Vigente
               </label>
+              <button class="button secondary small-button" type="button" onclick={() => removeSupplement(createDraft, index)}>Quitar</button>
             </div>
           {/each}
           <div class="action-row">

@@ -1,4 +1,5 @@
-// Alta del ACUERDO LABORAL de un hogar real: el acuerdo y su primera versión.
+// Alta del ACUERDO LABORAL de un hogar real: el acuerdo, su primera versión y
+// EL CATÁLOGO DE CONDICIONES de esa versión.
 //
 // Es el hermano de apps/web/scripts/seed-household-accounts.mjs y se alimenta
 // del MISMO JSON externo: las cuentas dan de alta a las personas, este guion da
@@ -12,15 +13,48 @@
 //     --config /ruta/fuera/del/repo/hogar.json
 //
 // Opciones:
-//   --config <ruta>                       obligatorio. El mismo JSON del alta de cuentas.
-//   --overtime-hourly-rate-cents <n>      tarifa de hora extraordinaria, en céntimos.
-//                                         Alternativa a `agreement.overtimeHourlyRateCents`.
-//   --dry-run                             dice qué haría y no escribe nada.
+//   --config <ruta>   obligatorio. El mismo JSON del alta de cuentas.
+//   --dry-run         dice qué haría y no escribe nada.
 //
 // Entorno:
 //   DATABASE_URL   rol propietario de las migraciones del esquema `app` (el
 //                  mismo que ejecuta `migrate`). No es el rol de la aplicación:
 //                  el alta se hace por fuera de la RLS, como la de cuentas.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// POR QUÉ ESTE GUION EXIGE EL CATÁLOGO Y SE NIEGA A ESCRIBIR SIN ÉL
+//
+// Hasta la migración 0021 lo pactable vivía en cinco columnas de
+// `app.agreement_versions` y bastaba con rellenarlas. Desde 0021 la verdad de
+// qué trabajo extra existe y a cuánto se paga está en `app.extra_work_types`,
+// colgando de la VERSIÓN. Una versión sin conceptos es un acuerdo MUDO: la
+// política `extra_work_types_employee_read` no le enseña nada a la empleada,
+// `registrableTypes` sale vacío y no puede registrar ninguna jornada extra.
+//
+// Y no tiene arreglo hacia atrás. Las versiones son inmutables (disparador
+// `agreement_versions_append_only` de 0002) y su catálogo también (0021); una
+// versión nueva tiene que entrar en vigor DESPUÉS de la anterior, y el
+// disparador `extra_work_events_type_freeze` exige que el concepto sea el de la
+// versión vigente EL DÍA TRABAJADO. Entre el inicio del acuerdo y esa v2 queda
+// una ventana en la que ella no podrá registrar nada nunca, ni retroactivamente.
+//
+// Por eso el guion hace las dos cosas a la vez, y no solo una:
+//
+//   · SE NIEGA a crear el acuerdo si el JSON no declara `extraWorkTypes`. El
+//     fallo era silencioso —el guion terminaba con éxito y dejaba el destrozo
+//     hecho—, y lo primero es que deje de serlo.
+//   · ACEPTA el catálogo completo y lo escribe en la misma transacción. Rendirse
+//     y remitir solo a la pantalla dejaría el alta de un hogar real en manos de
+//     un formulario sin `--dry-run`, sin idempotencia y sin marcha atrás sobre
+//     una tabla que solo admite INSERT. Poder ensayar el alta antes de hacerla
+//     vale más aquí que en ningún otro sitio.
+//
+// La pantalla `/h/<hogar>/employment/acuerdo` sigue siendo la vía normal —tiene
+// autoría, RLS y el historial delante— y este guion la vía ensayable. Escriben
+// lo mismo: el orden de `insertFirstVersion` es el de `insertVersion` en
+// apps/web/src/lib/server/agreement-terms.server.ts, columnas reliquia
+// incluidas.
+// ─────────────────────────────────────────────────────────────────────────────
 //
 // Formato del JSON (ejemplo INVENTADO; el real vive fuera del repositorio):
 //
@@ -37,36 +71,42 @@
 //       "monthlySalaryCents": 123400,
 //       "currencyCode": "EUR",
 //       "contractedWeeklyMinutes": 2400,
-//       "overtimeHourlyRateCents": 1000,
-//       "workedRestDayRateCents": 5000,
 //       "annualVacationDays": 30,
-//       "allowsHourlyOvertime": false,
-//       "allowsExtraShifts": true,
 //       "schedule": {
 //         "from": "08:00",
 //         "to": "19:00",
 //         "longBreakMinutes": 120,
 //         "effectiveHoursPerDay": 8,
 //         "weekly": "Cinco jornadas de lunes a viernes. Fin de semana libre."
-//       }
+//       },
+//       "extraWorkTypes": [
+//         { "code": "jornada_extra", "name": "Jornada extra", "unit": "per_shift",
+//           "rateCents": 5000, "referenceMinutes": 480, "active": true },
+//         { "code": "media_jornada_extra", "name": "Media jornada extra", "unit": "per_shift",
+//           "rateCents": 2500, "referenceMinutes": 240, "active": true }
+//       ],
+//       "supplements": [
+//         { "code": "antiguedad", "name": "Complemento de antigüedad",
+//           "amountCents": 3000, "addsToPay": true }
+//       ]
 //     }
 //   }
 //
-// `allowsHourlyOvertime` y `allowsExtraShifts` son opcionales y quedan escritas
-// en `terms.compensation`: son parte de lo pactado y el esquema no tiene columna
-// para ellas. OJO: hoy la aplicación NO las obedece; enseña la tarifa horaria a
-// quien ve importes aunque el acuerdo diga que no hay horas sueltas.
+// DESACTIVAR LAS HORAS SUELTAS ES NO ESCRIBIRLAS. No hay bandera para eso: si el
+// catálogo no trae ningún concepto `per_hour`, no existe ninguna tarifa horaria
+// y la empleada no puede verla por ninguna vía, porque no hay fila que ver. Es
+// más limpio que dejarla escrita y desactivada.
 //
-// LA TARIFA DE HORA EXTRAORDINARIA NO SE INVENTA. Es la única condición que el
-// guion no deduce ni rellena por su cuenta: si falta, aborta con un mensaje que
-// explica que hay que pactarla. Derivarla del salario sería poner un número en
-// boca de dos personas que no lo han acordado.
+// `extraWorkTypes` puede ser una lista VACÍA, y entonces el acuerdo no admite
+// ningún trabajo extra. Es una decisión legítima, pero tiene que estar escrita:
+// lo que este guion no acepta es que nadie haya dicho nada.
 //
 // Idempotente: el acuerdo activo de esa persona en ese hogar es la clave. Si ya
-// existe con la misma primera versión, el guion no escribe nada. Si existe con
-// condiciones DISTINTAS, aborta: cambiar lo pactado es añadir una versión nueva
-// (append-only, disparador `agreement_versions_append_only`), y eso se hace
-// desde la aplicación, con autoría y motivo, no reescribiendo el pasado.
+// existe con la misma primera versión Y el mismo catálogo, el guion no escribe
+// nada. Si existe con condiciones DISTINTAS, aborta: cambiar lo pactado es
+// añadir una versión nueva (append-only, disparador
+// `agreement_versions_append_only`), y eso se hace desde la aplicación, con
+// autoría y motivo, no reescribiendo el pasado.
 
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -79,16 +119,53 @@ import pg from 'pg';
 export const EMPLOYEE_ROLES = ['employee_live_in', 'helper'];
 /** Quien firma el alta por parte de la casa. */
 const ADMIN_ROLE = 'family_admin';
-/** Una jornada completa de crédito por día de descanso trabajado (defecto del esquema). */
+/** Crédito por descanso trabajado cuando el catálogo no fija ninguna jornada. */
 const DEFAULT_REST_DAY_CREDIT_MINUTES = 1440;
 const DEFAULT_REASON = 'Alta inicial del acuerdo';
 
-export const OVERTIME_RATE_MISSING_MESSAGE =
-  'Falta la tarifa de hora extraordinaria y este guion NO la inventa: no se deduce del salario ' +
-  'ni se deja en cero, porque es una condición del acuerdo que tienen que pactar la casa y quien ' +
-  'trabaja antes de darla de alta. Cuando esté acordada, añade `agreement.overtimeHourlyRateCents` ' +
-  'al JSON (céntimos de euro por hora efectiva) o pásala con ' +
-  '--overtime-hourly-rate-cents <céntimos>.';
+/** Unidades de app.extra_work_unit (0021). */
+const EXTRA_WORK_UNITS = ['per_hour', 'per_shift', 'fixed_amount'];
+/** El CHECK de `code` en las dos tablas del catálogo, literal. */
+const CODE_PATTERN = /^[a-z][a-z0-9_]{1,38}[a-z0-9]$/;
+
+export const EXTRA_WORK_TYPES_MISSING_MESSAGE =
+  'El JSON no dice qué trabajo extra se ha pactado, y este guion ya NO da de alta un acuerdo sin ' +
+  'catálogo: desde la migración 0021 una versión sin conceptos deja a quien trabaja sin poder ' +
+  'registrar ni una jornada extra, y no hay arreglo posible —las versiones y su catálogo son ' +
+  'inmutables, y una versión nueva solo puede entrar en vigor más tarde, así que los días ' +
+  'intermedios se quedan sin nada para siempre. Añade `agreement.extraWorkTypes` con lo pactado ' +
+  '(code, name, unit, rateCents y, en las jornadas, referenceMinutes). Si de verdad no se pacta ' +
+  'ningún trabajo extra, escríbelo como lista vacía: "extraWorkTypes": []. Y si prefieres darlo ' +
+  'de alta a mano, la pantalla Pagos → «Administrar el acuerdo» ' +
+  '(/h/<hogar>/employment/acuerdo) escribe acuerdo, versión y catálogo de una vez.';
+
+/**
+ * Claves de 0002 que el catálogo de 0021 sustituyó. No se ignoran en silencio:
+ * un fichero que las traiga fue escrito creyendo otra cosa, y esa creencia es
+ * justo la que hay que corregir antes de escribir nada.
+ */
+const RETIRED_KEYS = {
+  overtimeHourlyRateCents:
+    'la tarifa por hora es ahora un concepto del catálogo con unit "per_hour". Si no quieres que ' +
+    'haya horas sueltas, no escribas ninguno: sin fila no hay tarifa que ver.',
+  workedRestDayRateCents:
+    'la tarifa de jornada es ahora un concepto del catálogo con unit "per_shift" y su ' +
+    'referenceMinutes.',
+  workedRestDayCreditMinutes:
+    'el crédito por jornada es el `referenceMinutes` del concepto de jornada.',
+  allowsHourlyOvertime:
+    'el permiso real es el campo `active` de cada concepto del catálogo (y no escribir el ' +
+    'concepto, que es aún más claro). Esta bandera solo quedaba escrita en el texto del acuerdo y ' +
+    'no la obedecía nadie.',
+  allowsExtraShifts:
+    'el permiso real es el campo `active` de cada concepto del catálogo. Esta bandera solo quedaba ' +
+    'escrita en el texto del acuerdo y no la obedecía nadie.'
+};
+
+export const OVERTIME_FLAG_RETIRED_MESSAGE =
+  '--overtime-hourly-rate-cents ya no existe: la tarifa por hora es un concepto más del catálogo. ' +
+  'Ponla en `agreement.extraWorkTypes` con unit "per_hour", o no la pongas si no se pactan horas ' +
+  'sueltas.';
 
 function requireInteger(value, label, { min = 0 } = {}) {
   if (!Number.isInteger(value) || value < min) {
@@ -97,10 +174,48 @@ function requireInteger(value, label, { min = 0 } = {}) {
   return value;
 }
 
+/** Entero o null explícito: «pactado sin tarifa todavía» es un dato, no un olvido. */
+function requireIntegerOrNull(value, label, { min = 0 } = {}) {
+  if (value === null) return null;
+  return requireInteger(value, label, { min });
+}
+
+function requireBoolean(value, label) {
+  if (typeof value !== 'boolean') {
+    throw new Error(`${label} tiene que ser true o false (llegó ${JSON.stringify(value)})`);
+  }
+  return value;
+}
+
+function requireText(value, label, { max = 80 } = {}) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (text.length < 1 || text.length > max) {
+    throw new Error(`${label} tiene que ser un texto de 1 a ${max} caracteres (llegó ${JSON.stringify(value)})`);
+  }
+  return text;
+}
+
+function requireCode(value, label) {
+  const code = typeof value === 'string' ? value.trim() : '';
+  if (!CODE_PATTERN.test(code)) {
+    throw new Error(
+      `${label} tiene que ser un código en minúsculas, dígitos y guion bajo, de 3 a 40 caracteres ` +
+        `(por ejemplo «jornada_extra»); llegó ${JSON.stringify(value)}`
+    );
+  }
+  return code;
+}
+
 function isIsoDate(value) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function optionalIsoDate(value, label) {
+  if (value == null) return null;
+  if (!isIsoDate(value)) throw new Error(`${label} tiene que ser una fecha AAAA-MM-DD (llegó ${value})`);
+  return value;
 }
 
 /**
@@ -109,28 +224,6 @@ function isIsoDate(value) {
  * se redactan en una frase estable. Las claves que empiezan por «_» son notas
  * internas del fichero y no viajan al acuerdo.
  */
-/**
- * Banderas de lo pactado que el esquema todavía no tiene en columna propia y que
- * por eso viajan en `terms.compensation`: qué formas de trabajo de más admite el
- * acuerdo. Que estén escritas en el acuerdo es lo que permite discutirlas; que
- * la interfaz las obedezca es otra cosa, y hoy NO lo hace (Pagos enseña la
- * tarifa horaria a todo el que ve importes). Ver el runbook de alta de hogar.
- */
-const COMPENSATION_FLAGS = ['allowsHourlyOvertime', 'allowsExtraShifts'];
-
-export function compensationFlags(agreement) {
-  const flags = {};
-  for (const key of COMPENSATION_FLAGS) {
-    const value = agreement?.[key];
-    if (value == null) continue;
-    if (typeof value !== 'boolean') {
-      throw new Error(`agreement.${key} tiene que ser true o false (llegó ${JSON.stringify(value)})`);
-    }
-    flags[key] = value;
-  }
-  return Object.keys(flags).length > 0 ? flags : null;
-}
-
 export function scheduleToText(schedule) {
   if (schedule == null) return null;
   if (typeof schedule === 'string') {
@@ -166,11 +259,133 @@ export function scheduleToText(schedule) {
 }
 
 /**
+ * Catálogo de trabajo extra. Las reglas son las de 0021 escritas antes de tocar
+ * la base: un CHECK violado a medio camino diría «new row violates check
+ * constraint "extra_work_types_check1"», que no ayuda a nadie a arreglar su
+ * fichero.
+ */
+export function normalizeExtraWorkTypes(agreement) {
+  const declared = agreement?.extraWorkTypes;
+  if (declared === undefined) throw new Error(EXTRA_WORK_TYPES_MISSING_MESSAGE);
+  if (!Array.isArray(declared)) {
+    throw new Error('agreement.extraWorkTypes tiene que ser una lista (vacía si no se pacta ninguno)');
+  }
+  const seen = new Set();
+  return declared.map((raw, index) => {
+    const label = `agreement.extraWorkTypes[${index}]`;
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error(`${label} tiene que ser un objeto con code, name, unit y rateCents`);
+    }
+    const code = requireCode(raw.code, `${label}.code`);
+    if (seen.has(code)) throw new Error(`El código «${code}» aparece dos veces en agreement.extraWorkTypes`);
+    seen.add(code);
+    const unit = String(raw.unit ?? '').trim();
+    if (!EXTRA_WORK_UNITS.includes(unit)) {
+      throw new Error(`${label}.unit tiene que ser ${EXTRA_WORK_UNITS.join(', ')} (llegó ${JSON.stringify(raw.unit)})`);
+    }
+    if (raw.rateCents === undefined) {
+      throw new Error(
+        `${label}.rateCents falta. Escribe la tarifa en céntimos, o null si está pactado sin precio ` +
+          'todavía: un concepto sin tarifa existe para quien administra y NO se le enseña a la empleada.'
+      );
+    }
+    const rateCents = requireIntegerOrNull(raw.rateCents, `${label}.rateCents`);
+    const reference = raw.referenceMinutes ?? null;
+    if (unit === 'per_hour' && reference !== null) {
+      throw new Error(`${label}: una tarifa por hora no lleva duración de referencia`);
+    }
+    if (unit === 'per_shift' && reference === null) {
+      throw new Error(`${label}: una jornada necesita decir de cuántos minutos es (referenceMinutes)`);
+    }
+    const referenceMinutes =
+      reference === null ? null : requireInteger(reference, `${label}.referenceMinutes`, { min: 1 });
+    if (referenceMinutes !== null && referenceMinutes > 10080) {
+      throw new Error(`${label}.referenceMinutes no puede pasar de una semana (10080 minutos)`);
+    }
+    return {
+      code,
+      name: requireText(raw.name, `${label}.name`),
+      unit,
+      rateCents,
+      referenceMinutes,
+      active: raw.active === undefined ? true : requireBoolean(raw.active, `${label}.active`)
+    };
+  });
+}
+
+/**
+ * Complementos periódicos. `addsToPay` no tiene valor por defecto a propósito,
+ * por la misma razón que en la pantalla: un defecto silencioso aquí es una
+ * transferencia inflada o mermada todos los meses.
+ */
+export function normalizeSupplements(agreement) {
+  const declared = agreement?.supplements ?? [];
+  if (!Array.isArray(declared)) {
+    throw new Error('agreement.supplements tiene que ser una lista');
+  }
+  const seen = new Set();
+  return declared.map((raw, index) => {
+    const label = `agreement.supplements[${index}]`;
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error(`${label} tiene que ser un objeto con code, name, amountCents y addsToPay`);
+    }
+    const code = requireCode(raw.code, `${label}.code`);
+    if (seen.has(code)) throw new Error(`El código «${code}» aparece dos veces en agreement.supplements`);
+    seen.add(code);
+    if (raw.amountCents === undefined) {
+      throw new Error(`${label}.amountCents falta. Escribe el importe mensual en céntimos, o null si no lo hay.`);
+    }
+    if (raw.addsToPay === undefined) {
+      throw new Error(
+        `${label}.addsToPay falta y no tiene valor por defecto: di si el complemento es dinero para ` +
+          'ella (true, suma a la transferencia del mes) o un gasto que asume la casa (false, consta ' +
+          'como condición y no toca la transferencia).'
+      );
+    }
+    const startsOn = optionalIsoDate(raw.startsOn, `${label}.startsOn`);
+    const endsOn = optionalIsoDate(raw.endsOn, `${label}.endsOn`);
+    if (startsOn && endsOn && endsOn < startsOn) {
+      throw new Error(`${label}: la vigencia no puede acabar antes de empezar`);
+    }
+    return {
+      code,
+      name: requireText(raw.name, `${label}.name`),
+      amountCents: requireIntegerOrNull(raw.amountCents, `${label}.amountCents`),
+      periodicity: 'monthly',
+      addsToPay: requireBoolean(raw.addsToPay, `${label}.addsToPay`),
+      startsOn,
+      endsOn,
+      active: raw.active === undefined ? true : requireBoolean(raw.active, `${label}.active`)
+    };
+  });
+}
+
+/**
+ * Las columnas reliquia de 0002 (`overtime_hourly_rate_cents`,
+ * `worked_rest_day_rate_cents`, `worked_rest_day_credit_minutes`) se DERIVAN del
+ * catálogo, no se pactan aparte. Tenerlas por duplicado en el fichero es la
+ * manera de acabar con una reliquia que contradice al catálogo que la sustituyó.
+ *
+ * La regla es exactamente la de `insertVersion` en
+ * apps/web/src/lib/server/agreement-terms.server.ts: el primer concepto activo
+ * de cada familia, y 0 cuando no hay ninguno.
+ */
+export function relicRates(extraWorkTypes) {
+  const hourly = extraWorkTypes.find((type) => type.unit === 'per_hour' && type.active);
+  const shift = extraWorkTypes.find((type) => type.unit !== 'per_hour' && type.active);
+  return {
+    overtimeHourlyRateCents: hourly?.rateCents ?? 0,
+    workedRestDayRateCents: shift?.rateCents ?? 0,
+    workedRestDayCreditMinutes: shift?.referenceMinutes ?? DEFAULT_REST_DAY_CREDIT_MINUTES
+  };
+}
+
+/**
  * Valida el JSON y devuelve exactamente lo que hay que escribir. Aquí es donde
  * se cae si falta algo: mejor un error legible antes de tocar la base que una
  * violación de CHECK a medio camino.
  */
-export function normalizeAgreementConfig(raw, { overtimeHourlyRateCents = null } = {}) {
+export function normalizeAgreementConfig(raw) {
   const slug = String(raw?.household?.slug ?? '').trim();
   if (!slug) throw new Error('El JSON necesita household.slug');
 
@@ -178,8 +393,17 @@ export function normalizeAgreementConfig(raw, { overtimeHourlyRateCents = null }
   if (!agreement || typeof agreement !== 'object') {
     throw new Error(
       'El JSON no trae el bloque `agreement`. Añádelo con lo pactado: employeeUsername, startsOn, ' +
-        'monthlySalaryCents, contractedWeeklyMinutes, workedRestDayRateCents, annualVacationDays y schedule.'
+        'monthlySalaryCents, contractedWeeklyMinutes, annualVacationDays, schedule y extraWorkTypes.'
     );
+  }
+
+  for (const [key, why] of Object.entries(RETIRED_KEYS)) {
+    if (agreement[key] !== undefined) {
+      throw new Error(
+        `agreement.${key} ya no se pacta aquí: ${why} Quítala del JSON y describe lo pactado en ` +
+          '`agreement.extraWorkTypes`.'
+      );
+    }
   }
 
   const people = Array.isArray(raw.people) ? raw.people : [];
@@ -239,10 +463,8 @@ export function normalizeAgreementConfig(raw, { overtimeHourlyRateCents = null }
     throw new Error(`Solo se admite EUR (el esquema lo exige); llegó ${currencyCode}`);
   }
 
-  const overtime =
-    overtimeHourlyRateCents ??
-    (agreement.overtimeHourlyRateCents == null ? null : agreement.overtimeHourlyRateCents);
-  if (overtime == null) throw new Error(OVERTIME_RATE_MISSING_MESSAGE);
+  const extraWorkTypes = normalizeExtraWorkTypes(agreement);
+  const supplements = normalizeSupplements(agreement);
 
   return {
     householdSlug: slug,
@@ -254,16 +476,7 @@ export function normalizeAgreementConfig(raw, { overtimeHourlyRateCents = null }
     version: {
       effectiveFrom,
       monthlySalaryCents: requireInteger(agreement.monthlySalaryCents, 'agreement.monthlySalaryCents'),
-      overtimeHourlyRateCents: requireInteger(overtime, 'La tarifa de hora extraordinaria'),
-      workedRestDayRateCents: requireInteger(
-        agreement.workedRestDayRateCents,
-        'agreement.workedRestDayRateCents'
-      ),
-      workedRestDayCreditMinutes: requireInteger(
-        agreement.workedRestDayCreditMinutes ?? DEFAULT_REST_DAY_CREDIT_MINUTES,
-        'agreement.workedRestDayCreditMinutes',
-        { min: 1 }
-      ),
+      ...relicRates(extraWorkTypes),
       contractedWeeklyMinutes: requireInteger(
         agreement.contractedWeeklyMinutes,
         'agreement.contractedWeeklyMinutes',
@@ -280,10 +493,11 @@ export function normalizeAgreementConfig(raw, { overtimeHourlyRateCents = null }
               'longBreakMinutes, effectiveHoursPerDay, weekly).'
           );
         }
-        const compensation = compensationFlags(agreement);
-        return compensation ? { schedule, compensation } : { schedule };
+        return { schedule };
       })(),
-      reason: String(agreement.reason ?? DEFAULT_REASON).trim() || DEFAULT_REASON
+      reason: String(agreement.reason ?? DEFAULT_REASON).trim() || DEFAULT_REASON,
+      extraWorkTypes,
+      supplements
     }
   };
 }
@@ -342,8 +556,77 @@ export function versionMatches(existing, wanted) {
 }
 
 /**
- * Da de alta el acuerdo y su primera versión. Devuelve un informe de lo hecho;
- * no imprime nada (eso es de `printAgreementReport`).
+ * El catálogo entra en la comparación de idempotencia. Sin esto, cambiar una
+ * tarifa en el JSON y volver a ejecutar diría «no se ha escrito nada» y dejaría
+ * al fichero y a la base contando cosas distintas, que es la avería que este
+ * guion existe para no tener.
+ *
+ * Se compara por CÓDIGO, no por posición: reordenar la lista del fichero no es
+ * cambiar lo pactado.
+ */
+export function catalogueMatches(existing, wanted) {
+  const byCode = (rows) => new Map(rows.map((row) => [row.code, row]));
+  if (existing.types.length !== wanted.extraWorkTypes.length) return false;
+  if (existing.supplements.length !== wanted.supplements.length) return false;
+
+  const existingTypes = byCode(existing.types);
+  for (const type of wanted.extraWorkTypes) {
+    const found = existingTypes.get(type.code);
+    if (!found) return false;
+    if (
+      found.name !== type.name ||
+      found.unit !== type.unit ||
+      (found.rate_cents === null ? null : Number(found.rate_cents)) !== type.rateCents ||
+      found.reference_minutes !== type.referenceMinutes ||
+      found.active !== type.active
+    ) {
+      return false;
+    }
+  }
+
+  const existingSupplements = byCode(existing.supplements);
+  for (const supplement of wanted.supplements) {
+    const found = existingSupplements.get(supplement.code);
+    if (!found) return false;
+    if (
+      found.name !== supplement.name ||
+      (found.amount_cents === null ? null : Number(found.amount_cents)) !== supplement.amountCents ||
+      found.periodicity !== supplement.periodicity ||
+      found.adds_to_pay !== supplement.addsToPay ||
+      found.starts_on !== supplement.startsOn ||
+      found.ends_on !== supplement.endsOn ||
+      found.active !== supplement.active
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function readCatalogue(client, householdId, agreementVersionId) {
+  const types = await client.query(
+    `select code, name, unit::text as unit, rate_cents::text as rate_cents,
+            reference_minutes, active
+       from app.extra_work_types
+      where household_id = $1 and agreement_version_id = $2
+      order by sort_order, code`,
+    [householdId, agreementVersionId]
+  );
+  const supplements = await client.query(
+    `select code, name, amount_cents::text as amount_cents, periodicity::text as periodicity,
+            adds_to_pay, starts_on::text as starts_on, ends_on::text as ends_on, active
+       from app.recurring_supplements
+      where household_id = $1 and agreement_version_id = $2
+      order by sort_order, code`,
+    [householdId, agreementVersionId]
+  );
+  return { types: types.rows, supplements: supplements.rows };
+}
+
+/**
+ * Da de alta el acuerdo, su primera versión y el catálogo de esa versión.
+ * Devuelve un informe de lo hecho; no imprime nada (eso es de
+ * `printAgreementReport`).
  */
 export async function seedEmploymentAgreement(client, config, { dryRun = false } = {}) {
   const household = await client.query('select id, display_name from app.households where slug = $1', [
@@ -385,6 +668,14 @@ export async function seedEmploymentAgreement(client, config, { dryRun = false }
   );
   const existingAgreement = existing.rows[0] ?? null;
 
+  const summary = {
+    extraWorkTypes: config.version.extraWorkTypes.length,
+    registrableTypes: config.version.extraWorkTypes.filter(
+      (type) => type.active && type.rateCents !== null
+    ).length,
+    supplements: config.version.supplements.length
+  };
+
   if (existingAgreement) {
     if (existingAgreement.starts_on !== config.startsOn) {
       throw new Error(
@@ -394,7 +685,7 @@ export async function seedEmploymentAgreement(client, config, { dryRun = false }
       );
     }
     const versions = await client.query(
-      `select version_number, effective_from::text as effective_from,
+      `select id, version_number, effective_from::text as effective_from,
               monthly_salary_cents::text as monthly_salary_cents,
               overtime_hourly_rate_cents::text as overtime_hourly_rate_cents,
               worked_rest_day_rate_cents::text as worked_rest_day_rate_cents,
@@ -414,6 +705,15 @@ export async function seedEmploymentAgreement(client, config, { dryRun = false }
             'desde la aplicación (Pagos → acuerdo), con autoría y motivo. Este guion solo da el alta.'
         );
       }
+      const catalogue = await readCatalogue(client, householdId, first.id);
+      if (!catalogueMatches(catalogue, config.version)) {
+        throw new Error(
+          `El acuerdo de «${config.employeeUsername}» ya existe, pero su catálogo de conceptos no es el del ` +
+            'JSON. El catálogo se congela con su versión y tampoco se reescribe: para cambiar una tarifa, ' +
+            'desactivar un concepto o añadir uno nuevo se apila una versión nueva desde la aplicación ' +
+            '(Pagos → acuerdo).'
+        );
+      }
       return {
         dryRun,
         householdId,
@@ -422,7 +722,8 @@ export async function seedEmploymentAgreement(client, config, { dryRun = false }
         agreementCreated: false,
         versionCreated: false,
         versionCount: versions.rowCount,
-        employeeMembershipId: employee.id
+        employeeMembershipId: employee.id,
+        ...summary
       };
     }
     // Acuerdo sin versiones: estado imposible por la aplicación, posible si
@@ -438,7 +739,8 @@ export async function seedEmploymentAgreement(client, config, { dryRun = false }
       agreementCreated: false,
       versionCreated: true,
       versionCount: 1,
-      employeeMembershipId: employee.id
+      employeeMembershipId: employee.id,
+      ...summary
     };
   }
 
@@ -451,7 +753,8 @@ export async function seedEmploymentAgreement(client, config, { dryRun = false }
       agreementCreated: true,
       versionCreated: true,
       versionCount: 1,
-      employeeMembershipId: employee.id
+      employeeMembershipId: employee.id,
+      ...summary
     };
   }
 
@@ -473,18 +776,26 @@ export async function seedEmploymentAgreement(client, config, { dryRun = false }
     agreementCreated: true,
     versionCreated: true,
     versionCount: 1,
-    employeeMembershipId: employee.id
+    employeeMembershipId: employee.id,
+    ...summary
   };
 }
 
+/**
+ * Versión 1 y su catálogo, en la misma sentencia lógica. El orden y los valores
+ * son los de `insertVersion` en la pantalla de administración: las columnas
+ * reliquia se escriben derivadas del catálogo para que ningún lector anterior a
+ * 0021 lea un número que el catálogo contradiga.
+ */
 async function insertFirstVersion(client, householdId, agreementId, createdByMembershipId, version) {
-  await client.query(
+  const versionRow = await client.query(
     `insert into app.agreement_versions
        (household_id, agreement_id, version_number, effective_from,
         monthly_salary_cents, overtime_hourly_rate_cents, worked_rest_day_rate_cents,
         worked_rest_day_credit_minutes, contracted_weekly_minutes, annual_vacation_days,
         currency_code, terms, reason, created_by_membership_id)
-     values ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)`,
+     values ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+     returning id`,
     [
       householdId,
       agreementId,
@@ -501,6 +812,60 @@ async function insertFirstVersion(client, householdId, agreementId, createdByMem
       createdByMembershipId
     ]
   );
+  const versionId = versionRow.rows[0].id;
+
+  let order = 0;
+  for (const type of version.extraWorkTypes) {
+    order += 10;
+    await client.query(
+      `insert into app.extra_work_types
+         (household_id, agreement_id, agreement_version_id, code, name, unit, rate_cents,
+          reference_minutes, active, sort_order, created_by_membership_id)
+       values ($1, $2, $3, $4, $5, $6::app.extra_work_unit, $7, $8, $9, $10, $11)`,
+      [
+        householdId,
+        agreementId,
+        versionId,
+        type.code,
+        type.name,
+        type.unit,
+        type.rateCents,
+        type.referenceMinutes,
+        type.active,
+        order,
+        createdByMembershipId
+      ]
+    );
+  }
+
+  order = 0;
+  for (const supplement of version.supplements) {
+    order += 10;
+    await client.query(
+      `insert into app.recurring_supplements
+         (household_id, agreement_id, agreement_version_id, code, name, amount_cents,
+          periodicity, adds_to_pay, starts_on, ends_on, active, sort_order,
+          created_by_membership_id)
+       values ($1, $2, $3, $4, $5, $6, $7::app.supplement_periodicity, $8, $9, $10, $11, $12, $13)`,
+      [
+        householdId,
+        agreementId,
+        versionId,
+        supplement.code,
+        supplement.name,
+        supplement.amountCents,
+        supplement.periodicity,
+        supplement.addsToPay,
+        supplement.startsOn,
+        supplement.endsOn,
+        supplement.active,
+        order,
+        createdByMembershipId
+      ]
+    );
+  }
+
+  return versionId;
 }
 
 export function printAgreementReport(report) {
@@ -515,10 +880,21 @@ export function printAgreementReport(report) {
       `${mode}acuerdo ya dado de alta → ${report.agreementId} (${report.versionCount} versión(es)); no se ha escrito nada`
     );
   }
+  console.log(
+    `${mode}catálogo: ${report.extraWorkTypes} concepto(s) de trabajo extra ` +
+      `(${report.registrableTypes} registrable(s) por ella) y ${report.supplements} complemento(s)`
+  );
+  if (report.registrableTypes === 0) {
+    console.log(
+      `${mode}AVISO: ningún concepto activo y con tarifa. Con este acuerdo la empleada no podrá ` +
+        'registrar ninguna jornada extra mientras rija esta versión, y eso no se arregla hacia ' +
+        'atrás. Si no era lo que querías, revisa `extraWorkTypes` ANTES de ejecutar sin --dry-run.'
+    );
+  }
 }
 
 function parseArgs(argv) {
-  const args = { config: null, overtimeHourlyRateCents: null, dryRun: false };
+  const args = { config: null, dryRun: false };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     // Un `--` suelto es el separador que algunos gestores de paquetes exigen y
@@ -526,11 +902,12 @@ function parseArgs(argv) {
     if (flag === '--') continue;
     else if (flag === '--config') args.config = argv[++i];
     else if (flag.startsWith('--config=')) args.config = flag.slice('--config='.length);
-    else if (flag === '--overtime-hourly-rate-cents') args.overtimeHourlyRateCents = Number(argv[++i]);
-    else if (flag.startsWith('--overtime-hourly-rate-cents=')) {
-      args.overtimeHourlyRateCents = Number(flag.slice('--overtime-hourly-rate-cents='.length));
-    } else if (flag === '--dry-run') args.dryRun = true;
-    else throw new Error(`argumento desconocido: ${flag}`);
+    else if (flag === '--dry-run') args.dryRun = true;
+    // Se sigue reconociendo para poder explicar adónde se fue, en vez de soltar
+    // «argumento desconocido» a quien copió el comando de la documentación vieja.
+    else if (flag === '--overtime-hourly-rate-cents' || flag.startsWith('--overtime-hourly-rate-cents=')) {
+      throw new Error(OVERTIME_FLAG_RETIRED_MESSAGE);
+    } else throw new Error(`argumento desconocido: ${flag}`);
   }
   if (!args.config) throw new Error('Falta --config <ruta al JSON del hogar>');
   return args;
@@ -543,9 +920,7 @@ if (isDirectRun) {
   try {
     const args = parseArgs(process.argv.slice(2));
     const raw = JSON.parse(await readFile(path.resolve(args.config), 'utf8'));
-    const config = normalizeAgreementConfig(raw, {
-      overtimeHourlyRateCents: args.overtimeHourlyRateCents
-    });
+    const config = normalizeAgreementConfig(raw);
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error('DATABASE_URL es obligatoria (rol admin/propietario de migraciones)');
     client = new pg.Client({ connectionString: url });
