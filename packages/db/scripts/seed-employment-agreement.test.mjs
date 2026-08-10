@@ -15,9 +15,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from './migrate.mjs';
 import {
   normalizeAgreementConfig,
+  normalizeTime,
   relicRates,
+  scheduleToStructured,
   scheduleToText,
-  seedEmploymentAgreement
+  seedEmploymentAgreement,
+  weekdayNumber,
+  weeklyEffectiveMinutes
 } from './seed-employment-agreement.mjs';
 
 const adminUrl = process.env.TEST_DATABASE_URL;
@@ -92,6 +96,106 @@ describe('condiciones de horario como texto', () => {
     );
     expect(scheduleToText('   ')).toBeNull();
     expect(scheduleToText(null)).toBeNull();
+  });
+});
+
+describe('condiciones de horario como dato', () => {
+  it('la forma de siempre del JSON sigue construyendo la jornada tipo', () => {
+    // Ni `restDays` ni `days`: el fichero que ya existía se sigue entendiendo, y
+    // ahora además da un horario consultable.
+    const structured = scheduleToStructured(exampleConfig().agreement.schedule);
+    expect(structured).toMatchObject({
+      startsAt: '08:00',
+      endsAt: '19:00',
+      longBreakMinutes: 120,
+      days: []
+    });
+  });
+
+  it('una frase suelta no se convierte en dato: de ahí no se deduce sin inventar', () => {
+    expect(scheduleToStructured('De 9 a 17, con una hora para comer.')).toBeNull();
+    expect(scheduleToStructured(null)).toBeNull();
+    // Con una sola hora tampoco: la otra habría que inventarla.
+    expect(scheduleToStructured({ from: '08:00', weekly: 'De lunes a viernes' })).toBeNull();
+  });
+
+  it('libranzas y días distintos, por nombre o por número ISO', () => {
+    const structured = scheduleToStructured({
+      from: '8:00',
+      to: '16:30',
+      longBreakMinutes: 90,
+      note: 'El descanso se toma al mediodía',
+      restDays: ['domingo'],
+      days: { sabado: { to: '14:30' }, _nota: 'no viaja' }
+    });
+    expect(structured.startsAt).toBe('08:00');
+    expect(structured.note).toBe('El descanso se toma al mediodía');
+    // Ordenados de lunes a domingo, y el sábado solo trae lo que cambia.
+    expect(structured.days).toEqual([
+      { weekday: 6, works: true, startsAt: null, endsAt: '14:30', longBreakMinutes: null, note: '' },
+      { weekday: 7, works: false, startsAt: null, endsAt: null, longBreakMinutes: null, note: '' }
+    ]);
+    expect(weeklyEffectiveMinutes(structured)).toBe(2400);
+
+    // Los números ISO dan exactamente lo mismo que los nombres.
+    const porNumero = scheduleToStructured({
+      from: '08:00',
+      to: '16:30',
+      longBreakMinutes: 90,
+      restDays: [7],
+      days: { 6: { to: '14:30' } }
+    });
+    expect(porNumero.days).toEqual(structured.days);
+  });
+
+  it('acepta «libra» y {works:false} como formas de decir lo mismo', () => {
+    const base = { from: '08:00', to: '16:30', longBreakMinutes: 90 };
+    expect(scheduleToStructured({ ...base, days: { domingo: 'libra' } }).days[0]).toMatchObject({
+      weekday: 7,
+      works: false
+    });
+    expect(scheduleToStructured({ ...base, days: { domingo: false } }).days[0]).toMatchObject({
+      works: false
+    });
+    expect(
+      scheduleToStructured({ ...base, days: { domingo: { works: false, note: 'Descansa' } } }).days[0]
+    ).toMatchObject({ works: false, note: 'Descansa' });
+  });
+
+  it('rechaza lo que no puede ser un horario, diciendo qué día falla', () => {
+    const base = { from: '08:00', to: '16:30', longBreakMinutes: 90 };
+    expect(() => scheduleToStructured({ from: '22:00', to: '06:00' })).toThrowError(
+      /termina antes de empezar/
+    );
+    expect(() => scheduleToStructured({ from: '09:00', to: '13:00', longBreakMinutes: 240 })).toThrowError(
+      /no cabe entre/
+    );
+    // La excepción se resuelve contra la jornada tipo, y el error lo dice.
+    expect(() => scheduleToStructured({ ...base, days: { jueves: { to: '07:00' } } })).toThrowError(
+      /El jueves terminaría a las 07:00 habiendo entrado a las 08:00/
+    );
+    // Un día que no cambia nada no es una excepción.
+    expect(() => scheduleToStructured({ ...base, days: { jueves: { to: '16:30' } } })).toThrowError(
+      /no cambia nada respecto a la jornada tipo/
+    );
+    // Y un día no puede librarse y ser distinto a la vez.
+    expect(() =>
+      scheduleToStructured({ ...base, restDays: ['domingo'], days: { domingo: { to: '14:00' } } })
+    ).toThrowError(/aparece en restDays y en days a la vez/);
+    // Sin jornada tipo no hay nada de lo que desviarse.
+    expect(() => scheduleToStructured({ from: '08:00', restDays: ['domingo'] })).toThrowError(
+      /le faltan `from` y `to`/
+    );
+    expect(() => weekdayNumber('lunez')).toThrowError(/no es un día de la semana/);
+    expect(() => normalizeTime('8', 'la hora')).toThrowError(/HH:MM/);
+    expect(normalizeTime('8:05', 'la hora')).toBe('08:05');
+  });
+
+  it('sin libranza declarada la semana son siete días, y por eso no cuadrará', () => {
+    // Decisión deliberada, la misma del motor puro: no se inventa un «de lunes a
+    // viernes» que nadie pactó.
+    const structured = scheduleToStructured({ from: '08:00', to: '16:30', longBreakMinutes: 90 });
+    expect(weeklyEffectiveMinutes(structured)).toBe(7 * 420);
   });
 });
 
@@ -456,6 +560,78 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
         sort_order: 20
       }
     ]);
+  });
+
+  it('escribe el horario como dato, con sus días aparte', async () => {
+    await seed(
+      exampleConfig({
+        schedule: {
+          from: '08:00',
+          to: '16:30',
+          longBreakMinutes: 90,
+          weekly: 'De lunes a sábado',
+          note: 'El descanso se toma al mediodía',
+          restDays: ['domingo'],
+          days: { sabado: { to: '14:30' } }
+        }
+      })
+    );
+
+    const { rows } = await client.query(
+      `select to_char(starts_at, 'HH24:MI') as starts_at,
+              to_char(ends_at, 'HH24:MI') as ends_at,
+              long_break_minutes, note
+         from app.agreement_schedules where household_id = $1`,
+      [HOUSEHOLD]
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      starts_at: '08:00',
+      ends_at: '16:30',
+      long_break_minutes: 90,
+      note: 'El descanso se toma al mediodía'
+    });
+
+    const days = await client.query(
+      `select weekday, works,
+              to_char(starts_at, 'HH24:MI') as starts_at,
+              to_char(ends_at, 'HH24:MI') as ends_at,
+              long_break_minutes
+         from app.agreement_schedule_days where household_id = $1 order by weekday`,
+      [HOUSEHOLD]
+    );
+    // El sábado solo apunta la salida: ni repite la entrada ni el descanso.
+    expect(days.rows).toEqual([
+      { weekday: 6, works: true, starts_at: null, ends_at: '14:30', long_break_minutes: null },
+      { weekday: 7, works: false, starts_at: null, ends_at: null, long_break_minutes: null }
+    ]);
+
+    // Y la frase de siempre sigue en terms: no se retira nada.
+    const version = await client.query('select terms from app.agreement_versions where household_id = $1', [
+      HOUSEHOLD
+    ]);
+    expect(version.rows[0].terms.schedule).toContain('Presencia de 08:00 a 16:30.');
+  });
+
+  it('un JSON con horario solo en prosa da de alta el contrato sin horario consultable', async () => {
+    await seed(exampleConfig({ schedule: 'De 9 a 17, con una hora para comer.' }));
+    const { rows } = await client.query(
+      'select count(*)::int as total from app.agreement_schedules where household_id = $1',
+      [HOUSEHOLD]
+    );
+    // Cero filas: el «si aplica» empieza aquí. La empleada no verá sección.
+    expect(rows[0].total).toBe(0);
+  });
+
+  it('añadir un horario a una versión ya pactada exige versión nueva desde la aplicación', async () => {
+    await seed(exampleConfig({ schedule: 'De 9 a 17, con una hora para comer.' }));
+    await expect(
+      seed(
+        exampleConfig({
+          schedule: { from: '09:00', to: '17:00', longBreakMinutes: 60, restDays: ['domingo'] }
+        })
+      )
+    ).rejects.toThrowError(/versiones son inmutables[\s\S]*Administrar el contrato/);
   });
 
   it('repetirlo no escribe nada', async () => {

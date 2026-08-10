@@ -4,7 +4,7 @@ import { HOUSEHOLD, loginAs } from './helpers';
 
 // Ninguna pantalla puede desbordar en horizontal en un móvil estrecho: a 320 px
 // (el mínimo razonable, iPhone SE 1.ª gen / plegable cerrado) el documento debe
-// caber entero. El síntoma que motivó este spec: Pagos tenía un ancho mínimo de
+// caber entero. El síntoma que motivó este spec: Contrato tenía un ancho mínimo de
 // contenido muy por encima del viewport, así que Chromium ensanchaba el
 // viewport de maquetación y recortaba etiquetas y botones de las tarjetas.
 //
@@ -26,11 +26,11 @@ interface OverflowRoute {
 
 const ROUTES: readonly OverflowRoute[] = [
   { path: 'today', label: 'Hoy', as: 'admin' },
-  // Pagos se mira con los dos roles: la familia ve las tarjetas de decisión y
+  // Contrato se mira con los dos roles: la familia ve las tarjetas de decisión y
   // el historial de liquidaciones; la empleada, el parte semanal y su alta de
   // gastos. Son maquetaciones distintas y ambas desbordaban.
-  { path: 'employment', label: 'Pagos (familia)', as: 'admin' },
-  { path: 'employment', label: 'Pagos (empleada)', as: 'employee' },
+  { path: 'employment', label: 'Contrato (familia)', as: 'admin' },
+  { path: 'employment', label: 'Contrato (empleada)', as: 'employee' },
   { path: 'menu', label: 'Menú', as: 'admin' },
   {
     path: 'menu',

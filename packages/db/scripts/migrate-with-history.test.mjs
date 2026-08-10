@@ -450,3 +450,247 @@ describe.runIf(Boolean(adminUrl))('migrar la recurrencia de rutinas con historia
     await expect(applyMigrations(client)).resolves.toBe(0);
   }, 120_000);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 0025 y 0026, sobre una casa que ya tenía contrato y guía escritos.
+//
+// Las dos llegaron por ramas distintas y ninguna había visto a la otra, así que
+// lo que se comprueba aquí es lo único que no se puede comprobar por separado:
+// que APLICADAS EN ORDEN, y encima de datos, no se estorban ni inventan nada.
+//
+// Lo delicado de cada una sobre una base con historial:
+//
+//   · 0025 solo AÑADE tablas. La promesa es negativa y por eso hay que
+//     escribirla: un contrato que ya existía NO estrena horario por migrar. El
+//     horario es una condición pactada; deducirlo de la frase de terms sería
+//     inventárselo.
+//   · 0026 sí toca lo escrito, y de las tres maneras que suelen doler:
+//     clasifica los apartados que ya existen (kind), añade a
+//     app.wiki_revisions una columna GENERADA Y ALMACENADA —que reescribe la
+//     tabla fila a fila— y le pone una CHECK a app.wiki_page_slugs, que está
+//     llena. Con las tablas vacías las tres pasan solas.
+// ─────────────────────────────────────────────────────────────────────────────
+/** Última migración anterior a la que estrena el horario del contrato. */
+const STOP_AT_BEFORE_SCHEDULE = '0023_routine_recurrence.sql';
+
+const LEGACY_HOUSEHOLD = '7c000000-0000-4000-8000-000000000001';
+const LEGACY_ADMIN = '7c000000-0000-4000-8000-000000000002';
+const LEGACY_EMPLOYEE = '7c000000-0000-4000-8000-000000000003';
+const LEGACY_AGREEMENT = '7c000000-0000-4000-8000-000000000004';
+const LEGACY_VERSION = '7c000000-0000-4000-8000-000000000005';
+const LEGACY_GUIDE_SPACE = '7c100000-0000-4000-8000-000000000001';
+const LEGACY_RECIPE_SPACE = '7c100000-0000-4000-8000-000000000002';
+const LEGACY_GUIDE_PAGE = '7c200000-0000-4000-8000-000000000001';
+const LEGACY_RECIPE_PAGE = '7c200000-0000-4000-8000-000000000002';
+const LEGACY_GUIDE_REVISION = '7c300000-0000-4000-8000-000000000001';
+const LEGACY_RECIPE_REVISION = '7c300000-0000-4000-8000-000000000002';
+
+describe.runIf(Boolean(adminUrl))('0025 y 0026 sobre una casa ya escrita', () => {
+  /** @type {pg.Client} */
+  let client;
+
+  beforeAll(async () => {
+    client = new pg.Client({ connectionString: adminUrl });
+    await client.connect();
+    await rewindTo(client, STOP_AT_BEFORE_SCHEDULE);
+
+    await client.query('begin');
+    await client.query('set local row_security = off');
+    await client.query(
+      `insert into app.households (id, slug, display_name)
+       values ($1, 'hogar-anterior', 'Hogar anterior al horario')`,
+      [LEGACY_HOUSEHOLD]
+    );
+    await client.query(
+      `insert into app.user_profiles (user_id, display_name, email) values
+         ('anterior:admin', 'Admin anterior', 'admin.anterior@casa.demo'),
+         ('anterior:empleada', 'Empleada anterior', 'empleada.anterior@casa.demo')`
+    );
+    await client.query(
+      `insert into app.household_memberships (id, household_id, user_id, role, starts_at) values
+         ($1, $3, 'anterior:admin', 'family_admin', now()),
+         ($2, $3, 'anterior:empleada', 'employee_live_in', now())`,
+      [LEGACY_ADMIN, LEGACY_EMPLOYEE, LEGACY_HOUSEHOLD]
+    );
+    await client.query(
+      `insert into app.employment_agreements
+         (id, household_id, employee_membership_id, status, starts_on, created_by_membership_id)
+       values ($1, $2, $3, 'active', date '2026-01-01', $4)`,
+      [LEGACY_AGREEMENT, LEGACY_HOUSEHOLD, LEGACY_EMPLOYEE, LEGACY_ADMIN]
+    );
+    // El horario, como se pactaba antes de 0025: una frase dentro de terms.
+    await client.query(
+      `insert into app.agreement_versions (
+         id, household_id, agreement_id, version_number, effective_from,
+         monthly_salary_cents, overtime_hourly_rate_cents, worked_rest_day_rate_cents,
+         contracted_weekly_minutes, annual_vacation_days,
+         terms, reason, created_by_membership_id
+       )
+       values ($1, $2, $3, 1, date '2026-01-01', 150000, 1000, 4500, 2400, 30,
+               $4::jsonb, 'Alta anterior al horario', $5)`,
+      [
+        LEGACY_VERSION,
+        LEGACY_HOUSEHOLD,
+        LEGACY_AGREEMENT,
+        JSON.stringify({ schedule: 'Presencia de 08:00 a 19:00. Fin de semana libre.' }),
+        LEGACY_ADMIN
+      ]
+    );
+
+    // Una guía y un recetario, ya escritos, con el slug 'recetas' que es por lo
+    // que 0026 reconoce el segundo.
+    await client.query(
+      `insert into app.wiki_spaces (id, household_id, slug, name, position, created_by_membership_id) values
+         ($1, $3, 'acogida-anterior', 'Acogida', 0, $4),
+         ($2, $3, 'recetas', 'Recetas', 1, $4)`,
+      [LEGACY_GUIDE_SPACE, LEGACY_RECIPE_SPACE, LEGACY_HOUSEHOLD, LEGACY_ADMIN]
+    );
+    await client.query(
+      `insert into app.wiki_pages
+         (id, household_id, space_id, status, current_slug, position, created_by_membership_id) values
+         ($1, $3, $5, 'published', 'la-cocina-anterior', 0, $4),
+         ($2, $3, $6, 'published', 'lentejas-anteriores', 0, $4)`,
+      [
+        LEGACY_GUIDE_PAGE,
+        LEGACY_RECIPE_PAGE,
+        LEGACY_HOUSEHOLD,
+        LEGACY_ADMIN,
+        LEGACY_GUIDE_SPACE,
+        LEGACY_RECIPE_SPACE
+      ]
+    );
+    await client.query(
+      `insert into app.wiki_page_slugs (household_id, page_id, slug) values
+         ($1, $2, 'la-cocina-anterior'),
+         ($1, $3, 'lentejas-anteriores')`,
+      [LEGACY_HOUSEHOLD, LEGACY_GUIDE_PAGE, LEGACY_RECIPE_PAGE]
+    );
+    await client.query(
+      `insert into app.wiki_revisions
+         (id, household_id, page_id, revision_number, title, body_markdown, authored_by_membership_id) values
+         ($1, $3, $5, 1, 'La cocina', 'La placa es de **inducción**.', $4),
+         ($2, $3, $6, 1, 'Lentejas', 'Una hora a fuego lento.', $4)`,
+      [
+        LEGACY_GUIDE_REVISION,
+        LEGACY_RECIPE_REVISION,
+        LEGACY_HOUSEHOLD,
+        LEGACY_ADMIN,
+        LEGACY_GUIDE_PAGE,
+        LEGACY_RECIPE_PAGE
+      ]
+    );
+    await client.query('commit');
+  }, 180_000);
+
+  afterAll(async () => {
+    await client?.end();
+  });
+
+  it('aplica las dos en orden sobre datos y deja la base en la cabeza', async () => {
+    await expect(applyMigrations(client)).resolves.toBeGreaterThan(0);
+
+    const { rows } = await client.query(
+      `select filename from public.schema_migrations order by filename`
+    );
+    const applied = rows.map((row) => row.filename);
+    expect(applied).toContain('0025_agreement_schedule.sql');
+    expect(applied).toContain('0026_guide_authorship_and_reading.sql');
+    // El orden es el que dice el nombre, y 0026 va detrás de 0025.
+    expect(applied.indexOf('0026_guide_authorship_and_reading.sql')).toBeGreaterThan(
+      applied.indexOf('0025_agreement_schedule.sql')
+    );
+    // Y las tablas nuevas existen de verdad, no solo en el registro.
+    const tables = await client.query(
+      `select table_name from information_schema.tables
+        where table_schema = 'app'
+          and table_name in ('agreement_schedules', 'agreement_schedule_days', 'wiki_reading_progress')
+        order by table_name`
+    );
+    expect(tables.rows.map((row) => row.table_name)).toEqual([
+      'agreement_schedule_days',
+      'agreement_schedules',
+      'wiki_reading_progress'
+    ]);
+  }, 180_000);
+
+  it('un contrato anterior no estrena horario por migrar, y su frase sigue ahí', async () => {
+    const schedules = await client.query(
+      `select count(*)::int as total from app.agreement_schedules where household_id = $1`,
+      [LEGACY_HOUSEHOLD]
+    );
+    expect(schedules.rows[0].total).toBe(0);
+
+    const version = await client.query(
+      `select terms->>'schedule' as schedule, contracted_weekly_minutes
+         from app.agreement_versions where id = $1`,
+      [LEGACY_VERSION]
+    );
+    expect(version.rows[0].schedule).toBe('Presencia de 08:00 a 19:00. Fin de semana libre.');
+    expect(version.rows[0].contracted_weekly_minutes).toBe(2400);
+  });
+
+  it('los apartados que ya existían quedan clasificados, no reescritos', async () => {
+    const { rows } = await client.query(
+      `select slug, kind::text as kind, name from app.wiki_spaces
+        where household_id = $1 order by position`,
+      [LEGACY_HOUSEHOLD]
+    );
+    expect(rows).toEqual([
+      { slug: 'acogida-anterior', kind: 'guide', name: 'Acogida' },
+      { slug: 'recetas', kind: 'recipes', name: 'Recetas' }
+    ]);
+  });
+
+  it('la huella de lectura se calcula para lo ya escrito, y solo mira las palabras', async () => {
+    const { rows } = await client.query(
+      `select id, reading_fingerprint from app.wiki_revisions
+        where household_id = $1 order by id`,
+      [LEGACY_HOUSEHOLD]
+    );
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row.reading_fingerprint).toMatch(/^[0-9a-f]{32}$/);
+    expect(rows[0].reading_fingerprint).not.toBe(rows[1].reading_fingerprint);
+
+    // El mismo texto sin el marcado da la MISMA huella: reimportar el manual con
+    // otro formato no devuelve a pendientes una nota ya leída.
+    const same = await client.query(
+      `select md5(app.reading_normalized($1) || ' | ' || app.reading_normalized($2)) as huella`,
+      ['La cocina', 'La placa es de inducción.']
+    );
+    expect(same.rows[0].huella).toBe(
+      rows.find((row) => row.id === LEGACY_GUIDE_REVISION).reading_fingerprint
+    );
+  });
+
+  it('nadie estrena progreso de lectura por migrar', async () => {
+    const { rows } = await client.query(
+      `select count(*)::int as total from app.wiki_reading_progress`
+    );
+    expect(rows[0].total).toBe(0);
+  });
+
+  it('los slugs reservados quedan cerrados sin tocar los que ya existían', async () => {
+    const existing = await client.query(
+      `select slug from app.wiki_page_slugs where household_id = $1 order by slug`,
+      [LEGACY_HOUSEHOLD]
+    );
+    expect(existing.rows.map((row) => row.slug)).toEqual([
+      'la-cocina-anterior',
+      'lentejas-anteriores'
+    ]);
+
+    await client.query('begin');
+    await client.query('set local row_security = off');
+    await expect(
+      client.query(
+        `insert into app.wiki_page_slugs (household_id, page_id, slug) values ($1, $2, 'libro')`,
+        [LEGACY_HOUSEHOLD, LEGACY_GUIDE_PAGE]
+      )
+    ).rejects.toThrow(/wiki_page_slugs_reserved_slug/);
+    await client.query('rollback');
+  });
+
+  it('reejecutar el runner sobre la base ya migrada no cambia nada', async () => {
+    await expect(applyMigrations(client)).resolves.toBe(0);
+  }, 120_000);
+});

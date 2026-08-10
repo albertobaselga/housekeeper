@@ -5,6 +5,7 @@ export * from "./ledger.js";
 export * from "./agreements.js";
 export * from "./agreement-terms.js";
 export * from "./manual-adjustments.js";
+export * from "./agreement-schedule.js";
 export * from "./settlement.js";
 export * from "./extra-work.js";
 export * from "./vacations.js";

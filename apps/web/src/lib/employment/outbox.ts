@@ -103,8 +103,8 @@ export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
     }
     case 'agreement':
       return action === 'set_vacation_entitlement'
-        ? 'Cambio de los días de vacaciones del acuerdo'
-        : 'Cambio en el acuerdo';
+        ? 'Cambio de los días de vacaciones del contrato'
+        : 'Cambio en el contrato';
     default:
       return 'Cambio pendiente';
   }

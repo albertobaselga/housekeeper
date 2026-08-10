@@ -104,7 +104,7 @@ test('Alberto acepta la jornada extra desde Hoy, sin salir de la página', async
 
   const decision = page.locator('.ledger-list > div').filter({ hasText: EXTRA_NOTE });
   await expect(decision).toContainText('Jornada extra solicitada');
-  // El enlace a Acuerdos y pagos sigue estando junto al atajo.
+  // El enlace a Contrato sigue estando junto al atajo.
   await expect(decision.getByRole('link', { name: 'Revisar' })).toBeVisible();
 
   await decision.getByRole('button', { name: 'Aceptar' }).click();

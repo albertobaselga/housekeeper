@@ -8,6 +8,7 @@ import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@ca
 
 import {
   buildExtraWorkTypeView,
+  buildScheduleView,
   buildSupplementView,
   type AdvanceRow,
   type AgreementVersionRow,
@@ -15,6 +16,8 @@ import {
   type ExtraWorkTypeRow,
   type PaymentRow,
   type RecurringSupplementRow,
+  type ScheduleDayRow,
+  type ScheduleRow,
   type SettlementLineRow,
   type SettlementRow,
   type WeeklyReportRow
@@ -373,6 +376,9 @@ interface SummaryInput {
    */
   currentTypes: readonly ExtraWorkTypeRow[];
   currentSupplements: readonly RecurringSupplementRow[];
+  /** Horario de la versión vigente, o null si el contrato no declara ninguno. */
+  currentSchedule: ScheduleRow | null;
+  currentScheduleDays: readonly ScheduleDayRow[];
   agreement: AgreementExportRow | null;
   settlements: readonly SettlementRow[];
   compensation: readonly CompensationBalanceRow[];
@@ -431,12 +437,38 @@ async function renderSummaryPdf(input: SummaryInput): Promise<Uint8Array> {
     y -= 16;
   };
 
-  heading('Acuerdo vigente');
+  heading('Contrato vigente');
   if (input.agreement && input.currentVersion) {
-    row('Inicio del acuerdo', input.agreement.startsOn);
+    row('Inicio del contrato', input.agreement.startsOn);
     row('Salario mensual', euroLabel(input.currentVersion.monthlySalaryCents));
     row('Jornada semanal contratada', `${input.currentVersion.contractedWeeklyMinutes} min`);
     row('Vacaciones al año', `${input.currentVersion.annualVacationDays} días naturales`);
+    // El horario, si el contrato lo declara. Si no, no se imprime una línea con
+    // un guion: la ausencia de horario pactado se dice callando, igual que en
+    // pantalla.
+    if (input.currentSchedule) {
+      const schedule = buildScheduleView({
+        schedule: input.currentSchedule,
+        days: input.currentScheduleDays,
+        contractedWeeklyMinutes: input.currentVersion.contractedWeeklyMinutes
+      });
+      // `row` recorta el valor a 32 caracteres, y la frase del horario es más
+      // larga: va como texto corrido, en su propia línea.
+      page.drawText('Horario', { x: 48, y, size: 10, font: regular });
+      y -= 14;
+      page.drawText(schedule.sentence.slice(0, 96), { x: 60, y, size: 9, font: bold });
+      y -= 16;
+      if (schedule.mismatchLabel) {
+        page.drawText(schedule.mismatchLabel.slice(0, 110), {
+          x: 60,
+          y,
+          size: 8,
+          font: regular,
+          color: rgb(0.64, 0.28, 0.06)
+        });
+        y -= 16;
+      }
+    }
     for (const type of input.currentTypes) {
       const view = buildExtraWorkTypeView(type);
       if (!view.available || view.rateLabel === null) continue;
@@ -451,7 +483,7 @@ async function renderSummaryPdf(input: SummaryInput): Promise<Uint8Array> {
       );
     }
   } else {
-    page.drawText('Sin acuerdo vigente visible.', { x: 48, y, size: 10, font: regular });
+    page.drawText('Sin contrato vigente visible.', { x: 48, y, size: 10, font: regular });
     y -= 16;
   }
   y -= 14;
@@ -588,6 +620,39 @@ export async function buildEmploymentExport(
                from app.recurring_supplements
               where household_id = $1 and agreement_id = any($2::uuid[])
               order by sort_order, code`,
+            [householdId, agreementIds]
+          )
+        : empty;
+
+      // Horario pactado (0025). Va en el expediente por lo mismo que el salario:
+      // es una condición del contrato, y una copia de su expediente que no diga
+      // a qué hora entra y sale no es una copia completa.
+      const schedules = agreementIds.length
+        ? await client.query<ScheduleRow>(
+            `select id,
+                    agreement_version_id as "agreementVersionId",
+                    to_char(starts_at, 'HH24:MI') as "startsAt",
+                    to_char(ends_at, 'HH24:MI') as "endsAt",
+                    long_break_minutes as "longBreakMinutes",
+                    note
+               from app.agreement_schedules
+              where household_id = $1 and agreement_id = any($2::uuid[])`,
+            [householdId, agreementIds]
+          )
+        : empty;
+
+      const scheduleDays = agreementIds.length
+        ? await client.query<ScheduleDayRow>(
+            `select id,
+                    schedule_id as "scheduleId",
+                    weekday, works,
+                    to_char(starts_at, 'HH24:MI') as "startsAt",
+                    to_char(ends_at, 'HH24:MI') as "endsAt",
+                    long_break_minutes as "longBreakMinutes",
+                    note
+               from app.agreement_schedule_days
+              where household_id = $1 and agreement_id = any($2::uuid[])
+              order by weekday`,
             [householdId, agreementIds]
           )
         : empty;
@@ -741,7 +806,7 @@ export async function buildEmploymentExport(
           )
         : empty;
 
-      // Acuerdo y versión vigentes en el instante de generación (para el PDF).
+      // Contrato y versión vigentes en el instante de generación (para el PDF).
       const activeAgreement =
         agreements.rows.find((row) => row.status === 'active') ?? agreements.rows.at(-1) ?? null;
       const today = generatedAt.toISOString().slice(0, 10);
@@ -772,6 +837,10 @@ export async function buildEmploymentExport(
           currentSupplements: currentVersion
             ? supplements.rows.filter((row) => row.agreementVersionId === currentVersion.id)
             : [],
+          currentSchedule: currentVersion
+            ? (schedules.rows.find((row) => row.agreementVersionId === currentVersion.id) ?? null)
+            : null,
+          currentScheduleDays: scheduleDays.rows,
           agreement: activeAgreement,
           settlements: settlements.rows,
           compensation: compensation.rows,

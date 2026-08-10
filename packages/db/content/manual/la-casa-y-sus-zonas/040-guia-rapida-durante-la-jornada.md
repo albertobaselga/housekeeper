@@ -2,6 +2,7 @@
 title: 'Guía rápida: durante la jornada'
 slug: guia-rapida-durante-la-jornada
 status: published
+pinned: true
 tags:
   - manual
   - casa

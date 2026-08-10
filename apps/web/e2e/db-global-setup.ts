@@ -17,28 +17,48 @@ const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const SPACE = '33000000-0000-4000-8000-000000000001';
 const PAGE = '33100000-0000-4000-8000-000000000001';
 const REVISION = '33110000-0000-4000-8000-000000000001';
+// Segundo capítulo de la Guía con dos notas: el modo libro necesita un libro
+// con páginas, y el avance de acogida necesita algo que quede por leer.
+const SPACE_CONVIVENCIA = '33000000-0000-4000-8000-000000000002';
+const PAGE_ACOGIDA = '33100000-0000-4000-8000-000000000002';
+const PAGE_HORARIOS = '33100000-0000-4000-8000-000000000003';
 
 const WIKI_SEED = `
 BEGIN;
 SET LOCAL row_security = off;
 
-INSERT INTO app.wiki_spaces (id, household_id, slug, name, description, position, created_by_membership_id)
-VALUES ('${SPACE}', '${HOUSEHOLD}', 'equipamiento', 'Equipamiento', 'Aparatos de la casa', 0, '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.wiki_spaces (id, household_id, slug, name, description, position, created_by_membership_id) VALUES
+  ('${SPACE_CONVIVENCIA}', '${HOUSEHOLD}', 'convivencia', 'Convivencia', 'Cómo funciona esta casa', 10, '${ADMIN_MEMBERSHIP}'),
+  ('${SPACE}', '${HOUSEHOLD}', 'equipamiento', 'Equipamiento', 'Aparatos de la casa', 20, '${ADMIN_MEMBERSHIP}');
 
-INSERT INTO app.wiki_pages (id, household_id, space_id, parent_page_id, status, current_slug, pinned, position, created_by_membership_id)
-VALUES ('${PAGE}', '${HOUSEHOLD}', '${SPACE}', NULL, 'published', 'lavadora', true, 0, '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.wiki_pages (id, household_id, space_id, parent_page_id, status, current_slug, pinned, position, created_by_membership_id) VALUES
+  ('${PAGE_ACOGIDA}', '${HOUSEHOLD}', '${SPACE_CONVIVENCIA}', NULL, 'published', 'principios-de-la-casa', false, 0, '${ADMIN_MEMBERSHIP}'),
+  ('${PAGE_HORARIOS}', '${HOUSEHOLD}', '${SPACE_CONVIVENCIA}', NULL, 'published', 'jornada-y-descansos', false, 1, '${ADMIN_MEMBERSHIP}'),
+  ('${PAGE}', '${HOUSEHOLD}', '${SPACE}', NULL, 'published', 'lavadora', true, 0, '${ADMIN_MEMBERSHIP}');
 
-INSERT INTO app.wiki_page_slugs (household_id, page_id, slug)
-VALUES ('${HOUSEHOLD}', '${PAGE}', 'lavadora');
+INSERT INTO app.wiki_page_slugs (household_id, page_id, slug) VALUES
+  ('${HOUSEHOLD}', '${PAGE_ACOGIDA}', 'principios-de-la-casa'),
+  ('${HOUSEHOLD}', '${PAGE_HORARIOS}', 'jornada-y-descansos'),
+  ('${HOUSEHOLD}', '${PAGE}', 'lavadora');
 
-INSERT INTO app.wiki_revisions (id, household_id, page_id, revision_number, title, body_markdown, summary, tags, aliases, authored_by_membership_id)
-VALUES ('${REVISION}', '${HOUSEHOLD}', '${PAGE}', 1,
-        'Lavadora · programa corto',
-        'Usa el programa Mixto 40° para media carga.
+INSERT INTO app.wiki_revisions (id, household_id, page_id, revision_number, title, body_markdown, summary, tags, aliases, authored_by_membership_id) VALUES
+  ('33110000-0000-4000-8000-000000000002', '${HOUSEHOLD}', '${PAGE_ACOGIDA}', 1,
+   'Principios de la casa',
+   'Cuidado, respeto y comunicación temprana: si algo no está claro, se pregunta antes de actuar.',
+   '', ARRAY['manual'], ARRAY[]::text[], '${ADMIN_MEMBERSHIP}'),
+  ('33110000-0000-4000-8000-000000000003', '${HOUSEHOLD}', '${PAGE_HORARIOS}', 1,
+   'Jornada y descansos',
+   'La jornada empieza a las ocho. Los descansos son descansos: no se llama ni se escribe.',
+   '', ARRAY['manual'], ARRAY[]::text[], '${ADMIN_MEMBERSHIP}'),
+  ('${REVISION}', '${HOUSEHOLD}', '${PAGE}', 1,
+   'Lavadora · programa corto',
+   'Usa el programa Mixto 40° para media carga.
 
 El detergente va en el compartimento II.',
-        '', ARRAY['colada'], ARRAY['lavadora'], '${ADMIN_MEMBERSHIP}');
+   '', ARRAY['colada'], ARRAY['lavadora'], '${ADMIN_MEMBERSHIP}');
 
+UPDATE app.wiki_pages SET current_revision_id = '33110000-0000-4000-8000-000000000002' WHERE id = '${PAGE_ACOGIDA}';
+UPDATE app.wiki_pages SET current_revision_id = '33110000-0000-4000-8000-000000000003' WHERE id = '${PAGE_HORARIOS}';
 UPDATE app.wiki_pages SET current_revision_id = '${REVISION}' WHERE id = '${PAGE}';
 
 COMMIT;
@@ -85,9 +105,11 @@ INSERT INTO app.menu_group_diners (household_id, group_id, diner_id) VALUES
   ('${HOUSEHOLD}', '${E2E_SEED.menuGroup}', '${E2E_SEED.diners.marta}'),
   ('${HOUSEHOLD}', '${E2E_SEED.menuGroup}', '${E2E_SEED.diners.leo}');
 
--- Dos recetas como extensión de páginas wiki nuevas en un espacio propio.
-INSERT INTO app.wiki_spaces (id, household_id, slug, name, description, position, created_by_membership_id)
-VALUES ('${E2E_SEED.wikiSpace}', '${HOUSEHOLD}', 'cocina-e2e', 'Cocina E2E', 'Recetario de la batería e2e', 5, '${ADMIN_MEMBERSHIP}');
+-- Dos recetas como extensión de páginas wiki nuevas en un espacio propio. El
+-- apartado nace como RECETARIO (migración 0026): lo mantiene la familia desde el
+-- menú y no forma parte del manual de acogida ni del modo libro.
+INSERT INTO app.wiki_spaces (id, household_id, slug, name, description, position, kind, created_by_membership_id)
+VALUES ('${E2E_SEED.wikiSpace}', '${HOUSEHOLD}', 'cocina-e2e', 'Cocina E2E', 'Recetario de la batería e2e', 5, 'recipes', '${ADMIN_MEMBERSHIP}');
 
 INSERT INTO app.wiki_pages (id, household_id, space_id, parent_page_id, status, current_slug, pinned, position, created_by_membership_id) VALUES
   ('${E2E_SEED.recipePages.conLeche}', '${HOUSEHOLD}', '${E2E_SEED.wikiSpace}', NULL, 'published', 'arroz-con-leche-e2e', false, 0, '${ADMIN_MEMBERSHIP}'),

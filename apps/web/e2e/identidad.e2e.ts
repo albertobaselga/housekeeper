@@ -50,6 +50,6 @@ test('una sección fuera del acceso se titula por el error, no por la sección',
   await page.goto(`/h/${HOUSEHOLD}/employment`);
   // El 403 lo lanza el layout del hogar, así que la página de error se dibuja
   // sin su armazón: no hay cabecera de casa, y la pestaña tampoco la nombra.
-  // Lo que no puede pasar es que se titule «Pagos», como si hubiera entrado.
+  // Lo que no puede pasar es que se titule «Contrato», como si hubiera entrado.
   await expect(page).toHaveTitle(`Sección no incluida en tu acceso · ${GENERICO}`);
 });

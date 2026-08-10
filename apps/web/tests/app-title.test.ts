@@ -32,10 +32,16 @@ describe('título de la pestaña: una sola fuente', () => {
     for (const moduleName of HOUSEHOLD_MODULES) {
       expect(sectionLabelFor(`/h/abc/${moduleName}`), moduleName).toBeTruthy();
     }
-    expect(sectionLabelFor('/h/abc/employment/acuerdo')).toBe('Condiciones del acuerdo');
+    // La sección se llama «Contrato» (decisión del propietario): la etiqueta de
+    // la pestaña es la misma palabra que la barra lateral y la cabecera.
+    expect(sectionLabelFor('/h/abc/employment')).toBe('Contrato');
+    expect(sectionLabelFor('/h/abc/employment/acuerdo')).toBe('Condiciones del contrato');
     expect(sectionLabelFor('/h/abc/employment/condiciones')).toBe('Mis condiciones');
     // Una nota de la guía hereda la sección; su propio título llega por `section`.
     expect(sectionLabelFor('/h/abc/wiki/lavadora')).toBe('Guía de la casa');
+    expect(sectionLabelFor('/h/abc/wiki/progreso')).toBe('Avance de la guía');
+    // El modo libro hereda la sección; la nota concreta la pone su `load`.
+    expect(sectionLabelFor('/h/abc/wiki/libro/lavadora')).toBe('Guía de la casa');
     // Una ruta que nadie declaró no inventa etiqueta: se titula con la casa.
     expect(sectionLabelFor('/h/abc/inventada')).toBeNull();
   });

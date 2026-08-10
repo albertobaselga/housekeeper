@@ -7,8 +7,11 @@ import { HOUSEHOLD, loginAs } from './helpers';
 // siendo el selector demo, pero la guía lee y escribe datos reales bajo RLS.
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 
-test('Marta edita en el editor visual y persiste Markdown canónico (versión 2)', async ({ page }) => {
-  await loginAs(page, 'family');
+// Desde la migración 0026 la Guía la escribe la administración: quien conduce
+// el editor es Alberto. Que Marta ya no vea el botón lo comprueba
+// guia-lectura.dbe2e.ts.
+test('Alberto edita en el editor visual y persiste Markdown canónico (versión 2)', async ({ page }) => {
+  await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/wiki/lavadora`);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Lavadora · programa corto');
 
