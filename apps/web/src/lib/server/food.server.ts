@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import type { Role } from '@casa-clara/contracts';
 import {
   PENDING_LOOKBACK_DAYS,
+  nextOccurrenceOnOrAfter,
   pendingFor,
   type RoutineOverduePolicy,
   type RoutineSchedule
@@ -907,6 +908,11 @@ export async function loadRoutines(
         const nextAfterActionOn =
           (pending.overdue === null ? pending.upcoming[0] : (pending.due[0] ?? pending.upcoming[0])) ??
           null;
+        // Una finalización HUÉRFANA —cuyo `due_on` dejó de ser ocurrencia
+        // porque la regla cambió— no se pinta. No se borra ni se toca: es un
+        // hecho, y el comando acepta a propósito los `dueOn` que llegan de un
+        // cliente que quedó con la regla anterior. Simplemente no se enseña.
+        const todayIsOccurrence = nextOccurrenceOnOrAfter(schedule, todayISO) === todayISO;
         return {
           id: row.id,
           title: row.title,
@@ -916,7 +922,7 @@ export async function loadRoutines(
           nextOccurrenceOn: pending.nextDueHint,
           actionableDueOn,
           nextAfterActionOn,
-          completedToday: pending.due.length === 0 && completedDueOns.includes(todayISO)
+          completedToday: todayIsOccurrence && completedDueOns.includes(todayISO)
         } satisfies RoutineView;
       });
       return {

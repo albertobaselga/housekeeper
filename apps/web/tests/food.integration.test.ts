@@ -404,6 +404,38 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
     expect(helper!.routines.map((routine) => routine.id)).toEqual([ROUTINE_PLANTAS]);
   });
 
+  it('una finalización huérfana no pinta «Hecha»: la regla ya no la reconoce', async () => {
+    // §9, caso 15: al cambiar la regla, las finalizaciones registradas ni
+    // reviven ni se borran; las que dejaron de ser ocurrencia dejan de
+    // pintarse. Aquí la rutina pasa a ser «los lunes» y queda una finalización
+    // de un día que ya no toca.
+    const routineId = '48000000-0000-4000-8000-000000000004';
+    await withAuthorizedTransaction(appPool, { userId: ADMIN_USER.id }, FIXTURE_HOUSEHOLD, async (client, membership) => {
+      await client.query(
+        // `overdue_policy = 'skip'` es lo que DERIVA el comando para un ritmo
+        // sub-semanal (§2.5): una rutina de días fijos no acumula pendientes.
+        `insert into app.routines (id, household_id, title, details, audience, frequency,
+                                   interval_count, next_due_on, created_by_membership_id,
+                                   pattern, anchor_on, repeat_every, weekdays, overdue_policy)
+         values ($1, $2, 'Cocina a fondo', '', 'all', 'weekly', 1, '2026-08-10', $3,
+                 'days_of_week', '2026-08-10', 1, ARRAY[1]::smallint[], 'skip')`,
+        [routineId, FIXTURE_HOUSEHOLD, membership.id]
+      );
+      // 2026-08-11 es martes: con `weekdays = [1]` ya no es ocurrencia.
+      await client.query(
+        `insert into app.routine_completions (household_id, routine_id, due_on, completed_by_membership_id)
+         values ($1, $2, '2026-08-11', $3)`,
+        [FIXTURE_HOUSEHOLD, routineId, membership.id]
+      );
+    });
+
+    const admin = await loadRoutines(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, '2026-08-11');
+    const cocina = admin!.routines.find((routine) => routine.id === routineId)!;
+    expect(cocina.completedToday).toBe(false);
+    expect(cocina.actionableDueOn).toBeNull();
+    expect(cocina.nextOccurrenceOn).toBe('2026-08-17');
+  });
+
   it('una rutina sin cadencia se ve aquí, sin fecha y sin nada que marcar', async () => {
     // §2.3: `pattern IS NULL` es «se hace, falta decidir cuándo». Es el estado
     // de una veintena de tareas del manual, y esta página es el ÚNICO sitio
