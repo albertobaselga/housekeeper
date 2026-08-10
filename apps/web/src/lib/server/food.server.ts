@@ -2,10 +2,8 @@ import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
 import {
-  AuthorizationError,
   buildShoppingBoard,
   createLogger,
-  errorCode,
   computeMenuSlotHash,
   withAuthorizedTransaction,
   type ShoppingLine,
@@ -14,6 +12,7 @@ import {
 
 import { fromHundredths, toHundredths } from '$lib/food/quantities';
 import { weekDays } from '$lib/food/dates';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:food');
@@ -460,10 +459,7 @@ export async function loadMenuWeek(
       } satisfies MenuWeek;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('menu week unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'menu week', cause);
   }
 }
 
@@ -512,10 +508,7 @@ export async function loadRecipe(
       } satisfies RecipeDetail;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('recipe unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'recipe', cause);
   }
 }
 
@@ -577,10 +570,7 @@ export async function loadShoppingList(
       } satisfies ShoppingList;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('shopping list unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'shopping list', cause);
   }
 }
 
@@ -741,10 +731,7 @@ export async function loadFoodCatalog(
       } satisfies FoodCatalog;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('food catalog unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'food catalog', cause);
   }
 }
 
@@ -816,9 +803,6 @@ export async function loadRoutines(
       } satisfies RoutinesOverview;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('routines unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'routines', cause);
   }
 }

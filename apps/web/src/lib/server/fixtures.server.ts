@@ -1,5 +1,22 @@
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
 
+import { demoOnly, fixturesAllowed } from './data-source.server';
+
+/**
+ * Corpus de demostración. Todo lo que sale de aquí es INVENTADO.
+ *
+ * Cada constructor de maqueta va envuelto en `demoOnly()`: con `DATABASE_URL`
+ * configurada no devuelve datos falsos, lanza. Es deliberado que sea un fallo
+ * ruidoso y no un `if` en cada página: el modo de fallo que arreglamos era
+ * precisamente el silencio (auditoría §R2), y una ruta que olvide la guarda
+ * tiene que romperse en pruebas, no mentir en producción.
+ *
+ * Las tres funciones de identidad (`listDemoUsers`, `getDemoUser`,
+ * `getHousehold`) NO llevan la guarda: son la puerta del selector sintético,
+ * que se cierra por su propio camino (login/+page.server.ts) y que la batería
+ * e2e ejercita con base de datos a propósito.
+ */
+
 // Los identificadores replican las fixtures sintéticas de @casa-clara/db
 // (fixture-casa-roble): con DATABASE_URL configurada, la sesión demo opera
 // directamente contra Postgres bajo RLS sin tabla de correspondencias.
@@ -208,10 +225,45 @@ const FIXTURE_TODAY: SnapshotToday = {
   ]
 };
 
+/**
+ * El 112 no sale de la base de datos ni de ninguna maqueta: es el número
+ * universal de emergencias y la aplicación lo pinta siempre, esté como esté
+ * todo lo demás. Es la ÚNICA cosa que el paquete offline puede afirmar cuando
+ * no ha podido leer el hogar.
+ */
+const EMERGENCY_112 = { id: 'emergency-112', name: 'Emergencias', phone: '112', kind: 'emergency' } as const;
+
+/** «Hoy» sin nada que contar: la forma completa, todos los huecos vacíos. */
+const EMPTY_TODAY: SnapshotToday = { dateISO: '', dateLabel: '', menu: [], routines: [] };
+
+/**
+ * Contenido del snapshot crítico (el paquete que se guarda firmado en el
+ * dispositivo y sostiene el modo sin conexión).
+ *
+ * Tres estados, y solo tres:
+ *
+ * - **Real**: hay datos del hogar. Ni una nota de demostración se mezcla.
+ * - **Parcial**: hay base de datos configurada pero no se pudo leer (o el
+ *   hogar aún está vacío). El paquete lleva el 112 y nada más. Un snapshot
+ *   pobre es recuperable; uno con teléfonos inventados, firmado con la clave
+ *   real y guardado en el móvil de quien cuida la casa, no lo es.
+ * - **Maqueta**: solo sin `DATABASE_URL`, es decir, en la demostración.
+ */
 export function getCriticalSnapshotPayload(
   realContacts?: Array<{ id: string; name: string; phone: string; kind: string }> | null,
   realHousehold?: SnapshotHouseholdData | null
 ): CriticalSnapshotFixturePayload {
+  if (!fixturesAllowed()) {
+    return {
+      emergency: [],
+      contacts: realContacts ? realContacts.map((contact) => ({ ...contact })) : [{ ...EMERGENCY_112 }],
+      dietaryFlags: [],
+      today: realHousehold
+        ? { ...realHousehold.today, menu: [...realHousehold.today.menu], routines: [...realHousehold.today.routines] }
+        : { ...EMPTY_TODAY },
+      wikiPages: realHousehold ? realHousehold.wikiPages.map((page) => ({ ...page })) : []
+    };
+  }
   return {
     // Con contactos REALES del hogar las notas de demostración desaparecen:
     // el snapshot no debe mezclar datos verdaderos con inventados sin marca.
@@ -241,7 +293,7 @@ export function getCriticalSnapshotPayload(
   };
 }
 
-export function getTodayFixture() {
+function buildTodayFixture() {
   return copy({
     greeting: 'Buenos días',
     dateLabel: 'Viernes, 7 de agosto',
@@ -266,7 +318,7 @@ export function getTodayFixture() {
   });
 }
 
-export function getEmploymentFixture() {
+function buildEmploymentFixture() {
   return copy({
     period: 'Julio 2026',
     status: 'Pendiente de confirmación',
@@ -286,19 +338,19 @@ export function getEmploymentFixture() {
   });
 }
 
-export function getMenuFixture() {
+function buildMenuFixture() {
   return copy({ weekLabel: '3–9 de agosto', days: WEEK_MENU });
 }
 
-export function getRecipesFixture() {
+function buildRecipesFixture() {
   return copy({ recipes: RECIPES });
 }
 
-export function getWikiFixture() {
+function buildWikiFixture() {
   return copy({ spaces: ['Todo', 'Equipamiento', 'Incidencias', 'Crianza'], pages: WIKI_PAGES });
 }
 
-export function getSearchFixture(query: string) {
+function buildSearchFixture(query: string) {
   const normalized = query.trim().toLocaleLowerCase('es');
   const corpus = [
     ...WIKI_PAGES.map((page) => ({ type: 'Guía', title: page.title, description: page.summary, href: 'wiki' })),
@@ -311,7 +363,7 @@ export function getSearchFixture(query: string) {
   return copy({ query, results: results.slice(0, 12), suggested: ['lavadora', 'caldera', 'pediatra'] });
 }
 
-export function getRoutinesFixture() {
+function buildRoutinesFixture() {
   return copy({
     progress: { done: 3, total: 7 },
     groups: [
@@ -322,7 +374,7 @@ export function getRoutinesFixture() {
   });
 }
 
-export function getCalendarFixture() {
+function buildCalendarFixture() {
   return copy({
     month: 'Agosto 2026',
     events: [
@@ -334,11 +386,11 @@ export function getCalendarFixture() {
   });
 }
 
-export function getContactsFixture() {
+function buildContactsFixture() {
   return copy({ contacts: CONTACTS });
 }
 
-export function getEmergencyFixture() {
+function buildEmergencyFixture() {
   return copy({
     updatedLabel: 'Guardada hoy en este dispositivo · se abre sin conexión',
     contacts: CONTACTS.filter((contact) => contact.featured),
@@ -350,10 +402,29 @@ export function getEmergencyFixture() {
   });
 }
 
-export function getSettingsFixture() {
+function buildSettingsFixture() {
   return copy({
     household: HOUSEHOLD,
     members: DEMO_USERS.map(({ id, name, initials, role }) => ({ id, name, initials, role })),
     preferences: { locale: 'Español (España)', timeZone: 'Europe/Madrid', weekStarts: 'Lunes' }
   });
 }
+
+/*
+ * Puertas de las maquetas. Cada una solo entrega datos si este despliegue NO
+ * tiene `DATABASE_URL`; con hogar real detrás lanzan `FixturesForbiddenError`.
+ * Es la traducción literal de la regla: con base configurada, las maquetas no
+ * existen. La comprobación no vive en las páginas —donde se puede olvidar—
+ * sino aquí, donde no hay forma de rodearla.
+ */
+export const getTodayFixture = demoOnly('Hoy', buildTodayFixture);
+export const getEmploymentFixture = demoOnly('expediente laboral', buildEmploymentFixture);
+export const getMenuFixture = demoOnly('menú semanal', buildMenuFixture);
+export const getRecipesFixture = demoOnly('recetario', buildRecipesFixture);
+export const getWikiFixture = demoOnly('Guía', buildWikiFixture);
+export const getSearchFixture = demoOnly('búsqueda', buildSearchFixture);
+export const getRoutinesFixture = demoOnly('rutinas', buildRoutinesFixture);
+export const getCalendarFixture = demoOnly('calendario', buildCalendarFixture);
+export const getContactsFixture = demoOnly('directorio de contactos', buildContactsFixture);
+export const getEmergencyFixture = demoOnly('Emergencias', buildEmergencyFixture);
+export const getSettingsFixture = demoOnly('ajustes', buildSettingsFixture);

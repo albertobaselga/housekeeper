@@ -1,8 +1,9 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:access');
@@ -60,10 +61,7 @@ export async function resolveMembershipIdentity(
       return { userId: row.userId, name: row.displayName ?? 'esa persona' } satisfies MembershipIdentity;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('membership identity unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'membership identity', cause);
   }
 }
 
@@ -121,9 +119,6 @@ export async function loadAccessOverview(
       } satisfies AccessOverview;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('access overview unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'access overview', cause);
   }
 }

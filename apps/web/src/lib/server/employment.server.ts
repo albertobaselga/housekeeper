@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import {
   buildAccrual,
@@ -34,6 +34,7 @@ import {
   type VacationPeriodRow,
   type WeeklyReportRow
 } from '$lib/employment/model';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:employment');
@@ -456,11 +457,6 @@ export async function loadEmploymentOverview(
       } satisfies EmploymentOverview;
     });
   } catch (cause) {
-    // Sin membresía viva no hay expediente que enseñar; cualquier otra avería
-    // degrada a la fixture para no tumbar la página de demo.
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('employment overview unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'employment overview', cause);
   }
 }

@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { mondayOf, weekDays, dayLabel } from '$lib/food/dates';
 import { getContactsFixture } from './fixtures.server';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:handover');
@@ -349,10 +350,7 @@ export async function buildHandoverExport(
       return zipSync(entries, { level: 6, mtime: new Date('1980-01-01T00:00:00.000Z') });
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('handover export unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'handover export', cause);
   }
 }
 
@@ -375,9 +373,7 @@ export async function canDownloadHandover(
       async (_client, membership) => membership.role === 'family_admin'
     );
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('handover gate unavailable', { code: errorCode(cause) });
-    }
+    unreadable(log, 'handover gate', cause);
     return false;
   }
 }

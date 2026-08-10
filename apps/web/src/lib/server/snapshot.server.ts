@@ -2,11 +2,9 @@ import type { Pool } from 'pg';
 
 import { API_VERSION, CRITICAL_SNAPSHOT_TTL_MS, type CriticalSnapshotV1 } from '@casa-clara/contracts';
 import {
-  AuthorizationError,
   canonicalSha256,
   computeMenuSlotHash,
   createLogger,
-  errorCode,
   signCriticalSnapshot,
   withAuthorizedTransaction
 } from '@casa-clara/server';
@@ -15,6 +13,7 @@ import { dateLabel } from '$lib/employment/model';
 import type { MealSlot } from '$lib/food/commands';
 
 import type { SnapshotContact } from './contacts.server';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 import {
   getCriticalSnapshotPayload,
@@ -160,10 +159,7 @@ export async function loadSnapshotHousehold(
       } satisfies SnapshotHouseholdData;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('snapshot household unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'snapshot household', cause);
   }
 }
 

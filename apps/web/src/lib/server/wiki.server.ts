@@ -1,9 +1,10 @@
 import type { Pool, PoolClient } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, listSearchGapClusters, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, listSearchGapClusters, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { diffLines, type WikiDiffLine } from '$lib/wiki/diff';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:wiki');
@@ -257,10 +258,7 @@ export async function loadWikiHome(
       } satisfies WikiHome;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('wiki home unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'wiki home', cause);
   }
 }
 
@@ -472,10 +470,7 @@ export async function loadWikiPage(
       } satisfies WikiPageView;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('wiki page unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'wiki page', cause);
   }
 }
 
@@ -551,9 +546,6 @@ export async function searchWikiPages(
       return result.rows;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('wiki search unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'wiki search', cause);
   }
 }
