@@ -27,12 +27,49 @@ El hecho que dispara **A** ya está calculado y pintado en pantalla: `apps/web/s
 
 **Cambio obligatorio en B.** Hoy `apps/worker/src/reminders.ts:100-109` mete a la empleada en la lista de destinatarios (`state.employeeEmail`). Como correo pasaba desapercibido; **como push es una escalada cada tres días recordándole que sus jefes no le han pagado, sobre algo que no está en su mano.** Se quita explícitamente. Este cambio hay que hacerlo **aunque no se implemente ningún push**: ya es un defecto del correo.
 
+### 2.1bis El tercero, que llegó después: vacaciones apuntadas (migración 0028)
+
+> Añadido el 11/08/2026, cuando el propietario pidió que la empleada se entere
+> de las vacaciones que se le apuntan. **El aviso dentro de la aplicación ya
+> está hecho.** Esta sección existe para que el push, cuando llegue, reutilice
+> el hecho que ya hay en vez de inventarse otro.
+
+| # | Aviso | A quién | Cuándo se dispara | Por qué sí |
+|---|---|---|---|---|
+| **C** | «Te han apuntado vacaciones del 1 al 15 de agosto» / «Se han anulado unas vacaciones que tenías apuntadas» | `employee_live_in` (la del contrato, nadie más) | Dentro del propio comando `leave_request` (record / void), como **A** y sin ningún reloj | Es una decisión de la casa **sobre su tiempo libre** que ella no puede descubrir trabajando: nadie se la cuenta si no se la cuenta la aplicación. Es esporádico —unas pocas veces al año— y no le pide ninguna aprobación, porque este hogar no se la pide |
+
+**El hecho ya existe y no hay que crear ninguno.** Son las filas de
+`app.vacation_periods` (migración 0020) con sus sellos `recorded_at` y
+`voided_at`, comparadas con la marca de agua por persona
+`app.vacation_notice_marks.seen_through` (migración 0028). La regla de qué es
+«nuevo» está escrita **una sola vez**, en el dominio:
+`vacationNewsSince()` en `packages/domain/src/vacations.ts`. El aviso de Hoy la
+usa a través de `buildVacationNews()`
+(`apps/web/src/lib/server/vacations.server.ts`). **El push tiene que usar esa
+misma función**; escribir la condición otra vez en el worker es garantizar que
+las dos versiones de «nuevo» se separen.
+
+Tres cosas que el push debe respetar, y que ya están decididas:
+
+1. **No re-contar lo que ella ya vio en la aplicación.** La marca de agua es
+   justamente eso. Un push cuyo contenido ya está en `seen_through` es una
+   vibración por algo que la persona ya sabe.
+2. **Lo que se apuntó y se anuló entre dos miradas suyas no se cuenta.** La
+   regla del dominio ya lo deja fuera: nunca llegó a ser suyo.
+3. **El destinatario es la empleada del contrato, y solo ella.** A quien
+   administra no se le notifica lo que acaba de escribir.
+
+Queda **abierta una decisión** para esa tarea: si el push necesita su propio
+«ya se lo mandé al móvil» —distinto de «ya lo vio en pantalla»—, que sea **otra
+columna de `app.vacation_notice_marks`**, no otra tabla de avisos. El día que
+haya una tabla de avisos paralela al expediente, empezarán a desincronizarse.
+
 ### 2.2 Los que se descartan, con la razón de cada uno
 
 | Descartado | Razón |
 |---|---|
 | **Parte semanal enviado / confirmado / disputado** | **Bloqueado, no descartado.** El único comando del agregado `time_entry` es `submit_week` (`packages/contracts/src/schemas.ts:94`); no existe `confirm` ni `dispute`, y `buildTodayDecisions` no tiene ninguna rama de parte semanal. El único `confirmed` que se produce hoy lo pone `time_report.autoconfirm` a los 3 días. Notificar «mañana se confirma solo» sería **una alarma sin botón**: no hay pantalla donde atenderla. Primero el comando y la decisión en Hoy; después, quizá, el aviso |
-| **Vacaciones (solicitud / respuesta)** | **No existe el flujo.** El propio código lo dice: «el hogar decidió que no hay flujo de solicitud ni de aprobación» (`packages/server/src/commands/vacation.ts:256-260`). Las apunta la familia administradora. La capability `leave.request.self` existe en el contrato pero **no tiene comando detrás**. No hay nada que notificar |
+| **Vacaciones (solicitud / respuesta)** | **No existe el flujo, y sigue sin existir.** «El hogar decidió que no hay flujo de solicitud ni de aprobación» (`packages/server/src/commands/vacation.ts`). La capability `leave.request.self` existe en el contrato pero **no tiene comando detrás**. No hay ninguna respuesta que notificar porque no hay ninguna pregunta. Otra cosa —y esa sí— es **avisar de lo que le han apuntado**: ver §2.1bis |
 | **Rutinas que vencen** (`notification.routine_due`) | Tres razones acumuladas, cualquiera bastaría. (a) Se encola **un job por ocurrencia** (`rhythm.ts:92-113`): una rutina diaria es una vibración diaria, la definición de entrenar a la gente a ignorar. (b) La casa **ya renunció por escrito** a poner hora de reloj a las rutinas (`docs/rutinas-y-calendario.md:322`: «poner hora convierte una guía en un fichaje»); un push es esa hora de reloj, y además suena. (c) Hacia la empleada es un recordatorio recurrente de trabajo pendiente, que es la versión-notificación de lo que el AC-26 revisado echó fuera (`docs/rutinas-y-calendario.md:1148-1153`). **Ni siquiera las mensuales, al principio** |
 | **Menú sin confirmar** | Diario y recurrente. Sale en Hoy, que es donde se atiende. Es el candidato perfecto para agotar la paciencia y gastar el permiso |
 | **Gastos pendientes de aprobar, jornadas extra por decidir** | Son de goteo y **no tienen reloj**. Su daño es acumulativo, no urgente. Un gasto sin aprobar hoy sigue sin aprobar la semana que viene y no pasa nada irreversible |
