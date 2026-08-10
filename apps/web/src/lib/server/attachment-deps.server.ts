@@ -135,7 +135,14 @@ function createS3Backend(environment: Partial<Record<string, string>>): StorageB
       ({ S3Client }) =>
         new S3Client({ endpoint, region, forcePathStyle: true, credentials: { accessKeyId, secretAccessKey } })
     );
-    return await client;
+    try {
+      return await client;
+    } catch (cause) {
+      // Una promesa rechazada memorizada envenenaría el proceso entero: el
+      // siguiente intento recibiría el mismo fallo sin volver a probar.
+      client = null;
+      throw cause;
+    }
   };
   const getBody = async (key: string) => {
     const { GetObjectCommand } = await import('@aws-sdk/client-s3');
