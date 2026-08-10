@@ -12,6 +12,7 @@ export const HOUSEHOLD_MODULES = [
   'contacts',
   'emergency',
   'account',
+  'personal',
   'settings'
 ] as const;
 
@@ -34,6 +35,10 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
   // «Tu acceso» pide la misma capacidad mínima que Hoy, no `access.manage`.
   // Ajustes sigue siendo de la familia; ahí se reponen las contraseñas ajenas.
   account: 'emergency.read',
+  // Personal es el expediente de quien trabaja y trabajó en la casa, con
+  // nombres, fechas y sueldos: la misma llave que Ajustes, que solo tiene la
+  // familia administradora.
+  personal: 'access.manage',
   settings: 'access.manage'
 };
 
