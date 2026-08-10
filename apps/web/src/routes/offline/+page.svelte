@@ -147,8 +147,6 @@
   });
 </script>
 
-<svelte:head><title>Sin conexión · Casa Clara</title></svelte:head>
-
 <!--
   Página de último recurso: puede servirse desde la caché del service worker
   cuando todo lo demás falla, incluida la hoja de estilos. Por eso el bloque
@@ -158,7 +156,7 @@
   <section class="error-card" aria-labelledby="offline-title" style="margin-bottom: 1.5rem;">
     <span class="brand-mark" aria-hidden="true">⌂</span>
     <p class="eyebrow">Sin conexión</p>
-    <h1 id="offline-title">Casa Clara sigue guardando lo esencial</h1>
+    <h1 id="offline-title">Lo esencial sigue guardado en este dispositivo</h1>
     <p>Vuelve a una página que ya hayas visitado o usa la información de emergencia guardada en este dispositivo. Los cambios compatibles esperan aquí hasta recibir confirmación.</p>
     <button class="button primary" type="button" onclick={() => history.back()}>Volver</button>
   </section>

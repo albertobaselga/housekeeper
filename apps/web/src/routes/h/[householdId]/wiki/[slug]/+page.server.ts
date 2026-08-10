@@ -23,6 +23,9 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     if (view.kind === 'not_found') error(404, 'Esta nota no está en la guía de esta casa.');
     return {
       view,
+      // Título de pestaña de ESTA nota (ver `$lib/app-title`): el layout de la
+      // raíz lo antepone al nombre del hogar.
+      section: view.revision.title,
       blocks: parseWikiMarkdown(view.revision.bodyMarkdown, { wikiBasePath: base }),
       fixture: null
     };
@@ -33,6 +36,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   if (!fixture) error(404, 'Esta nota no está en la guía de esta casa.');
   return {
     view: null,
+    section: fixture.title,
     blocks: parseWikiMarkdown(fixture.body, { wikiBasePath: base }),
     fixture
   };

@@ -10,7 +10,7 @@ describe('diccionario compartido de códigos de error', () => {
     expect(describeErrorCode('not_allowed')).toBe('Tu rol no permite esta acción');
     // Genéricos del dispatcher, incluidos los que emite el propio /api/v1/sync
     // cuando rechaza sin llegar al comando.
-    expect(describeErrorCode('unsupported_aggregate')).toBe('Casa Clara no reconoce este tipo de cambio');
+    expect(describeErrorCode('unsupported_aggregate')).toBe('La aplicación no reconoce este tipo de cambio');
     expect(describeErrorCode('not_authorized')).toBe('Tu acceso a este hogar no lo permite');
     expect(describeErrorCode('operation_conflict')).toBe('Otro cambio llegó antes con otro contenido');
     expect(describeErrorCode('constraint_violation')).toBe(

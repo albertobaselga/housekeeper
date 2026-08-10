@@ -133,8 +133,6 @@
 
 </script>
 
-<svelte:head><title>Condiciones del acuerdo · Casa Clara</title></svelte:head>
-
 <PageHeader
   eyebrow="Acuerdo"
   title="Condiciones del acuerdo"

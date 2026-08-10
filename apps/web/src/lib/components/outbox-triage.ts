@@ -117,7 +117,7 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
 }
 
 const GENERIC_ERROR_LABELS: Record<string, string> = {
-  unsupported_aggregate: 'Casa Clara no reconoce este tipo de cambio',
+  unsupported_aggregate: 'La aplicación no reconoce este tipo de cambio',
   not_authorized: 'Tu acceso a este hogar no lo permite',
   wiki_revision_conflict: 'Otra persona guardó la nota antes que tú',
   menu_content_changed: 'Esa comida del menú cambió desde tu confirmación',

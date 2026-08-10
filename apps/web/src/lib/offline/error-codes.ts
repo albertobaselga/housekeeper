@@ -14,7 +14,7 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   invalid_envelope: 'Los datos del cambio no eran válidos',
   not_allowed: 'Tu rol no permite esta acción',
   not_authorized: 'Tu acceso a este hogar no lo permite',
-  unsupported_aggregate: 'Casa Clara no reconoce este tipo de cambio',
+  unsupported_aggregate: 'La aplicación no reconoce este tipo de cambio',
   operation_conflict: 'Otro cambio llegó antes con otro contenido',
   constraint_violation: 'El cambio no encaja con lo que ya hay guardado',
   transient: 'No se pudo guardar ahora mismo; se reintenta solo',

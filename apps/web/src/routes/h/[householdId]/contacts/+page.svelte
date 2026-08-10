@@ -98,8 +98,6 @@
   const PHONE_PATTERN = '[0-9+][0-9 ().-]{1,24}';
 </script>
 
-<svelte:head><title>Contactos · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   {#if directory}
     {#snippet actions()}

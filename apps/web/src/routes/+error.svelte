@@ -8,8 +8,7 @@
   const forbidden = page.status === 403;
 </script>
 
-<svelte:head><title>{forbidden ? 'Sección no incluida en tu acceso' : 'No encontrado'} · Casa Clara</title></svelte:head>
-
+<!-- El <title> lo pone el layout de la raíz, que ya conoce `page.error`. -->
 <main class="error-stage">
   <section class="error-card" aria-labelledby="error-title">
     <span class="brand-mark" aria-hidden="true">⌂</span>
@@ -20,7 +19,7 @@
       <a class="button primary" href={homeHref}>← Volver a Hoy</a>
     {:else}
       <p>{page.error?.message ?? 'Vuelve al inicio y prueba otra sección.'}</p>
-      <a class="button primary" href={homeHref}>{householdMatch ? '← Volver a Hoy' : 'Volver a Casa Clara'}</a>
+      <a class="button primary" href={homeHref}>{householdMatch ? '← Volver a Hoy' : 'Volver al inicio'}</a>
     {/if}
   </section>
 </main>

@@ -56,8 +56,6 @@
   {/each}
 {/snippet}
 
-<svelte:head><title>Buscar · Casa Clara</title></svelte:head>
-
 <div class="page-wrap search-page">
   <PageHeader eyebrow="Buscador global" title="¿Qué necesitas encontrar?" description="La guía de la casa, las recetas y los contactos en una sola búsqueda." />
 

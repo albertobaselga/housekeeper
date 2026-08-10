@@ -84,8 +84,6 @@
   }
 </script>
 
-<svelte:head><title>Calendario · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   {#if live}
     {#snippet actions()}

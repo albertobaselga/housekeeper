@@ -1,6 +1,6 @@
 {
-  "name": "Casa Clara",
-  "short_name": "Casa Clara",
+  "name": "Aplicación para la gestión del personal doméstico",
+  "short_name": "Hogar",
   "description": "Acuerdos, cuidados y el día a día del hogar.",
   "start_url": "/",
   "scope": "/",

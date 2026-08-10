@@ -169,10 +169,6 @@
   });
 </script>
 
-<svelte:head>
-  <title>{shownTitle} · Casa Clara</title>
-</svelte:head>
-
 <div class="page-wrap">
   {#if view}
     {#snippet actions()}

@@ -112,8 +112,6 @@
   }
 </script>
 
-<svelte:head><title>Hoy · Casa Clara</title></svelte:head>
-
 <div class="page-wrap today-page">
   <!-- Acceso fijo a Emergencias desde Hoy (P3 de la re-auditoría UX v2: en
        móvil «Ayuda» pasó a vivir dentro de «Más» y perdió su tap directo). -->
