@@ -1,7 +1,8 @@
 import type { Pool } from 'pg';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:receipts');
@@ -58,9 +59,9 @@ export async function loadExpenseReceipt(
       return result.rows[0] ?? null;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('receipt unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    // Sin esta separación, una avería del almacén contestaba «ese gasto no
+    // tiene justificante guardado»: un 404 que afirma algo falso sobre el
+    // expediente de una persona.
+    return unreadable(log, 'receipt', cause);
   }
 }

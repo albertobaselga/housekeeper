@@ -16,6 +16,19 @@ const PRECACHE = [...build, ...files];
  */
 const WARM_HEADER = 'x-casa-clara-warm-page';
 
+/**
+ * ¿Puede esta respuesta sustituir en la caché a la que ya hay guardada?
+ *
+ * Una página que se declara `no-store` NO puede. La usa Emergencias cuando el
+ * servidor no ha podido leer los contactos del hogar: responde 200 a propósito
+ * —esa pantalla no puede caerse— pero su contenido es «no podemos leerlos», y
+ * guardarlo encima borraría la última copia que sí traía los teléfonos, que es
+ * lo único que quedaría para una urgencia sin cobertura.
+ */
+function storable(response: Response): boolean {
+  return response.ok && !(response.headers.get('cache-control') ?? '').includes('no-store');
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const staticCache = await caches.open(STATIC_CACHE);
@@ -58,7 +71,7 @@ self.addEventListener('fetch', (event) => {
       try {
         const response = await fetch(request);
         if (response.ok) {
-          await pageCache.put(request, response.clone());
+          if (storable(response)) await pageCache.put(request, response.clone());
           return response;
         }
         // 503 = el servidor está en pie pero no ha podido leer los datos de la
@@ -80,7 +93,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
-        if (response.ok) {
+        if (storable(response)) {
           const pageCache = await caches.open(PAGE_CACHE);
           // La clave es la URL sin headers: idéntica a la que buscará el
           // fallback de navegación cuando no haya red.

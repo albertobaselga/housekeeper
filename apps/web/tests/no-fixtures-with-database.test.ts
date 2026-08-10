@@ -110,6 +110,9 @@ const CASES: LoadCase[] = [
 
 type LoadFn = (event: Record<string, unknown>) => unknown;
 
+/** Cabeceras que el `load` pidió poner; Emergencias marca `no-store`. */
+let headers: Record<string, string> = {};
+
 async function runLoad({ module, params = {}, search = '' }: LoadCase): Promise<unknown> {
   const loaded = (await import(/* @vite-ignore */ module)) as { load: LoadFn };
   return loaded.load({
@@ -117,6 +120,7 @@ async function runLoad({ module, params = {}, search = '' }: LoadCase): Promise<
     params: { householdId: HOUSEHOLD, ...params },
     url: new URL(`https://casa.test/h/${HOUSEHOLD}/x${search}`),
     depends: () => undefined,
+    setHeaders: (added: Record<string, string>) => Object.assign(headers, added),
     request: new Request(`https://casa.test/h/${HOUSEHOLD}/x${search}`)
   });
 }
@@ -132,6 +136,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   for (const key of Object.keys(fakeEnv)) delete fakeEnv[key];
+  headers = {};
 });
 
 describe.each([
@@ -187,6 +192,9 @@ describe('con DATABASE_URL configurada, Emergencias', () => {
     expect(data.unreadable).toBe(true);
     expect(data.live).toBeNull();
     expect(data.emergency).toBeNull();
+    // Y esta respuesta no puede sustituir en la caché del service worker a la
+    // última que sí traía los teléfonos del hogar.
+    expect(headers['cache-control']).toContain('no-store');
   });
 });
 

@@ -17,7 +17,7 @@ import type { PageServerLoad } from './$types';
  * 111» y «la llave general está bajo el fregadero» como si fueran los de esta
  * casa. Un teléfono inventado en una urgencia es peor que ningún teléfono.
  */
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, setHeaders }) => {
   let live = null;
   try {
     live = locals.user ? await loadEmergencyContacts({ id: locals.user.id }, params.householdId) : null;
@@ -33,5 +33,13 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   if (fixturesAllowed()) return { live: null, emergency: getEmergencyFixture(), unreadable: false };
   // Avería o membresía que ya no está: desde esta pantalla es lo mismo, no
   // podemos enseñar los contactos de esta casa y hay que decirlo.
+  //
+  // `no-store` no es una optimización: el service worker guarda cada
+  // navegación con éxito bajo su URL para poder servirla sin red, y esta
+  // pantalla responde 200 a propósito. Sin esta cabecera, la versión «no
+  // podemos leerlos» sustituiría en la caché a la última que SÍ traía los
+  // teléfonos del hogar, y la avería de un minuto se llevaría por delante lo
+  // único que quedaba para una urgencia sin cobertura.
+  setHeaders({ 'cache-control': 'no-store' });
   return { live: null, emergency: null, unreadable: true };
 };
