@@ -13,7 +13,7 @@ import { AuthorizationError, errorCode, type Logger } from '@casa-clara/server';
  * instrucciones inventados —sin ningún aviso— a quien estuviera solo en casa
  * buscando a quién llamar (auditoría §R2).
  *
- * De aquí salen tres piezas:
+ * De aquí salen cuatro piezas:
  *
  * 1. `databaseConfigured()` / `fixturesAllowed()`: la condición, en un sitio.
  * 2. `unreadable()`: el `catch` compartido de los cargadores. Separa «no te

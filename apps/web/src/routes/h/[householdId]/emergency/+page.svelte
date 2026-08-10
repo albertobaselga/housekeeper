@@ -32,8 +32,11 @@
         (entry): entry is { id: string; name: string; phone: string; kind: string } =>
           typeof entry === 'object' &&
           entry !== null &&
+          typeof (entry as { id?: unknown }).id === 'string' &&
           typeof (entry as { name?: unknown }).name === 'string' &&
-          typeof (entry as { phone?: unknown }).phone === 'string'
+          typeof (entry as { phone?: unknown }).phone === 'string' &&
+          // El 112 ya está arriba, fijo y sin depender de nada guardado.
+          (entry as { id: string }).id !== 'emergency-112'
       );
       if (contacts.length > 0) saved = { label: savedAtLabel(snapshot!.generatedAt), contacts };
     } catch {
