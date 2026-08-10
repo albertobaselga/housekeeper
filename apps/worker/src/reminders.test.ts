@@ -32,8 +32,7 @@ function pendingState(overrides: Partial<SettlementReminderState> = {}): Settlem
     status: "closed",
     pendingCents: "54450",
     receiptConfirmed: false,
-    employeeEmail: "empleada.roble@example.com",
-    adminEmails: ["admin.roble@example.com", null],
+    adminEmails: ["admin.roble@example.com", "otra.admin@example.com", null],
     ...overrides,
   };
 }
@@ -59,13 +58,13 @@ function makeHandler(state: SettlementReminderState | null): { recorded: Recorde
 }
 
 describe("aviso de liquidación pendiente", () => {
-  it("con pendiente > 0 envía a admins y empleada (nulls filtrados) y se re-encola a +3 días", async () => {
+  it("con pendiente > 0 envía SOLO a quien administra (nulls filtrados) y se re-encola a +3 días", async () => {
     const { recorded, run } = makeHandler(pendingState());
     await run(dueJob({ settlementId: SETTLEMENT }));
 
     expect(recorded.emails.map((email) => email.to)).toEqual([
       "admin.roble@example.com",
-      "empleada.roble@example.com",
+      "otra.admin@example.com",
     ]);
     for (const email of recorded.emails) {
       expect(email.subject).toContain("05/05/2025");
@@ -102,9 +101,17 @@ describe("aviso de liquidación pendiente", () => {
   });
 
   it("sin correos utilizables no envía nada pero mantiene la escalada", async () => {
-    const { recorded, run } = makeHandler(
-      pendingState({ employeeEmail: null, adminEmails: [null] }),
-    );
+    const { recorded, run } = makeHandler(pendingState({ adminEmails: [null, "  "] }));
+    await run(dueJob({ settlementId: SETTLEMENT }));
+    expect(recorded.emails).toEqual([]);
+    expect(recorded.enqueued).toHaveLength(1);
+  });
+
+  it("un hogar sin ningún administrador no manda el aviso a la empleada por defecto", async () => {
+    // El defecto que corrige esta versión: el recordatorio de una deuda que ella
+    // no puede saldar llegaba a su bandeja cada tres días. Aunque no quede nadie
+    // a quien avisar, el aviso NO se redirige.
+    const { recorded, run } = makeHandler(pendingState({ adminEmails: [] }));
     await run(dueJob({ settlementId: SETTLEMENT }));
     expect(recorded.emails).toEqual([]);
     expect(recorded.enqueued).toHaveLength(1);
