@@ -1,7 +1,11 @@
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
 import { isRole } from '@casa-clara/contracts';
+import { createLogger } from '@casa-clara/server';
 
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
+
+const log = createLogger('web:app-user');
 
 function initialsFor(name: string): string {
   return name
@@ -17,6 +21,11 @@ function initialsFor(name: string): string {
  * membresías vivas bajo RLS (solo `app.user_id` fijado). La política de la base
  * excluye membresías revocadas o caducadas, así que la revocación se aplica en
  * cada petición sin lógica adicional aquí.
+ *
+ * `null` significa «esta identidad no tiene hogar»: una respuesta con sentido.
+ * Una avería de lectura ya NO se disfraza de eso —devolver null echaba a la
+ * calle, con un redirect a /login, a quien sí había entrado— sino que sale como
+ * 503 y hooks.server.ts la traduce a la pantalla honesta.
  */
 export async function resolveAppUser(
   userId: string,
@@ -74,9 +83,9 @@ export async function resolveAppUser(
       householdIds: [...new Set(memberships.rows.map((row) => row.household_id))],
       households
     };
-  } catch {
+  } catch (cause) {
     await client.query('rollback').catch(() => {});
-    return null;
+    return unreadable(log, 'app user', cause);
   } finally {
     client.release();
   }

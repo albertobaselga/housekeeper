@@ -49,16 +49,28 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
       const pageCache = await caches.open(PAGE_CACHE);
-      try {
-        const response = await fetch(request);
-        if (response.ok) await pageCache.put(request, response.clone());
-        return response;
-      } catch {
-        // ignoreVary: las páginas calentadas se guardan bajo su URL limpia y la
-        // petición de navegación real no debe fallar por un header `Vary`.
-        return (await pageCache.match(request, { ignoreVary: true }))
+      // ignoreVary: las páginas calentadas se guardan bajo su URL limpia y la
+      // petición de navegación real no debe fallar por un header `Vary`.
+      const fromCache = async () =>
+        (await pageCache.match(request, { ignoreVary: true }))
           ?? (await pageCache.match('/offline', { ignoreVary: true }))
           ?? new Response('Sin conexión', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      try {
+        const response = await fetch(request);
+        if (response.ok) {
+          await pageCache.put(request, response.clone());
+          return response;
+        }
+        // 503 = el servidor está en pie pero no ha podido leer los datos de la
+        // casa. Para quien mira la pantalla es indistinguible de no tener red,
+        // y hay una respuesta mejor que un error: lo último que se guardó en
+        // este dispositivo, que la propia página etiqueta como guardado y con
+        // su fecha. Solo el 503; un 403 o un 404 son respuestas con sentido y
+        // se dejan pasar tal cual.
+        if (response.status === 503) return await fromCache();
+        return response;
+      } catch {
+        return await fromCache();
       }
     })());
     return;
