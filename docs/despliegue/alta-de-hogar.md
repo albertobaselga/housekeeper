@@ -149,7 +149,7 @@ tranquilidad:
 
 | Vía | Cuándo | Qué te da | Qué no |
 |---|---|---|---|
-| **La pantalla** — Pagos → «Administrar el acuerdo» (`/h/<hogar>/employment/acuerdo`) | Lo normal. Una familia sin terminal puede hacerlo sola | Autoría real, RLS, el historial delante y el formulario avisando si el catálogo queda vacío | No tiene ensayo ni es idempotente: enviar dos veces **crea dos cosas** |
+| **La pantalla** — Pagos → «Administrar el acuerdo» (`/h/<hogar>/employment/acuerdo`) | Lo normal. Una familia sin terminal puede hacerlo sola | Autoría real, RLS, el historial delante y el formulario avisando si el catálogo queda vacío | **No tiene ensayo ni deshacer.** Lo que se envía queda escrito |
 | **El guion** `agreement:seed` | Cuando quieres ensayar el alta antes de hacerla | `--dry-run` de verdad (dice qué haría y hace rollback) e idempotencia por contenido | Se ejecuta por fuera de la RLS, con el rol propietario |
 
 ### 3.a Desde la pantalla
