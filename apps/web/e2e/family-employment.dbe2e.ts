@@ -30,7 +30,7 @@ function dueDateLabel(iso: string): string {
 async function gotoEmployment(page: Page): Promise<void> {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { name: 'Pagos', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Contrato', exact: true })).toBeVisible();
 }
 
 test('Alberto acepta la jornada solicitada y resuelve el festivo como descanso: el saldo permanente sube', async ({ page }) => {

@@ -21,7 +21,7 @@ const ACTION_LABELS = [
 
 async function expectReadOnlyEmployment(page: Page): Promise<void> {
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Pagos');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Contrato');
   // La lectura fixture sigue renderizando el resumen de liquidación.
   await expect(page.locator('.summary-strip')).toContainText('Total transferencia');
   await expect(page.locator('.ledger-total')).toBeVisible();

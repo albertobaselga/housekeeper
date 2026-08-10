@@ -794,7 +794,7 @@ const NOTES = [
     title: 'Parámetros de jornada y organización',
     sources: [{ h1: H1.rutinas, h2: 'Parámetros familiares de organización' }],
     append: [
-      'Los horarios y la jornada acordados viven en Empleo (Acuerdos y pagos); esta nota solo recoge los campos del manual aún sin confirmar.',
+      'Los horarios y la jornada acordados viven en Contrato; esta nota solo recoge los campos del manual aún sin confirmar.',
     ],
   },
   {
@@ -932,7 +932,7 @@ function buildIndexBody(draftNotes) {
     '- Contactos y emergencias (Anexo G): completar el primer y segundo contacto familiar, pediatría y mantenimiento en Contactos.',
     '- Alergias, intolerancias y restricciones: por comensal, en Comida → Comensales.',
     '- Recetas y semanas tipo (Anexo D): en el Recetario y las plantillas del menú.',
-    '- Horarios y jornada: en Empleo → Acuerdos y pagos.'
+    '- Horarios y jornada: en Contrato → Administrar el contrato.'
   );
   return `${lines.join('\n')}\n`;
 }

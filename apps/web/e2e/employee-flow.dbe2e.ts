@@ -12,7 +12,7 @@ test.describe.configure({ mode: 'serial' });
 async function gotoEmployment(page: Page): Promise<void> {
   await loginAs(page, 'employee');
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { name: 'Pagos', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Contrato', exact: true })).toBeVisible();
 }
 
 test('Ana registra una jornada extra del catálogo, con la duración pactada', async ({ page }) => {

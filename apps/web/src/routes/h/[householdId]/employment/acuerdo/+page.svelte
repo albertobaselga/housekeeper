@@ -338,18 +338,17 @@
           <tr>
             <th scope="row">{capitalise(weekdayName(day.weekday))}</th>
             <td>
-              <label class="sr-only" for={`mode-${draft.effectiveFrom}-${day.weekday}`}>
-                Cómo es el {weekdayName(day.weekday)}
+              <!-- Etiqueta envolvente y no `for`/`id`: los dos formularios de
+                   esta página (alta y versión nueva) pueden estar abiertos a la
+                   vez y dos identificadores iguales romperían la asociación. -->
+              <label>
+                <span class="sr-only">Cómo es el {weekdayName(day.weekday)}</span>
+                <select name={`schedule.day.${day.weekday}.mode`} bind:value={day.mode}>
+                  <option value="tipo">Como la jornada de arriba</option>
+                  <option value="distinto">Horario distinto</option>
+                  <option value="libra">Libra</option>
+                </select>
               </label>
-              <select
-                id={`mode-${draft.effectiveFrom}-${day.weekday}`}
-                name={`schedule.day.${day.weekday}.mode`}
-                bind:value={day.mode}
-              >
-                <option value="tipo">Como la jornada de arriba</option>
-                <option value="distinto">Horario distinto</option>
-                <option value="libra">Libra</option>
-              </select>
             </td>
             <td>
               {#if day.mode === 'distinto'}
