@@ -7,3 +7,4 @@ export * from "./agreement-terms.js";
 export * from "./settlement.js";
 export * from "./extra-work.js";
 export * from "./vacations.js";
+export * from "./recurrence.js";
