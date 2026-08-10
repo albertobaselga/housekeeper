@@ -746,17 +746,149 @@ export const shoppingSetLineCheckedPayloadSchema = z.object({
   checked: z.boolean(),
 });
 
-export const routineUpsertPayloadSchema = z.object({
+/**
+ * Conjunto de números pequeños con la MISMA forma que exige la base
+ * (`app.is_normalized_smallints`, migración 0023): no vacío, sin repetidos,
+ * ordenado y dentro de rango.
+ *
+ * Normaliza en vez de rechazar a propósito. Los días de la semana los produce
+ * una fila de botones y llegan en el orden en que se pulsaron; rechazar
+ * «jueves y lunes» por venir como `[4, 1]` convertiría un detalle de
+ * presentación en un comando perdido de la cola offline, que es justo lo que
+ * esta ola intenta evitar. Ordenar y deduplicar aquí, además, hace que dos
+ * reglas iguales se comparen como iguales.
+ */
+function normalizedSmallintSetSchema(lo: number, hi: number) {
+  return z
+    .array(z.number().int().min(lo).max(hi))
+    .min(1)
+    .max(hi - lo + 1)
+    .transform((values) => [...new Set(values)].sort((a, b) => a - b));
+}
+
+/** 1..31, o -1 = «el último día del mes» (§2.2). */
+export const routineMonthDaySchema = z.union([
+  z.literal(-1),
+  z.number().int().min(1).max(31),
+]);
+
+export const routinePatternSchema = z.enum([
+  "every_n_days",
+  "days_of_week",
+  "day_of_month",
+  "months_of_year",
+]);
+
+const routineUpsertIdentity = {
   action: z.literal("upsert"),
   routineId: uuidSchema.optional(),
   title: z.string().trim().min(1).max(160),
+  /**
+   * Mil caracteres: cabe la remisión a la ficha del manual, no la ficha entera.
+   * Los sub-ítems de checklist son fase 2 y una tabla hija (§7).
+   */
   details: z.string().max(1000).optional(),
   audience: z.enum(["family", "employee", "all"]),
+};
+
+/**
+ * Cadencia rica (§2.2). La discriminación por `pattern` reproduce en el
+ * contrato la CHECK `routines_pattern_shape`: cada patrón declara exactamente
+ * sus campos y ninguno más, de modo que una regla imposible se rechaza en el
+ * borde y no en el `INSERT`. Los límites (366 · 12 · 36) son los mismos de la
+ * base, y el 36 no es capricho: una `quarterly` heredada con `interval_count`
+ * 12 son 36 meses.
+ *
+ * NO lleva `nextDueOn`: desde la 0023 esa columna es caché derivada de la regla
+ * (§2.7) y la calcula el servidor. Tampoco lleva `overduePolicy`: se DERIVA del
+ * patrón en un único sitio (§2.5) y en fase 1 no hay control que la pregunte.
+ *
+ * `pattern: null` es un valor de primera clase, no un hueco: significa «esto se
+ * hace, falta decidir cuándo» (§2.3). La rutina se guarda, aparece en Rutinas y
+ * jamás en Hoy, en el calendario, en el ICS ni en los avisos.
+ */
+export const routineUpsertV2PayloadSchema = z
+  .discriminatedUnion("pattern", [
+    z.object({ ...routineUpsertIdentity, pattern: z.null() }),
+    z.object({
+      ...routineUpsertIdentity,
+      pattern: z.literal("every_n_days"),
+      anchorOn: isoDateSchema,
+      repeatEvery: z.number().int().min(1).max(366),
+      endsOn: isoDateSchema.nullish(),
+    }),
+    z.object({
+      ...routineUpsertIdentity,
+      pattern: z.literal("days_of_week"),
+      anchorOn: isoDateSchema,
+      repeatEvery: z.number().int().min(1).max(12),
+      /** ISO 1=lunes … 7=domingo, la convención de `extract(isodow …)`. */
+      weekdays: normalizedSmallintSetSchema(1, 7),
+      endsOn: isoDateSchema.nullish(),
+    }),
+    z.object({
+      ...routineUpsertIdentity,
+      pattern: z.literal("day_of_month"),
+      anchorOn: isoDateSchema,
+      repeatEvery: z.number().int().min(1).max(36),
+      monthDay: routineMonthDaySchema,
+      endsOn: isoDateSchema.nullish(),
+    }),
+    z.object({
+      ...routineUpsertIdentity,
+      pattern: z.literal("months_of_year"),
+      anchorOn: isoDateSchema,
+      months: normalizedSmallintSetSchema(1, 12),
+      monthDay: routineMonthDaySchema,
+      endsOn: isoDateSchema.nullish(),
+    }),
+  ])
+  .refine(
+    (value) => value.pattern === null || value.endsOn == null || value.endsOn >= value.anchorOn,
+    "Una rutina no puede acabar antes de empezar",
+  );
+
+/**
+ * La forma ANTERIOR a la 0023, que el servidor sigue aceptando (§3.4).
+ *
+ * No es cortesía: puede haber envelopes encolados en el IndexedDB de un
+ * dispositivo desde antes del despliegue, y rechazarlos perdería el alta que
+ * alguien hizo sin conexión. El servidor los traduce con la tabla de §3.2. La
+ * rama se retira en T10, un despliegue después, que es la única garantía de
+ * que ninguna cola se queda por vaciar.
+ */
+export const legacyRoutineUpsertPayloadSchema = z.object({
+  ...routineUpsertIdentity,
   frequency: z.enum(["daily", "weekly", "monthly", "quarterly"]),
   intervalCount: z.number().int().min(1).max(12),
   nextDueOn: isoDateSchema,
 });
 
+/**
+ * Las dos formas conviven. El orden importa: la nueva primero, porque un
+ * cliente que mande ambas (por prudencia durante la transición) debe entrar por
+ * la rica. Son disjuntas de todos modos —la nueva exige la clave `pattern`, la
+ * vieja exige `frequency`/`intervalCount`/`nextDueOn`—, así que ninguna carga
+ * puede colarse por la rama equivocada.
+ */
+export const routineUpsertPayloadSchema = z.union(
+  [routineUpsertV2PayloadSchema, legacyRoutineUpsertPayloadSchema],
+  {
+    error:
+      "El alta de rutina no trae ni la cadencia nueva (`pattern`) ni la antigua (`frequency`, `intervalCount`, `nextDueOn`)",
+  },
+);
+
+export type RoutineUpsertV2Payload = z.infer<typeof routineUpsertV2PayloadSchema>;
+export type LegacyRoutineUpsertPayload = z.infer<typeof legacyRoutineUpsertPayloadSchema>;
+export type RoutineUpsertPayload = z.infer<typeof routineUpsertPayloadSchema>;
+
+/**
+ * Deliberadamente permisiva con `dueOn` (§2.9): no exige que sea una ocurrencia
+ * vigente. Una finalización es un hecho —«esto se hizo tal día»— y las reglas
+ * cambian; rechazarla rompería la cola sin conexión de quien quedó con la regla
+ * anterior. Si ya no es ocurrencia, simplemente no se pinta.
+ */
 export const routineCompletePayloadSchema = z.object({
   action: z.literal("complete"),
   routineId: uuidSchema,
