@@ -1111,3 +1111,78 @@ firma de `routineUpsertV2PayloadSchema` y el nombre del job antes de repartir.
 32. Doble siembra de `seed-manual.mjs`: `count(*)` estable y `anchor_on` sin mover.
 33. Marcar hecha sin conexión: el chip dice «Guardada sin conexión · se enviará al
     volver», nunca «próxima el X».
+
+---
+
+# Enmienda del propietario (10/08/2026)
+
+Esta especificación se escribió antes de estas tres decisiones. **Manda la
+enmienda** donde contradiga lo anterior.
+
+## E1. Semana, mes y año — la rejilla de mes NO se descarta
+
+> «La vista también en vista semanal, mensual o anual con las tareas/rutinas +
+> eventos es importante tanto para la familia como para la interna, para ver lo
+> de Hoy y planificar lo siguiente.»
+
+El cuerpo de la especificación descartaba la rejilla de mes por ser hoy una
+maqueta sin datos. Ese argumento decae: con el generador de recurrencia (T1) la
+rejilla ya tiene datos que enseñar. Se implementan **tres alcances**:
+
+- **Semana**: el detalle operativo; es la vista por omisión de quien trabaja.
+- **Mes**: la que sirve para planificar; rejilla real, no maqueta.
+- **Año**: densidad, no detalle. Su trabajo es responder «¿cuándo toca lo
+  estacional?» —el cambio de armarios, las revisiones trimestrales—, así que
+  basta con marcar los días que tienen algo y permitir saltar al mes.
+
+El presupuesto de bytes NO es excusa para recortar aquí: el calendario es una
+ruta aparte de Hoy y puede cargar lo suyo bajo demanda.
+
+## E2. El pasado se ve, con quién lo hizo — y el AC-26 se sustituye
+
+> «además de poder ver lo que hizo en el pasado para comprobarlo»
+
+Decisión tomada: **hechos y autoría, sin juicios**. El calendario muestra las
+ocurrencias pasadas con qué se hizo, qué día y **quién lo marcó**
+(`app.routine_completions` ya lo guarda).
+
+Queda **expresamente prohibido**, y debe seguir habiendo prueba que lo impida:
+porcentajes de cumplimiento, rachas, medias, comparativas entre personas,
+colores que califiquen (rojo/verde por rendimiento) y cualquier agregado que
+puntúe a alguien. La diferencia no es de matiz: enseñar *qué se hizo* es la
+memoria de la casa; enseñar *cuánto cumple alguien* es una evaluación de
+desempeño sobre una trabajadora, y esta aplicación no la hace.
+
+**AC-26 cambia de redacción, no desaparece.** Sustitúyelo en
+`docs/acceptance/brief-v2-adapted.md` por:
+
+> AC-26 (revisado 10/08/2026 a petición del propietario): el historial de
+> rutinas es consultable como hechos con su fecha y su autoría. No existe
+> ningún indicador de cumplimiento —porcentaje, racha, media, comparativa ni
+> codificación por color que califique—, en ninguna vista, API ni exportación.
+
+Deja constancia del cambio y de su fecha; el criterio anterior existía por una
+razón y quien lo lea dentro de un año debe poder ver que se sustituyó a
+conciencia.
+
+## E3. Quién ve qué
+
+> «Familia completo, interna solo lo suyo.»
+
+- **Familia (administración y miembros)**: el calendario entero del hogar —todas
+  las rutinas, sea cual sea su audiencia, y los eventos.
+- **Interna**: sus rutinas (las de audiencia `employee` y las de `all`) y los
+  eventos del hogar. **No** las rutinas de audiencia `family`.
+- Apoyo y acceso puntual: como hoy, sin ampliar.
+
+La separación se impone **en la consulta bajo RLS**, no filtrando en el cliente,
+y con prueba negativa: la interna no debe recibir una rutina de audiencia
+`family` ni en el HTML ni en el JSON de la página.
+
+## E4. Efecto en el plan de trabajo
+
+- **T7** crece: tres alcances (semana/mes/año) + pasado con autoría + reglas de
+  visibilidad. Conviene partirla en **T7a** (semana y mes con presente y futuro)
+  y **T7b** (año, pasado con autoría y las pruebas negativas de visibilidad).
+- **T1** debe generar ocurrencias **hacia atrás** además de hacia delante, y
+  casarlas con `routine_completions` para saber qué se hizo y qué no.
