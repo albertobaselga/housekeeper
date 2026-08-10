@@ -1,6 +1,6 @@
 import { dev } from '$app/environment';
 import { error, fail, redirect } from '@sveltejs/kit';
-import { ROLE_LABELS } from '$lib/auth/capabilities';
+import { ROLE_LABELS } from '$lib/auth/role-labels';
 import { getAuth } from '$lib/server/auth.server';
 import { getDemoUser, listDemoUsers } from '$lib/server/fixtures.server';
 import { createDemoSession } from '$lib/server/session.server';

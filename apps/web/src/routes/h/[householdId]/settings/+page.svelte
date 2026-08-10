@@ -2,7 +2,8 @@
   import { enhance } from '$app/forms';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
-  import { ROLE_LABELS, type Role } from '$lib/auth/capabilities';
+  import type { Role } from '$lib/auth/capabilities';
+  import { ROLE_LABELS } from '$lib/auth/role-labels';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { revokeMembership, setMembershipExpiry } from '$lib/access/commands';
   import type { ActionData, PageData } from './$types';

@@ -17,13 +17,9 @@ export const CAPABILITIES = capabilities;
 export const ROLE_CAPABILITIES = roleCapabilities;
 export type { Capability, Role };
 
-export const ROLE_LABELS: Readonly<Record<Role, string>> = {
-  family_admin: 'Administrador familiar',
-  family_member: 'Miembro de la familia',
-  employee_live_in: 'Empleada interna',
-  helper: 'Apoyo del hogar',
-  viewer: 'Acceso puntual'
-};
+// Las etiquetas de los papeles NO están aquí: viven en `./role-labels.ts` para
+// que la cabecera del hogar pueda pintarlas sin arrastrar la matriz. No las
+// reexportes desde este módulo; volverías a juntar las dos cosas en el trozo.
 
 export function isRole(value: unknown): value is Role {
   return typeof value === 'string' && (roles as readonly string[]).includes(value);
