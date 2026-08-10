@@ -7,6 +7,7 @@ import {
   buildAdvanceBalanceViews,
   buildAgreementVersionViews,
   buildCompensationBalanceViews,
+  buildManualAdjustmentViews,
   buildPendingExpenseViews,
   buildPendingExtraViews,
   buildSettlementViews,
@@ -22,6 +23,7 @@ import {
   sourceAnchor,
   vacationRangeLabel,
   type AgreementVersionRow,
+  type ManualAdjustmentRow,
   type SettlementLineRow,
   type SettlementRow
 } from '../src/lib/employment/model';
@@ -455,6 +457,118 @@ describe('liquidaciones y saldos', () => {
   it('solo genera anclas para orígenes conocidos', () => {
     expect(sourceAnchor('agreement-version', 'x')).toBe('#version-x');
     expect(sourceAnchor('desconocido', 'x')).toBeNull();
+  });
+});
+
+describe('conceptos apuntados a mano en la cuenta del mes', () => {
+  const ADJUSTMENTS: ManualAdjustmentRow[] = [
+    {
+      id: 'c1',
+      period: '2026-08',
+      requestedPeriod: '2026-08',
+      label: 'Gratificación de verano',
+      reason: 'Acordada el 2 de agosto',
+      amountCents: '15000',
+      addsToPay: true,
+      deferralNote: '',
+      status: 'recorded',
+      voidReason: null
+    },
+    {
+      id: 'c2',
+      period: '2026-08',
+      requestedPeriod: '2026-08',
+      label: 'Anticipo devuelto en mano',
+      reason: 'Devolvió 200 € en efectivo el 12 de agosto',
+      amountCents: '-20000',
+      addsToPay: false,
+      deferralNote: '',
+      status: 'recorded',
+      voidReason: null
+    },
+    {
+      id: 'c3',
+      period: '2026-08',
+      requestedPeriod: '2026-08',
+      label: 'Apuntado por error',
+      reason: 'El importe era otro',
+      amountCents: '9000',
+      addsToPay: true,
+      deferralNote: '',
+      status: 'voided',
+      voidReason: 'Se apuntó dos veces'
+    }
+  ];
+
+  function august(adjustments: ManualAdjustmentRow[]) {
+    return buildAccrual({
+      period: '2026-08',
+      versions: VERSIONS,
+      extras: [],
+      advances: [],
+      expenses: [],
+      adjustments
+    });
+  }
+
+  it('suma el que es dinero para ella, con su motivo como explicación de la línea', () => {
+    const accrual = august([ADJUSTMENTS[0]!]);
+    expect(accrual!.transferTotalCents).toBe('165000');
+    const line = accrual!.lines.find((candidate) => candidate.sourceId === 'c1');
+    expect(line!.concept).toBe('Gratificación de verano');
+    // Etiqueta y motivo van separados: la interfaz enseña el título arriba y
+    // la explicación debajo, sin repetirla ni pegarla con dos puntos.
+    expect(line!.detail).toBe('Acordada el 2 de agosto');
+    expect(line!.amountLabel).toBe('+150,00 €');
+    expect(line!.href).toBe('#concepto-c1');
+  });
+
+  it('el que no es dinero para ella no toca el total y consta aparte', () => {
+    const accrual = august([ADJUSTMENTS[1]!]);
+    // El salario pelado de la v2: descontarlo otra vez sería cobrárselo dos veces.
+    expect(accrual!.transferTotalCents).toBe('150000');
+    expect(accrual!.lines.some((line) => line.kind === 'adjustment')).toBe(false);
+    expect(accrual!.notedAdjustments).toEqual([
+      {
+        id: 'c2',
+        label: 'Anticipo devuelto en mano',
+        reason: 'Devolvió 200 € en efectivo el 12 de agosto',
+        amountLabel: '−200,00 €'
+      }
+    ]);
+  });
+
+  it('el anulado no cuenta, ni en el total ni como línea', () => {
+    const accrual = august(ADJUSTMENTS);
+    expect(accrual!.transferTotalCents).toBe('165000');
+    expect(accrual!.lines.filter((line) => line.kind === 'adjustment')).toHaveLength(1);
+  });
+
+  it('la lista los ordena por mes y dice a dónde fue cada uno y por qué', () => {
+    const views = buildManualAdjustmentViews([
+      ADJUSTMENTS[2]!,
+      {
+        id: 'c4',
+        period: '2026-09',
+        requestedPeriod: '2026-08',
+        label: 'Descuento acordado',
+        reason: 'Rotura de la vitrocerámica, a medias',
+        amountCents: '-5000',
+        addsToPay: true,
+        deferralNote:
+          'Se pidió para agosto de 2026, pero esa cuenta ya estaba cerrada: se imputa a septiembre de 2026.',
+        status: 'recorded',
+        voidReason: null
+      }
+    ]);
+    expect(views.map((view) => view.id)).toEqual(['c4', 'c3']);
+    expect(views[0]!.periodLabel).toBe('Septiembre 2026');
+    expect(views[0]!.amountLabel).toBe('−50,00 €');
+    expect(views[0]!.transferLabel).toBe('Se suma a la transferencia');
+    expect(views[0]!.deferralNote).toContain('ya estaba cerrada');
+    // El anulado se queda en la lista: la corrección es parte del rastro.
+    expect(views[1]!.voided).toBe(true);
+    expect(views[1]!.voidReason).toBe('Se apuntó dos veces');
   });
 });
 
