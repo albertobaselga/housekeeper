@@ -39,13 +39,18 @@ let verdict: DeploymentProblem | null | undefined;
 /**
  * Verdicto de arranque, calculado una sola vez por proceso. `null` = adelante.
  *
- * @param source Sólo para pruebas: por omisión, el entorno de ejecución.
+ * @param source       Sólo para pruebas: por omisión, el entorno de ejecución.
+ * @param fixtureLogin Sólo para pruebas: por omisión, la forma de ESTE paquete.
+ *   Se puede pasar a mano porque bajo vitest la constante siempre vale `true`
+ *   (el banco de pruebas corre como servidor de desarrollo) y hay que poder
+ *   ejercitar también el paquete de producción, que es el que importa.
  */
 export function bootRefusal(
-  source: Readonly<Record<string, string | undefined>> = env
+  source: Readonly<Record<string, string | undefined>> = env,
+  fixtureLogin: boolean = __FIXTURE_LOGIN__
 ): DeploymentProblem | null {
   if (verdict !== undefined) return verdict;
-  const check = checkDeploymentConfig({ env: source, fixtureLogin: __FIXTURE_LOGIN__ });
+  const check = checkDeploymentConfig({ env: source, fixtureLogin });
   verdict = check.problem;
   if (verdict) {
     // Una línea en el registro del arranque, para quien mire los logs antes que

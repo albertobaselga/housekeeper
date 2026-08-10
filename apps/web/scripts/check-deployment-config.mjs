@@ -65,7 +65,11 @@ export function inspectBuildEnvironment(environment) {
     );
   }
 
-  if (!hasDatabase) {
+  // El aviso sólo tiene sentido si la ausencia de base es una SORPRESA. En un
+  // paquete construido con el selector dentro no lo es: ése es su estado
+  // normal, y avisar allí sería ruido en cada `pnpm build` de las suites de
+  // maqueta, que es la mejor forma de enseñar a la gente a no leer los avisos.
+  if (!hasDatabase && !fixtureLogin) {
     warnings.push(
       'Sin DATABASE_URL: este paquete se servirá sin datos. Es un estado seguro pero inútil para una casa real; ' +
         'si esperabas que hubiera base, revisa las variables antes de promocionar el despliegue.'
