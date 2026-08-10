@@ -38,7 +38,12 @@
         <span><strong>{terms.weeklyHoursLabel}</strong></span>
       </div>
       <div>
-        <span><strong>Vacaciones</strong></span>
+        <span>
+          <strong>Vacaciones</strong>
+          <!-- Lo pactado es un número; los días que de verdad ha disfrutado son
+               otra pantalla, y desde aquí es donde se buscan. -->
+          <small><a href={`/h/${data.householdId}/employment/vacaciones`}>Ver mis vacaciones</a></small>
+        </span>
         <span><strong>{terms.vacationDaysLabel}</strong></span>
       </div>
     </div>

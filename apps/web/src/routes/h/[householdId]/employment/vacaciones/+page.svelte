@@ -7,9 +7,9 @@
 
   const overview = $derived(data.overview);
   // Su propio contrato, si lo tiene. Es lo que decide la voz de la pantalla:
-  // quien administra lee un historial de otras personas, ella lee el suyo.
+  // quien administra lee un historial de otras personas, ella lee el suyo. El
+  // orden (la propia primero) ya lo trae el servidor.
   const own = $derived(overview?.people.find((person) => person.own) ?? null);
-  const others = $derived(overview?.people.filter((person) => !person.own) ?? []);
 
   /**
    * Dar por vistas las novedades es efecto de MIRAR, no de pulsar nada.
@@ -65,7 +65,7 @@
       </p>
     {/if}
 
-    {#each [...(own ? [own] : []), ...others] as person (person.agreementId)}
+    {#each overview.people as person (person.agreementId)}
       <article class="card">
         <div class="section-heading">
           <div>
