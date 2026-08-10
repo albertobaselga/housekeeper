@@ -494,7 +494,7 @@ async function insertVersion(
  * códigos vienen de los disparadores y CHECK de 0002, 0021 y 0025, que son
  * quienes mandan: aquí no se duplica ninguna regla, solo se le pone nombre.
  */
-function explain(cause: unknown): string {
+export function explain(cause: unknown): string {
   const code = (cause as { code?: string }).code;
   if (code === '23505') {
     return 'Ya hay una versión con esa fecha de entrada en vigor, o dos conceptos comparten código, o un día de la semana aparece dos veces en el horario.';
@@ -506,6 +506,42 @@ function explain(cause: unknown): string {
     return 'Lo pactado no se reescribe: para cambiarlo hay que añadir una versión nueva.';
   }
   return 'No hemos podido guardar las condiciones. Revisa los datos e inténtalo otra vez.';
+}
+
+/**
+ * Escribe el acuerdo y su primera versión sobre un cliente que YA está dentro
+ * de una transacción autorizada. Existe suelta para que el alta de personal
+ * pueda meter la cuenta, la membresía y el contrato en la MISMA transacción:
+ * dar de alta a alguien con acceso y sin contrato por un fallo a medio camino
+ * sería un estado que luego hay que ir a arreglar a mano.
+ *
+ * No comprueba el papel de quien escribe: eso lo hace quien abre la
+ * transacción, y por debajo la RLS (`agreements_admin_insert`).
+ */
+export async function insertAgreementWithFirstVersion(
+  client: PoolClient,
+  householdId: string,
+  actorMembershipId: string,
+  input: AgreementCreateInputV1
+): Promise<{ agreementId: string; versionId: string }> {
+  const created = await client.query<{ id: string }>(
+    `insert into app.employment_agreements
+       (household_id, employee_membership_id, starts_on, created_by_membership_id)
+     values ($1, $2, $3, $4)
+     returning id`,
+    [householdId, input.employeeMembershipId, input.startsOn, actorMembershipId]
+  );
+  const agreementId = created.rows[0]?.id;
+  if (!agreementId) throw new Error('El alta del acuerdo no devolvió identificador');
+  const versionId = await insertVersion(
+    client,
+    householdId,
+    agreementId,
+    1,
+    actorMembershipId,
+    input.terms
+  );
+  return { agreementId, versionId };
 }
 
 /** Alta del acuerdo y de su primera versión, en la misma transacción. */
@@ -527,22 +563,11 @@ export async function createAgreement(
           message: 'La primera versión no puede entrar en vigor antes del inicio del acuerdo.'
         };
       }
-      const created = await client.query<{ id: string }>(
-        `insert into app.employment_agreements
-           (household_id, employee_membership_id, starts_on, created_by_membership_id)
-         values ($1, $2, $3, $4)
-         returning id`,
-        [householdId, input.employeeMembershipId, input.startsOn, membership.id]
-      );
-      const agreementId = created.rows[0]?.id;
-      if (!agreementId) throw new Error('El alta del acuerdo no devolvió identificador');
-      const versionId = await insertVersion(
+      const { agreementId, versionId } = await insertAgreementWithFirstVersion(
         client,
         householdId,
-        agreementId,
-        1,
         membership.id,
-        input.terms
+        input
       );
       return { ok: true, agreementId, versionId };
     });

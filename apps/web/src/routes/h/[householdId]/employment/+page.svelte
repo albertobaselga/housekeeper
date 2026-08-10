@@ -29,7 +29,7 @@
   // modo fixture (demo sin base de datos) la página es de solo lectura.
   const agreement = $derived(overview?.hasEmploymentData ? overview.agreement : null);
   const isOwnAgreement = $derived(
-    agreement !== null && agreement.employeeMembershipId === context.user.membershipId
+    agreement !== null && agreement.employeeMembershipId === context.membershipId
   );
 
   const canRegisterExtra = $derived(isOwnAgreement && can(context.role, 'work.register.self'));
@@ -197,7 +197,7 @@
             agreementId={agreement.id}
             extras={overview.pendingExtras}
             types={overview.registrableTypes}
-            ownMembershipId={context.user.membershipId}
+            ownMembershipId={context.membershipId}
             canRegister={canRegisterExtra}
             canRegisterForEmployee={canRegisterForEmployee}
             employeeLabel={selectedEmployeeLabel}

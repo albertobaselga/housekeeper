@@ -12,7 +12,7 @@ describe('household route contract', () => {
   it('keeps every required stable module addressable', () => {
     expect(HOUSEHOLD_MODULES).toEqual([
       'today', 'employment', 'menu', 'recipes', 'wiki', 'search',
-      'routines', 'calendar', 'contacts', 'emergency', 'account', 'settings'
+      'routines', 'calendar', 'contacts', 'emergency', 'account', 'personal', 'settings'
     ]);
 
     // «Tu contraseña» la alcanza todo el mundo; Ajustes sigue siendo de la
@@ -20,6 +20,9 @@ describe('household route contract', () => {
     // su propia contraseña.
     expect(MODULE_CAPABILITY.account).toBe('emergency.read');
     expect(MODULE_CAPABILITY.settings).toBe('access.manage');
+    // Personal enseña nombres, fechas y sueldos de las compañeras: la misma
+    // llave que Ajustes, nunca la mínima de Hoy.
+    expect(MODULE_CAPABILITY.personal).toBe('access.manage');
 
     for (const moduleName of HOUSEHOLD_MODULES) {
       const path = householdPath('household one', moduleName);

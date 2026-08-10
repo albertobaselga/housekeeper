@@ -15,9 +15,16 @@ los apartados 3, 4 y 5; el 1 y el 2 son para quien monta la instalación.
   no con un correo. Escribir `nuria` en un móvil es mucho más fácil que teclear
   un correo sin erratas.
 - **Nadie puede darse de alta solo.** El endpoint de registro está apagado
-  (`disableSignUp: true`) en todos los entornos: responde `400` siempre. Las
-  cuentas nacen únicamente del guion del apartado 2. Hay una prueba de regresión
-  que lo comprueba por HTTP (`apps/web/tests/auth.integration.test.ts`).
+  (`disableSignUp: true`) en todos los entornos: responde `400` siempre. Hay una
+  prueba de regresión que lo comprueba por HTTP
+  (`apps/web/tests/auth.integration.test.ts`). Las cuentas las crea siempre
+  alguien que ya administra la casa, por una de estas dos puertas:
+  - **Desde la aplicación**, en Personal, para el personal del hogar (empleada
+    interna o apoyo). Es la vía del día a día:
+    [personal-y-contratos.md](../personal-y-contratos.md).
+  - **Con el guion del apartado 2**, para montar la casa y para dar de alta a
+    quien vaya a administrarla. La pantalla de Personal no puede crear
+    administradoras, a propósito.
 - **No hay «he olvidado mi contraseña» por correo.** El endpoint de
   restablecimiento responde `400 RESET_PASSWORD_DISABLED` porque no se ha
   configurado ningún envío. Se repone en persona (apartado 4). Es una decisión,
@@ -48,6 +55,13 @@ alguna vez vieras ese selector, la instalación está mal configurada.
 ---
 
 ## 2. Cómo se crean las cuentas
+
+> **Para dar de alta a una empleada o a alguien de apoyo no hace falta nada de
+> este apartado.** Se hace desde la aplicación, en Ajustes del hogar → Ver el
+> personal → «Entra alguien nuevo en la casa». La contraseña se genera sola, se
+> enseña una vez para dictarla, y esa persona tiene que cambiarla antes de poder
+> ir a ninguna otra pantalla. Este apartado es para montar la casa y para dar de
+> alta a quien vaya a **administrarla**.
 
 Se crean con un guion, a partir de un fichero JSON que **vive fuera del
 repositorio** (en el llavero de Alberto, en una carpeta cifrada, donde sea; nunca
@@ -153,12 +167,17 @@ Solo puede hacerlo quien administra la casa (`family_admin`).
 1. **Ajustes del hogar** → «Accesos del hogar».
 2. En la tarjeta de esa persona, **«Poner una contraseña nueva»**.
 3. Escribe la contraseña nueva dos veces y la palabra **REPONER** para confirmar.
-4. **Díctasela en persona** y pídele que la cambie desde «Tu contraseña» en
-   cuanto entre.
+4. **Díctasela en persona.** No hace falta que le pidas que la cambie: la
+   aplicación se lo va a exigir.
 
 La reposición **cierra todas las sesiones de esa persona**: si tenía la
 aplicación abierta en el móvil, se le pedirá entrar de nuevo. Es lo que se quiere
 cuando se repone una contraseña.
+
+La contraseña que acabas de teclear queda marcada como **provisional**: la
+próxima vez que esa persona entre, la aplicación la lleva a «Tu contraseña» y no
+la deja ir a ninguna otra pantalla del hogar hasta que elija una suya. Es la
+misma regla que se aplica a las contraseñas del alta.
 
 No se puede reponer la propia (para eso está el apartado 3) ni la de alguien a
 quien ya se le retiró el acceso.

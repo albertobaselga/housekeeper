@@ -31,8 +31,11 @@
   });
 </script>
 
-<svelte:head><title>Vacaciones · Casa Clara</title></svelte:head>
-
+<!-- Sin <svelte:head><title>: el único <title> de la aplicación lo pinta el
+     +layout.svelte de la raíz, y la etiqueta de esta ruta está declarada en
+     `$lib/app-title` («employment/vacaciones»). Dos <title> darían dos
+     elementos, y el que había aquí anunciaba además el nombre del PROYECTO en
+     vez del de la casa que se está mirando. -->
 <div class="page-wrap">
   <PageHeader
     eyebrow="Contrato"

@@ -1,6 +1,10 @@
 import { error, fail } from '@sveltejs/kit';
 
-import { loadAccessOverview, resolveMembershipIdentity } from '$lib/server/access.server';
+import {
+  loadAccessOverview,
+  requirePasswordChange,
+  resolveMembershipIdentity
+} from '$lib/server/access.server';
 import { getAuth } from '$lib/server/auth.server';
 import { MIN_PASSWORD_LENGTH } from '$lib/server/auth-core';
 import { fixturesAllowed } from '$lib/server/data-source.server';
@@ -90,6 +94,10 @@ export const actions: Actions = {
       // Reponer una contraseña deja fuera todas las sesiones anteriores de esa
       // persona: si alguien había entrado con la vieja, deja de estar dentro.
       await auth.api.revokeUserSessions({ body: { userId: target.userId }, headers: request.headers });
+      // La que acaba de teclear la administración es tan provisional como la
+      // del alta: esa persona la cambiará al entrar, y hasta entonces la
+      // aplicación no la deja pasar de «Tu contraseña».
+      await requirePasswordChange({ id: locals.user.id }, params.householdId, target.userId);
     } catch {
       return fail(400, {
         resetError:
