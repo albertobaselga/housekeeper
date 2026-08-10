@@ -110,3 +110,47 @@ test('Ana ve su saldo y sus periodos, pero no puede apuntar ni anular nada', asy
   const versionsCard = page.locator('article.card').filter({ hasText: 'Versiones y cambios de salario' });
   await expect(versionsCard).toContainText('30 días naturales al año de vacaciones');
 });
+
+test('Ana entra en Hoy, se entera de las vacaciones nuevas y el aviso se apaga al mirarlas', async ({
+  page
+}) => {
+  await loginAs(page, 'employee');
+  await page.goto(`/h/${HOUSEHOLD}/today`);
+
+  // Lo que se le apuntó mientras no miraba sale en la primera pantalla, y el
+  // bloque NO se titula «Necesita tu decisión»: no hay nada que aprobar.
+  const block = page.locator('section.card').filter({ hasText: 'Pendientes de ti' });
+  await expect(block).toContainText('Te han apuntado vacaciones');
+  await expect(block.getByRole('heading', { name: 'Necesita tu decisión' })).toHaveCount(0);
+
+  const notice = block.locator('.ledger-list > div').filter({ hasText: 'Te han apuntado vacaciones' });
+  await notice.getByRole('link', { name: 'Verlas' }).click();
+  await expect(page.getByRole('heading', { name: 'Mis vacaciones' })).toBeVisible();
+
+  // Su sección: los años, lo que ya disfrutó y lo anulado como anulado.
+  const mine = page.locator('article.card').filter({ hasText: 'Año a año' });
+  await expect(mine.getByRole('heading', { name: String(YEAR), exact: false })).toBeVisible();
+  await expect(mine).toContainText('Semana de noviembre E2E');
+  await expect(mine).toContainText('Anuladas: Al final no se cogieron E2E');
+  await expect(mine).toContainText('días que te tocan');
+  // Historia, no evaluación: aquí no hay porcentajes ni notas de nadie.
+  await expect(mine).not.toContainText('%');
+
+  // Nada que descartar a mano: mirar es lo que apaga el aviso.
+  await page.goto(`/h/${HOUSEHOLD}/today`);
+  await expect(page.getByText('Te han apuntado vacaciones')).toHaveCount(0);
+});
+
+test('Alberto abre el historial y están las dos personas del hogar, no solo la primera', async ({
+  page
+}) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/employment/vacaciones`);
+
+  await expect(page.getByRole('heading', { name: 'Vacaciones', exact: true })).toBeVisible();
+  const cards = page.locator('article.card').filter({ hasText: 'Vacaciones de' });
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toContainText('días que le tocan');
+  // Lo anulado sigue a la vista, y sigue sin contar.
+  await expect(page.getByText('Anuladas: Al final no se cogieron E2E')).toBeVisible();
+});
