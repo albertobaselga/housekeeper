@@ -21,7 +21,7 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   internal: 'Algo falló al guardar; se reintenta solo',
 
   // Fotos pendientes de subir (los pone el propio dispositivo, no el servidor)
-  attachment_rejected: 'La casa no admitió esa foto: tamaño, tipo o antivirus',
+  attachment_rejected: 'La casa no admitió esa foto: por su tamaño o porque no es una foto ni un PDF',
   attachment_upload_blocked: 'La foto no se pudo subir tras varios intentos',
 
   // Expediente laboral

@@ -109,7 +109,7 @@ describe('cliente INSTREAM de ClamAV por TCP', () => {
 });
 
 describe('createAttachmentDependencies desde variables de entorno', () => {
-  const FULL_ENV = {
+  const COMPOSE_ENV = {
     CLAMAV_HOST: 'clamav',
     CLAMAV_PORT: '3310',
     S3_ENDPOINT: 'http://minio:9000',
@@ -118,23 +118,52 @@ describe('createAttachmentDependencies desde variables de entorno', () => {
     S3_ACCESS_KEY_ID: 'casaclara-local',
     S3_SECRET_ACCESS_KEY: 'local-object-storage-only'
   };
+  const SUPABASE_ENV = {
+    SUPABASE_URL: 'https://proyectosintetico00.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'clave-de-servicio-sintetica',
+    SUPABASE_STORAGE_BUCKET: 'casaclara'
+  };
 
-  it('con la configuración completa de Compose devuelve deps con el bucket', () => {
-    const deps = createAttachmentDependencies(FULL_ENV);
+  it('con la configuración completa de Compose devuelve deps con el bucket y con escáner', () => {
+    const deps = createAttachmentDependencies(COMPOSE_ENV);
     expect(deps).not.toBeNull();
     expect(deps!.bucket).toBe('casaclara-local');
     expect(typeof deps!.scan).toBe('function');
     expect(typeof deps!.putObject).toBe('function');
   });
 
-  it('sin configuración (local sin Docker) devuelve null y la ruta responderá 503', () => {
+  // El cambio que arregla la producción real: el almacén es lo único
+  // imprescindible. Sin CLAMAV_HOST se sigue pudiendo adjuntar; lo que
+  // desaparece es el escáner, no los adjuntos.
+  it('sin CLAMAV_HOST hay adjuntos igual, solo que sin escáner', () => {
+    const deps = createAttachmentDependencies({ ...COMPOSE_ENV, CLAMAV_HOST: undefined });
+    expect(deps).not.toBeNull();
+    expect(deps!.scan).toBeUndefined();
+    expect(typeof deps!.putObject).toBe('function');
+  });
+
+  it('con la clave de servicio de Supabase basta: es el camino de Vercel + Supabase', () => {
+    const deps = createAttachmentDependencies(SUPABASE_ENV);
+    expect(deps).not.toBeNull();
+    expect(deps!.bucket).toBe('casaclara');
+    expect(deps!.scan).toBeUndefined();
+    expect(typeof deps!.getObjectStream).toBe('function');
+  });
+
+  it('Supabase gana a S3 cuando están las dos (el despliegue real manda)', () => {
+    expect(createAttachmentDependencies({ ...COMPOSE_ENV, ...SUPABASE_ENV })!.bucket).toBe('casaclara');
+  });
+
+  it('sin almacén (local sin Docker) devuelve null y la ruta responderá 503', () => {
     expect(createAttachmentDependencies({})).toBeNull();
-    expect(createAttachmentDependencies({ ...FULL_ENV, S3_PRIVATE_BUCKET: ' ' })).toBeNull();
-    expect(createAttachmentDependencies({ ...FULL_ENV, CLAMAV_HOST: undefined })).toBeNull();
+    expect(createAttachmentDependencies({ ...COMPOSE_ENV, S3_PRIVATE_BUCKET: ' ' })).toBeNull();
+    // Un antivirus configurado NO es un almacén: sin bucket sigue sin haber adjuntos.
+    expect(createAttachmentDependencies({ CLAMAV_HOST: 'clamav', CLAMAV_PORT: '3310' })).toBeNull();
   });
 
   it('expone lectura en flujo, que es lo que evita el tope de 4,5 MB de una función serverless', () => {
-    expect(typeof createAttachmentDependencies(FULL_ENV)!.getObjectStream).toBe('function');
+    expect(typeof createAttachmentDependencies(COMPOSE_ENV)!.getObjectStream).toBe('function');
+    expect(typeof createAttachmentDependencies(SUPABASE_ENV)!.getObjectStream).toBe('function');
   });
 });
 

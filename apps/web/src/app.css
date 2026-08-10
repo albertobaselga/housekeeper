@@ -466,6 +466,12 @@
   /* `min(9rem, 100%)`: la columna mínima nunca supera al contenedor, así que
      en pantallas muy estrechas la rejilla apila en vez de desbordar. */
   .action-form .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr)); gap: .6rem; }
+  /* Justificante: «elegir fichero» y «hacer la foto» son dos campos, porque el
+     atributo `capture` del segundo hace que el móvil abra la cámara y deje de
+     ofrecer la galería. Van juntos bajo una sola leyenda. */
+  .receipt-field { display: grid; gap: .5rem; margin: 0; border: 0; padding: 0; }
+  .receipt-field legend { padding: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  .field-hint { margin: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 500; line-height: 1.45; }
   /* P2-2 rutinas: «Se repite cada [2] [semanas]» leído como frase única. */
   .repeat-fieldset { display: grid; gap: .28rem; margin: 0; border: 0; padding: 0; }
   .repeat-fieldset legend { padding: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }

@@ -158,13 +158,13 @@ la decisión sobre ClamAV, no de Vercel.
 | # | Severidad | Problema | Arreglo | Esfuerzo |
 | --- | --- | --- | --- | --- |
 | W-1 | **BLOQUEANTE** | El worker es un demonio: `apps/worker/src/index.ts:140` levanta un servidor HTTP, `:158-169` es un `while (!stopping)`, y todo son efectos de módulo. Importarlo arranca el bucle | Ver §5. La primitiva ya existe: `runOneJob(pool, handlers, maxAttempts)` está **exportada** (`queue.ts:95-114`) y devuelve `false` con la cola vacía | 0,5 – 2 j según opción |
-| W-2 | **BLOQUEANTE** | Sin ClamAV no hay adjuntos. Y no hay bandera para desactivar sólo el escaneo: `scan` es miembro obligatorio de `AttachmentDependencies` (`attachments.server.ts:46`) y si falta `CLAMAV_HOST` se anula el paquete entero (`attachment-deps.server.ts:91-93`) | Ver §6 | 0,5 – 3 j según opción |
+| W-2 | ~~**BLOQUEANTE**~~ **RESUELTO** | Sin ClamAV no hay adjuntos. Y no hay bandera para desactivar sólo el escaneo: `scan` es miembro obligatorio de `AttachmentDependencies` (`attachments.server.ts:46`) y si falta `CLAMAV_HOST` se anula el paquete entero (`attachment-deps.server.ts:91-93`) | Hecho: `scan` es **opcional** y `CLAMAV_HOST` solo enciende el escaneo. La lectura ya no depende de él, el tipo se deduce de la firma real y se sirve con `nosniff` + CSP `sandbox`. Riesgo y reactivación en [security/adjuntos-sin-antivirus.md](../security/adjuntos-sin-antivirus.md) | — |
 | W-3 | **BLOQUEANTE** | El transporte SMTP no admite credenciales: `nodemailer.createTransport({host, port, secure:false})` sin objeto `auth`, en los dos sitios (`apps/worker/src/integrations.ts:102-106`, `apps/web/src/lib/server/auth.server.ts:17-21`). No existen `SMTP_USER`/`SMTP_PASS` en el repo. Sólo ha hablado con Mailpit | Añadir `SMTP_USER`/`SMTP_PASS`/`SMTP_SECURE` a ambos transportes | 0,25 j |
 | W-4 | TRABAJO | Un enlace mágico que no se envía **no se nota**: `routes/login/+page.server.ts:113-121` traga la excepción para no filtrar existencia de usuarios y devuelve siempre `{ sent: true }` | Registrar el fallo en el log del servidor (sin el correo) manteniendo la respuesta genérica al usuario | 0,25 j |
 | W-5 | TRABAJO | Agujero de arranque en frío: `ensurePruneDiscoveryScheduled` (`maintenance.ts:151`) y `ensureIcsSyncScheduled` (`ics.ts:815`) **se abstienen si la cola está vacía**, porque `job_queue.household_id` es NOT NULL y el worker no puede leer `app.households`. En un despliegue nuevo los trabajos periódicos nunca arrancan | Semilla manual de un job, o dar al worker una vía de lectura del hogar. Está documentado en `docs/runbooks/staging-synthetic.md`, pero es una trampa real en producción | 0,25 j |
 | W-6 | TRIVIAL | El worker arrastra `sharp`, `tesseract.js` y `web-push` (`apps/worker/package.json:20-22`) para funciones que **ningún handler usa** (`integrations.ts:15-41`, `:108-118`) | Eliminarlas. Sin binarios nativos, el worker pasa a ser JS puro y cabe en cualquier runtime | 0,25 j |
 | W-7 | TRIVIAL | Si `ALLOW_SYNTHETIC_DATA_ONLY=true` se cuela en producción, el worker rechaza todo destinatario que no sea `.demo/.test/.example/.invalid` (`integrations.ts:89-100`) y los jobs mueren. La web, en cambio, **sí** enviaría enlaces mágicos a direcciones reales: la guarda no cubre ese camino | No definirla en producción (el valor por omisión es el seguro). Considerar extender la guarda a `deliverMagicLink` | 0,1 j |
-| W-8 | TRIVIAL | `docs/security/security-baseline.md:17` dice que los justificantes se sirven con URL firmada corta; en realidad la app **proxea los bytes** (`receipts/[expenseId]/+server.ts:25-37`) | Corregir el documento, o implementar URLs firmadas (que además ahorraría invocaciones de función) | 0,25 j |
+| W-8 | ~~TRIVIAL~~ **RESUELTO** | `docs/security/security-baseline.md:17` dice que los justificantes se sirven con URL firmada corta; en realidad la app **proxea los bytes** (`receipts/[expenseId]/+server.ts:25-37`) | Hecho: el control 5 del baseline ya describe el proxeo real, el bucket privado y las cabeceras de la respuesta | — |
 
 ### 3.4 Repositorio y publicación
 
@@ -390,6 +390,16 @@ ningún servidor y se acepta pagar Vercel Pro y perder ClamAV.
 
 ## 6. Adjuntos y ClamAV
 
+> **Resuelto, y por una vía que no estaba en la lista.** Se eligió una variante
+> de la opción 1 sin su peaje: el escáner pasó a ser **opcional** en vez de
+> anular el paquete entero, con lo que los adjuntos siguen funcionando, la
+> lectura queda desacoplada del escaneo y el outbox no se atasca. A cambio se
+> reforzó lo que sí se puede comprobar sin antivirus (el tipo real de los bytes
+> manda sobre el declarado, y la lectura sale con `nosniff` y CSP `sandbox`).
+> El análisis que sigue es el de la auditoría, y sigue siendo válido como
+> descripción de por qué las tres opciones originales no convencían.
+> Riesgo asumido y reactivación: [security/adjuntos-sin-antivirus.md](../security/adjuntos-sin-antivirus.md).
+
 Cómo está implementada la barrera (`attachments.server.ts:101-165`), en orden:
 tamaño ≤ 10 MiB → lista blanca MIME (jpeg/png/webp/pdf) → **comprobación de
 bytes mágicos** → sha-256 → **ClamAV** → clave determinista → transacción RLS con
@@ -528,17 +538,20 @@ Esa asimetría es la fuente de la mayoría de fallos silenciosos de esta auditor
 | `SMTP_PORT` | web + worker | `auth.server.ts:19`, `config.ts:55` | Por omisión `1025` (Mailpit); poner 587/465 |
 | `SMTP_FROM` | web + worker | `auth.server.ts:23`, `config.ts:56` | Dirección del dominio propio |
 | `SMTP_USER` / `SMTP_PASS` | web + worker | **no existen todavía** | **Hay que añadirlas** (W-3) |
-| `S3_ENDPOINT` | web + worker | `attachment-deps.server.ts:87`, `config.ts:47` | **Cambia**: endpoint S3 de Supabase |
-| `S3_PRIVATE_BUCKET` | web + worker | `attachment-deps.server.ts:88`, `config.ts:49` | |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | web + worker | `attachment-deps.server.ts:89-90`, `config.ts:50-51` | Credenciales S3 de Supabase |
-| `S3_REGION` | web + worker | `attachment-deps.server.ts:99`, `config.ts:48` | Por omisión `eu-west-1`; poner la del proyecto |
-| `CLAMAV_HOST` | web | `attachment-deps.server.ts:85` | Depende de §6 |
+| `SUPABASE_SERVICE_ROLE_KEY` | web | `supabase-storage.server.ts` | **Nueva**: adjuntos por la API REST de Supabase Storage. Es la única obligatoria para adjuntos en Vercel |
+| `S3_ENDPOINT` | worker (y web solo sin Supabase) | `attachment-deps.server.ts`, `config.ts:47` | **Cambia**: endpoint S3 de Supabase |
+| `S3_PRIVATE_BUCKET` | worker (y web solo sin Supabase) | `attachment-deps.server.ts`, `config.ts:49` | |
+| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | worker (y web solo sin Supabase) | `attachment-deps.server.ts`, `config.ts:50-51` | Credenciales S3 de Supabase |
+| `S3_REGION` | worker (y web solo sin Supabase) | `attachment-deps.server.ts`, `config.ts:48` | Por omisión `eu-west-1`; poner la del proyecto |
 
 ### 9.2 Opcionales con valor por omisión
 
 | Variable | Componente | Por omisión | Definición |
 | --- | --- | --- | --- |
-| `CLAMAV_PORT` | web | `3310` | `attachment-deps.server.ts:86` |
+| `SUPABASE_URL` | web | deducida de `DATABASE_URL` | `supabase-storage.server.ts` |
+| `SUPABASE_STORAGE_BUCKET` | web | `casaclara` | `supabase-storage.server.ts` |
+| `CLAMAV_HOST` | web | sin definir ⇒ **sin escaneo** | `attachment-deps.server.ts`. Definirla enciende el antivirus (§6) |
+| `CLAMAV_PORT` | web | `3310` | `attachment-deps.server.ts` |
 | `WORKER_HEALTH_PORT` | worker | `3001` | `config.ts:43` |
 | `WORKER_MAX_JOB_ATTEMPTS` | worker | `5` | `config.ts:44` |
 | `WORKER_POLL_INTERVAL_MS` | worker | `1000` | `config.ts:45` |
