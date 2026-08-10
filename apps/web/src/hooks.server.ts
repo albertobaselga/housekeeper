@@ -41,12 +41,18 @@ export const handle: Handle = async ({ event, resolve }) => {
       event.locals.session = null;
       event.locals.user = null;
     }
-  } else {
-    // Modo demo sin base de datos: sesiones en memoria y cuentas fixture.
+  } else if (__FIXTURE_LOGIN__) {
+    // Modo demo sin base de datos: sesiones en memoria y cuentas fixture. La
+    // rama completa desaparece del paquete cuando la constante es falsa, y con
+    // ella la única vía que tenía una cookie `cc_demo_session` de convertirse
+    // en `locals.user` —y de ahí en `set_config('app.user_id', …)`—.
     const session = readDemoSession(event.cookies);
     const user = session ? getDemoUser(session.userId) : null;
     event.locals.session = user ? session : null;
     event.locals.user = user;
+  } else {
+    event.locals.session = null;
+    event.locals.user = null;
   }
 
   const guard = guardForPath(event.url.pathname);
