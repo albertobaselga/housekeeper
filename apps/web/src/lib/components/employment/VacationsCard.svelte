@@ -239,5 +239,15 @@
     </form>
   {/if}
 
+  <!-- Esta tarjeta es el año en curso, que es lo que se mira a diario. Todo lo
+       demás —los años anteriores, lo anulado, y las otras personas si el hogar
+       emplea a más de una— vive en su propia ruta, con su propio trozo de
+       JavaScript, para no cargarlo aquí cada vez. -->
+  <nav class="action-row">
+    <a class="button secondary small-button" href={`/h/${householdId}/employment/vacaciones`}>
+      Ver todos los años
+    </a>
+  </nav>
+
   <ActionStatus status={actionStatus} />
 </article>
