@@ -12,7 +12,6 @@ import {
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";
-import { requireAgreement } from "./shared.js";
 
 interface RecordPayload {
   agreementId: UUID;
@@ -64,29 +63,34 @@ async function recordManualAdjustment(
   householdId: UUID,
   payload: RecordPayload,
 ): Promise<{ resourceId: UUID }> {
-  const agreement = await requireAgreement(client, householdId, payload.agreementId);
   const requested = payload.period as PeriodMonth;
 
-  const bounds = await client.query<{ starts_on: string; ends_on: string | null }>(
-    `select starts_on::text as starts_on, ends_on::text as ends_on
+  // Una sola lectura del acuerdo: de ella salen a quién pertenece la cuenta y
+  // entre qué fechas existe.
+  const loaded = await client.query<{
+    employee_membership_id: string;
+    starts_on: string;
+    ends_on: string | null;
+  }>(
+    `select employee_membership_id, starts_on::text as starts_on, ends_on::text as ends_on
        from app.employment_agreements
       where household_id = $1 and id = $2`,
     [householdId, payload.agreementId],
   );
-  const agreementBounds = bounds.rows[0];
-  if (!agreementBounds) {
+  const agreement = loaded.rows[0];
+  if (!agreement) {
     throw new CommandRejectedError("agreement_not_found", "El acuerdo no existe o no es visible");
   }
-  if (monthLastDay(requested) < agreementBounds.starts_on) {
+  if (monthLastDay(requested) < agreement.starts_on) {
     throw new CommandRejectedError(
       "adjustment_before_agreement",
-      `El acuerdo empezó el ${agreementBounds.starts_on}: no hay cuenta de ${monthLabel(requested)}`,
+      `El acuerdo empezó el ${agreement.starts_on}: no hay cuenta de ${monthLabel(requested)}`,
     );
   }
-  if (agreementBounds.ends_on !== null && monthFirstDay(requested) > agreementBounds.ends_on) {
+  if (agreement.ends_on !== null && monthFirstDay(requested) > agreement.ends_on) {
     throw new CommandRejectedError(
       "adjustment_after_agreement",
-      `El acuerdo terminó el ${agreementBounds.ends_on}: no hay cuenta de ${monthLabel(requested)}`,
+      `El acuerdo terminó el ${agreement.ends_on}: no hay cuenta de ${monthLabel(requested)}`,
     );
   }
 
@@ -129,7 +133,7 @@ async function recordManualAdjustment(
     [
       householdId,
       payload.agreementId,
-      agreement.employeeMembershipId,
+      agreement.employee_membership_id,
       monthFirstDay(imputation.period),
       monthFirstDay(imputation.requested),
       payload.label,
