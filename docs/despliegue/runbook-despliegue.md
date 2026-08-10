@@ -284,8 +284,20 @@ aviso de rutina de verdad.
    CLAMAV_HOST= CLAMAV_PORT=3311 CLAMAV_TLS=true CLAMAV_TOKEN=
    ```
 
-   **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `ENABLE_DEMO_PASSWORD_AUTH`:
-   su ausencia es el estado seguro.
+   **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `CASA_CLARA_FIXTURE_LOGIN`: su
+   ausencia es el estado seguro, y ahora está además impuesta. Definir
+   cualquiera de las dos en una build de producción la detiene, con el
+   despliegue anterior sirviendo mientras tanto.
+   (`ENABLE_DEMO_PASSWORD_AUTH` figuraba aquí y **no existe en el código**: no
+   la busques.)
+
+   **Las cuatro primeras entran en la misma operación.** `DATABASE_URL`,
+   `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET` y `BETTER_AUTH_URL` son una regla
+   indivisible: con la base puesta y alguna de las otras ausente, la aplicación
+   no sirve nada y responde 503 nombrando la que falta. Media configuración es
+   peor que ninguna, porque dejaba en pie el camino sintético sobre datos
+   reales. Ver
+   [`../adr/0003-configuracion-indivisible-y-cuentas-sinteticas.md`](../adr/0003-configuracion-indivisible-y-cuentas-sinteticas.md).
 
    **`ORIGIN` no existe en Vercel** y no hay que ponerla: la comprobación CSRF
    de SvelteKit deriva el origen de `x-forwarded-host`. `HOST` y `PORT`
@@ -434,8 +446,21 @@ está en [`../runbooks/backup-restore.md`](../runbooks/backup-restore.md).
 
 ## 9. La bandera de datos sintéticos
 
-`ALLOW_SYNTHETIC_DATA_ONLY` **no se define en producción**, y se auditó que su
-ausencia es segura:
+**Comprobación de un solo comando**, que sustituye a leer esta sección entera:
+
+```bash
+curl -s https://www.homekeeping.app/api/health
+# {"status":"ok",…,"synthetic":false,"fixtureLogin":false}
+```
+
+`synthetic: true` en producción es un incidente: significa que la bandera está
+puesta. `fixtureLogin: true` es peor: significa que el paquete desplegado lleva
+dentro el selector de cuentas sintéticas. Ninguna de las dos debería poder
+llegar ahí —la build las rechaza y el arranque también—, así que si aparecen,
+lo que hay que revisar es cómo se subió ese despliegue.
+
+`ALLOW_SYNTHETIC_DATA_ONLY` **no se define en producción**, y su ausencia es
+segura:
 
 - **Nada de producción depende de que esté puesta.** Sus cuatro consumidores
   tratan «sin definir» como el comportamiento normal: el banner no se pinta, la
