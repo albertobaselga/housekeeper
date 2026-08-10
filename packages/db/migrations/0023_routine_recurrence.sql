@@ -38,6 +38,27 @@ BEGIN;
 -- jueves» cabe sin tocar esa tabla. Retirar lo viejo es trabajo de la 0024,
 -- separado por un despliegue para que ningún envelope encolado sin conexión se
 -- pierda.
+--
+-- ANTES DE APLICARLA CONTRA PRODUCCIÓN, léase esto entero.
+--
+-- Esta migración cierra la puerta a dar de alta una rutina escribiendo SOLO las
+-- columnas heredadas: una fila con `next_due_on` y sin `pattern` es justamente
+-- el estado imposible que la CHECK persigue. Eso NO es un efecto colateral, es
+-- el punto; pero implica que todo el que escriba rutinas tiene que escribir las
+-- columnas nuevas a partir de aquí. En el árbol quedan estos escritores:
+--
+--   · `packages/server/src/commands/rhythm.ts` (`upsertRoutine`) — T3, que
+--     además traduce el envelope antiguo del outbox sin conexión.
+--   · `packages/db/scripts/seed-manual.mjs` — T9.
+--   · Las siembras de prueba de `apps/web` y `packages/server` — T6 y T7.
+--
+-- Y dos lectores se quedan a media asta hasta su tarea, a sabiendas:
+-- `apps/web/src/routes/api/v1/ics/[token]/+server.ts` deja de encontrar
+-- `frequency` en el feed y emite un calendario vacío hasta T8, y
+-- `app.advance_routine_after_completion` sigue avanzando a la manera vieja
+-- hasta que T3 lo sustituya por `app.set_routine_due_hint`. La ola se despliega
+-- junta; aplicar esta migración por delante del código deja rutinas que no se
+-- pueden dar de alta.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── 1 · Vocabulario ─────────────────────────────────────────────────────────
