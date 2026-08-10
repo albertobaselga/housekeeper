@@ -17,6 +17,7 @@ const ADMIN_MEMBERSHIP = "11000000-0000-4000-8000-000000000001";
 const APP_LOGIN = "it_casa_clara_app_login";
 
 const ADMIN: AuthenticatedPrincipal = { userId: "fixture:roble:admin" };
+const FAMILY: AuthenticatedPrincipal = { userId: "fixture:roble:family" };
 const EMPLOYEE: AuthenticatedPrincipal = { userId: "fixture:roble:employee" };
 const HELPER: AuthenticatedPrincipal = { userId: "fixture:roble:helper" };
 const VIEWER: AuthenticatedPrincipal = { userId: "fixture:roble:viewer" };
@@ -232,13 +233,13 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
       errorCode: "slug_taken",
     });
 
-    // Los espacios son de la familia: ni la empleada ni el apoyo los crean.
-    await expect(createSpace(EMPLOYEE, "Espacio de empleada")).rejects.toMatchObject({
-      errorCode: "not_allowed",
-    });
-    await expect(createSpace(HELPER, "Espacio de apoyo")).rejects.toMatchObject({
-      errorCode: "not_allowed",
-    });
+    // Los apartados de la Guía son de la administración: nadie más los crea,
+    // ni siquiera la familia no administradora.
+    for (const principal of [FAMILY, EMPLOYEE, HELPER]) {
+      await expect(createSpace(principal, "Apartado sin permiso")).rejects.toMatchObject({
+        errorCode: "not_allowed",
+      });
+    }
   });
 
   // Ola D-4: escribir la PRIMERA instrucción sin conexión. La nota puede
@@ -299,8 +300,8 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
     );
     expect(pages.rowCount).toBe(2);
 
-    // Los apartados siguen siendo de la familia: la empleada puede escribir
-    // EN uno que exista, pero no estrenar uno nuevo por esta vía.
+    // La Guía es de la administración: la interna no escribe ni en un apartado
+    // que ya existe ni estrenando uno nuevo.
     const employeeOp = randomUUID();
     const employeeExisting = await processSyncBatch(
       appPool,
@@ -315,7 +316,10 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
       ],
       HANDLERS,
     );
-    expect(employeeExisting.acknowledgements[0]).toMatchObject({ status: "accepted" });
+    expect(employeeExisting.acknowledgements[0]).toMatchObject({
+      status: "rejected",
+      errorCode: "not_allowed",
+    });
 
     const employeeNewOp = randomUUID();
     const employeeNew = await processSyncBatch(
@@ -345,10 +349,18 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
     expect(empty.acknowledgements[0]).toMatchObject({ status: "rejected", errorCode: "invalid_payload" });
   });
 
-  it("helper y viewer no escriben; helper lee lo publicado pero no un borrador", async () => {
+  it("solo la administración escribe la Guía; el apoyo lee lo publicado pero no un borrador", async () => {
     const spaceId = await createSpace(ADMIN, "Visibilidad");
 
-    for (const principal of [HELPER, VIEWER]) {
+    // Para quien lee la Guía pero no la escribe, el rechazo es `not_allowed`.
+    // Para el visor, que ni siquiera puede ver el apartado, la respuesta veraz
+    // es que ese apartado no existe: RLS no le enseña ni su nombre.
+    for (const [principal, errorCode] of [
+      [FAMILY, "not_allowed"],
+      [EMPLOYEE, "not_allowed"],
+      [HELPER, "not_allowed"],
+      [VIEWER, "space_not_found"],
+    ] as const) {
       const denied = await processSyncBatch(
         appPool,
         principal,
@@ -362,7 +374,7 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
         ],
         HANDLERS,
       );
-      expect(denied.acknowledgements[0]).toMatchObject({ status: "rejected", errorCode: "not_allowed" });
+      expect(denied.acknowledgements[0]).toMatchObject({ status: "rejected", errorCode });
     }
 
     const publishedId = await createPage(ADMIN, spaceId, "Guía visible para el apoyo", { publish: true });
@@ -398,7 +410,45 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
 
   it("set_state publica, despublica y fija en portada", async () => {
     const spaceId = await createSpace(ADMIN, "Estados");
-    const pageId = await createPage(EMPLOYEE, spaceId, "Página de estados", { publish: false });
+    const pageId = await createPage(ADMIN, spaceId, "Página de estados", { publish: false });
+
+    // Publicar y destacar tampoco son de la familia no administradora. Sobre
+    // un borrador la respuesta es «esa nota no existe» (RLS no se lo enseña);
+    // sobre una nota publicada, `not_allowed`.
+    const deniedDraft = await processSyncBatch(
+      appPool,
+      FAMILY,
+      [
+        pageEnvelope(
+          randomUUID(),
+          { action: "set_state", pageId, status: "published", pinned: true },
+          { aggregateId: pageId },
+        ),
+      ],
+      HANDLERS,
+    );
+    expect(deniedDraft.acknowledgements[0]).toMatchObject({
+      status: "rejected",
+      errorCode: "page_not_found",
+    });
+
+    const visibleId = await createPage(ADMIN, spaceId, "Nota publicada de estados", { publish: true });
+    const deniedPublished = await processSyncBatch(
+      appPool,
+      FAMILY,
+      [
+        pageEnvelope(
+          randomUUID(),
+          { action: "set_state", pageId: visibleId, pinned: true },
+          { aggregateId: visibleId },
+        ),
+      ],
+      HANDLERS,
+    );
+    expect(deniedPublished.acknowledgements[0]).toMatchObject({
+      status: "rejected",
+      errorCode: "not_allowed",
+    });
 
     const published = await processSyncBatch(
       appPool,
@@ -432,18 +482,18 @@ describe.runIf(Boolean(adminUrl))("comandos y búsqueda de la wiki sobre Postgre
   it("búsqueda: la errata 'lavadra' encuentra la lavadora y el alias 'vitro' trae la placa primero", async () => {
     const spaceId = await createSpace(ADMIN, "Guías de la casa");
 
-    await createPage(EMPLOYEE, spaceId, "Lavadora · programa corto", {
+    await createPage(ADMIN, spaceId, "Lavadora · programa corto", {
       bodyMarkdown: "Programa corto de 30 minutos para ropa de diario. Detergente líquido, media dosis.",
       aliases: ["lavadora"],
     });
-    const placaId = await createPage(EMPLOYEE, spaceId, "Placa de inducción", {
+    const placaId = await createPage(ADMIN, spaceId, "Placa de inducción", {
       bodyMarkdown: "Desbloquea la placa manteniendo pulsado el candado tres segundos.",
       aliases: ["vitro", "vitrocerámica"],
     });
-    await createPage(EMPLOYEE, spaceId, "Se ha ido la luz", {
+    await createPage(ADMIN, spaceId, "Se ha ido la luz", {
       bodyMarkdown: "Revisa el cuadro eléctrico de la entrada y sube el diferencial.",
     });
-    await createPage(EMPLOYEE, spaceId, "Rutina de sueño", {
+    await createPage(ADMIN, spaceId, "Rutina de sueño", {
       bodyMarkdown: "Baño a las 19:30, cuento y luz apagada a las 20:15.",
     });
 

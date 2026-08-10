@@ -276,9 +276,10 @@ BEGIN
 END
 $assert_admin_no_olivo$;
 
--- family_member: sees the agreement relationship, household expenses, wiki
--- (drafts included: it is a writer role), menu and every routine audience, but
--- NO salary-bearing rows (agreement versions, settlements, lines, payments).
+-- family_member: sees the agreement relationship, household expenses, the
+-- PUBLISHED guide (drafts belong to whoever administers it since migration
+-- 0026), menu and every routine audience, but NO salary-bearing rows
+-- (agreement versions, settlements, lines, payments).
 SELECT set_config('app.user_id', 'fixture:roble:family', true);
 SELECT set_config('app.household_id', '', true);
 SELECT set_config('app.membership_id', '', true);
@@ -293,9 +294,9 @@ BEGIN
   IF (SELECT count(*) FROM app.households) <> 1
      OR (SELECT count(*) FROM app.employment_agreements) <> 2
      OR (SELECT count(*) FROM app.expenses) <> 2
-     OR (SELECT count(*) FROM app.wiki_pages) <> 2
-     OR (SELECT count(*) FROM app.wiki_pages WHERE status = 'draft') <> 1
-     OR (SELECT count(*) FROM app.wiki_revisions) <> 2
+     OR (SELECT count(*) FROM app.wiki_pages) <> 1
+     OR (SELECT count(*) FROM app.wiki_pages WHERE status = 'draft') <> 0
+     OR (SELECT count(*) FROM app.wiki_revisions) <> 1
      OR (SELECT count(*) FROM app.menu_slots) <> 1
      OR (SELECT count(*) FROM app.routines) <> 3 THEN
     RAISE EXCEPTION 'family_member positive read matrix failed';
@@ -319,8 +320,9 @@ END
 $assert_family_member_rls$;
 
 -- employee_live_in: full view of her own employment record (settlement, lines,
--- payments, agreement versions, expenses), wiki as a writer (drafts included),
--- menu, and routines with audience employee/all — never the family-only ones.
+-- payments, agreement versions, expenses), the PUBLISHED guide only (she reads
+-- it, she no longer writes it: migración 0026), menu, and routines with
+-- audience employee/all — never the family-only ones.
 SELECT set_config('app.user_id', 'fixture:roble:employee', true);
 SELECT set_config('app.household_id', '', true);
 SELECT set_config('app.membership_id', '', true);
@@ -342,8 +344,9 @@ BEGIN
      OR (SELECT count(*) FROM app.employment_agreements) <> 1
      OR (SELECT count(*) FROM app.agreement_versions) <> 2
      OR (SELECT count(*) FROM app.expenses) <> 2
-     OR (SELECT count(*) FROM app.wiki_pages) <> 2
-     OR (SELECT count(*) FROM app.wiki_revisions) <> 2
+     OR (SELECT count(*) FROM app.wiki_pages) <> 1
+     OR (SELECT count(*) FROM app.wiki_pages WHERE status = 'draft') <> 0
+     OR (SELECT count(*) FROM app.wiki_revisions) <> 1
      OR (SELECT count(*) FROM app.menu_slots) <> 1 THEN
     RAISE EXCEPTION 'employee_live_in positive read matrix failed';
   END IF;

@@ -11,6 +11,8 @@
   import type { ActionFeedback } from '$lib/offline/optimistic';
   import { queueCommand, type QueueCommandResult } from '$lib/offline/queue-command';
   import { lastFlushAt } from '$lib/offline/sync';
+  import { flushGuideReads, markGuideNoteRead } from '$lib/guide/mark-read';
+  import { DwellClock, MIN_DWELL_MS, countsAsRead } from '$lib/guide/reading';
   import { setWikiPageState } from '$lib/wiki/commands';
   import { parseWikiMarkdown, type WikiBlock } from '$lib/wiki/markdown';
   import type { PageData } from './$types';
@@ -147,6 +149,53 @@
     }
   }
 
+  // ——— Lectura de la guía desde la consulta suelta ———
+  // Misma regla que el modo libro (ver $lib/guide/reading.ts): final del texto
+  // a la vista + un mínimo de permanencia. Sin botón que pulsar y sin marcar a
+  // nadie más que a quien está leyendo.
+  let endMarker = $state<HTMLElement | null>(null);
+  let markedNow = $state(false);
+  let savedOffline = $state(false);
+  let dwell = new DwellClock();
+
+  $effect(() => {
+    const target = endMarker;
+    const pageId = view?.page.id;
+    const pending = view?.reading && view.reading.state !== 'read';
+    if (!target || !pageId || !pending || typeof IntersectionObserver === 'undefined') return;
+    dwell = new DwellClock();
+    dwell.start();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        if (!countsAsRead({ dwellMs: dwell.elapsedMs, reachedEnd: true })) {
+          // Ha llegado abajo demasiado rápido: se espera lo que falte y se
+          // vuelve a comprobar, sin exigir otro gesto.
+          setTimeout(() => {
+            if (markedNow || !countsAsRead({ dwellMs: dwell.elapsedMs, reachedEnd: true })) return;
+            markedNow = true;
+            void markGuideNoteRead(context.household.id, pageId).then((ok) => (savedOffline = !ok));
+          }, MIN_DWELL_MS);
+          return;
+        }
+        if (markedNow) return;
+        markedNow = true;
+        void markGuideNoteRead(context.household.id, pageId).then((ok) => (savedOffline = !ok));
+      },
+      { rootMargin: '0px 0px -8% 0px' }
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  });
+
+  $effect(() => {
+    if (typeof window === 'undefined') return;
+    const householdId = context.household.id;
+    const onOnline = (): void => void flushGuideReads(householdId);
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  });
+
   // Reconciliación diferida: cuando un flush posterior (reconexión, otra
   // acción) aplica cambios, se comprueba el destino REAL de la operación que
   // quedó en cola y la nota «guardado en este dispositivo» deja de mentir.
@@ -171,11 +220,13 @@
 
 <div class="page-wrap">
   {#if view}
+    <!-- Escribir la Guía es de la administración: para el resto, estos
+         controles NO se dibujan. Un botón que siempre falla es una mentira. -->
     {#snippet actions()}
-      {#if view.canWrite && !Editor}
-        <button class="button secondary" type="button" onclick={() => void beginEditing()}>Editar</button>
-      {/if}
-      {#if view.canPublish}
+      {#if view.canWrite}
+        {#if !Editor}
+          <button class="button secondary" type="button" onclick={() => void beginEditing()}>Editar</button>
+        {/if}
         {#if shownStatus === 'draft'}
           <button class="button primary" type="button" disabled={busy} onclick={() => void dispatchState({ status: 'published' })}>Publicar</button>
         {/if}
@@ -214,6 +265,29 @@
             {#each shownTags as tag}<span class="status-chip">{tag}</span>{/each}
             {#each shownAliases as alias}<span class="status-chip quiet">{alias}</span>{/each}
           </footer>
+        {/if}
+        <!-- Consultar una nota suelta también es leerla: si se llega al final
+             y se ha estado el mínimo, cuenta para la lectura de la guía. Sin
+             botones que pedir: la misma regla que en el modo libro. -->
+        {#if view.reading}
+          <div class="book-end" bind:this={endMarker}>
+            <p class="audit-note">
+              {#if savedOffline}
+                Sin conexión: se ha guardado en este dispositivo y se apuntará al volver la red.
+              {:else if markedNow || view.reading.state === 'read'}
+                Leída ✓
+              {:else if view.reading.state === 'changed'}
+                La leíste antes; el texto ha cambiado desde entonces.
+              {:else}
+                Al llegar aquí queda marcada como leída en tu progreso de la guía.
+              {/if}
+            </p>
+            {#if view.neighbours.next}
+              <a class="text-button" href={`${base}/libro/${view.neighbours.next.slug}`}>
+                Seguir leyendo: {view.neighbours.next.title} →
+              </a>
+            {/if}
+          </div>
         {/if}
       {/if}
     </article>
