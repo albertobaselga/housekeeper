@@ -171,7 +171,9 @@
   }
   .brand-mark.small { width: 2.05rem; height: 2.05rem; flex-basis: 2.05rem; border-radius: .65rem; font-size: 1.35rem; }
   .brand-copy, .profile-copy { display: grid; min-width: 0; }
-  .brand-copy strong { color: var(--primary); font-size: 1.04rem; }
+  /* El nombre del hogar es dato, no texto fijo: puede ser largo y no debe
+     ensanchar la barra lateral ni la cabecera móvil. */
+  .brand-copy strong { overflow: hidden; color: var(--primary); font-size: 1.04rem; text-overflow: ellipsis; white-space: nowrap; }
   .brand-copy small, .profile-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .side-nav { display: grid; gap: .2rem; overflow-y: auto; padding: .85rem .7rem; }
@@ -864,7 +866,8 @@
     .sidebar { display: none; }
     .main-column { margin-left: 0; }
     .topbar { justify-content: space-between; min-height: 4rem; padding: .55rem 1rem; }
-    .mobile-brand { display: flex; align-items: center; gap: .55rem; color: var(--primary); text-decoration: none; }
+    .mobile-brand { display: flex; min-width: 0; align-items: center; gap: .55rem; color: var(--primary); text-decoration: none; }
+    .mobile-brand strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .global-search { width: 2.75rem; min-height: 2.75rem; justify-content: center; margin-left: auto; border: 0; background: transparent; box-shadow: none; padding: .4rem; }
     .global-search span:nth-child(2), .global-search kbd { display: none; }
     .topbar-actions { position: static; }

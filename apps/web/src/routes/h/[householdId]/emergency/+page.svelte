@@ -50,8 +50,6 @@
   }
 </script>
 
-<svelte:head><title>Emergencias · Casa Clara</title></svelte:head>
-
 <div class="page-wrap emergency-page">
   {#snippet actions()}<button class="button secondary print-button" type="button" onclick={() => window.print()}>Imprimir</button>{/snippet}
   <PageHeader eyebrow="Acceso prioritario" title="Emergencias" description="Esta pantalla se guarda en tu dispositivo: se abre aunque no haya cobertura." {actions} />

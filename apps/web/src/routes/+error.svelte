@@ -13,8 +13,7 @@
   const emergencyHref = householdMatch ? `/h/${householdMatch[1]}/emergency` : null;
 </script>
 
-<svelte:head><title>{forbidden ? 'Sección no incluida en tu acceso' : unavailable ? 'No podemos leer los datos ahora' : 'No encontrado'} · Casa Clara</title></svelte:head>
-
+<!-- El <title> lo pone el layout de la raíz, que ya conoce `page.error`. -->
 <main class="error-stage">
   <section class="error-card" aria-labelledby="error-title">
     <span class="brand-mark" aria-hidden="true">⌂</span>
@@ -35,7 +34,7 @@
       <a class="button secondary" href={page.url.pathname}>Volver a intentarlo</a>
     {:else}
       <p>{page.error?.message ?? 'Vuelve al inicio y prueba otra sección.'}</p>
-      <a class="button primary" href={homeHref}>{householdMatch ? '← Volver a Hoy' : 'Volver a Casa Clara'}</a>
+      <a class="button primary" href={homeHref}>{householdMatch ? '← Volver a Hoy' : 'Volver al inicio'}</a>
     {/if}
   </section>
 </main>

@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { can, capabilitiesFor } from '$lib/auth/capabilities';
-import { guardForPath } from '$lib/auth/routing';
+import { guardForPath, pickHousehold } from '$lib/auth/routing';
 import { getAuth } from '$lib/server/auth.server';
 import { loadSnapshotContacts } from '$lib/server/contacts.server';
 import { fixturesAllowed, isDataUnavailable } from '$lib/server/data-source.server';
@@ -30,11 +30,12 @@ async function snapshotContentOrNothing<T>(read: Promise<T | null>): Promise<T |
 
 export const load: LayoutServerLoad = async ({ locals, params, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  // El hogar REAL de la persona manda; la maqueta solo completa donde no hay
-  // base de datos. Al revés, un hogar real que compartiera identificador con
-  // la fixture se pintaría con el nombre y el subtítulo inventados.
+  // El hogar de la URL y su nombre real primero; la maqueta es solo el respaldo
+  // de la demo sin base de datos, y solo cuando las maquetas están permitidas:
+  // una instalación cuyo hogar compartiera identificador con la fixture se
+  // anunciaría con el nombre inventado en vez de con el suyo.
   const household =
-    locals.user.households?.find((candidate) => candidate.id === params.householdId) ??
+    pickHousehold(locals.user.households, params.householdId) ??
     (fixturesAllowed() ? getHousehold(params.householdId) : null) ??
     null;
   if (!household || !locals.user.householdIds.includes(household.id)) error(404, 'Hogar no encontrado');

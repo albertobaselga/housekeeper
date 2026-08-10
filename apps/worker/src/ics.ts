@@ -655,14 +655,14 @@ function parseRoutineDuePayload(payload: unknown): RoutineDuePayload {
 export function createRoutineDueHandler(deps: RoutineDueDeps): JobHandler {
   return async (job) => {
     const payload = parseRoutineDuePayload(job.payload);
-    const subject = `Casa Clara: rutina pendiente — ${payload.title}`;
+    const subject = `Rutina pendiente — ${payload.title}`;
     const text = [
       "Hola:",
       "",
       `La rutina «${payload.title}» tiene una ocurrencia pendiente.`,
       "Puedes marcarla como completada desde la aplicación.",
       "",
-      "— Casa Clara",
+      "— Gestión del personal doméstico",
     ].join("\n");
     for (const to of [...new Set(payload.recipients)]) {
       await deps.sendEmail({ to, subject, text });

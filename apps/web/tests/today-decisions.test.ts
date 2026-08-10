@@ -245,7 +245,7 @@ describe('triaje genérico del outbox', () => {
   });
 
   it('traduce los códigos de error propios y los laborales, y calla ante los desconocidos', () => {
-    expect(describeError('unsupported_aggregate')).toBe('Casa Clara no reconoce este tipo de cambio');
+    expect(describeError('unsupported_aggregate')).toBe('La aplicación no reconoce este tipo de cambio');
     expect(describeError('wiki_revision_conflict')).toBe('Otra persona guardó la nota antes que tú');
     expect(describeError('week_already_reported')).toBe('La semana ya fue enviada');
     expect(describeError('codigo_inventado')).toBeNull();

@@ -111,3 +111,15 @@ export function guardForPath(pathname: string): HouseholdRouteGuard | null {
 export function householdPath(householdId: string, moduleName: HouseholdModule): string {
   return `/h/${encodeURIComponent(householdId)}/${moduleName}`;
 }
+
+/**
+ * El hogar que se está mirando es SIEMPRE el de la URL, nunca el primero de la
+ * persona. Quien pertenece a dos casas cambia de casa cambiando de dirección, y
+ * el nombre que anuncian la cabecera y la pestaña tiene que seguirla.
+ */
+export function pickHousehold<Household extends { id: string }>(
+  households: readonly Household[] | undefined,
+  householdId: string
+): Household | null {
+  return households?.find((candidate) => candidate.id === householdId) ?? null;
+}

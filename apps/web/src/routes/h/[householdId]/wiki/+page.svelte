@@ -182,8 +182,6 @@
   let selectedPage = $derived(data.wiki?.pages.find((page) => page.id === selectedId) ?? filteredPages[0]);
 </script>
 
-<svelte:head><title>Guía de la casa · Casa Clara</title></svelte:head>
-
 {#snippet pageNode(node: WikiPageNode)}
   <li class="wiki-node">
     <div class="wiki-node-row">

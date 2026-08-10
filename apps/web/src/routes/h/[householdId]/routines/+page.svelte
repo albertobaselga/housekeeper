@@ -142,8 +142,6 @@
   }
 </script>
 
-<svelte:head><title>Rutinas · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   {#if live}
     <PageHeader eyebrow="Orden cotidiano" title="Rutinas" description="Cada rutina con su próxima fecha; sin porcentajes ni histórico." />

@@ -519,8 +519,6 @@
   let selected = $state(4);
 </script>
 
-<svelte:head><title>Menú · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   {#if week}
     {#snippet weekActions()}

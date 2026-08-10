@@ -93,8 +93,6 @@
   }
 </script>
 
-<svelte:head><title>Ajustes · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   <PageHeader eyebrow="Administración" title="Ajustes del hogar" description="Miembros, acceso y preferencias generales de esta demo." />
 

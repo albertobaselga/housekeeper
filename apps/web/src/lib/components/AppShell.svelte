@@ -204,7 +204,7 @@
 
 <div class="app-shell" class:with-banner={$syncStatus.phase === 'offline' || $syncStatus.phase === 'conflict' || $syncStatus.phase === 'error'}>
   <aside class="sidebar" aria-label="Navegación principal">
-    <a class="brand" href={pathFor('today')} aria-label="Casa Clara, ir a Hoy">
+    <a class="brand" href={pathFor('today')} aria-label={`${context.household.name}, ir a Hoy`}>
       <span class="brand-mark" aria-hidden="true">⌂</span>
       <span class="brand-copy"><strong>{context.household.name}</strong><small>{context.household.subtitle}</small></span>
     </a>
@@ -243,8 +243,10 @@
 
   <div class="main-column">
     <header class="topbar">
-      <a class="mobile-brand" href={pathFor('today')} aria-label="Casa Clara, ir a Hoy">
-        <span class="brand-mark small" aria-hidden="true">⌂</span><strong>Casa Clara</strong>
+      <!-- Cabecera con sesión: manda el nombre del hogar al que se ha entrado,
+           el mismo que ya luce la barra lateral. Nunca el del proyecto. -->
+      <a class="mobile-brand" href={pathFor('today')} aria-label={`${context.household.name}, ir a Hoy`}>
+        <span class="brand-mark small" aria-hidden="true">⌂</span><strong>{context.household.name}</strong>
       </a>
       {#if has('search.use')}
         <button type="button" class="global-search" aria-haspopup="dialog" aria-label="Buscar en toda la casa" onclick={openSearch}>

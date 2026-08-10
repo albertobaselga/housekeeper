@@ -130,8 +130,6 @@
   }
 </script>
 
-<svelte:head><title>Pagos · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   {#snippet actions()}
     {#if openableAccrual && !openSent}

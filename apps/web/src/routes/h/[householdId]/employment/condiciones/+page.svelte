@@ -6,8 +6,6 @@
   const terms = $derived(data.terms);
 </script>
 
-<svelte:head><title>Mis condiciones · Casa Clara</title></svelte:head>
-
 <PageHeader
   eyebrow="Acuerdo"
   title="Mis condiciones"

@@ -22,7 +22,7 @@ import { demoOnly, fixturesAllowed } from './data-source.server';
 // directamente contra Postgres bajo RLS sin tabla de correspondencias.
 const HOUSEHOLD: HouseholdSummary = {
   id: '10000000-0000-4000-8000-000000000001',
-  name: 'Casa Clara',
+  name: 'Casa Roble',
   subtitle: 'Familia Roble · datos ficticios'
 };
 
