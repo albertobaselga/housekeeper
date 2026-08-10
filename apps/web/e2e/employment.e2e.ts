@@ -7,6 +7,7 @@ import { HOUSEHOLD, loginAs } from './helpers';
 // outbox debe aparecer, sea cual sea el rol.
 const ACTION_LABELS = [
   'Registrar jornada extra',
+  'Apuntar la jornada',
   'Marcar realizada',
   'Aceptar',
   'Decidir compensación',

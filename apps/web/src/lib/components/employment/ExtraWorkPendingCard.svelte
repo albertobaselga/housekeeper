@@ -283,7 +283,9 @@
     <div class="ledger-list"><div><span><strong>Sin trabajo extra disponible</strong><small>
 Este acuerdo no permite registrar trabajo extra por ahora. Cuando se pacte un concepto con su tarifa, aparecerá aquí.</small></span></div></div>
   {:else if showRegisterForm}
-    <form class="action-form" onsubmit={submitRegister}>
+    <!-- Clase propia: con quien administra en la tarjeta conviven el formulario
+         de decidir compensación y este, y hay que poder apuntar a uno solo. -->
+    <form class="action-form register-extra-form" onsubmit={submitRegister}>
       <!-- Quien administra apunta A NOMBRE de alguien y conviene decirlo con
            su nombre: el hecho se queda en el expediente de esa persona. -->
       <h3>{canRegisterForEmployee ? `Apuntar una jornada a ${employeeLabel}` : 'Registrar jornada extra'}</h3>
