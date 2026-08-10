@@ -227,6 +227,17 @@ export interface ExtraWorkRegisterPayloadV1 {
   workedOn: ISODate;
   durationMinutes: number;
   note?: string;
+  /**
+   * Resolución en el acto (solo administración). Lo normal al apuntar trabajo
+   * de otra persona es que ya haya ocurrido: en vez de obligar a un baile de
+   * estados que nadie va a hacer, el mismo hecho puede llegar resuelto. El
+   * servidor encadena `requested → performed_pending_resolution → resolved`
+   * con una transición firmada por quien administra en cada paso.
+   */
+  resolveNow?: {
+    resolution: "money" | "time_off";
+    reason: string;
+  };
 }
 
 /** `aggregateType: "extra_work"` — aceptación previa por la familia. */

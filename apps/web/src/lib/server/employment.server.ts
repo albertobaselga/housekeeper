@@ -5,6 +5,7 @@ import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 import {
   buildAccrual,
   buildAdvanceBalanceViews,
+  buildAgreementOptionViews,
   buildAgreementTermsView,
   buildAgreementVersionViews,
   buildExtraWorkTypeView,
@@ -20,6 +21,7 @@ import {
   currentPeriod,
   currentVacationYear,
   type AdvanceRow,
+  type AgreementRow,
   type AgreementVersionRow,
   type ApprovedExpenseRow,
   type CompensationBalanceRow,
@@ -57,12 +59,19 @@ function monthBounds(period: string): { first: string; last: string } {
  *
  * Los importes se mantienen como cadenas de céntimos de extremo a extremo: pg
  * entrega los bigint como string y aquí nunca pasan por Number.
+ *
+ * `selectedAgreementId` elige de quién es el expediente cuando el hogar emplea
+ * a más de una persona. No es una reja de seguridad y no pretende serlo: la
+ * lista de acuerdos llega ya filtrada por la RLS, así que a la empleada solo le
+ * consta el suyo y pedir el de otra no la lleva a ninguna parte —cae en su
+ * propio expediente—. Quien decide sigue siendo Postgres.
  */
 export async function loadEmploymentOverview(
   user: { id: string },
   householdId: string,
   pool: Pool | null = getDatabasePool(),
-  now: Date = new Date()
+  now: Date = new Date(),
+  selectedAgreementId: string | null = null
 ): Promise<EmploymentOverview | null> {
   if (!pool) return null;
   const period = currentPeriod(now);
@@ -70,30 +79,37 @@ export async function loadEmploymentOverview(
 
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
-      const agreementResult = await client.query<{
-        id: string;
-        status: string;
-        startsOn: string;
-        endsOn: string | null;
-        employeeMembershipId: string;
-      }>(
-        `select id,
-                status::text as "status",
-                starts_on::text as "startsOn",
-                ends_on::text as "endsOn",
-                employee_membership_id as "employeeMembershipId"
-           from app.employment_agreements
-          where household_id = $1
-          order by (status = 'active') desc, starts_on desc
-          limit 1`,
+      // Todos los acuerdos visibles, no el primero: un hogar puede tener varios
+      // vivos a la vez y quien administra tiene que poder elegir. El nombre sale
+      // del perfil de la persona empleada; si la RLS no deja verlo (la propia
+      // empleada solo lee su perfil) el LEFT JOIN devuelve null y la vista pone
+      // una etiqueta neutra en su lugar.
+      const agreementResult = await client.query<AgreementRow>(
+        `select agreement.id,
+                agreement.status::text as "status",
+                agreement.starts_on::text as "startsOn",
+                agreement.ends_on::text as "endsOn",
+                agreement.employee_membership_id as "employeeMembershipId",
+                profile.display_name as "employeeName"
+           from app.employment_agreements as agreement
+           left join app.household_memberships as membership
+             on membership.household_id = agreement.household_id
+            and membership.id = agreement.employee_membership_id
+           left join app.user_profiles as profile
+             on profile.user_id = membership.user_id
+          where agreement.household_id = $1
+          order by (agreement.status = 'active') desc, agreement.starts_on desc`,
         [householdId]
       );
-      const agreement = agreementResult.rows[0] ?? null;
+      const agreements = agreementResult.rows;
+      const agreement =
+        agreements.find((row) => row.id === selectedAgreementId) ?? agreements[0] ?? null;
       if (!agreement) {
         return {
           householdId,
           hasEmploymentData: false,
           agreement: null,
+          agreements: [],
           versions: [],
           terms: null,
           registrableTypes: [],
@@ -215,6 +231,7 @@ export async function loadEmploymentOverview(
                 worked_on::text as "workedOn",
                 duration_minutes as "durationMinutes",
                 note,
+                origin::text as "origin",
                 resolution::text as "resolution",
                 frozen_unit_rate_cents as "frozenUnitRateCents",
                 frozen_amount_cents as "frozenAmountCents",
@@ -239,6 +256,9 @@ export async function loadEmploymentOverview(
                 worked_on::text as "workedOn",
                 duration_minutes as "durationMinutes",
                 note,
+                -- Quién apuntó el hecho viaja con él: una jornada que puso la
+                -- familia tiene que verse como tal en el expediente de ella.
+                origin::text as "origin",
                 status::text as "status",
                 employee_membership_id as "employeeMembershipId"
            from app.extra_work_events
@@ -428,6 +448,7 @@ export async function loadEmploymentOverview(
         householdId,
         hasEmploymentData: true,
         agreement,
+        agreements: buildAgreementOptionViews(agreements),
         versions: buildAgreementVersionViews(
           versions.rows,
           first,

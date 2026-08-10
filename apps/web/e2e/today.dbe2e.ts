@@ -75,7 +75,9 @@ test('Alberto ve la jornada sembrada en «Necesita tu decisión» y llega a reso
 
   // 1 click: del item de Hoy al ancla de la jornada en Acuerdos y pagos.
   await decisionRow.getByRole('link', { name: 'Revisar' }).click();
-  await expect(page).toHaveURL(new RegExp(`/h/${HOUSEHOLD}/employment#extra-${EXTRA_HOY}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/h/${HOUSEHOLD}/employment\\?empleada=${E2E_SEED.agreement}#extra-${EXTRA_HOY}$`)
+  );
 
   const extraRow = page.locator(`#extra-${EXTRA_HOY}`);
   await expect(extraRow).toContainText('Recogida del tinte E2E-HOY');
