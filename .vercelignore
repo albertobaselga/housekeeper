@@ -1,0 +1,21 @@
+# Qué NO se sube a Vercel al desplegar desde esta máquina.
+#
+# El CLI no aplica .gitignore, así que sin este fichero se suben los artefactos
+# de una construcción local ANTERIOR. Eso no es cosmético: el guardián de
+# `__FIXTURE_LOGIN__` escanea la salida de la construcción, encontró el código
+# viejo que sí llevaba el selector de cuentas sintéticas y tumbó el despliegue
+# con razón. Además, subir estos directorios multiplica el tamaño del envío,
+# que es justo lo que hace fracasar la subida en una red inestable.
+node_modules
+.git
+apps/*/build
+apps/*/.svelte-kit
+apps/*/.vercel
+apps/*/dist
+packages/*/dist
+artifacts
+.lighthouseci
+apps/web/test-results
+apps/web/playwright-report
+coverage
+C:*

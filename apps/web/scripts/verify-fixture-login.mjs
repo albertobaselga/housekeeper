@@ -53,19 +53,48 @@ async function existsDirectory(root) {
   }
 }
 
+/**
+ * Quita comentarios antes de buscar. Sin esto la comprobación da un FALSO
+ * POSITIVO que tumba cualquier despliegue de producción: la salida de servidor
+ * de SvelteKit no va minificada y conserva los comentarios del código fuente,
+ * así que el propio párrafo que explica por qué `listDemoUsers` y `getDemoUser`
+ * no deben estar en el paquete contiene sus nombres. Rollup sí las había
+ * borrado; lo que quedaba era la prosa que hablaba de ellas.
+ *
+ * Basta con un barrido textual: aquí solo se busca la presencia de un nombre,
+ * y romper una cadena que contenga `//` no puede crear una coincidencia nueva.
+ *
+ * @param {string} source
+ * @returns {string}
+ */
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
 async function main() {
   // El guion corre después de `vite build`, así que el comando es 'build'.
   const expected = resolveFixtureLogin(env, 'build');
 
+
   /** @type {{ root: string; hits: Map<string, string[]> }[]} */
   const scanned = [];
-  for (const relative of SEARCH_ROOTS) {
+
+  // Qué salidas mirar. La de SvelteKit la produce SIEMPRE esta build; de las dos
+  // de adaptador solo existe la que corresponde al objetivo de ESTA build, y la
+  // otra puede ser de una anterior con banderas distintas (construir para node
+  // deja intacto el `.vercel/output` de antes). Mirar la vieja produce un fallo
+  // que no habla de este código, así que se elige por objetivo, no por fecha.
+  const adapterRoot = (env.DEPLOY_TARGET ?? 'node') === 'vercel' ? '.vercel/output/functions/' : 'build/server/';
+  const roots = [SEARCH_ROOTS[0], adapterRoot];
+
+  for (const relative of roots) {
     const root = new URL(relative, WEB_ROOT);
     if (!(await existsDirectory(root))) continue;
+    const files = await listJavaScript(root);
     /** @type {Map<string, string[]>} */
     const hits = new Map();
-    for (const file of await listJavaScript(root)) {
-      const source = await readFile(file, 'utf8');
+    for (const file of files) {
+      const source = stripComments(await readFile(file, 'utf8'));
       for (const marker of FIXTURE_LOGIN_MARKERS) {
         if (!source.includes(marker.text)) continue;
         const list = hits.get(marker.text) ?? [];

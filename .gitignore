@@ -47,3 +47,5 @@ dist/
 .codex/
 .agents/
 scratchpad/
+.vercel
+.env*
