@@ -1,6 +1,7 @@
 import { dev } from '$app/environment';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { ROLE_LABELS } from '$lib/auth/capabilities';
+import { landingHouseholdId } from '$lib/auth/membership';
 import { getAuth } from '$lib/server/auth.server';
 import { getDemoUser, listDemoUsers } from '$lib/server/fixtures.server';
 import { createDemoSession } from '$lib/server/session.server';
@@ -34,7 +35,8 @@ function resolveMode(): LoginMode {
 }
 
 export const load: PageServerLoad = ({ locals, url }) => {
-  if (locals.user) redirect(303, `/h/${encodeURIComponent(locals.user.householdIds[0])}/today`);
+  const landing = landingHouseholdId(locals.user);
+  if (landing) redirect(303, `/h/${encodeURIComponent(landing)}/today`);
   const mode = resolveMode();
   return {
     mode,
@@ -43,14 +45,12 @@ export const load: PageServerLoad = ({ locals, url }) => {
     accounts:
       mode === 'password'
         ? []
-        : listDemoUsers().map(({ id, name, initials, email, role }) => ({
-            id,
-            name,
-            initials,
-            email,
-            role,
-            roleLabel: ROLE_LABELS[role]
-          }))
+        : listDemoUsers().map(({ id, name, initials, email, memberships }) => {
+            // Cada cuenta sintética vive en un único hogar; el papel que se
+            // enseña es el que juega allí.
+            const role = memberships[0]!.role;
+            return { id, name, initials, email, role, roleLabel: ROLE_LABELS[role] };
+          })
   };
 };
 
@@ -101,6 +101,6 @@ export const actions: Actions = {
     const user = getDemoUser(accountId);
     if (!user) return fail(400, { message: 'Elige una cuenta demo válida.' });
     createDemoSession(cookies, user.id, url.protocol === 'https:');
-    redirect(303, destination ?? `/h/${encodeURIComponent(user.householdIds[0])}/today`);
+    redirect(303, destination ?? `/h/${encodeURIComponent(landingHouseholdId(user)!)}/today`);
   }
 };

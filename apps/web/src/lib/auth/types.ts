@@ -1,14 +1,35 @@
 import type { Capability, Role } from './capabilities';
 import type { CriticalSnapshotV1 } from '$lib/offline/schema';
 
+/**
+ * Lo que una identidad es EN UN HOGAR concreto. Una persona puede tener varias:
+ * la familia que administra su casa y echa una mano en la de sus padres, o una
+ * empleada que trabaja en dos hogares distintos con papeles distintos.
+ */
+export interface HouseholdMembership {
+  householdId: string;
+  /** Identificador de la membresía en ESE hogar (no de la persona). */
+  membershipId: string;
+  role: Role;
+}
+
+/**
+ * Identidad autenticada tal y como la lleva `locals.user`.
+ *
+ * No hay `role` ni `membershipId` sueltos, y es deliberado: el papel no es una
+ * propiedad de la persona sino de su relación con un hogar. Cuando existían,
+ * salían de la primera membresía y viajaban a todas las pantallas, de modo que
+ * quien pertenecía a dos hogares —o el día que entraba una segunda empleada—
+ * operaba con permisos que no le tocaban. Para saber qué puede hacer alguien
+ * aquí hay que decir dónde: `membershipIn(user, householdId)`.
+ */
 export interface DemoUser {
   id: string;
-  membershipId: string;
   name: string;
   initials: string;
   email: string;
-  role: Role;
-  householdIds: string[];
+  /** Una entrada por hogar vivo. Nunca vacía: sin membresías no hay identidad. */
+  memberships: readonly HouseholdMembership[];
   /** Resúmenes de hogar leídos de la base de datos en modo de autenticación real. */
   households?: HouseholdSummary[];
 }
@@ -29,6 +50,9 @@ export interface HouseholdSummary {
 export interface AppContext {
   user: DemoUser;
   household: HouseholdSummary;
+  /** Membresía de esta persona EN ESTE hogar, el de la URL. */
+  membershipId: string;
+  /** Papel EN ESTE hogar. Nunca «el papel» de la persona: eso no existe. */
   role: Role;
   capabilities: readonly Capability[];
   locale: 'es-ES';

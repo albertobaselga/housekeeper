@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 
+import { membershipIn } from '$lib/auth/membership';
 import { getDatabasePool } from '$lib/server/db.server';
 import { buildEmploymentExport } from '$lib/server/employment-export.server';
 import type { RequestHandler } from './$types';
@@ -13,8 +14,10 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ locals, params }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  if (!locals.user.householdIds.includes(params.householdId)) error(404, 'Hogar no encontrado');
-  if (locals.user.role !== 'employee_live_in') {
+  const membership = membershipIn(locals.user, params.householdId);
+  if (!membership) error(404, 'Hogar no encontrado');
+  // Ser empleada en otra casa no da expediente en ésta.
+  if (membership.role !== 'employee_live_in') {
     error(403, 'Solo la propia empleada puede descargar su expediente');
   }
 

@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 
+import { membershipIn } from '$lib/auth/membership';
 import { getDatabasePool } from '$lib/server/db.server';
 import { buildHandoverExport, type HandoverAudience } from '$lib/server/handover.server';
 import type { RequestHandler } from './$types';
@@ -12,8 +13,11 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  if (!locals.user.householdIds.includes(params.householdId)) error(404, 'Hogar no encontrado');
-  if (locals.user.role !== 'family_admin') error(403, 'Solo la administración del hogar puede descargar el traspaso');
+  const membership = membershipIn(locals.user, params.householdId);
+  if (!membership) error(404, 'Hogar no encontrado');
+  // Administrar OTRA casa no administra ésta: el papel se lee de la membresía
+  // de este hogar.
+  if (membership.role !== 'family_admin') error(403, 'Solo la administración del hogar puede descargar el traspaso');
 
   const pool = getDatabasePool();
   if (!pool) error(503, 'El traspaso requiere la base de datos del hogar');

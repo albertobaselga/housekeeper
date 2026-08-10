@@ -1,5 +1,6 @@
 import { error } from '@sveltejs/kit';
 
+import { belongsToHousehold } from '$lib/auth/membership';
 import { createAttachmentDependencies } from '$lib/server/attachment-deps.server';
 import { loadExpenseReceipt } from '$lib/server/receipts.server';
 import type { RequestHandler } from './$types';
@@ -12,7 +13,7 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ locals, params, setHeaders }) => {
   if (!locals.user) error(401, 'Inicia sesión para ver el justificante');
-  if (!locals.user.householdIds.includes(params.householdId)) error(404, 'Hogar no encontrado');
+  if (!belongsToHousehold(locals.user, params.householdId)) error(404, 'Hogar no encontrado');
 
   const receipt = await loadExpenseReceipt({ id: locals.user.id }, params.householdId, params.expenseId);
   if (!receipt) error(404, 'Ese gasto no tiene justificante guardado');

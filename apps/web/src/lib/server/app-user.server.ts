@@ -1,4 +1,6 @@
-import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
+import type { Pool } from 'pg';
+
+import type { DemoUser, HouseholdMembership, HouseholdSummary } from '$lib/auth/types';
 import { isRole } from '@casa-clara/contracts';
 
 import { getDatabasePool } from './db.server';
@@ -17,13 +19,18 @@ function initialsFor(name: string): string {
  * membresías vivas bajo RLS (solo `app.user_id` fijado). La política de la base
  * excluye membresías revocadas o caducadas, así que la revocación se aplica en
  * cada petición sin lógica adicional aquí.
+ *
+ * Devuelve TODAS las membresías, cada una con su hogar y su papel. Ninguna es
+ * «la» membresía: quien necesite un rol tiene que pedirlo para un hogar
+ * concreto con `membershipIn(user, householdId)`. Esta función no elige por
+ * nadie, y por eso el tipo que devuelve ya no tiene dónde guardar una elección.
  */
 export async function resolveAppUser(
   userId: string,
   email: string,
-  fallbackName: string
+  fallbackName: string,
+  pool: Pool | null = getDatabasePool()
 ): Promise<DemoUser | null> {
-  const pool = getDatabasePool();
   if (!pool) return null;
   const client = await pool.connect();
   try {
@@ -39,16 +46,17 @@ export async function resolveAppUser(
          from app.household_memberships m
          left join app.user_profiles p on p.user_id = m.user_id
         where m.user_id = $1
-        order by m.created_at`,
+        order by m.created_at, m.id`,
       [userId]
     );
-    const first = memberships.rows[0];
-    if (!first || !isRole(first.role)) {
-      await client.query('commit');
-      return null;
-    }
+
+    const live: HouseholdMembership[] = [];
     const households: HouseholdSummary[] = [];
     for (const row of memberships.rows) {
+      // Un rol que esta versión del código no conoce no se degrada al de al
+      // lado: esa membresía sencillamente no existe para la aplicación.
+      if (!isRole(row.role)) continue;
+      live.push({ householdId: row.household_id, membershipId: row.id, role: row.role });
       await client.query('select app.set_household_context($1, $2)', [row.household_id, row.id]);
       const summary = await client.query<{ display_name: string }>(
         'select display_name from app.households where id = $1',
@@ -63,15 +71,15 @@ export async function resolveAppUser(
       }
     }
     await client.query('commit');
-    const name = first.display_name?.trim() || fallbackName;
+    if (live.length === 0) return null;
+
+    const name = memberships.rows[0]?.display_name?.trim() || fallbackName;
     return {
       id: userId,
-      membershipId: first.id,
       name,
       initials: initialsFor(name) || '·',
       email,
-      role: first.role,
-      householdIds: [...new Set(memberships.rows.map((row) => row.household_id))],
+      memberships: live,
       households
     };
   } catch {
