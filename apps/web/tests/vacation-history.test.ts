@@ -182,6 +182,26 @@ describe('historial de vacaciones de una persona', () => {
     expect(twentySeven?.takenDays).toBe(5);
   });
 
+  it('sin ver los términos no se inventa un derecho de cero días', () => {
+    const view = buildVacationPersonView({
+      agreementId: 'a-1',
+      employeeLabel: 'Empleada del hogar',
+      own: false,
+      agreementStartsOn: '2025-01-01',
+      agreementEndsOn: null,
+      // Lo que la RLS le devuelve a la familia no administradora: los periodos
+      // sí, las versiones del contrato no.
+      versions: [],
+      periods: [period()],
+      today: '2026-08-20'
+    });
+    expect(view.years[0]?.entitledDays).toBeNull();
+    expect(view.years[0]?.remainingDays).toBeNull();
+    expect(view.years[0]?.takenDays).toBe(15);
+    expect(view.years[0]?.headline).toBe('En 2026 constan 15 días de vacaciones.');
+    expect(view.entitlementNote).toContain('solo lo ven quien administra');
+  });
+
   it('un contrato terminado no inventa años posteriores a su último día', () => {
     const view = buildVacationPersonView({
       agreementId: 'a-1',

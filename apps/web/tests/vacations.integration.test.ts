@@ -157,6 +157,21 @@ describe.runIf(Boolean(adminUrl))('vacaciones completas desde Postgres bajo RLS'
     expect(overview!.news).toBeNull();
   });
 
+  it('la familia no administradora ve los días apuntados, pero no el derecho pactado', async () => {
+    const overview = await loadVacationOverview(
+      { id: 'fixture:roble:family' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      NOW
+    );
+    const mine = overview!.people.find((person) => person.agreementId === AGREEMENT)!;
+    expect(mine.years[0]?.takenDays).toBe(15);
+    // La RLS no le devuelve ninguna versión del contrato: ni derecho, ni saldo,
+    // ni un cero de relleno que parecería un dato.
+    expect(mine.years[0]?.entitledDays).toBeNull();
+    expect(mine.entitlementNote).not.toBeNull();
+  });
+
   it('al apoyo del hogar no le consta ningún contrato, así que tampoco vacaciones', async () => {
     const overview = await loadVacationOverview(HELPER_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
     expect(overview!.people).toEqual([]);

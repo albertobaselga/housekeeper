@@ -68,10 +68,16 @@ export interface VacationYearView {
   year: number;
   /** El año natural en curso, el que la gente mira primero. */
   current: boolean;
-  entitledDays: number;
+  /**
+   * Días pactados de este año, ya prorrateados. `null` cuando quien mira no
+   * puede ver los términos del contrato: la familia no administradora ve los
+   * días disfrutados (son un hecho de la casa) pero no el derecho anual, que es
+   * lo pactado. Un cero en su lugar sería una cifra inventada.
+   */
+  entitledDays: number | null;
   takenDays: number;
   /** Negativo si se pasó de los días pactados; se enseña, no se esconde. */
-  remainingDays: number;
+  remainingDays: number | null;
   /** La frase del año entera, en la voz de quien mira. */
   headline: string;
   /** Explicación del prorrateo del primer o del último año, o null. */
@@ -95,6 +101,10 @@ export interface VacationPersonView {
   years: VacationYearView[];
   /** true si no hay ni un solo periodo apuntado en ningún año. */
   empty: boolean;
+  /**
+   * Por qué no salen los días pactados, cuando no salen. null cuando sí salen.
+   */
+  entitlementNote: string | null;
 }
 
 function days(count: number): string {
@@ -149,14 +159,22 @@ const STATE_LABELS: Readonly<Record<VacationHistoryPeriodView['state'], string>>
 function yearHeadline(
   voice: VacationVoice,
   year: number,
-  entitled: number,
+  entitled: number | null,
   taken: number,
-  remaining: number
+  remaining: number | null
 ): string {
   const you = voice === 'own';
   const has = you ? 'has disfrutado' : 'ha disfrutado';
   const left = you ? 'Te quedan' : 'Le quedan';
   const belong = you ? 'te tocan' : 'le tocan';
+
+  // Sin acceso a lo pactado solo se puede afirmar lo que se apuntó, y eso es
+  // exactamente lo que se dice. Ni un número redondo de relleno.
+  if (entitled === null || remaining === null) {
+    return taken === 0
+      ? `En ${year} no consta ningún día de vacaciones.`
+      : `En ${year} constan ${days(taken)} de vacaciones.`;
+  }
 
   if (taken === 0) {
     return `De los ${days(entitled)} que ${belong} en ${year}, todavía no ${has} ninguno.`;
@@ -236,6 +254,11 @@ export function buildVacationPersonView(input: {
   let lastYear = Math.max(currentYear, startYear, ...periodYears);
   if (endYear !== null) lastYear = Math.min(lastYear, Math.max(endYear, startYear));
 
+  // Sin ninguna versión visible no se puede decir cuántos días le tocan. Es el
+  // caso de la familia no administradora: la RLS le enseña los periodos —lo que
+  // pasó en la casa— pero no los términos del contrato.
+  const entitlementKnown = input.versions.length > 0;
+
   const years: VacationYearView[] = [];
   for (let year = lastYear; year >= startYear; year -= 1) {
     const touching = input.periods.filter(
@@ -250,27 +273,24 @@ export function buildVacationPersonView(input: {
         .filter((period) => period.status === 'recorded')
         .map((period) => ({ startsOn: period.startsOn, endsOn: period.endsOn }))
     });
+    const entitledDays = entitlementKnown ? balance.entitledDays : null;
+    const remainingDays = entitlementKnown ? balance.remainingDays : null;
 
     years.push({
       year,
       current: year === currentYear,
-      entitledDays: balance.entitledDays,
+      entitledDays,
       takenDays: balance.takenDays,
-      remainingDays: balance.remainingDays,
-      headline: yearHeadline(
-        voice,
-        year,
-        balance.entitledDays,
-        balance.takenDays,
-        balance.remainingDays
-      ),
-      prorationNote: balance.prorated
-        ? `El contrato cubre ${days(balance.coveredDays)} de ${year}, así que de los ` +
-          `${days(balance.annualVacationDays)} del año ${voice === 'own' ? 'te tocan' : 'le tocan'} ` +
-          `${balance.entitledDays}.`
-        : null,
+      remainingDays,
+      headline: yearHeadline(voice, year, entitledDays, balance.takenDays, remainingDays),
+      prorationNote:
+        entitlementKnown && balance.prorated
+          ? `El contrato cubre ${days(balance.coveredDays)} de ${year}, así que de los ` +
+            `${days(balance.annualVacationDays)} del año ${voice === 'own' ? 'te tocan' : 'le tocan'} ` +
+            `${balance.entitledDays}.`
+          : null,
       excessNote:
-        balance.remainingDays < 0
+        remainingDays !== null && remainingDays < 0
           ? 'Se han apuntado más días de los que reconoce el contrato. Casa Clara no lo corrige ' +
             'sola: lo enseña para que lo habléis y decidáis qué hacer.'
           : null,
@@ -300,6 +320,10 @@ export function buildVacationPersonView(input: {
         ? `Desde el ${dateLabel(input.agreementStartsOn)}`
         : `Del ${dateLabel(input.agreementStartsOn)} al ${dateLabel(input.agreementEndsOn)}`,
     years,
-    empty: input.periods.length === 0
+    empty: input.periods.length === 0,
+    entitlementNote: entitlementKnown
+      ? null
+      : 'Los días de vacaciones que le corresponden al año son parte de lo pactado, y eso solo lo ' +
+        'ven quien administra el hogar y la propia persona. Aquí constan los días apuntados.'
   };
 }

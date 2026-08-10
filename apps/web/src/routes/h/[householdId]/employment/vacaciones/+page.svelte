@@ -75,6 +75,13 @@
           <span class="status-chip success">{person.agreementRangeLabel}</span>
         </div>
 
+        <!-- Ausencia por permiso, no por falta de datos: a la familia no
+             administradora la RLS le enseña los días apuntados pero no los
+             términos, y decirlo es más honesto que pintar un derecho de cero. -->
+        {#if person.entitlementNote}
+          <p class="audit-note">{person.entitlementNote}</p>
+        {/if}
+
         {#each person.years as year (year.year)}
           <section class="vacation-year">
             <h3>{year.year}{year.current ? ' · este año' : ''}</h3>
