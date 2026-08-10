@@ -74,8 +74,9 @@ BEGIN;
  *
  * Un quinto valor («el segundo martes de cada mes») se añade después sin tocar
  * ninguna fila existente. AVISO para quien lo haga: la CHECK de forma de más
- * abajo es un CASE sin ELSE, así que un valor nuevo sin su rama evaluaría a
- * NULL y la restricción lo dejaría pasar todo. Añadir valor ⇒ añadir rama.
+ * abajo es un CASE sin ELSE. Falla cerrada a propósito, así que un valor nuevo
+ * sin su rama no cuela nada: rechaza TODA escritura de ese patrón. Añadir valor
+ * ⇒ añadir rama, y se nota en la primera prueba.
  */
 CREATE TYPE app.routine_pattern AS ENUM (
   'every_n_days',    -- «todos los días», «cada 3 días», «cada 15 días»
@@ -274,34 +275,50 @@ $review$;
  * El 36 de `day_of_month` no es capricho: `interval_count` admite hasta 12 y una
  * rutina `quarterly` con intervalo 12 son 36 meses. Una CHECK de 24 haría
  * fallar esta misma migración sobre datos reales.
+ *
+ * El `coalesce(…, false)` de fuera vale por media docena de comprobaciones y no
+ * es defensa preventiva: sin él la restricción tiene un agujero real. Una CHECK
+ * que evalúa a NULL PASA, y aquí es facilísimo llegar a NULL —
+ * `repeat_every BETWEEN 1 AND 366` con `repeat_every` nulo da NULL, no false—,
+ * de modo que una regla `every_n_days` sin intervalo entraría tan campante y el
+ * generador no sabría qué hacer con ella. El `coalesce` convierte «no sé» en
+ * «no», que es lo único razonable en una restricción de integridad.
+ *
+ * Y de propina cierra el otro agujero: el CASE interno no tiene ELSE, así que un
+ * quinto valor del enum añadido sin su rama evaluaría a NULL. Con el coalesce,
+ * olvidarse de la rama hace fallar TODA escritura de ese patrón —ruidoso y
+ * evidente— en vez de aceptar cualquier cosa en silencio.
  */
 ALTER TABLE app.routines ADD CONSTRAINT routines_pattern_shape CHECK (
-  CASE
-    WHEN pattern IS NULL THEN
-      anchor_on IS NULL AND repeat_every IS NULL AND weekdays IS NULL
-      AND month_day IS NULL AND months IS NULL AND next_due_on IS NULL
-      AND ends_on IS NULL
-    ELSE
-      anchor_on IS NOT NULL AND
-      CASE pattern
-        WHEN 'every_n_days' THEN
-          repeat_every BETWEEN 1 AND 366
-          AND weekdays IS NULL AND month_day IS NULL AND months IS NULL
-        WHEN 'days_of_week' THEN
-          repeat_every BETWEEN 1 AND 12
-          AND app.is_normalized_smallints(weekdays, 1::smallint, 7::smallint)
-          AND month_day IS NULL AND months IS NULL
-        WHEN 'day_of_month' THEN
-          repeat_every BETWEEN 1 AND 36
-          AND (month_day = -1 OR month_day BETWEEN 1 AND 31)
-          AND weekdays IS NULL AND months IS NULL
-        WHEN 'months_of_year' THEN
-          repeat_every IS NULL
-          AND (month_day = -1 OR month_day BETWEEN 1 AND 31)
-          AND app.is_normalized_smallints(months, 1::smallint, 12::smallint)
-          AND weekdays IS NULL
-      END
-  END
+  coalesce(
+    CASE
+      WHEN pattern IS NULL THEN
+        anchor_on IS NULL AND repeat_every IS NULL AND weekdays IS NULL
+        AND month_day IS NULL AND months IS NULL AND next_due_on IS NULL
+        AND ends_on IS NULL
+      ELSE
+        anchor_on IS NOT NULL AND
+        CASE pattern
+          WHEN 'every_n_days' THEN
+            repeat_every BETWEEN 1 AND 366
+            AND weekdays IS NULL AND month_day IS NULL AND months IS NULL
+          WHEN 'days_of_week' THEN
+            repeat_every BETWEEN 1 AND 12
+            AND app.is_normalized_smallints(weekdays, 1::smallint, 7::smallint)
+            AND month_day IS NULL AND months IS NULL
+          WHEN 'day_of_month' THEN
+            repeat_every BETWEEN 1 AND 36
+            AND (month_day = -1 OR month_day BETWEEN 1 AND 31)
+            AND weekdays IS NULL AND months IS NULL
+          WHEN 'months_of_year' THEN
+            repeat_every IS NULL
+            AND (month_day = -1 OR month_day BETWEEN 1 AND 31)
+            AND app.is_normalized_smallints(months, 1::smallint, 12::smallint)
+            AND weekdays IS NULL
+        END
+    END,
+    false
+  )
 );
 
 ALTER TABLE app.routines ADD CONSTRAINT routines_ends_after_anchor

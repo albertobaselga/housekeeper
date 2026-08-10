@@ -144,6 +144,17 @@ BEGIN
        'every_n_days', '2026-08-10', 0, NULL, NULL, NULL, NULL, NULL),
       ('every_n_days cada 367 días',
        'every_n_days', '2026-08-10', 367, NULL, NULL, NULL, NULL, NULL),
+      -- Los cuatro «sin el dato que su patrón necesita» son el agujero de una
+      -- CHECK sin `coalesce(…, false)`: `NULL BETWEEN 1 AND 366` no da false,
+      -- da NULL, y una CHECK que evalúa a NULL deja pasar la fila.
+      ('every_n_days sin intervalo',
+       'every_n_days', '2026-08-10', NULL, NULL, NULL, NULL, NULL, NULL),
+      ('days_of_week sin intervalo',
+       'days_of_week', '2026-08-10', NULL, ARRAY[1]::smallint[], NULL, NULL, NULL, NULL),
+      ('day_of_month sin día del mes',
+       'day_of_month', '2026-08-10', 1, NULL, NULL, NULL, NULL, NULL),
+      ('months_of_year sin día del mes',
+       'months_of_year', '2026-08-10', NULL, NULL, NULL, ARRAY[6]::smallint[], NULL, NULL),
       ('days_of_week sin ningún día',
        'days_of_week', '2026-08-10', 1, ARRAY[]::smallint[], NULL, NULL, NULL, NULL),
       ('days_of_week con los días desordenados',
