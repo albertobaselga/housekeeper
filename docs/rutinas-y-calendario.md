@@ -1186,3 +1186,65 @@ y con prueba negativa: la interna no debe recibir una rutina de audiencia
   y **T7b** (año, pasado con autoría y las pruebas negativas de visibilidad).
 - **T1** debe generar ocurrencias **hacia atrás** además de hacia delante, y
   casarlas con `routine_completions` para saber qué se hizo y qué no.
+
+## E5. Tres correcciones en Hoy (10/08/2026)
+
+Encargo del propietario, literal:
+
+> «En la sección de Hoy, se tiene que poder desmarcar una tarea marcada como
+> hecha por accidente. También al ver los eventos de las rutinas, se tiene que
+> poder ver el detalle de la tarea, si lo tiene, al pinchar en el título.
+> También tienen que aparecer las tareas que vencen "esta semana" para que vea
+> si es algo que le da tiempo a hacer o se lo planifica para el día siguiente o
+> más adelante.»
+
+Van en las tareas **T6 (Hoy)** y **T7 (Calendario)**, no en un trabajo aparte:
+las tres tocan la misma pantalla que esas tareas reescriben.
+
+### E5.1 Desmarcar lo marcado por error
+
+Hoy marcar es irreversible: se anota el completado y la rutina salta a su
+próxima fecha. Un toque accidental deja la tarea como hecha sin haberse hecho,
+y —peor— **mueve la próxima fecha**, así que la casa deja de verla cuando
+tocaba.
+
+Requisitos:
+
+- Se puede deshacer **desde el mismo sitio donde se marcó**, sin buscar el
+  gesto en otra pantalla.
+- Deshacer **restaura la fecha que tenía**, no recalcula una nueva: si se
+  desmarca, la rutina vuelve a estar pendiente para el día que le tocaba.
+- **No borra el pasado.** La enmienda E2 hizo consultable el historial con su
+  autoría; un completado anulado se anota como anulado, igual que un pago o unas
+  vacaciones, y deja de contar. Nunca desaparece de la base.
+- **Sin motivo obligatorio.** Es un error de dedo, no una corrección contable:
+  pedir una justificación para desmarcar una tarea doméstica es fricción sin
+  valor. (Es la excepción deliberada al patrón de anulación con motivo del
+  expediente laboral, y queda dicho aquí para que no parezca un descuido.)
+- Quien la marcó puede desmarcarla; la administración también. La empleada no
+  puede desmarcar lo que marcó otra persona.
+
+### E5.2 El detalle de la tarea, al tocar el título
+
+Las rutinas tienen un campo de detalles que hoy se muestra a medias o no se
+muestra. Al tocar el título —en Hoy y en el calendario— debe abrirse su
+detalle **cuando lo tenga**; si no lo tiene, el título no debe fingir que es
+pulsable. Usa un elemento desplegable nativo si con eso basta: no hace falta
+JavaScript para enseñar un texto que ya viajó con la página, y el presupuesto
+de Hoy está a 34 bytes del techo.
+
+### E5.3 «Esta semana», para poder planificar
+
+Hoy solo enseña lo que vence hoy. Falta ver lo que viene **en los próximos
+días** para decidir si da tiempo hoy o se deja para mañana.
+
+- Bloque propio, **después** de lo de hoy y claramente separado: lo de hoy es lo
+  que toca; lo de la semana es información para planificar, no una lista de
+  deberes.
+- Agrupado por día, con el día nombrado («mañana», «el jueves»), no una lista
+  plana de fechas.
+- **No es accionable en bloque**: desde ahí no se marca nada como hecho antes de
+  tiempo. Sí se puede abrir su detalle (E5.2).
+- Cuidado con el ruido: si hay rutinas diarias, esta lista se llenaría de
+  repeticiones. Agrupa o resume las diarias en vez de repetirlas siete veces.
+- Cabe en el presupuesto o va en carga diferida; se mide, no se supone.
