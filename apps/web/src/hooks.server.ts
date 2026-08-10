@@ -5,12 +5,22 @@ import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { guardForPath } from '$lib/auth/routing';
 import { resolveAppUser } from '$lib/server/app-user.server';
 import { getAuth } from '$lib/server/auth.server';
+import { bootRefusal, refusalResponse, skipDuringBuild } from '$lib/server/boot-guard.server';
 import { getDemoUser } from '$lib/server/fixtures.server';
 import { readDemoSession } from '$lib/server/session.server';
 import { syntheticGuard } from '$lib/server/synthetic.server';
 import type { Session } from '$lib/auth/types';
 
 export const handle: Handle = async ({ event, resolve }) => {
+  // Lo PRIMERO, antes de tocar identidad, base de datos o rutas: la regla
+  // indivisible de configuración. Se calcula una vez por proceso; a partir de
+  // ahí es una comparación con null. Ver boot-guard.server.ts para por qué
+  // negarse aquí no deja a nadie de la casa fuera.
+  if (!skipDuringBuild()) {
+    const refusal = bootRefusal();
+    if (refusal) return refusalResponse(refusal);
+  }
+
   const auth = getAuth();
   // Control 9: el flag solo-sintético se lee aquí y viaja por layout data
   // hasta el banner persistente del AppShell.
