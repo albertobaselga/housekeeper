@@ -9,7 +9,6 @@ import {
   recordPayment,
   registerExtra,
   resolveExpense,
-  submitWeek,
   voidManualAdjustment
 } from '../src/lib/employment/commands';
 import {
@@ -36,16 +35,6 @@ function databaseName(label: string): string {
 
 describe('descripciones humanas de comandos del expediente', () => {
   it('mapea aggregateType + action a texto legible', () => {
-    expect(
-      describeEmploymentCommand(
-        submitWeek({
-          householdId: HOUSEHOLD,
-          agreementId: AGREEMENT,
-          weekStartsOn: '2026-08-03',
-          entries: [{ workedOn: '2026-08-03', regularMinutes: 480 }]
-        })
-      )
-    ).toBe('Días trabajados de la semana del 3 ago 2026');
     expect(
       describeEmploymentCommand(
         registerExtra({
@@ -119,7 +108,7 @@ describe('descripciones humanas de comandos del expediente', () => {
   });
 
   it('traduce códigos de error conocidos y calla ante los desconocidos', () => {
-    expect(describeErrorCode('week_already_reported')).toBe('La semana ya fue enviada');
+    expect(describeErrorCode('settlement_not_open')).toBe('La cuenta del mes ya no está abierta');
     expect(describeErrorCode('not_allowed')).toBe('Tu rol no permite esta acción');
     expect(describeErrorCode('algo_nuevo')).toBeNull();
     expect(describeErrorCode(undefined)).toBeNull();
@@ -131,14 +120,14 @@ describe('triaje del outbox: conflict/rejected con código de error', () => {
     const name = databaseName('codes');
     const record = createOutboxRecord(envelopeFixture('33333333-0000-4000-8000-000000000001', '2026-08-07T08:00:00.000Z'));
     await queueOutbox(record, name);
-    await updateOutboxStatuses([{ id: record.id, errorCode: 'week_already_reported' }], 'rejected', name);
+    await updateOutboxStatuses([{ id: record.id, errorCode: 'settlement_not_open' }], 'rejected', name);
     const [stored] = await listOutbox(HOUSEHOLD, name);
-    expect(stored).toMatchObject({ status: 'rejected', lastErrorCode: 'week_already_reported' });
+    expect(stored).toMatchObject({ status: 'rejected', lastErrorCode: 'settlement_not_open' });
 
     // La firma antigua (solo ids) sigue funcionando y no borra el código previo.
     await updateOutboxStatuses([record.id], 'conflict', name);
     const [again] = await listOutbox(HOUSEHOLD, name);
-    expect(again).toMatchObject({ status: 'conflict', lastErrorCode: 'week_already_reported' });
+    expect(again).toMatchObject({ status: 'conflict', lastErrorCode: 'settlement_not_open' });
   });
 
   it('solo lista registros conflict/rejected de agregados del expediente', async () => {

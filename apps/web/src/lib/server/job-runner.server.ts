@@ -1,14 +1,12 @@
 /**
  * Drenaje de `app_private.job_queue` desde una función de la web.
  *
- * La aplicación lleva tiempo fabricando avisos y trabajos que nadie ejecutaba:
- * no hay worker desplegado, así que el calendario no se refrescaba solo, los
- * recordatorios no salían, los PDF de los justificantes no se generaban y el
- * parte semanal no se auto-confirmaba. En vez de añadir un host —y un coste, y
- * otra superficie que endurecer— el planificador vive en la propia base:
- * `pg_cron` llama con `pg_net` a este endpoint cada pocos minutos y aquí se
- * vacía lo que haya. Los comandos exactos están en
- * `docs/runbooks/planificador-cola.md`.
+ * La aplicación lleva tiempo fabricando trabajos que nadie ejecutaba: no hay
+ * worker desplegado, así que el calendario no se refrescaba solo y los PDF de
+ * los recibos no se generaban. En vez de añadir un host —y un coste, y otra
+ * superficie que endurecer— el planificador vive en la propia base: `pg_cron`
+ * llama con `pg_net` a este endpoint cada pocos minutos y aquí se vacía lo que
+ * haya. Los comandos exactos están en `docs/runbooks/planificador-cola.md`.
  *
  * Lo que NO hay aquí es lógica de trabajos: el catálogo de manejadores y el
  * reclamo de la cola son los mismos de `apps/worker` (`@casa-clara/worker/jobs`).
@@ -44,7 +42,6 @@ import {
   putPrivateObject,
   reclaimStaleJobs,
   runOneJob,
-  sendEmail,
   type JobHandler
 } from '@casa-clara/worker/jobs';
 import { createLogger, errorCode } from '@casa-clara/server';
@@ -68,7 +65,6 @@ export interface JobRunnerConfig {
   budgetMs: number;
   maxAttempts: number;
   leaseMs: number | undefined;
-  smtp: { host: string; port: number; from: string };
   storage: {
     endpoint: string;
     region: string;
@@ -86,10 +82,17 @@ function positiveInteger(raw: string | undefined, fallback: number): number {
 /**
  * Configuración del drenaje, o null si falta algo imprescindible.
  *
- * Exige TODO lo que necesitan los siete tipos de trabajo, no solo la base: un
- * drenaje a medias mandaría a `dead` los avisos por falta de SMTP y los
- * justificantes por falta de almacén, y lo haría en silencio. Sin configuración
- * completa el endpoint responde 503 y la cola espera intacta.
+ * Exige TODO lo que necesitan los cuatro tipos de trabajo, no solo la base: un
+ * drenaje a medias mandaría a `dead` los recibos por falta de almacén, y lo
+ * haría en silencio. Sin configuración completa el endpoint responde 503 y la
+ * cola espera intacta.
+ *
+ * Aquí se exigían además `SMTP_HOST` y `SMTP_FROM`, y esa exigencia tenía la
+ * cola de producción parada: sin remitente configurado el endpoint devolvía 503
+ * en cada pasada del cron y no se vaciaba nada —ni los recibos, ni la
+ * sincronización de calendarios, ni la poda—. Se fueron con la migración 0029,
+ * que retiró la salida de correo entera: ya no queda ningún trabajo que la
+ * necesite, así que pedirla era bloquear la casa por una pieza que no existe.
  *
  * `WORKER_DATABASE_URL` y no `DATABASE_URL`: la cola solo la puede tocar el rol
  * `casa_clara_worker` (0005). El rol de la aplicación no tiene ni un GRANT
@@ -100,13 +103,11 @@ export function loadJobRunnerConfig(
 ): JobRunnerConfig | null {
   const databaseUrl = environment.WORKER_DATABASE_URL?.trim();
   const token = environment.JOB_RUNNER_TOKEN?.trim();
-  const smtpHost = environment.SMTP_HOST?.trim();
-  const smtpFrom = environment.SMTP_FROM?.trim();
   const endpoint = environment.S3_ENDPOINT?.trim();
   const bucket = environment.S3_PRIVATE_BUCKET?.trim();
   const accessKeyId = environment.S3_ACCESS_KEY_ID?.trim();
   const secretAccessKey = environment.S3_SECRET_ACCESS_KEY?.trim();
-  if (!databaseUrl || !token || !smtpHost || !smtpFrom || !endpoint || !bucket || !accessKeyId || !secretAccessKey) {
+  if (!databaseUrl || !token || !endpoint || !bucket || !accessKeyId || !secretAccessKey) {
     return null;
   }
   return {
@@ -117,7 +118,6 @@ export function loadJobRunnerConfig(
     maxAttempts: positiveInteger(environment.WORKER_MAX_JOB_ATTEMPTS, 5),
     // Sin declarar (o con un valor absurdo) manda el arriendo de la cola.
     leaseMs: positiveInteger(environment.JOB_RUNNER_LEASE_MS, 0) || undefined,
-    smtp: { host: smtpHost, port: positiveInteger(environment.SMTP_PORT, 1_025), from: smtpFrom },
     storage: {
       endpoint,
       region: environment.S3_REGION?.trim() || 'eu-west-1',
@@ -276,7 +276,6 @@ export async function runJobDrainRequest(
     overrides.handlers ??
     createJobHandlers({
       pool,
-      sendEmail: (input) => sendEmail(config.smtp, input),
       uploadDocument: (key, body, contentType) => {
         storageClient ??= objectStore(config.storage);
         return putPrivateObject(storageClient, config.storage.bucket, key, body, contentType);

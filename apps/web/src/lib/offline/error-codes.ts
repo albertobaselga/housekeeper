@@ -25,7 +25,6 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   attachment_upload_blocked: 'La foto no se pudo subir tras varios intentos',
 
   // Expediente laboral
-  week_already_reported: 'La semana ya fue enviada',
   week_overlap: 'La semana se solapa con otra ya registrada',
   agreement_not_found: 'El contrato no existe o no es visible',
   extra_work_not_found: 'La jornada extra ya no existe',

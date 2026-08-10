@@ -73,7 +73,7 @@ describe.runIf(Boolean(adminUrl))("AC-25 literal: rutina quarterly con audiencia
     await adminPool?.end();
   });
 
-  it("quarterly + family: notification.routine_due lleva a la familia y JAMÁS a la empleada; el avance recorta 30/11 → 28/02", async () => {
+  it("quarterly + family: el avance recorta 30/11 → 28/02 y no se encola ningún aviso", async () => {
     // El caso literal del criterio: frecuencia trimestral Y audiencia familiar
     // en la MISMA rutina (la revisión adversarial señaló que hasta ahora solo
     // existían por separado). El vencimiento 30/11 fuerza además el recorte de
@@ -106,41 +106,20 @@ describe.runIf(Boolean(adminUrl))("AC-25 literal: rutina quarterly con audiencia
     );
     expect(advanced.rows).toEqual([{ next_due_on: "2027-02-28" }]);
 
-    // Los DOS avisos encolados (alta y avance) llevan audiencia family y una
-    // lista de destinatarios que jamás contiene a la empleada ni al apoyo.
-    const jobs = await adminPool.query<{ payload: Record<string, unknown> }>(
-      `select payload
+    // El aviso `notification.routine_due` se retiró con la migración 0029: solo
+    // sabía mandar correo y arrastraba las direcciones de la audiencia dentro
+    // del payload. El AC-25 —«mantenimiento trimestral notifica a familia, no a
+    // empleada»— se cumple ahora por la vía más simple posible: no hay
+    // notificación que dirigir mal, y la rutina 'family' sigue siendo invisible
+    // para la empleada por RLS (packages/db/tests/020_rls_matrix.sql).
+    const jobs = await adminPool.query<{ total: number }>(
+      `select count(*)::int as total
          from app_private.job_queue
         where household_id = $1 and job_type = 'notification.routine_due'
-          and payload ->> 'routineId' = $2
-        order by created_at`,
+          and payload ->> 'routineId' = $2`,
       [ROBLE_HOUSEHOLD, routineId],
     );
-    expect(jobs.rows).toHaveLength(2);
-    for (const job of jobs.rows) {
-      const recipients = job.payload.recipients as string[];
-      expect(job.payload).toMatchObject({
-        routineId,
-        title: "Revisión trimestral de la caldera",
-        audience: "family",
-      });
-      expect(recipients).toEqual([ADMIN_EMAIL, FAMILY_EMAIL]);
-      expect(recipients).not.toContain(EMPLOYEE_EMAIL);
-      expect(recipients).not.toContain(HELPER_EMAIL);
-    }
-
-    // Y el run_at del segundo aviso es la mañana de la fecha recortada (0027).
-    const runAt = await adminPool.query<{ ok: boolean; madrid_wall_clock: string }>(
-      `select run_at = app.job_run_at(date '2027-02-28') as ok,
-              to_char(run_at at time zone 'Europe/Madrid', 'YYYY-MM-DD HH24:MI') as madrid_wall_clock
-         from app_private.job_queue
-        where household_id = $1 and job_type = 'notification.routine_due'
-          and payload ->> 'routineId' = $2
-        order by created_at desc
-        limit 1`,
-      [ROBLE_HOUSEHOLD, routineId],
-    );
-    expect(runAt.rows).toEqual([{ ok: true, madrid_wall_clock: "2027-02-28 08:00" }]);
+    expect(jobs.rows[0]?.total).toBe(0);
   });
 
   it("el clamp trimestral es el de calendario también en año bisiesto: 30/11/2027 → 29/02/2028", () => {

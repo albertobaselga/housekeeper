@@ -8,11 +8,11 @@
  *   · el drenaje por HTTP de `apps/web` (Vercel + pg_cron, un presupuesto de
  *     segundos por pasada; ver docs/runbooks/planificador-cola.md).
  *
- * Lo único que los distingue son los efectos externos —a qué SMTP se manda el
- * correo, contra qué almacén se sube el PDF y a dónde escribe el log—, así que
- * eso entra por parámetro y todo lo demás se construye igual. Añadir un tipo de
- * trabajo aquí lo enciende en los dos ejecutores a la vez; añadirlo en uno solo
- * es el fallo que este módulo hace imposible.
+ * Lo único que los distingue son los efectos externos —contra qué almacén se
+ * sube el PDF y a dónde escribe el log—, así que eso entra por parámetro y todo
+ * lo demás se construye igual. Añadir un tipo de trabajo aquí lo enciende en los
+ * dos ejecutores a la vez; añadirlo en uno solo es el fallo que este módulo hace
+ * imposible.
  *
  * El logger llega inyectado y no importado a propósito. `@casa-clara/server`
  * expone la versión con redacción por dos caminos incompatibles —`/logging`
@@ -27,27 +27,17 @@ import { RENDER_RECEIPT_JOB, createRenderReceiptHandler, type DocumentUploader }
 import {
   ICS_SYNC_ALL_JOB,
   ICS_SYNC_JOB,
-  ROUTINE_DUE_JOB,
   createIcsQueries,
   createIcsSyncAllHandler,
   createIcsSyncHandler,
-  createRoutineDueHandler,
   fetchIcsSource,
 } from "./ics.js";
-import type { OutgoingEmail } from "./mail.js";
 import {
   PRUNE_DISCOVERY_JOB,
   createMaintenanceQueries,
   createPruneDiscoveryHandler,
 } from "./maintenance.js";
 import type { JobHandler } from "./queue.js";
-import {
-  AUTOCONFIRM_JOB,
-  SETTLEMENT_DUE_JOB,
-  createAutoconfirmHandler,
-  createReminderQueries,
-  createSettlementDueHandler,
-} from "./reminders.js";
 
 /** Lo que este módulo necesita del logger con redacción de `@casa-clara/server`. */
 export interface JobLogger {
@@ -58,7 +48,6 @@ export interface JobLogger {
 export interface JobRuntimeDeps {
   /** Pool con el rol `casa_clara_worker`: es el único que puede tocar la cola. */
   pool: Pool;
-  sendEmail: (input: OutgoingEmail) => Promise<void>;
   uploadDocument: DocumentUploader;
   log: JobLogger;
   /** `errorCode` de `@casa-clara/server`: código estable y sin datos personales. */
@@ -99,13 +88,17 @@ export function withJobLogging(
 }
 
 /**
- * Los siete tipos de trabajo, ya envueltos en el logger con redacción.
+ * Los cuatro tipos de trabajo, ya envueltos en el logger con redacción.
+ *
+ * Eran siete. La migración 0029 retiró tres de golpe y por la misma razón:
+ * `notification.settlement_due` y `notification.routine_due` solo sabían mandar
+ * correo, y `time_report.autoconfirm` confirmaba solo un parte semanal que ya no
+ * existe. Lo que quedara encolado de los tres pasó a `dead` en esa migración.
  *
  * El objeto se crea con prototipo nulo a propósito: `job_type` viene de una
  * fila de la base y un valor como `constructor` no puede resolver a nada.
  */
 export function createJobHandlers(deps: JobRuntimeDeps): Record<string, JobHandler> {
-  const reminderQueries = createReminderQueries(deps.pool);
   const maintenanceQueries = createMaintenanceQueries(deps.pool);
   // Fontanería ICS entrante (Ola E): descarga con guard SSRF y expansión de
   // recurrencias en ics.ts; persistencia y registro SOLO vía funciones definer
@@ -114,15 +107,6 @@ export function createJobHandlers(deps: JobRuntimeDeps): Record<string, JobHandl
 
   const handlers: Record<string, JobHandler> = Object.create(null) as Record<string, JobHandler>;
   handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler(deps.uploadDocument);
-  handlers[SETTLEMENT_DUE_JOB] = createSettlementDueHandler({
-    readState: reminderQueries.readSettlementReminderState,
-    enqueue: reminderQueries.enqueueJob,
-    sendEmail: deps.sendEmail,
-  });
-  handlers[AUTOCONFIRM_JOB] = createAutoconfirmHandler({
-    autoconfirm: reminderQueries.autoconfirmWeeklyReport,
-  });
-  handlers[ROUTINE_DUE_JOB] = createRoutineDueHandler({ sendEmail: deps.sendEmail });
   handlers[PRUNE_DISCOVERY_JOB] = createPruneDiscoveryHandler({
     prune: maintenanceQueries.pruneDiscoveryData,
     enqueue: maintenanceQueries.enqueueJob,

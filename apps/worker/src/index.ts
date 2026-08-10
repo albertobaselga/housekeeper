@@ -6,7 +6,7 @@ import { createLogger, errorCode } from "@casa-clara/server/logging";
 
 import { loadWorkerConfig } from "./config.js";
 import { ensureIcsSyncScheduled } from "./ics.js";
-import { objectStore, putPrivateObject, sendEmail } from "./integrations.js";
+import { objectStore, putPrivateObject } from "./integrations.js";
 import { ensurePruneDiscoveryScheduled } from "./maintenance.js";
 import { reclaimStaleJobs, runOneJob } from "./queue.js";
 import { createJobHandlers } from "./registry.js";
@@ -24,7 +24,6 @@ let pollFailures = 0;
 // (registry.ts); aquí solo se enchufan los efectos externos de este proceso.
 const handlers = createJobHandlers({
   pool,
-  sendEmail: (input) => sendEmail(config.smtp, input),
   uploadDocument: (key, body, contentType) =>
     putPrivateObject(storageClient, config.storage.bucket, key, body, contentType),
   log,

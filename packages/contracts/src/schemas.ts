@@ -57,7 +57,6 @@ export const commandEnvelopeSchema = z.object({
     "routine_occurrence",
     "settlement",
     "shopping_item",
-    "time_entry",
     "wiki_page",
     "wiki_space",
   ]),
@@ -89,25 +88,6 @@ export const expenseSubmitPayloadSchema = z.object({
   receiptStorageObjectId: uuidSchema.optional(),
 });
 
-const isoTimeSchema = z.string().regex(/^\d{2}:\d{2}$/);
-
-export const weeklyReportSubmitPayloadSchema = z.object({
-  action: z.literal("submit_week"),
-  agreementId: uuidSchema,
-  weekStartsOn: isoDateSchema,
-  entries: z
-    .array(
-      z.object({
-        workedOn: isoDateSchema,
-        startedAt: isoTimeSchema.optional(),
-        endedAt: isoTimeSchema.optional(),
-        regularMinutes: z.number().int().min(0).max(24 * 60),
-        note: z.string().max(500).optional(),
-      }),
-    )
-    .min(1)
-    .max(31),
-});
 
 export const extraWorkRegisterPayloadSchema = z.object({
   action: z.literal("register"),

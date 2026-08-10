@@ -19,8 +19,7 @@ import {
   type ScheduleDayRow,
   type ScheduleRow,
   type SettlementLineRow,
-  type SettlementRow,
-  type WeeklyReportRow
+  type SettlementRow
 } from '$lib/employment/model';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -161,6 +160,21 @@ interface PaymentExportRow extends PaymentRow {
   status: string;
 }
 
+/**
+ * Un parte semanal histórico. El parte se retiró con la migración 0029 y las
+ * filas antiguas se conservaron como historia laboral; este fichero es el ÚNICO
+ * sitio donde se leen, y por eso el tipo vive aquí y no en el modelo de la
+ * pantalla, que ya no sabe nada de partes.
+ */
+interface WeeklyReportExportRow {
+  id: string;
+  weekStartsOn: string;
+  weekEndsOn: string;
+  status: string;
+  autoConfirmed: boolean;
+  disputeReason: string | null;
+}
+
 // --- CSVs --------------------------------------------------------------------
 
 function settlementsCsv(
@@ -295,7 +309,7 @@ function extrasCsv(extras: readonly ExtraWorkExportRow[]): string {
   );
 }
 
-function reportsCsv(reports: readonly WeeklyReportRow[]): string {
+function reportsCsv(reports: readonly WeeklyReportExportRow[]): string {
   return buildCsv(
     ['parte_id', 'semana_inicio', 'semana_fin', 'estado', 'auto_confirmado', 'motivo_disputa'],
     reports.map((report) => [
@@ -657,8 +671,10 @@ export async function buildEmploymentExport(
           )
         : empty;
 
+      // Partes semanales: histórico cerrado (migración 0029). No se crean
+      // nuevos y ninguna pantalla los enseña; este CSV es donde se leen.
       const reports = agreementIds.length
-        ? await client.query<WeeklyReportRow>(
+        ? await client.query<WeeklyReportExportRow>(
             `select id,
                     week_starts_on::text as "weekStartsOn",
                     week_ends_on::text as "weekEndsOn",

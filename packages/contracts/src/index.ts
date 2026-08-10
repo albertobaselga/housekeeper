@@ -152,7 +152,6 @@ export type AggregateType =
   | "routine_occurrence"
   | "settlement"
   | "shopping_item"
-  | "time_entry"
   | "wiki_page"
   | "wiki_space";
 
@@ -206,20 +205,6 @@ export interface ExpenseSubmitPayloadV1 {
   amountCents: MoneyCents;
   /** Objeto ya subido y escaneado (ruta de adjuntos) que actúa de justificante. */
   receiptStorageObjectId?: UUID;
-}
-
-/** `aggregateType: "time_entry"` — la empleada envía su semana con sus entradas. */
-export interface WeeklyReportSubmitPayloadV1 {
-  action: "submit_week";
-  agreementId: UUID;
-  weekStartsOn: ISODate;
-  entries: Array<{
-    workedOn: ISODate;
-    startedAt?: string;
-    endedAt?: string;
-    regularMinutes: number;
-    note?: string;
-  }>;
 }
 
 /** `aggregateType: "extra_work"` — registro de jornada extra (empleada o familia). */

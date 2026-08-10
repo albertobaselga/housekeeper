@@ -247,7 +247,7 @@ describe('triaje genérico del outbox', () => {
   it('traduce los códigos de error propios y los laborales, y calla ante los desconocidos', () => {
     expect(describeError('unsupported_aggregate')).toBe('La aplicación no reconoce este tipo de cambio');
     expect(describeError('wiki_revision_conflict')).toBe('Otra persona guardó la nota antes que tú');
-    expect(describeError('week_already_reported')).toBe('La semana ya fue enviada');
+    expect(describeError('settlement_not_open')).toBe('La cuenta del mes ya no está abierta');
     expect(describeError('codigo_inventado')).toBeNull();
     expect(describeError(undefined)).toBeNull();
   });

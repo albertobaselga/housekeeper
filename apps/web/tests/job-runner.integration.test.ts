@@ -141,17 +141,16 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
     workerUrl.password = 'integration-only';
     workerPool = new pg.Pool({ connectionString: workerUrl.toString(), max: 4 });
 
-    // Los valores de SMTP y S3 son de relleno: los trabajos de esta suite son
-    // los de SQL puro y sus clientes se construyen dentro del efecto, así que
-    // nada sale de la máquina. El endpoint sí construye el catálogo REAL de
-    // manejadores con ellos, que es lo que interesa comprobar.
+    // Los valores de S3 son de relleno: los trabajos de esta suite son los de
+    // SQL puro y su cliente se construye dentro del efecto, así que nada sale
+    // de la máquina. El endpoint sí construye el catálogo REAL de manejadores
+    // con ellos, que es lo que interesa comprobar.
     config = {
       databaseUrl: workerUrl.toString(),
       token: TOKEN,
       budgetMs: 8_000,
       maxAttempts: 5,
       leaseMs: undefined,
-      smtp: { host: 'smtp.invalid', port: 1025, from: 'Casa Clara <no-reply@casa.invalid>' },
       storage: {
         endpoint: 'https://s3.invalid',
         region: 'eu-west-1',
@@ -333,12 +332,10 @@ describe('secreto compartido y configuración del drenaje', () => {
     expect(tokenMatches('', '')).toBe(false);
   });
 
-  it('exige TODO lo que necesitan los siete trabajos, no solo la base', () => {
+  it('exige TODO lo que necesitan los cuatro trabajos, no solo la base', () => {
     const complete = {
       WORKER_DATABASE_URL: 'postgresql://casa_clara_worker_login@db.invalid:6543/postgres',
       JOB_RUNNER_TOKEN: TOKEN,
-      SMTP_HOST: 'smtp.invalid',
-      SMTP_FROM: 'Casa Clara <no-reply@casa.invalid>',
       S3_ENDPOINT: 'https://s3.invalid',
       S3_PRIVATE_BUCKET: 'casaclara',
       S3_ACCESS_KEY_ID: 'id',
@@ -348,7 +345,6 @@ describe('secreto compartido y configuración del drenaje', () => {
       token: TOKEN,
       budgetMs: 8_000,
       maxAttempts: 5,
-      smtp: { port: 1025 },
       storage: { region: 'eu-west-1' }
     });
 
@@ -358,12 +354,30 @@ describe('secreto compartido y configuración del drenaje', () => {
     }
   });
 
+  it('SIN remitente SMTP el drenaje arranca igual: era la exigencia que paraba la cola', () => {
+    // El defecto que corrige la 0029. Con `SMTP_HOST`/`SMTP_FROM` en la lista de
+    // imprescindibles, producción —que nunca los tuvo, porque no hay correo—
+    // recibía un 503 en cada pasada del cron y la cola no avanzaba: ni recibos,
+    // ni sincronización de calendarios, ni poda. Ahora ni se miran.
+    const withoutMail = {
+      WORKER_DATABASE_URL: 'postgresql://casa_clara_worker_login@db.invalid:6543/postgres',
+      JOB_RUNNER_TOKEN: TOKEN,
+      S3_ENDPOINT: 'https://s3.invalid',
+      S3_PRIVATE_BUCKET: 'casaclara',
+      S3_ACCESS_KEY_ID: 'id',
+      S3_SECRET_ACCESS_KEY: 'secret'
+    };
+    expect(loadJobRunnerConfig(withoutMail)).not.toBeNull();
+    // Y declararlos tampoco cambia nada: son variables sin lector.
+    expect(
+      loadJobRunnerConfig({ ...withoutMail, SMTP_HOST: 'smtp.invalid', SMTP_FROM: 'x@invalid' })
+    ).toEqual(loadJobRunnerConfig(withoutMail));
+  });
+
   it('el presupuesto y los intentos se pueden ajustar, y un valor absurdo cae al defecto', () => {
     const base = {
       WORKER_DATABASE_URL: 'postgresql://casa_clara_worker_login@db.invalid:6543/postgres',
       JOB_RUNNER_TOKEN: TOKEN,
-      SMTP_HOST: 'smtp.invalid',
-      SMTP_FROM: 'Casa Clara <no-reply@casa.invalid>',
       S3_ENDPOINT: 'https://s3.invalid',
       S3_PRIVATE_BUCKET: 'casaclara',
       S3_ACCESS_KEY_ID: 'id',

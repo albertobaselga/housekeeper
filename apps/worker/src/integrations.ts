@@ -2,18 +2,14 @@ import sharp from "sharp";
 import { createWorker } from "tesseract.js";
 import webPush from "web-push";
 
-// El correo y el almacén de objetos viven en módulos propios (mail.ts,
-// object-store.ts) para que el drenaje de la cola desde la web pueda usarlos sin
-// arrastrar `sharp` ni `tesseract.js`. Se re-exportan aquí para no romper a
-// nadie que ya los importase desde este fichero.
-export {
-  SYNTHETIC_EMAIL_DOMAINS,
-  applySyntheticEmailPolicy,
-  isSyntheticOnly,
-  sendEmail,
-  type OutgoingEmail,
-  type SmtpConfig,
-} from "./mail.js";
+// El almacén de objetos vive en un módulo propio (object-store.ts) para que el
+// drenaje de la cola desde la web pueda usarlo sin arrastrar `sharp` ni
+// `tesseract.js`. Se re-exporta aquí para no romper a nadie que ya lo importase
+// desde este fichero.
+//
+// Aquí se re-exportaba también `mail.ts`, el envío por SMTP con su política de
+// entorno sintético. Se retiró entero con la migración 0029: no hay canal de
+// correo y la aplicación no encola ya ningún trabajo que lo necesitara.
 export { objectStore, putPrivateObject, type ObjectStoreConfig } from "./object-store.js";
 
 export function createWhatsAppLink(phone: string, message: string): string {
