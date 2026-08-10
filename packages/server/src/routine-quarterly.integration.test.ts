@@ -129,9 +129,10 @@ describe.runIf(Boolean(adminUrl))("AC-25 literal: rutina quarterly con audiencia
       expect(recipients).not.toContain(HELPER_EMAIL);
     }
 
-    // Y el run_at del segundo aviso es exactamente la fecha recortada.
-    const runAt = await adminPool.query<{ ok: boolean }>(
-      `select run_at = '2027-02-28'::date::timestamptz as ok
+    // Y el run_at del segundo aviso es la mañana de la fecha recortada (0027).
+    const runAt = await adminPool.query<{ ok: boolean; madrid_wall_clock: string }>(
+      `select run_at = app.job_run_at(date '2027-02-28') as ok,
+              to_char(run_at at time zone 'Europe/Madrid', 'YYYY-MM-DD HH24:MI') as madrid_wall_clock
          from app_private.job_queue
         where household_id = $1 and job_type = 'notification.routine_due'
           and payload ->> 'routineId' = $2
@@ -139,7 +140,7 @@ describe.runIf(Boolean(adminUrl))("AC-25 literal: rutina quarterly con audiencia
         limit 1`,
       [ROBLE_HOUSEHOLD, routineId],
     );
-    expect(runAt.rows).toEqual([{ ok: true }]);
+    expect(runAt.rows).toEqual([{ ok: true, madrid_wall_clock: "2027-02-28 08:00" }]);
   });
 
   it("el clamp trimestral es el de calendario también en año bisiesto: 30/11/2027 → 29/02/2028", () => {
