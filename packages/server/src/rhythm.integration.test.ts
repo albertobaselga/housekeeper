@@ -419,6 +419,28 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     expect(await completionsOf(routineId)).toEqual([]);
   });
 
+  it("una rutina que ya terminó se guarda sin próxima fecha (caso 9)", async () => {
+    // `ends_on` es la forma de decir «dejad de pedirme esto»: la rutina existe,
+    // se puede consultar, y su caché queda en NULL para que ningún prefiltro
+    // `next_due_on <= hoy` la traiga de vuelta.
+    const today = await householdToday();
+    const routineId = await upsertRoutine({
+      title: "Riego del huerto de verano",
+      audience: "employee",
+      pattern: "every_n_days",
+      anchorOn: shiftDays(today, -60),
+      repeatEvery: 1,
+      endsOn: shiftDays(today, -30),
+    });
+
+    expect(await routineRow(routineId)).toMatchObject({
+      pattern: "every_n_days",
+      ends_on: shiftDays(today, -30),
+      next_due_on: null,
+    });
+    expect(await routineDueJobs(routineId)).toHaveLength(0);
+  });
+
   it("un envelope de la app anterior se traduce en vez de perderse (caso 21)", async () => {
     // No es cortesía: puede llevar días en el IndexedDB de un móvil. La tabla
     // de traducción es la misma de §3.2 que aplicó la migración a las filas ya

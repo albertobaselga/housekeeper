@@ -401,6 +401,10 @@ async function upsertRoutine(
     : new Set<string>();
   const nextDueOn = nextDueHintFor(request.schedule, overduePolicy, completed, today);
 
+  // Los mismos once valores para el UPDATE y el INSERT, pero con distinto
+  // desplazamiento: en el UPDATE empiezan en $6 y en el INSERT en $5. Los casts
+  // van pegados a la posición, no al valor, así que si tocas la lista tienes
+  // que recontar AMBAS sentencias.
   const scheduleValues = [
     columns.pattern,
     columns.anchorOn,
