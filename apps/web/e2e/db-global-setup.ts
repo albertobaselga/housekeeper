@@ -116,9 +116,10 @@ INSERT INTO app.recipe_ingredients (id, household_id, page_id, food_id, quantity
   ('aa422000-0000-4000-8000-000000000001', '${HOUSEHOLD}', '${E2E_SEED.recipePages.sinAlergenos}', '${E2E_SEED.foods.pollo}', 1.5, 'kg', 'linear', 0);
 
 -- Rutinas: una de audiencia empleada que vence hoy y una solo de familia.
-INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
-  ('${E2E_SEED.routines.employee}', '${HOUSEHOLD}', 'Repaso del filtro del agua (E2E)', 'Aclarar el filtro de la jarra', 'employee', 'weekly', 1, current_date, '${ADMIN_MEMBERSHIP}'),
-  ('${E2E_SEED.routines.family}', '${HOUSEHOLD}', 'Revisión del botiquín (E2E)', '', 'family', 'monthly', 1, current_date + 1, '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+  pattern, anchor_on, repeat_every) VALUES
+  ('${E2E_SEED.routines.employee}', '${HOUSEHOLD}', 'Repaso del filtro del agua (E2E)', 'Aclarar el filtro de la jarra', 'employee', 'weekly', 1, current_date, '${ADMIN_MEMBERSHIP}', 'every_n_days', current_date, 7),
+  ('${E2E_SEED.routines.family}', '${HOUSEHOLD}', 'Revisión del botiquín (E2E)', '', 'family', 'monthly', 1, current_date + 1, '${ADMIN_MEMBERSHIP}', 'every_n_days', current_date + 1, 30);
 
 -- Jornadas extra de Ana en el mes en curso: una solicitada (pendiente de
 -- aceptación) y un festivo trabajado sin aceptación previa (para resolver).
