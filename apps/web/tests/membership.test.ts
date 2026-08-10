@@ -17,6 +17,7 @@ const DOS_CASAS: DemoUser = {
   name: 'Persona Sintética',
   initials: 'PS',
   email: 'persona@ejemplo.test',
+  mustChangePassword: false,
   memberships: [
     { householdId: ROBLE, membershipId: 'membresia-roble', role: 'family_admin' },
     { householdId: OLIVO, membershipId: 'membresia-olivo', role: 'viewer' }

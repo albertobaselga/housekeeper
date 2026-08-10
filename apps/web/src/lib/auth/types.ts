@@ -30,6 +30,12 @@ export interface DemoUser {
   email: string;
   /** Una entrada por hogar vivo. Nunca vacía: sin membresías no hay identidad. */
   memberships: readonly HouseholdMembership[];
+  /**
+   * Entró con la contraseña provisional que le entregaron en mano y todavía no
+   * la ha cambiado. Mientras sea cierto, el hook del servidor no la deja pasar
+   * de «Tu contraseña».
+   */
+  mustChangePassword: boolean;
   /** Resúmenes de hogar leídos de la base de datos en modo de autenticación real. */
   households?: HouseholdSummary[];
 }

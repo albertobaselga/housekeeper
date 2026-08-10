@@ -41,8 +41,11 @@ export async function resolveAppUser(
       household_id: string;
       role: string;
       display_name: string | null;
+      must_change_password: boolean | null;
     }>(
-      `select m.id, m.household_id, m.role::text as role, p.display_name
+      // La marca de contraseña provisional viaja en esta misma consulta, que ya
+      // toca el perfil: obligar a cambiarla no cuesta una petición más.
+      `select m.id, m.household_id, m.role::text as role, p.display_name, p.must_change_password
          from app.household_memberships m
          left join app.user_profiles p on p.user_id = m.user_id
         where m.user_id = $1
@@ -80,6 +83,7 @@ export async function resolveAppUser(
       initials: initialsFor(name) || '·',
       email,
       memberships: live,
+      mustChangePassword: memberships.rows[0]?.must_change_password === true,
       households
     };
   } catch {

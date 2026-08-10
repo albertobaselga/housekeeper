@@ -16,6 +16,17 @@
     description="Solo tú la conoces. Nadie de la casa puede verla; quien administra el hogar únicamente puede ponerte una nueva si la pierdes."
   />
 
+  {#if data.mustChangePassword}
+    <section class="card warning-card" aria-labelledby="must-change-title">
+      <p class="eyebrow">Antes de seguir</p>
+      <h2 id="must-change-title">Esta contraseña no es tuya todavía</h2>
+      <p>
+        Entraste con la contraseña provisional que te dieron en mano, y la conoce quien te la dictó.
+        Elige una tuya aquí abajo: hasta entonces esta es la única pantalla de la casa que se abre.
+      </p>
+    </section>
+  {/if}
+
   <section class="card" aria-labelledby="password-title">
     <h2 id="password-title">Cambiar tu contraseña</h2>
 

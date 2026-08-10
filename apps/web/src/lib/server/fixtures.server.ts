@@ -24,7 +24,10 @@ function demoUser(
     name,
     initials,
     email,
-    memberships: [{ householdId: HOUSEHOLD.id, membershipId, role }]
+    memberships: [{ householdId: HOUSEHOLD.id, membershipId, role }],
+    // En la demo por fixtures no hay contraseña que cambiar: nadie entró con
+    // una provisional porque nadie entró con ninguna.
+    mustChangePassword: false
   };
 }
 

@@ -195,6 +195,11 @@ No se guarda en ningún sitio, no viaja por correo —no hay correo— y no se p
 volver a ver: si se pierde, se repone desde Ajustes, que es el camino que ya
 existe.
 
+El alta **no puede crear una administradora**, y es deliberado: los papeles que
+ofrece son `employee_live_in` y `helper`, y el papel de Better Auth que escribe
+es siempre el de miembro. Quien administra la casa —y puede reponer contraseñas
+ajenas— se sigue dando de alta con el guion, con las manos en la consola.
+
 ### 3.4 Obligación de cambiarla
 
 - `resolveAppUser` lee `must_change_password` en la consulta que ya hace y lo
@@ -250,19 +255,33 @@ la hoja de «Más», junto a Ajustes.
 
 ### 4.2 Alta desde `/h/{id}/personal`
 
-Un formulario, no un asistente de varios pasos:
+Un formulario liso, no un asistente de varios pasos ni una sección que se abre
+y se cierra:
 
 - Nombre visible, nombre de usuario, correo (identificador, nunca buzón) y papel.
-- Si el papel es `employee_live_in`: las condiciones del contrato, exactamente
-  los mismos campos que la pantalla del acuerdo ya sabe validar (fecha de
-  efecto, salario mensual, jornada semanal, vacaciones anuales y motivo).
-- Sin JavaScript: `form action`, como el resto de la administración. Dar de alta
-  a una persona es un acto deliberado que se hace contra el servidor o no se
-  hace; no pasa por la cola offline, igual que el cambio de contraseña o el
-  pacto de condiciones.
+- Una casilla, marcada por defecto, para registrar el contrato en el mismo acto:
+  fecha de inicio, salario mensual, jornada semanal, vacaciones anuales y
+  motivo. Sin marcar, se crea solo el acceso y las condiciones se pactan cuando
+  toque (queda en estado «tiene acceso, sin contrato en vigor», que la pantalla
+  dice tal cual). La primera versión entra en vigor el día que empieza el
+  contrato: en un alta no hay historia previa que respetar, y pedir dos fechas
+  para decir lo mismo solo invita a teclear una mal.
+- El trabajo extra y los complementos **no** se pactan aquí: se apilan luego
+  como versión desde El acuerdo, porque lo pactado no se reescribe.
+- **Sin JavaScript**: `form action`, envío normal y recarga de la página, que
+  además deja el listado de arriba ya con la persona nueva. Dar de alta es un
+  acto deliberado que se hace contra el servidor o no se hace; no pasa por la
+  cola offline, igual que el cambio de contraseña o el pacto de condiciones.
 
-Al terminar, la pantalla enseña la contraseña generada en grande, con la
-advertencia de que no vuelve a mostrarse y de que se entrega en persona.
+Al terminar, la pantalla enseña usuario y contraseña en grande y monoespaciado,
+con la advertencia de que no vuelve a mostrarse y de que se entrega en persona.
+
+Un detalle que parece un descuido y no lo es: el desplegable del papel es el
+único campo que **no** recuerda lo tecleado cuando el alta se rechaza. Marcar la
+opción elegida obliga a Svelte a traer una primitiva que ninguna otra pantalla
+usa, y esa primitiva vive en el trozo compartido que Hoy carga al arrancar:
+costaba 110 bytes de los 34 que quedan de presupuesto. Volver a elegir entre dos
+opciones sale más barato.
 
 ---
 
@@ -299,4 +318,9 @@ alta no puede escribir el perfil de nadie.
   aplicación. No ha hecho falta todavía; si hiciera falta, el sitio es una
   identidad de perfil sin cuenta de credenciales, no una tabla nueva.
 - **Segunda administradora obligatoria.** El guion avisa cuando solo hay una; la
-  pantalla de alta no lo exige. Sigue siendo un aviso del runbook.
+  pantalla de alta ni siquiera puede crear administradoras (§3.3). Dar de alta a
+  la segunda sigue siendo cosa del guion y del runbook.
+- **La puerta de la contraseña provisional no cubre `/api`.** El hook bloquea
+  las pantallas del hogar, no las rutas de datos: no enseñan nada que esa
+  persona no pueda ver de todos modos, y bloquearlas rompería la propia pantalla
+  a la que se la está mandando.

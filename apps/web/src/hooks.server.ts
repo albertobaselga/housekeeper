@@ -60,6 +60,14 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (!guard.householdId || !belongsToHousehold(event.locals.user, guard.householdId)) {
       error(404, 'Hogar no encontrado');
     }
+    // Contraseña provisional sin cambiar: la única pantalla del hogar que se
+    // abre es «Tu contraseña». No es una recomendación en un aviso, es la
+    // puerta. Las rutas de /api quedan fuera a propósito: no enseñan nada que
+    // esta persona no pueda ver de todos modos, y bloquearlas rompería la
+    // propia pantalla a la que se la está mandando.
+    if (event.locals.user.mustChangePassword && guard.module !== 'account') {
+      redirect(303, `/h/${encodeURIComponent(guard.householdId)}/account`);
+    }
     // El 403 por capacidad NO se lanza aquí: un error en el hook renderiza la
     // página de fallo cruda de SvelteKit. La misma comprobación vive en el
     // layout del hogar (+layout.server.ts), donde el error aterriza en
