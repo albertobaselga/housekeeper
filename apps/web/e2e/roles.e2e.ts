@@ -49,7 +49,7 @@ test('leer las condiciones y pactarlas piden permisos distintos', async ({ page 
   expect(denied?.status()).toBe(403);
 });
 
-test('el apoyo no alcanza ni las condiciones del acuerdo', async ({ page }) => {
+test('el apoyo no alcanza ni las condiciones del contrato', async ({ page }) => {
   await loginAs(page, 'helper');
   const denied = await page.goto(`/h/${HOUSEHOLD}/employment/condiciones`);
   expect(denied?.status()).toBe(403);

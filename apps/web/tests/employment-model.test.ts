@@ -6,11 +6,13 @@ import {
   centsToEuroInput,
   buildAdvanceBalanceViews,
   buildAgreementOptionViews,
+  buildAgreementTermsView,
   buildAgreementVersionViews,
   buildCompensationBalanceViews,
   buildManualAdjustmentViews,
   buildPendingExpenseViews,
   buildPendingExtraViews,
+  buildScheduleView,
   buildSettlementViews,
   buildVacationView,
   annualVacationDaysInForce,
@@ -21,10 +23,13 @@ import {
   formatMinutes,
   parseCents,
   periodLabel,
+  scheduleMismatchLabel,
   sourceAnchor,
   vacationRangeLabel,
   type AgreementVersionRow,
   type ManualAdjustmentRow,
+  type ScheduleDayRow,
+  type ScheduleRow,
   type SettlementLineRow,
   type SettlementRow
 } from '../src/lib/employment/model';
@@ -115,6 +120,145 @@ describe('versiones del acuerdo', () => {
     // Antes de la primera versión se cae a la primera, no a cero: cero mentiría.
     expect(annualVacationDaysInForce(VERSIONS, '2024-01-01')).toBe(30);
     expect(annualVacationDaysInForce([], '2025-04-01')).toBe(0);
+  });
+});
+
+describe('horario del contrato', () => {
+  const SCHEDULE: ScheduleRow = {
+    id: 'h1',
+    agreementVersionId: 'v2',
+    startsAt: '08:00',
+    endsAt: '16:30',
+    longBreakMinutes: 90,
+    note: 'El descanso se toma al mediodía.'
+  };
+  const DAYS: ScheduleDayRow[] = [
+    {
+      id: 'd1',
+      scheduleId: 'h1',
+      weekday: 6,
+      works: true,
+      startsAt: null,
+      endsAt: '14:30',
+      longBreakMinutes: null,
+      note: ''
+    },
+    {
+      id: 'd2',
+      scheduleId: 'h1',
+      weekday: 7,
+      works: false,
+      startsAt: null,
+      endsAt: null,
+      longBreakMinutes: null,
+      note: ''
+    }
+  ];
+
+  it('redacta la frase, resuelve los siete días y suma la semana', () => {
+    const view = buildScheduleView({
+      schedule: SCHEDULE,
+      days: DAYS,
+      contractedWeeklyMinutes: 2400
+    });
+    expect(view.sentence).toBe(
+      'De 8:00 a 16:30, con hora y media de descanso al mediodía. Sábado hasta las 14:30. Domingo libre.'
+    );
+    expect(view.days).toHaveLength(7);
+    expect(view.days[0]).toMatchObject({
+      weekdayLabel: 'Lunes',
+      hoursLabel: '8:00 a 16:30',
+      breakLabel: 'hora y media',
+      effectiveLabel: '7 h',
+      differs: false
+    });
+    // Un día libre no tiene descanso que anunciar.
+    expect(view.days[6]!.breakLabel).toBeNull();
+    expect(view.days[0]!.detailLabel).toBe('8:00 a 16:30 · hora y media de descanso');
+    expect(view.days[5]).toMatchObject({ weekdayLabel: 'Sábado', hoursLabel: '8:00 a 14:30' });
+    expect(view.days[6]).toMatchObject({
+      weekdayLabel: 'Domingo',
+      hoursLabel: 'Libra',
+      effectiveLabel: '—',
+      detailLabel: 'Libra'
+    });
+    expect(view.restDayLabels).toEqual(['Domingo']);
+    expect(view.weeklyLabel).toBe('40 h a la semana');
+    expect(view.breakLabel).toBe('hora y media');
+  });
+
+  it('calla cuando el horario cuadra con la jornada contratada', () => {
+    const view = buildScheduleView({ schedule: SCHEDULE, days: DAYS, contractedWeeklyMinutes: 2400 });
+    expect(view.matchesContract).toBe(true);
+    expect(view.mismatchLabel).toBeNull();
+  });
+
+  it('lo dice sin rodeos cuando no cuadra, en las dos direcciones', () => {
+    const sobra = buildScheduleView({ schedule: SCHEDULE, days: DAYS, contractedWeeklyMinutes: 2100 });
+    expect(sobra.matchesContract).toBe(false);
+    expect(sobra.mismatchLabel).toBe(
+      'El horario suma 40 h a la semana y la jornada contratada dice 35 h: sobran 5 h.'
+    );
+
+    const falta = buildScheduleView({ schedule: SCHEDULE, days: DAYS, contractedWeeklyMinutes: 2700 });
+    expect(falta.mismatchLabel).toBe(
+      'El horario suma 40 h a la semana y la jornada contratada dice 45 h: faltan 5 h.'
+    );
+  });
+
+  it('una diferencia de menos de una hora se dice en minutos, no en «0 h»', () => {
+    // Lo escribe una sola función porque la escriben dos sitios —el servidor y
+    // el editor mientras se teclea—: cuando estaba duplicada, uno de los dos
+    // decía «sobran 0 h 30 min».
+    expect(scheduleMismatchLabel(2430, 2400)).toBe(
+      'El horario suma 40 h 30 min a la semana y la jornada contratada dice 40 h: sobran 30 min.'
+    );
+    expect(scheduleMismatchLabel(2400, 2430)).toBe(
+      'El horario suma 40 h a la semana y la jornada contratada dice 40 h 30 min: faltan 30 min.'
+    );
+    expect(scheduleMismatchLabel(2400, 2400)).toBeNull();
+  });
+
+  it('solo toma los días de SU horario, no los de otra versión', () => {
+    const otro: ScheduleDayRow = { ...DAYS[0]!, id: 'd9', scheduleId: 'otro-horario', weekday: 3 };
+    const view = buildScheduleView({
+      schedule: SCHEDULE,
+      days: [...DAYS, otro],
+      contractedWeeklyMinutes: 2400
+    });
+    expect(view.days[2]!.differs).toBe(false);
+    expect(view.weeklyMinutes).toBe(2400);
+  });
+
+  it('«si aplica»: sin fila de horario, las condiciones no traen ninguna', () => {
+    const version: AgreementVersionRow = VERSIONS[1]!;
+    // Con horario de SU versión: viaja.
+    expect(
+      buildAgreementTermsView({
+        version,
+        types: [],
+        supplements: [],
+        schedules: [SCHEDULE],
+        scheduleDays: DAYS
+      }).schedule
+    ).not.toBeNull();
+
+    // Sin horario ninguno: null, y la plantilla no pinta sección.
+    expect(
+      buildAgreementTermsView({ version, types: [], supplements: [] }).schedule
+    ).toBeNull();
+
+    // Con horario de OTRA versión: tampoco. El «si aplica» es por versión, no
+    // por contrato: una versión vieja con horario no se lo presta a la vigente.
+    expect(
+      buildAgreementTermsView({
+        version: VERSIONS[0]!,
+        types: [],
+        supplements: [],
+        schedules: [SCHEDULE],
+        scheduleDays: DAYS
+      }).schedule
+    ).toBeNull();
   });
 });
 

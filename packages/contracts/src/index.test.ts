@@ -11,12 +11,14 @@ import {
 import {
   agreementCommandPayloadSchema,
   agreementCreateInputSchema,
+  agreementScheduleInputSchema,
   agreementTermsInputSchema,
   commandEnvelopeSchema,
   extraWorkCommandPayloadSchema,
   extraWorkTypeInputSchema,
   recurringSupplementInputSchema,
   routineUpsertPayloadSchema,
+  scheduleDayInputSchema,
   vacationCommandPayloadSchema,
 } from "./schemas.js";
 
@@ -221,6 +223,72 @@ describe("contratos públicos", () => {
         terms,
       }).success,
     ).toBe(true);
+    // Sin la clave `schedule`, unos términos válidos siguen siéndolo y el
+    // horario queda explícitamente en null: «este contrato no lo declara».
+    expect(agreementTermsInputSchema.parse(terms).schedule).toBeNull();
+  });
+
+  it("el horario declara la jornada tipo y solo los días que se desvían", () => {
+    const schedule = {
+      startsAt: "08:00",
+      endsAt: "16:30",
+      longBreakMinutes: 90,
+      note: "",
+      days: [
+        { weekday: 6, works: true, startsAt: null, endsAt: "14:30", longBreakMinutes: null, note: "" },
+        { weekday: 7, works: false, startsAt: null, endsAt: null, longBreakMinutes: null, note: "" },
+      ],
+    };
+    expect(agreementScheduleInputSchema.safeParse(schedule).success).toBe(true);
+
+    // La jornada tipo tiene que ser una jornada.
+    expect(
+      agreementScheduleInputSchema.safeParse({ ...schedule, endsAt: "07:00" }).success,
+    ).toBe(false);
+    // Y el descanso tiene que caber dentro de ella.
+    expect(
+      agreementScheduleInputSchema.safeParse({ ...schedule, longBreakMinutes: 600 }).success,
+    ).toBe(false);
+    // Un mismo día no puede decir dos cosas.
+    expect(
+      agreementScheduleInputSchema.safeParse({
+        ...schedule,
+        days: [...schedule.days, { ...schedule.days[1]!, works: false }],
+      }).success,
+    ).toBe(false);
+    for (const bad of ["8:00", "24:00", "08:60", "mediodía"]) {
+      expect(agreementScheduleInputSchema.safeParse({ ...schedule, startsAt: bad }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it("un día libre no declara horas y un día igual al resto no necesita fila", () => {
+    const base = {
+      weekday: 4 as const,
+      works: true,
+      startsAt: null,
+      endsAt: null,
+      longBreakMinutes: null,
+      note: "",
+    };
+    // Trabaja exactamente como el resto y no explica nada: sobra.
+    expect(scheduleDayInputSchema.safeParse(base).success).toBe(false);
+    // Basta con una nota para que la fila diga algo.
+    expect(scheduleDayInputSchema.safeParse({ ...base, note: "Lleva a los niños" }).success).toBe(
+      true,
+    );
+    // Terminar antes es una sola columna: no hay que repetir la entrada.
+    expect(scheduleDayInputSchema.safeParse({ ...base, endsAt: "15:00" }).success).toBe(true);
+    // Un día libre con horas sería una contradicción.
+    expect(
+      scheduleDayInputSchema.safeParse({ ...base, works: false, endsAt: "15:00" }).success,
+    ).toBe(false);
+    expect(scheduleDayInputSchema.safeParse({ ...base, works: false }).success).toBe(true);
+    // Y un día que declara las dos horas tiene que declararlas en orden.
+    expect(
+      scheduleDayInputSchema.safeParse({ ...base, startsAt: "15:00", endsAt: "09:00" }).success,
+    ).toBe(false);
   });
 
   it("rechaza snapshots con concesiones superiores a 24 horas", () => {

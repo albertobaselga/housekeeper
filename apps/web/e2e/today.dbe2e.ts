@@ -73,7 +73,7 @@ test('Alberto ve la jornada sembrada en «Necesita tu decisión» y llega a reso
     .filter({ hasText: 'Recogida del tinte E2E-HOY' });
   await expect(decisionRow).toContainText('Jornada extra solicitada');
 
-  // 1 click: del item de Hoy al ancla de la jornada en Acuerdos y pagos.
+  // 1 click: del item de Hoy al ancla de la jornada en Contrato.
   await decisionRow.getByRole('link', { name: 'Revisar' }).click();
   await expect(page).toHaveURL(
     new RegExp(`/h/${HOUSEHOLD}/employment\\?empleada=${E2E_SEED.agreement}#extra-${EXTRA_HOY}$`)

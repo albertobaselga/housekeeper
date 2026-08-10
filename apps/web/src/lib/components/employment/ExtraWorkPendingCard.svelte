@@ -290,7 +290,7 @@
 
   {#if showRegisterForm && types.length === 0}
     <div class="ledger-list"><div><span><strong>Sin trabajo extra disponible</strong><small>
-Este acuerdo no permite registrar trabajo extra por ahora. Cuando se pacte un concepto con su tarifa, aparecerá aquí.</small></span></div></div>
+Este contrato no permite registrar trabajo extra por ahora. Cuando se pacte un concepto con su tarifa, aparecerá aquí.</small></span></div></div>
   {:else if showRegisterForm}
     <!-- Clase propia: con quien administra en la tarjeta conviven el formulario
          de decidir compensación y este, y hay que poder apuntar a uno solo. -->

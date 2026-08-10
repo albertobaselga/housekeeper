@@ -127,7 +127,7 @@
             type="button"
             onclick={() => run(closeSettlement({ householdId, settlementId: settlement.id }), 'close')}
           >Cerrar el mes</button>
-          <small>Al cerrar el mes se calculan las líneas y los importes quedan fijados: ya no cambian aunque cambie el acuerdo.</small>
+          <small>Al cerrar el mes se calculan las líneas y los importes quedan fijados: ya no cambian aunque cambie el contrato.</small>
         </div>
       {/if}
     {/if}

@@ -27,8 +27,8 @@ export const APP_NAME = 'Aplicación para la gestión del personal doméstico';
  */
 const SECTION_LABELS: Readonly<Record<string, string>> = {
   today: 'Hoy',
-  employment: 'Pagos',
-  'employment/acuerdo': 'Condiciones del acuerdo',
+  employment: 'Contrato',
+  'employment/acuerdo': 'Condiciones del contrato',
   'employment/condiciones': 'Mis condiciones',
   menu: 'Menú',
   recipes: 'Recetas',

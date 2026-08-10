@@ -151,9 +151,10 @@
       <span class="status-chip success">Apertura enviada</span>
     {/if}
   {/snippet}
-  <!-- P2-3 (revisión UX v3): un solo nombre para la sección — «Pagos» — con el
-       subtítulo «Acuerdo, nómina y gastos» en vez de «Expediente laboral». -->
-  <PageHeader eyebrow="Acuerdo, nómina y gastos" title="Pagos" description="Importes claros, confirmaciones separadas y un historial que se entiende." {actions} />
+  <!-- Un solo nombre para la sección, ahora «Contrato» por decisión del
+       propietario. Sigue valiendo la regla de P2-3 (revisión UX v3): un nombre,
+       el mismo en la barra lateral, en la hoja «Más» y aquí. -->
+  <PageHeader eyebrow="Condiciones, nómina y gastos" title="Contrato" description="Importes claros, confirmaciones separadas y un historial que se entiende." {actions} />
 
   <ActionStatus status={actionStatus} />
 
@@ -161,8 +162,8 @@
     {#if !overview.hasEmploymentData}
       <article class="card quiet-card">
         <span class="card-icon" aria-hidden="true">·</span>
-        <h2>Sin acuerdo de trabajo registrado</h2>
-        <p>Cuando el hogar registre un acuerdo con la empleada, aquí se verán sus pagos.</p>
+        <h2>Sin contrato de trabajo registrado</h2>
+        <p>Cuando el hogar registre un contrato con la empleada, aquí se verán sus condiciones y sus pagos.</p>
       </article>
     {:else}
       {#if seesAmounts}
@@ -277,7 +278,7 @@
                   </p>
                 {/if}
               {:else}
-                <p class="audit-note">El acuerdo todavía no está en vigor este mes.</p>
+                <p class="audit-note">El contrato todavía no está en vigor este mes.</p>
               {/if}
               <p class="audit-note">Cada importe dice de dónde sale y se calcula con la tarifa acordada en la fecha en que se trabajó.</p>
             </article>
@@ -335,14 +336,14 @@
               <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/condiciones`}>Ver mis condiciones</a>
             {/if}
             {#if canCloseSettlement}
-              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/acuerdo`}>Administrar el acuerdo</a>
+              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/acuerdo`}>Administrar el contrato</a>
             {/if}
           </nav>
           <article class="card">
             <div class="section-heading">
-              <!-- Con varias personas empleadas, «Acuerdo» a secas no dice de
+              <!-- Con varias personas empleadas, «Contrato» a secas no dice de
                    quién: el nombre elegido va en el epígrafe. -->
-              <div><p class="eyebrow">{overview.agreements.length > 1 ? `Acuerdo de ${selectedEmployeeLabel}` : 'Acuerdo'}</p><h2>Versiones y cambios de salario</h2></div>
+              <div><p class="eyebrow">{overview.agreements.length > 1 ? `Contrato de ${selectedEmployeeLabel}` : 'Contrato'}</p><h2>Versiones y cambios de salario</h2></div>
               {#if overview.agreement}
                 <span class="status-chip {overview.agreement.status === 'active' ? 'success' : 'warning'}">{overview.agreement.status === 'active' ? 'Activo' : 'Finalizado'}</span>
               {/if}
