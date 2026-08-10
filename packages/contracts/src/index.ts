@@ -351,6 +351,34 @@ export interface RecurringSupplementInputV1 {
   active: boolean;
 }
 
+/** ISO-8601: 1 lunes … 7 domingo, el mismo convenio que la columna `weekday`. */
+export type WeekdayV1 = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+/**
+ * Excepción de un día del horario. `null` en un campo significa «como la
+ * jornada tipo», así que terminar antes un día es rellenar `endsAt` y nada más.
+ */
+export interface ScheduleDayInputV1 {
+  weekday: WeekdayV1;
+  /** false = libranza; entonces los tres campos de hora van a null. */
+  works: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  longBreakMinutes: number | null;
+  note: string;
+}
+
+/** Horario pactado en una versión: la jornada tipo y lo que se desvía de ella. */
+export interface AgreementScheduleInputV1 {
+  /** «HH:MM». */
+  startsAt: string;
+  endsAt: string;
+  /** Minutos del descanso largo del mediodía. 0 = no se pactó ninguno. */
+  longBreakMinutes: number;
+  note: string;
+  days: ScheduleDayInputV1[];
+}
+
 /**
  * Términos completos de UNA versión. Nunca se editan: cada cambio apila una
  * versión nueva con su catálogo entero, y el historial enseña las dos.
@@ -363,6 +391,11 @@ export interface AgreementTermsInputV1 {
   reason: string;
   extraWorkTypes: ExtraWorkTypeInputV1[];
   supplements: RecurringSupplementInputV1[];
+  /**
+   * null = el contrato no declara horario. No es un hueco por rellenar: es la
+   * respuesta que hace que la empleada no vea una sección vacía.
+   */
+  schedule: AgreementScheduleInputV1 | null;
 }
 
 /** Alta del acuerdo: la relación laboral y su primera versión, a la vez. */

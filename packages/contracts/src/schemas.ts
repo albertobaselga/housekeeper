@@ -267,7 +267,86 @@ export const recurringSupplementInputSchema = z
     { message: "La vigencia no puede acabar antes de empezar", path: ["endsOn"] },
   );
 
-/** Términos completos de una versión: nunca se editan, siempre se apilan. */
+/**
+ * Horario pactado en UNA versión (migración 0025).
+ *
+ * La jornada tipo, y aparte solo los días que se desvían de ella. Un día sin
+ * fila propia trabaja la jornada tipo, así que un contrato normal son una o dos
+ * excepciones y no siete filas.
+ */
+export const timeOfDaySchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Debe ser una hora HH:MM");
+
+/** «08:30» → 510. Local a este fichero: contracts no depende de domain. */
+function minutesOfDay(time: string): number {
+  return Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
+}
+
+export const scheduleDayInputSchema = z
+  .object({
+    /** ISO-8601: 1 lunes … 7 domingo, igual que la columna. */
+    weekday: z.number().int().min(1).max(7),
+    /** false = libranza. */
+    works: z.boolean(),
+    /** null = «como la jornada tipo». */
+    startsAt: timeOfDaySchema.nullable(),
+    endsAt: timeOfDaySchema.nullable(),
+    longBreakMinutes: z.number().int().min(0).max(1439).nullable(),
+    note: z.string().trim().max(200),
+  })
+  .refine(
+    (day) =>
+      day.works ||
+      (day.startsAt === null && day.endsAt === null && day.longBreakMinutes === null),
+    { message: "Un día de libranza no declara horas", path: ["works"] },
+  )
+  .refine(
+    (day) =>
+      !day.works ||
+      day.startsAt !== null ||
+      day.endsAt !== null ||
+      day.longBreakMinutes !== null ||
+      day.note.length > 0,
+    {
+      message: "Un día que se trabaja igual que el resto no necesita excepción",
+      path: ["weekday"],
+    },
+  )
+  .refine(
+    (day) =>
+      day.startsAt === null ||
+      day.endsAt === null ||
+      minutesOfDay(day.endsAt) > minutesOfDay(day.startsAt),
+    { message: "Ese día terminaría antes de empezar", path: ["endsAt"] },
+  );
+
+export const agreementScheduleInputSchema = z
+  .object({
+    startsAt: timeOfDaySchema,
+    endsAt: timeOfDaySchema,
+    longBreakMinutes: z.number().int().min(0).max(1439),
+    note: z.string().trim().max(500),
+    days: z.array(scheduleDayInputSchema).max(7),
+  })
+  .refine((value) => minutesOfDay(value.endsAt) > minutesOfDay(value.startsAt), {
+    message: "La jornada termina antes de empezar",
+    path: ["endsAt"],
+  })
+  .refine(
+    (value) => value.longBreakMinutes < minutesOfDay(value.endsAt) - minutesOfDay(value.startsAt),
+    { message: "El descanso no cabe en la jornada", path: ["longBreakMinutes"] },
+  )
+  .refine((value) => new Set(value.days.map((day) => day.weekday)).size === value.days.length, {
+    message: "Un mismo día de la semana no puede aparecer dos veces",
+    path: ["days"],
+  });
+
+/**
+ * Términos completos de una versión: nunca se editan, siempre se apilan.
+ *
+ * `schedule` es nullable Y opcional a propósito: un contrato puede no declarar
+ * horario, y entonces a la empleada no se le enseña una sección vacía. Ese
+ * «null» no es un hueco por rellenar, es una respuesta.
+ */
 export const agreementTermsInputSchema = z.object({
   effectiveFrom: isoDateSchema,
   monthlySalaryCents: moneyCentsSchema.refine(
@@ -279,6 +358,7 @@ export const agreementTermsInputSchema = z.object({
   reason: z.string().trim().min(1).max(500),
   extraWorkTypes: z.array(extraWorkTypeInputSchema).max(30),
   supplements: z.array(recurringSupplementInputSchema).max(30),
+  schedule: agreementScheduleInputSchema.nullable().default(null),
 });
 
 /** Alta del acuerdo: la relación laboral y su primera versión, a la vez. */
