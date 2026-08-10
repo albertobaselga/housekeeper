@@ -73,6 +73,82 @@ BEGIN
 END
 $assert_schema$;
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Recurrencia de rutinas (0023), a nivel de catálogo. Aquí solo se comprueba la
+-- FORMA del esquema; el comportamiento —qué estados rechaza cada CHECK, quién
+-- ve qué— vive en tests/090_routine_recurrence.sql, que corre el último y
+-- puede sembrar filas sin desbaratar los recuentos de los ficheros anteriores.
+-- ─────────────────────────────────────────────────────────────────────────────
+DO $assert_routine_recurrence_schema$
+DECLARE
+  missing text;
+  ics_result text;
+BEGIN
+  -- Las ocho columnas del patrón, con su tipo. `pattern` y `anchor_on` NULLABLES
+  -- a propósito: son el estado «se hace, falta decidir cuándo» (§2.3).
+  SELECT string_agg(expected.column_name, ', ' ORDER BY expected.column_name) INTO missing
+    FROM (VALUES
+      ('pattern', 'routine_pattern', 'YES'),
+      ('anchor_on', 'date', 'YES'),
+      ('repeat_every', 'int4', 'YES'),
+      ('weekdays', '_int2', 'YES'),
+      ('month_day', 'int2', 'YES'),
+      ('months', '_int2', 'YES'),
+      ('overdue_policy', 'routine_overdue_policy', 'NO'),
+      ('ends_on', 'date', 'YES')
+    ) AS expected(column_name, udt_name, is_nullable)
+   WHERE NOT EXISTS (
+     SELECT 1 FROM information_schema.columns AS actual
+      WHERE actual.table_schema = 'app' AND actual.table_name = 'routines'
+        AND actual.column_name = expected.column_name
+        AND actual.udt_name = expected.udt_name
+        AND actual.is_nullable = expected.is_nullable
+   );
+  IF missing IS NOT NULL THEN
+    RAISE EXCEPTION 'app.routines lacks the expected recurrence columns: %', missing;
+  END IF;
+
+  -- `next_due_on` dejó de ser estado y pasó a ser caché: sin cadencia
+  -- confirmada no hay fecha, así que la columna TIENE que admitir NULL.
+  IF (SELECT is_nullable FROM information_schema.columns
+       WHERE table_schema = 'app' AND table_name = 'routines' AND column_name = 'next_due_on') <> 'YES' THEN
+    RAISE EXCEPTION 'app.routines.next_due_on must be nullable after 0023';
+  END IF;
+
+  -- Expandir, no contraer: lo heredado sigue en pie hasta la 0024. Si esto
+  -- falla es que alguien adelantó la contracción y un envelope encolado sin
+  -- conexión antes del despliegue se perderá.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'app' AND table_name = 'routines'
+       AND column_name IN ('frequency', 'interval_count')
+     GROUP BY table_name HAVING count(*) = 2
+  ) THEN
+    RAISE EXCEPTION 'frequency/interval_count must survive 0023; the contract is 0024 work';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_constraint
+     WHERE conrelid = 'app.routines'::regclass AND conname = 'routines_pattern_shape'
+  ) OR NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_constraint
+     WHERE conrelid = 'app.routines'::regclass AND conname = 'routines_ends_after_anchor'
+  ) THEN
+    RAISE EXCEPTION 'the routine pattern shape constraints are missing';
+  END IF;
+
+  -- El feed ICS dejó de exponer la recurrencia vieja. Se mira el TIPO DE
+  -- RETORNO y no el cuerpo: es lo que consume el emisor.
+  SELECT pg_catalog.pg_get_function_result(oid) INTO ics_result
+    FROM pg_catalog.pg_proc
+   WHERE oid = 'app_private.ics_feed_events(text)'::regprocedure;
+  IF ics_result IS NULL OR ics_result LIKE '%frequency%' OR ics_result LIKE '%interval_count%'
+     OR ics_result NOT LIKE '%pattern%' OR ics_result NOT LIKE '%weekdays%' THEN
+    RAISE EXCEPTION 'app_private.ics_feed_events still returns the pre-0023 recurrence: %', ics_result;
+  END IF;
+END
+$assert_routine_recurrence_schema$;
+
 DO $assert_constraints$
 BEGIN
   BEGIN

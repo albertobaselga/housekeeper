@@ -140,18 +140,29 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, free_text
    'ab300000-0000-4000-8000-000000000001', '2026-08-10', 'cena', 'Sopa del olivo',
    '21000000-0000-4000-8000-000000000001');
 
-INSERT INTO app.routines (id, household_id, title, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
+-- Las columnas de patrón (0023) van explícitas porque `routines_pattern_shape`
+-- no admite una fila con fecha y sin cadencia: `pattern IS NULL` significa «se
+-- hace, falta decidir cuándo» y obliga a `next_due_on IS NULL`. Las heredadas
+-- (`frequency`, `interval_count`) siguen aquí a propósito: son NOT NULL hasta
+-- que la 0024 las retire, y esa retirada y esta línea van en la MISMA tarea.
+-- Ni una aserción de este fichero cambia: las columnas nuevas no abren nada.
+INSERT INTO app.routines (id, household_id, title, audience, frequency, interval_count, next_due_on,
+  pattern, anchor_on, repeat_every, weekdays, month_day, overdue_policy, created_by_membership_id) VALUES
   ('aa500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
    'Revisión de seguros (familia)', 'family', 'monthly', 1, '2026-09-01',
+   'day_of_month', '2026-09-01', 1, NULL, 1, 'carry',
    '11000000-0000-4000-8000-000000000001'),
   ('aa500000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
    'Plancha semanal (empleada)', 'employee', 'weekly', 1, '2026-08-17',
+   'days_of_week', '2026-08-17', 1, ARRAY[1]::smallint[], NULL, 'skip',
    '11000000-0000-4000-8000-000000000001'),
   ('aa500000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
    'Riego de plantas (todos)', 'all', 'daily', 1, '2026-08-08',
+   'every_n_days', '2026-08-08', 1, NULL, NULL, 'skip',
    '11000000-0000-4000-8000-000000000001'),
   ('ab500000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
    'Rutina del olivo', 'all', 'weekly', 1, '2026-08-17',
+   'days_of_week', '2026-08-17', 1, ARRAY[1]::smallint[], NULL, 'skip',
    '21000000-0000-4000-8000-000000000001');
 
 -- Employment rows for olivo so the cross-tenant checks have something to leak.
