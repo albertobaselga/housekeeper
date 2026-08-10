@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isHttpError } from '@sveltejs/kit';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * La regla, comprobada: CON BASE DE DATOS CONFIGURADA, LAS MAQUETAS NO EXISTEN.
@@ -121,13 +121,17 @@ async function runLoad({ module, params = {}, search = '' }: LoadCase): Promise<
   });
 }
 
-beforeEach(() => {
-  vi.resetModules();
-  for (const key of Object.keys(fakeEnv)) delete fakeEnv[key];
-});
+// El entorno falso es un objeto VIVO y `databaseConfigured()` lo consulta en
+// cada llamada, así que cambiar de escenario no exige reimportar los módulos.
+// Conviene que no haga falta: la rama de Ajustes arrastra `better-auth` entera
+// y son tres segundos, suficientes para volver inestable la batería en una
+// máquina cargada. Por eso además se importa todo ANTES de medir nada.
+beforeAll(async () => {
+  for (const testCase of CASES) await import(/* @vite-ignore */ testCase.module);
+}, 60_000);
 
-afterEach(() => {
-  vi.resetModules();
+beforeEach(() => {
+  for (const key of Object.keys(fakeEnv)) delete fakeEnv[key];
 });
 
 describe.each([
@@ -215,11 +219,11 @@ describe('las maquetas no se pueden ni construir con base configurada', () => {
       expect(() => (guarded[name] as (query: string) => unknown)(''), name).toThrowError(/maqueta/);
     }
 
-    vi.resetModules();
+    // Mismo módulo, sin reimportar: la guarda mira el entorno en cada llamada,
+    // que es como se comporta en producción.
     delete fakeEnv.DATABASE_URL;
-    const demo = (await import(modulePath)) as Record<string, unknown>;
     for (const name of builders) {
-      expect((demo[name] as (query: string) => unknown)(''), name).toBeTruthy();
+      expect((guarded[name] as (query: string) => unknown)(''), name).toBeTruthy();
     }
   });
 

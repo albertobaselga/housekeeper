@@ -12,7 +12,6 @@ import {
   saveCriticalSnapshot,
   updateOutboxStatuses
 } from './idb';
-import { isSavedHouseholdData, snapshotProvenance } from './saved';
 import { deriveSyncState, type SyncPresentation } from './sync-state';
 import { verifySnapshotSignature } from './verify';
 
@@ -64,13 +63,7 @@ interface SyncAckLike {
   errorCode?: unknown;
 }
 
-function ackIds(acks: SyncAckLike[], statuses: readonly string[]): string[] {
-  return acks
-    .filter((ack) => typeof ack.operationId === 'string' && statuses.includes(String(ack.status)))
-    .map((ack) => String(ack.operationId));
-}
-
-/** Igual que ackIds pero conservando el errorCode del ACK para el triaje humano. */
+/** ACKs de los estados pedidos, con su errorCode para el triaje humano. */
 function ackUpdates(
   acks: SyncAckLike[],
   statuses: readonly string[]
@@ -81,6 +74,11 @@ function ackUpdates(
       id: String(ack.operationId),
       ...(typeof ack.errorCode === 'string' && ack.errorCode ? { errorCode: ack.errorCode } : {})
     }));
+}
+
+/** Lo mismo, quedándose solo con los identificadores. */
+function ackIds(acks: SyncAckLike[], statuses: readonly string[]): string[] {
+  return ackUpdates(acks, statuses).map((update) => update.id);
 }
 
 /** ACK por operación tal y como lo devolvió /api/v1/sync, ya tipado. */
@@ -316,10 +314,15 @@ export function startSyncMonitor(snapshot: CriticalSnapshotV1, snapshotPublicKey
       // al último bueno guardado: ese es justamente el que sostiene
       // Emergencias mientras dure la avería. Guardarlo encima cambiaría un
       // corte temporal por una pérdida de los teléfonos de la casa.
-      const keepStored =
-        snapshotProvenance(snapshot) === 'partial' &&
-        isSavedHouseholdData(await readCriticalSnapshot(snapshot.householdId));
-      if (!keepStored) await saveCriticalSnapshot(snapshot);
+      //
+      // El prefijo se compara a mano, sin pasar por los ayudantes de
+      // `offline/saved.ts`, para no meter ese módulo en el arranque de Hoy:
+      // ahí el presupuesto de JavaScript está contado al byte. Allí está
+      // documentado qué significa cada marca.
+      const stored = snapshot.version.startsWith('partial-')
+        ? await readCriticalSnapshot(snapshot.householdId)
+        : null;
+      if (!stored?.version.startsWith('live-')) await saveCriticalSnapshot(snapshot);
       await flushOutbox();
     } catch {
       syncStatus.set(deriveSyncState({ online: navigator.onLine, pendingCount: 0, storageError: true }));
