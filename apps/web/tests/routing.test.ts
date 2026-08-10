@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HOUSEHOLD_MODULES, MODULE_CAPABILITY, guardForPath, householdPath } from '../src/lib/auth/routing';
+import {
+  HOUSEHOLD_MODULES,
+  MODULE_CAPABILITY,
+  guardForPath,
+  householdPath,
+  pickHousehold
+} from '../src/lib/auth/routing';
 
 describe('household route contract', () => {
   it('keeps every required stable module addressable', () => {
@@ -52,6 +58,20 @@ describe('household route contract', () => {
     });
     // Ninguna de las dos hereda `settlement.read`, la del módulo padre.
     expect(MODULE_CAPABILITY.employment).toBe('settlement.read');
+  });
+
+  it('quien pertenece a dos casas mira la de la URL, no la primera', () => {
+    const roble = { id: 'roble', name: 'Casa Roble', subtitle: 'Tu hogar' };
+    const olivo = { id: 'olivo', name: 'Casa Olivo', subtitle: 'Tu hogar' };
+    const dosCasas = [roble, olivo];
+
+    expect(pickHousehold(dosCasas, 'olivo')).toBe(olivo);
+    expect(pickHousehold(dosCasas, 'roble')).toBe(roble);
+    // Sin membresía en esa casa no se devuelve ninguna: el layout falla con 404
+    // en vez de enseñar el nombre de otra.
+    expect(pickHousehold(dosCasas, 'ajena')).toBeNull();
+    // Demo por fixtures: no hay lista que consultar y el respaldo entra después.
+    expect(pickHousehold(undefined, 'roble')).toBeNull();
   });
 
   it('fails closed for unknown or unsupported child paths', () => {

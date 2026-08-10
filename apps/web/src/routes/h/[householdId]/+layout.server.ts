@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { can, capabilitiesFor } from '$lib/auth/capabilities';
-import { guardForPath } from '$lib/auth/routing';
+import { guardForPath, pickHousehold } from '$lib/auth/routing';
 import { getAuth } from '$lib/server/auth.server';
 import { loadSnapshotContacts } from '$lib/server/contacts.server';
 import { getHousehold } from '$lib/server/fixtures.server';
@@ -11,9 +11,13 @@ import type { LayoutServerLoad } from './$types';
 
 export const load: LayoutServerLoad = async ({ locals, params, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
+  // El hogar de la URL, y su nombre real primero: la fixture sintética es solo
+  // el respaldo de la demo sin base de datos. Al revés, una instalación cuyo
+  // hogar compartiera identificador con la fixture se anunciaría con el nombre
+  // inventado en vez de con el suyo.
   const household =
+    pickHousehold(locals.user.households, params.householdId) ??
     getHousehold(params.householdId) ??
-    locals.user.households?.find((candidate) => candidate.id === params.householdId) ??
     null;
   if (!household || !locals.user.householdIds.includes(household.id)) error(404, 'Hogar no encontrado');
 
