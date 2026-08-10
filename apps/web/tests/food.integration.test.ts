@@ -354,24 +354,45 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
     expect(routines!.routines).toEqual([]);
   });
 
-  it('loadRoutines: próxima fecha y ocurrencia vigente, sin porcentajes ni histórico (AC-26)', async () => {
-    const admin = await loadRoutines(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+  it('loadRoutines: cadencia y próxima ocurrencia, sin porcentajes ni histórico (AC-26)', async () => {
+    // «Hoy» se inyecta para que la prueba no dependa del día en que se ejecuta.
+    const admin = await loadRoutines(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, '2026-08-10');
     expect(admin).not.toBeNull();
     expect(admin!.canWrite).toBe(true);
+    expect(admin!.todayISO).toBe('2026-08-10');
+
+    // Ancla hoy, cada 7 días, y la ocurrencia de hoy ya marcada: no queda nada
+    // que hacer y la próxima es la de la semana que viene.
     const plantas = admin!.routines.find((routine) => routine.id === ROUTINE_PLANTAS)!;
-    expect(plantas.nextDueOn).toBe('2026-08-10');
-    expect(plantas.completedCurrent).toBe(true);
+    expect(plantas.schedule).toEqual({
+      pattern: 'every_n_days',
+      anchorOn: '2026-08-10',
+      repeatEvery: 7,
+      endsOn: null
+    });
+    expect(plantas.completedToday).toBe(true);
+    expect(plantas.actionableDueOn).toBeNull();
+    expect(plantas.nextOccurrenceOn).toBe('2026-08-17');
+
+    // Ancla ayer y sin marcar: con `carry` se arrastra UNA sola vencida, la más
+    // antigua, y es la que ofrece «Marcar hecha».
     const planMenu = admin!.routines.find((routine) => routine.id === ROUTINE_MENU)!;
-    expect(planMenu.completedCurrent).toBe(false);
-    // AC-26: la vista no expone porcentajes ni series históricas.
+    expect(planMenu.completedToday).toBe(false);
+    expect(planMenu.actionableDueOn).toBe('2026-08-09');
+    expect(planMenu.nextOccurrenceOn).toBe('2026-08-09');
+    expect(planMenu.nextAfterActionOn).toBe('2026-08-16');
+
+    // AC-26 revisado: hechos con su fecha, nunca un agregado que puntúe a
+    // nadie. La vista no expone porcentajes, rachas, medias ni comparativas.
     expect(Object.keys(plantas).sort()).toEqual([
+      'actionableDueOn',
       'audience',
-      'completedCurrent',
+      'completedToday',
       'details',
-      'frequency',
       'id',
-      'intervalCount',
-      'nextDueOn',
+      'nextAfterActionOn',
+      'nextOccurrenceOn',
+      'schedule',
       'title'
     ]);
 
@@ -381,6 +402,28 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
     expect(employee!.routines.map((routine) => routine.id)).toEqual([ROUTINE_PLANTAS]);
     const helper = await loadRoutines(HELPER_USER, FIXTURE_HOUSEHOLD, appPool);
     expect(helper!.routines.map((routine) => routine.id)).toEqual([ROUTINE_PLANTAS]);
+  });
+
+  it('una rutina sin cadencia se ve aquí, sin fecha y sin nada que marcar', async () => {
+    // §2.3: `pattern IS NULL` es «se hace, falta decidir cuándo». Es el estado
+    // de una veintena de tareas del manual, y esta página es el ÚNICO sitio
+    // donde se ven: nunca Hoy, ni el calendario, ni el ICS, ni los avisos.
+    const routineId = '48000000-0000-4000-8000-000000000003';
+    await withAuthorizedTransaction(appPool, { userId: ADMIN_USER.id }, FIXTURE_HOUSEHOLD, async (client, membership) => {
+      await client.query(
+        `insert into app.routines (id, household_id, title, details, audience, frequency,
+                                   interval_count, next_due_on, created_by_membership_id, pattern)
+         values ($1, $2, 'Limpieza a fondo del salón', '', 'employee', 'weekly', 1, null, $3, null)`,
+        [routineId, FIXTURE_HOUSEHOLD, membership.id]
+      );
+    });
+
+    const admin = await loadRoutines(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, '2026-08-10');
+    const salon = admin!.routines.find((routine) => routine.id === routineId)!;
+    expect(salon.schedule).toBeNull();
+    expect(salon.nextOccurrenceOn).toBeNull();
+    expect(salon.actionableDueOn).toBeNull();
+    expect(salon.completedToday).toBe(false);
   });
 
   it('un usuario sin membresía en el hogar recibe null y la página cae a la fixture', async () => {

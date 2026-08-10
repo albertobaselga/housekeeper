@@ -377,9 +377,13 @@ describe('constructores de envelopes de comida y rutinas', () => {
         title: ' Regar plantas ',
         details: ' ',
         audience: 'all',
-        frequency: 'weekly',
-        intervalCount: 2,
-        nextDueOn: '2026-08-10'
+        schedule: {
+          pattern: 'days_of_week',
+          anchorOn: '2026-08-10',
+          repeatEvery: 1,
+          weekdays: [1, 4],
+          endsOn: null
+        }
       },
       OPTIONS
     );
@@ -388,9 +392,24 @@ describe('constructores de envelopes de comida y rutinas', () => {
       action: 'upsert',
       title: 'Regar plantas',
       audience: 'all',
-      frequency: 'weekly',
-      intervalCount: 2,
-      nextDueOn: '2026-08-10'
+      pattern: 'days_of_week',
+      anchorOn: '2026-08-10',
+      repeatEvery: 1,
+      weekdays: [1, 4],
+      endsOn: null
+    });
+
+    // «Se hace, falta decidir cuándo» es un valor de primera clase (§2.3): el
+    // contrato lo acepta y no arrastra ninguna columna de forma.
+    const sinDia = upsertRoutine(
+      { householdId: HOUSEHOLD, title: 'Limpieza a fondo del salón', audience: 'employee', schedule: null },
+      OPTIONS
+    );
+    expect(routineUpsertPayloadSchema.parse(sinDia.payload)).toEqual({
+      action: 'upsert',
+      title: 'Limpieza a fondo del salón',
+      audience: 'employee',
+      pattern: null
     });
 
     const completion = completeRoutine(

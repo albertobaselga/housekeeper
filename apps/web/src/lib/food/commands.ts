@@ -1,4 +1,5 @@
 import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { RoutineSchedule } from '@casa-clara/domain';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import { queueCommand, type QueueOutcome } from '$lib/offline/queue-command';
@@ -151,16 +152,46 @@ export interface ShoppingSetLineCheckedPayload {
   checked: boolean;
 }
 
-export interface RoutineUpsertPayload {
+interface RoutineUpsertIdentity {
   action: 'upsert';
   routineId?: string;
   title: string;
   details?: string;
   audience: RoutineAudience;
-  frequency: RoutineFrequency;
-  intervalCount: number;
-  nextDueOn: string;
 }
+
+/**
+ * Réplica local de `routineUpsertV2PayloadSchema` (§2.2). La forma antigua
+ * —`frequency`/`intervalCount`/`nextDueOn`— ya no se EMITE desde aquí; el
+ * servidor la sigue aceptando un despliegue más porque puede haber envelopes
+ * encolados en IndexedDB desde antes (§3.4), y esa rama se retira en T10.
+ */
+export type RoutineUpsertPayload = RoutineUpsertIdentity &
+  (
+    | { pattern: null }
+    | { pattern: 'every_n_days'; anchorOn: string; repeatEvery: number; endsOn?: string | null }
+    | {
+        pattern: 'days_of_week';
+        anchorOn: string;
+        repeatEvery: number;
+        weekdays: number[];
+        endsOn?: string | null;
+      }
+    | {
+        pattern: 'day_of_month';
+        anchorOn: string;
+        repeatEvery: number;
+        monthDay: number;
+        endsOn?: string | null;
+      }
+    | {
+        pattern: 'months_of_year';
+        anchorOn: string;
+        months: number[];
+        monthDay: number;
+        endsOn?: string | null;
+      }
+  );
 
 // `routine.complete` vive en su módulo mínimo (routine-complete.ts) para no
 // arrastrar todos los constructores al bundle inicial de Hoy; se re-exporta
@@ -548,28 +579,66 @@ export function upsertRoutine(
     title: string;
     details?: string;
     audience: RoutineAudience;
-    frequency: RoutineFrequency;
-    intervalCount: number;
-    nextDueOn: string;
+    /** La cadencia rica de la 0023; `null` = «se hace, falta decidir cuándo». */
+    schedule: RoutineSchedule;
   },
   options: EnvelopeOptions = {}
 ): CommandEnvelopeV1<RoutineUpsertPayload> {
   const details = trimmedOrUndefined(input.details);
+  const identity = {
+    action: 'upsert' as const,
+    ...(input.routineId ? { routineId: input.routineId } : {}),
+    title: input.title.trim(),
+    ...(details ? { details } : {}),
+    audience: input.audience
+  };
+  // La carga se arma por patrón, no extendiendo un objeto común: el contrato es
+  // una unión discriminada que exige de cada patrón exactamente sus campos y
+  // ninguno más, la misma forma que la CHECK `routines_pattern_shape`.
+  const schedule = input.schedule;
+  const payload: RoutineUpsertPayload =
+    schedule === null
+      ? { ...identity, pattern: null }
+      : schedule.pattern === 'every_n_days'
+        ? {
+            ...identity,
+            pattern: 'every_n_days',
+            anchorOn: schedule.anchorOn,
+            repeatEvery: schedule.repeatEvery,
+            endsOn: schedule.endsOn ?? null
+          }
+        : schedule.pattern === 'days_of_week'
+          ? {
+              ...identity,
+              pattern: 'days_of_week',
+              anchorOn: schedule.anchorOn,
+              repeatEvery: schedule.repeatEvery,
+              weekdays: [...schedule.weekdays],
+              endsOn: schedule.endsOn ?? null
+            }
+          : schedule.pattern === 'day_of_month'
+            ? {
+                ...identity,
+                pattern: 'day_of_month',
+                anchorOn: schedule.anchorOn,
+                repeatEvery: schedule.repeatEvery,
+                monthDay: schedule.monthDay,
+                endsOn: schedule.endsOn ?? null
+              }
+            : {
+                ...identity,
+                pattern: 'months_of_year',
+                anchorOn: schedule.anchorOn,
+                months: [...schedule.months],
+                monthDay: schedule.monthDay,
+                endsOn: schedule.endsOn ?? null
+              };
   return createCommandEnvelope({
     ...options,
     householdId: input.householdId,
     aggregateType: 'routine',
     aggregateId: input.routineId ?? null,
-    payload: {
-      action: 'upsert',
-      ...(input.routineId ? { routineId: input.routineId } : {}),
-      title: input.title.trim(),
-      ...(details ? { details } : {}),
-      audience: input.audience,
-      frequency: input.frequency,
-      intervalCount: input.intervalCount,
-      nextDueOn: input.nextDueOn
-    } satisfies RoutineUpsertPayload
+    payload
   }) as CommandEnvelopeV1<RoutineUpsertPayload>;
 }
 
