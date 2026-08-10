@@ -262,6 +262,9 @@ async function resolveRecipeSpaceId(
   const created = await createWikiSpace(client, membership, householdId, {
     name: "Recetas",
     description: "Recetario de la casa",
+    // Recetario, no capítulo de la Guía: lo mantiene la familia desde el menú
+    // y no cuenta para la lectura de acogida (migración 0026).
+    kind: "recipes",
   });
   return created.resourceId;
 }
