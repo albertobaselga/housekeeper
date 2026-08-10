@@ -46,6 +46,7 @@ export const commandEnvelopeSchema = z.object({
     "food",
     "ics_feed",
     "leave_request",
+    "manual_adjustment",
     "membership",
     "menu_group",
     "menu_slot",
@@ -199,6 +200,48 @@ export const vacationVoidPayloadSchema = z.object({
 export const vacationCommandPayloadSchema = z.union([
   vacationRecordPayloadSchema,
   vacationVoidPayloadSchema,
+]);
+
+/**
+ * Conceptos apuntados a mano (migración 0022).
+ *
+ * `period` es un mes natural: la unidad de la cuenta. La etiqueta se queda
+ * corta a propósito —es un título de línea, no una carta— y el motivo tiene
+ * sitio para explicarse.
+ */
+export const periodMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+export const manualAdjustmentRecordPayloadSchema = z
+  .object({
+    action: z.literal("record"),
+    agreementId: uuidSchema,
+    period: periodMonthSchema,
+    label: z.string().trim().min(1).max(80),
+    reason: z.string().trim().min(1).max(500),
+    amountCents: moneyCentsSchema,
+    addsToPay: z.boolean(),
+  })
+  .refine((value) => BigInt(value.amountCents) !== 0n, {
+    // Cero no es un concepto: es un apunte a medio escribir. Rechazarlo aquí
+    // evita una línea muda en la cuenta del mes.
+    message: "Un concepto tiene que sumar o restar algo",
+    path: ["amountCents"],
+  });
+
+export const manualAdjustmentVoidPayloadSchema = z.object({
+  action: z.literal("void"),
+  manualAdjustmentId: uuidSchema,
+  reason: z.string().trim().min(1).max(500),
+});
+
+/**
+ * Unión sin `discriminatedUnion` por el mismo motivo que en vacaciones: la
+ * rama de alta lleva `.refine` y un ZodEffects no puede ser miembro de una
+ * unión discriminada.
+ */
+export const manualAdjustmentCommandPayloadSchema = z.union([
+  manualAdjustmentRecordPayloadSchema,
+  manualAdjustmentVoidPayloadSchema,
 ]);
 
 /** El derecho anual solo cambia apilando una versión nueva del acuerdo. */
