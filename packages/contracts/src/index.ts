@@ -11,6 +11,15 @@ export const roles = [
 
 export type Role = (typeof roles)[number];
 
+/**
+ * `content.*` gobierna el CONTENIDO del hogar en general (el recetario, que la
+ * familia mantiene). `guide.write` es más estrecha a propósito: escribir la
+ * **Guía de la casa** —crear notas y apartados, editarlas, publicarlas,
+ * destacarlas y usar modelos— es cosa de la administración y de nadie más,
+ * porque la Guía es a la vez el manual de acogida de quien trabaja aquí. Sin
+ * esta capacidad la interfaz NO dibuja ningún control de escritura, y la RLS
+ * de `wiki_*` lo impone igualmente (migración 0026).
+ */
 export const capabilities = [
   "access.manage",
   "agreement.read",
@@ -26,6 +35,7 @@ export const capabilities = [
   "emergency.read",
   "expense.create.self",
   "export.employment.self",
+  "guide.write",
   "leave.approve",
   "leave.request.self",
   "menu.read",
