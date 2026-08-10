@@ -225,21 +225,26 @@ puede registrar nada **nunca**, ni retroactivamente: el disparador de congelaci�
 exige que el tipo sea el de la versión vigente el día trabajado (`0021:291-295`).
 Y **no existe ninguna ruta en el código para cerrar o anular un acuerdo**.
 
-**Arreglo: no usar el guion.** El alta se hace desde la pantalla
-`/h/<householdId>/employment/acuerdo`, acción `create`, que sí escribe acuerdo +
-versión + catálogo + complementos en una sola transacción bajo la RLS de la
-administradora (`apps/web/src/routes/h/[householdId]/employment/acuerdo/+page.server.ts:130-133`
-→ `createAgreement`, `apps/web/src/lib/server/agreement-terms.server.ts:406-453`).
-`docs/despliegue/alta-de-hogar.md` §3 (líneas 123-169) manda usar `agreement:seed`
-y **está desfasado**; §8 (líneas 276-284) dice «no hay pantalla para dar de alta
-un acuerdo» y dejó de ser cierto con 0021.
+> **RESUELTO.** El guion hace ahora las dos cosas: **se niega** a escribir si el
+> JSON no declara `agreement.extraWorkTypes` —el fallo era silencioso, y eso era
+> lo peor de él— y **acepta el catálogo completo y lo escribe** en la misma
+> transacción, con el orden y las columnas reliquia de `insertVersion`. Retirarlo
+> del todo habría dejado el alta de un hogar real en manos de un formulario sin
+> `--dry-run`, sin idempotencia y sin marcha atrás sobre tablas que solo admiten
+> INSERT; poder ensayar el alta antes de hacerla vale más aquí que en ningún otro
+> sitio. Las cinco claves de 0002 (`overtimeHourlyRateCents`,
+> `workedRestDayRateCents`, `workedRestDayCreditMinutes`, `allowsHourlyOvertime`,
+> `allowsExtraShifts`) se rechazan diciendo adónde se fueron; las columnas
+> reliquia se derivan del catálogo. `docs/despliegue/alta-de-hogar.md` §3 está
+> reescrito con las dos vías y §8 con los huecos que sí quedan.
 
-Dos trampas más del guion, para que nadie lo rescate: `allowsHourlyOvertime` /
-`allowsExtraShifts` (líneas 55-58, 119-132) **ya no las lee nadie** —el
-interruptor real es la columna `active` de `app.extra_work_types` más la política
-`extra_work_types_employee_read` (`0021:413-424`)— y `overtimeHourlyRateCents`
-sigue siendo obligatoria (línea 245), o sea que obliga a inventar la tarifa
-horaria que precisamente no se quiere pactar.
+La otra vía sigue siendo la buena por defecto: la pantalla
+`/h/<householdId>/employment/acuerdo`, acción `create`, escribe acuerdo +
+versión + catálogo + complementos en una sola transacción bajo la RLS de la
+administradora (`apps/web/src/routes/h/[householdId]/employment/acuerdo/+page.server.ts`
+→ `createAgreement`, `apps/web/src/lib/server/agreement-terms.server.ts:406-453`).
+`apps/web/tests/agreement-alta.integration.test.ts` la recorre entera desde un
+hogar sin acuerdo hasta la empleada registrando una jornada extra.
 
 ---
 
@@ -567,10 +572,9 @@ lleve las variables reales.
    y `secure: !dev` en la cookie (R10).
 
 Recomendado en la misma entrega o inmediatamente después: `handover.server.ts`
-cableado a `loadContacts` (R8), y **retirar** `packages/db/scripts/seed-employment-agreement.mjs`
-o hacerlo abortar remitiendo a la pantalla (R3) — su prueba
-(`seed-employment-agreement.test.mjs:251-289`) da luz verde porque no comprueba
-el catálogo.
+cableado a `loadContacts` (R8). ~~Y retirar `seed-employment-agreement.mjs` o
+hacerlo abortar (R3)~~ — **ya hecho**: el guion se niega sin catálogo y lo
+escribe cuando lo hay, y su batería lo comprueba fila a fila.
 
 ### Paso 4 — Instalar el esquema en Supabase
 
@@ -862,9 +866,11 @@ Entrar como `family_admin` → **Pagos → «Administrar el acuerdo»**
 
 - Empleada, `startsOn`, `effectiveFrom = startsOn`, salario mensual, minutos
   semanales contratados, **`annualVacationDays = 30`**, motivo.
-- **Conceptos: uno solo.** «Jornada extra», `code` en minúsculas (p. ej.
-  `jornada_extra`), unidad **jornada (`per_shift`)**, **minutos de referencia
-  obligatorios** (`0021:103`), tarifa pactada, `active` marcado.
+- **Conceptos: los que se hayan pactado, y ninguno más.** Para el caso de EG112,
+  dos: «Jornada extra» (`jornada_extra`, `per_shift`, **480** minutos de
+  referencia) y «Media jornada extra» (`media_jornada_extra`, `per_shift`,
+  **240**), cada uno con su tarifa y `active` marcado. Los minutos de referencia
+  son obligatorios en toda jornada (`0021:103`).
 - **No añadas ningún concepto `per_hour`.** Eso es toda la desactivación de las
   horas sueltas: la política `extra_work_types_employee_read` (`0021:413-424`)
   exige `active AND rate_cents IS NOT NULL`, así que una fila inexistente y una
@@ -896,6 +902,12 @@ error, es la red. **La pantalla no tiene `--dry-run` y no es idempotente por
 repetición**; revisa el formulario antes de enviarlo, porque la versión es
 inmutable y no hay ruta para anular un acuerdo.
 
+**Si prefieres ensayarlo antes**, `agreement:seed` volvió a ser utilizable y es
+la única vía con ensayo: escribe acuerdo, versión y catálogo, y `--dry-run` hace
+rollback de verdad. Se ejecuta desde el portátil con la directa y el rol
+propietario, igual que `migrate`. El formato del JSON y las dos vías, en
+`docs/despliegue/alta-de-hogar.md` §3.
+
 ### Paso 9 — El manual
 
 ```bash
@@ -913,7 +925,7 @@ las tablas del propietario.
 
 **Aviso operativo real:** la plantilla de menú necesita un grupo de comensales
 vivo. Si no lo hay, el guion avisa y sigue; hay que **repetir este paso** después
-de crear el grupo desde la aplicación (`alta-de-hogar.md:188-191`).
+de crear el grupo desde la aplicación (`alta-de-hogar.md` §4, el aviso al pie).
 
 ### Paso 10 — Desde la aplicación
 
@@ -951,7 +963,7 @@ un fallo concreto.
 | `docs/despliegue/runbook-despliegue.md:283`, `.env.example:148-152` | `SMTP_*` no van en Vercel |
 | `docs/despliegue/runbook-despliegue.md:81-87`, `:105-107` | Superado por `bootstrap.sql`; §1.3 declara B-1 sin resolver y sí lo resuelve `0018` |
 | `docs/despliegue/supabase-esquema.md:24,215` | «18 migraciones» → **20** |
-| `docs/despliegue/alta-de-hogar.md` §3 (123-169) y §8 (276-284) | Pantalla en vez de `agreement:seed`; los dos primeros puntos de §8 ya no son ciertos |
+| ~~`docs/despliegue/alta-de-hogar.md` §3 y §8~~ | **Hecho.** §3 reescrito con las dos vías (pantalla y guion) y el catálogo obligatorio; §8 con los huecos que sí quedan |
 | `docs/despliegue/opciones-de-acceso.md:30-60` | Describe `deliverMagicLink()`, tres modos de login y `demoCredentialFor()`: **nada de eso existe** |
 | `.env.example:215`, `runbook:287`, `plan-vercel-supabase.md:531-533` | `ENABLE_DEMO_PASSWORD_AUTH` no existe en el código |
 | `.env.example:69-72` | Justifica `BETTER_AUTH_URL` por los enlaces mágicos; el motivo real es el origen de confianza |
