@@ -1,4 +1,5 @@
 import { loadFoodCatalog, loadRecipe } from '$lib/server/food.server';
+import { demoOrUnavailable } from '$lib/server/data-source.server';
 import { getRecipesFixture } from '$lib/server/fixtures.server';
 import type { PageServerLoad } from './$types';
 
@@ -14,6 +15,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
     const recipe = pageId ? await loadRecipe({ id: locals.user!.id }, params.householdId, pageId) : null;
     return { catalog, recipe, recipes: null };
   }
-  // Sin base de datos (o sin membresía autorizada) la demo conserva la fixture.
-  return { catalog: null, recipe: null, recipes: getRecipesFixture() };
+  // Con base de datos configurada aquí no hay maqueta que servir: 503 honesto
+  // y registrado (data-source.server.ts). Sin base, la demostración sigue.
+  return demoOrUnavailable(() => ({ catalog: null, recipe: null, recipes: getRecipesFixture() }));
 };

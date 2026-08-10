@@ -5,6 +5,11 @@ import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { guardForPath } from '$lib/auth/routing';
 import { resolveAppUser } from '$lib/server/app-user.server';
 import { getAuth } from '$lib/server/auth.server';
+import {
+  DATA_UNAVAILABLE_MESSAGE,
+  DATA_UNAVAILABLE_STATUS,
+  isDataUnavailable
+} from '$lib/server/data-source.server';
 import { getDemoUser } from '$lib/server/fixtures.server';
 import { readDemoSession } from '$lib/server/session.server';
 import { syntheticGuard } from '$lib/server/synthetic.server';
@@ -15,6 +20,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   // Control 9: el flag solo-sintético se lee aquí y viaja por layout data
   // hasta el banner persistente del AppShell.
   event.locals.syntheticOnly = syntheticGuard().syntheticOnly;
+  event.locals.dataUnavailable = false;
 
   if (event.url.pathname.startsWith('/api/auth')) {
     if (!auth) error(404, 'La autenticación real no está configurada en este entorno');
@@ -30,11 +36,20 @@ export const handle: Handle = async ({ event, resolve }) => {
         createdAt: new Date(authSession.session.createdAt).toISOString(),
         expiresAt: new Date(authSession.session.expiresAt).toISOString()
       };
-      const user = await resolveAppUser(
-        authSession.user.id,
-        authSession.user.email,
-        authSession.user.name ?? authSession.user.email
-      );
+      let user = null;
+      try {
+        user = await resolveAppUser(
+          authSession.user.id,
+          authSession.user.email,
+          authSession.user.name ?? authSession.user.email
+        );
+      } catch (cause) {
+        // Avería leyendo el perfil. La sesión es buena, así que NO se echa a la
+        // calle a nadie: se marca y la guarda de más abajo responde 503, que es
+        // el camino que el service worker convierte en la pantalla guardada.
+        if (!isDataUnavailable(cause)) throw cause;
+        event.locals.dataUnavailable = true;
+      }
       event.locals.session = user ? session : null;
       event.locals.user = user;
     } else {
@@ -53,6 +68,7 @@ export const handle: Handle = async ({ event, resolve }) => {
   if (guard) {
     if (!guard.known) error(404, 'Esta ruta no existe');
     if (!event.locals.user) {
+      if (event.locals.dataUnavailable) error(DATA_UNAVAILABLE_STATUS, DATA_UNAVAILABLE_MESSAGE);
       const next = `${event.url.pathname}${event.url.search}`;
       redirect(303, `/login?next=${encodeURIComponent(next)}`);
     }

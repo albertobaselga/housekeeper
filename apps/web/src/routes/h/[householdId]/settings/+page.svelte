@@ -229,15 +229,26 @@
   {/if}
 
   <div class="settings-layout">
-    <section class="card"><p class="eyebrow">Miembros</p><h2>Accesos activos</h2>
-      <div class="member-list">
-        {#each data.settings.members as member}
-          <div><span class="avatar">{member.initials}</span><span><strong>{member.name}</strong><small>{ROLE_LABELS[member.role as Role]}</small></span><span class="status-chip success">Demo</span></div>
-        {/each}
-      </div>
-    </section>
+    <!--
+      Censo y preferencias de la MAQUETA: solo existen en la demostración sin
+      base de datos. Con hogar real detrás, `data.settings` es null y quien
+      manda es la sección de accesos de arriba, que sale de la base bajo RLS.
+    -->
+    {#if data.settings}
+      <section class="card"><p class="eyebrow">Miembros</p><h2>Accesos activos</h2>
+        <div class="member-list">
+          {#each data.settings.members as member}
+            <div><span class="avatar">{member.initials}</span><span><strong>{member.name}</strong><small>{ROLE_LABELS[member.role as Role]}</small></span><span class="status-chip success">Demo</span></div>
+          {/each}
+        </div>
+      </section>
+    {/if}
     <div class="stack">
-      <section class="card"><p class="eyebrow">Hogar</p><h2>{data.settings.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>{data.settings.preferences.locale}</dd></div><div><dt>Zona horaria</dt><dd>{data.settings.preferences.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>{data.settings.preferences.weekStarts}</dd></div></dl></section>
+      {#if data.settings}
+        <section class="card"><p class="eyebrow">Hogar</p><h2>{data.settings.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>{data.settings.preferences.locale}</dd></div><div><dt>Zona horaria</dt><dd>{data.settings.preferences.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>{data.settings.preferences.weekStarts}</dd></div></dl></section>
+      {:else}
+        <section class="card"><p class="eyebrow">Hogar</p><h2>{context.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>Español (España)</dd></div><div><dt>Zona horaria</dt><dd>{context.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>Lunes</dd></div></dl></section>
+      {/if}
       {#if data.handover}
         <section class="card">
           <p class="eyebrow">Traspaso</p>

@@ -15,6 +15,7 @@ import {
   type RecurringSupplementRow,
   type SupplementView
 } from '$lib/employment/model';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:agreement-terms');
@@ -268,10 +269,7 @@ export async function loadAgreementAdmin(
       } satisfies AgreementAdminOverview;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('agreement admin unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'agreement admin', cause);
   }
 }
 

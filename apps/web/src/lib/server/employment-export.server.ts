@@ -4,7 +4,7 @@ import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import {
   buildExtraWorkTypeView,
@@ -19,6 +19,7 @@ import {
   type SettlementRow,
   type WeeklyReportRow
 } from '$lib/employment/model';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:employment-export');
@@ -792,9 +793,8 @@ export async function buildEmploymentExport(
       return zipSync(entries, { level: 6, mtime: new Date('1980-01-01T00:00:00.000Z') });
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('employment export unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    // Sin esta separación, una avería contestaba «solo la propia empleada
+    // puede descargar su expediente» a la propia empleada.
+    return unreadable(log, 'employment export', cause);
   }
 }

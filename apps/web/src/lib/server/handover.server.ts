@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
+import { CONTACT_KINDS, CONTACT_KIND_LABELS, type ContactKind } from '$lib/contacts/kinds';
 import { mondayOf, weekDays, dayLabel } from '$lib/food/dates';
-import { getContactsFixture } from './fixtures.server';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:handover');
@@ -198,12 +199,29 @@ function renderMenuWeek(rows: MenuExportRow[], days: string[]): string {
   return `${lines.join('\n').trimEnd()}\n`;
 }
 
-/** Contactos de la casa: la fuente vigente es la fixture compartida. */
-function renderContacts(): string {
-  const { contacts } = getContactsFixture();
+interface ContactExportRow {
+  name: string;
+  roleLabel: string;
+  phone: string;
+  kind: ContactKind;
+}
+
+/**
+ * Contactos de la casa, los REALES, leídos bajo RLS en la misma transacción
+ * que el resto del traspaso.
+ *
+ * Antes salían de la maqueta compartida, siempre, también con un hogar real
+ * detrás: el ZIP que se entrega a quien va a llevar la casa mezclaba la guía y
+ * las rutinas verdaderas con seis teléfonos inventados, sin ninguna marca
+ * (auditoría §R8). Una casa sin contactos guardados lo dice; no los rellena.
+ */
+function renderContacts(rows: ContactExportRow[]): string {
   const lines = ['# Contactos de la casa', ''];
-  for (const contact of contacts) {
-    lines.push(`- **${contact.name}** — ${contact.role} · ${contact.phone}`);
+  if (rows.length === 0) {
+    lines.push('_Esta casa todavía no tiene contactos guardados._');
+  }
+  for (const contact of rows) {
+    lines.push(`- **${contact.name}** — ${contact.roleLabel || CONTACT_KIND_LABELS[contact.kind]} · ${contact.phone}`);
   }
   return `${lines.join('\n')}\n`;
 }
@@ -309,6 +327,16 @@ export async function buildHandoverExport(
         [householdId, days[0], days[6]]
       );
 
+      // Mismo orden y mismo recorte que el directorio de la aplicación: los
+      // archivados no viajan.
+      const contactResult = await client.query<ContactExportRow>(
+        `select name, role_label as "roleLabel", phone, kind
+           from app.contacts
+          where household_id = $1 and archived_at is null
+          order by array_position($2::text[], kind), position, name`,
+        [householdId, CONTACT_KINDS]
+      );
+
       const files = new Map<string, Uint8Array>();
       const put = (path: string, content: string): void => {
         assertAllowedEntry(path);
@@ -326,7 +354,7 @@ export async function buildHandoverExport(
       }
       put('rutinas.md', renderRoutines(routines, audience));
       put('menu-semana.md', renderMenuWeek(menuResult.rows, days));
-      put('contactos.md', renderContacts());
+      put('contactos.md', renderContacts(contactResult.rows));
 
       const sortedPaths = [...files.keys()].sort((left, right) => left.localeCompare(right, 'en'));
       const fileHashes = sortedPaths.map((path) => ({ path, sha256: sha256(files.get(path)!) }));
@@ -349,10 +377,7 @@ export async function buildHandoverExport(
       return zipSync(entries, { level: 6, mtime: new Date('1980-01-01T00:00:00.000Z') });
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('handover export unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'handover export', cause);
   }
 }
 
@@ -375,9 +400,7 @@ export async function canDownloadHandover(
       async (_client, membership) => membership.role === 'family_admin'
     );
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('handover gate unavailable', { code: errorCode(cause) });
-    }
+    unreadable(log, 'handover gate', cause);
     return false;
   }
 }

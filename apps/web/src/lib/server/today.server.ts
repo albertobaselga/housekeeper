@@ -1,11 +1,12 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { dateLabel, formatCents, formatMinutes, parseCents, periodLabel } from '$lib/employment/model';
 import { addDays, mondayOf } from '$lib/food/dates';
 import type { MealSlot } from '$lib/food/commands';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:today');
@@ -571,11 +572,6 @@ export async function loadTodayOverview(
       } satisfies TodayOverview;
     });
   } catch (cause) {
-    // Sin membresía viva no hay hogar que enseñar; cualquier otra avería
-    // degrada a la fixture para no tumbar la pantalla de aterrizaje.
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('today overview unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'today overview', cause);
   }
 }

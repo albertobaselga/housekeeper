@@ -1,4 +1,5 @@
 import { loadEmploymentOverview } from '$lib/server/employment.server';
+import { demoOrUnavailable } from '$lib/server/data-source.server';
 import { getEmploymentFixture } from '$lib/server/fixtures.server';
 import type { PageServerLoad } from './$types';
 
@@ -9,6 +10,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     ? await loadEmploymentOverview({ id: locals.user.id }, params.householdId)
     : null;
   if (overview) return { overview, employment: null };
-  // Sin base de datos (o sin membresía autorizada) la demo conserva la fixture.
-  return { overview: null, employment: getEmploymentFixture() };
+  // Con base de datos configurada aquí no hay maqueta que servir: 503 honesto
+  // y registrado (data-source.server.ts). Sin base, la demostración sigue.
+  return demoOrUnavailable(() => ({ overview: null, employment: getEmploymentFixture() }));
 };
