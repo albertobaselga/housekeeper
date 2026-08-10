@@ -120,9 +120,10 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, recipe_pa
 INSERT INTO app.shopping_items (household_id, custom_name, section, week_starts_on, created_by_membership_id)
 VALUES ('${FIXTURE_HOUSEHOLD}', 'Papel de cocina', 'hogar', '${WEEK}', '${ADMIN_MEMBERSHIP}');
 
-INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
-  ('${ROUTINE_PLANTAS}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas', '', 'all', 'weekly', 1, '2026-08-10', '${ADMIN_MEMBERSHIP}'),
-  ('${ROUTINE_MENU}', '${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', 'weekly', 1, '2026-08-09', '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+  pattern, anchor_on, repeat_every) VALUES
+  ('${ROUTINE_PLANTAS}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas', '', 'all', 'weekly', 1, '2026-08-10', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-10', 7),
+  ('${ROUTINE_MENU}', '${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', 'weekly', 1, '2026-08-09', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-09', 7);
 
 INSERT INTO app.routine_completions (household_id, routine_id, due_on, completed_by_membership_id)
 VALUES ('${FIXTURE_HOUSEHOLD}', '${ROUTINE_PLANTAS}', '2026-08-10', '${ADMIN_MEMBERSHIP}');

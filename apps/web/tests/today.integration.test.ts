@@ -110,10 +110,11 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, free_text
   ('${SLOT_HOY}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', '${TODAY}', 'comida', 'Guiso de verduras IT', 'Apartar sin sal', '${ADMIN_MEMBERSHIP}'),
   ('${SLOT_FUERA_VENTANA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', '${addDays(TODAY, 5)}', 'cena', 'Sopa IT', '', '${ADMIN_MEMBERSHIP}');
 
-INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
-  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}'),
-  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', 'monthly', 1, '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}'),
-  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+  pattern, anchor_on, repeat_every) VALUES
+  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7),
+  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', 'monthly', 1, '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${addDays(TODAY, -1)}', 30),
+  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7);
 
 COMMIT;
 `;

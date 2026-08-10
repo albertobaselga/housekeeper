@@ -82,10 +82,11 @@ UPDATE app.wiki_pages SET current_revision_id = '${REV_LAVADORA}' WHERE id = '${
 UPDATE app.wiki_pages SET current_revision_id = '${REV_CALDERA}' WHERE id = '${PAGE_CALDERA}';
 UPDATE app.wiki_pages SET current_revision_id = '${REV_DRAFT}' WHERE id = '${PAGE_DRAFT}';
 
-INSERT INTO app.routines (household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
-  ('${FIXTURE_HOUSEHOLD}', 'Regar plantas', 'Terraza y salón', 'all', 'weekly', 1, '2026-08-10', '${ADMIN_MEMBERSHIP}'),
-  ('${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', 'weekly', 1, '2026-08-09', '${ADMIN_MEMBERSHIP}'),
-  ('${FIXTURE_HOUSEHOLD}', 'Repaso de uniformes', '', 'employee', 'weekly', 1, '2026-08-11', '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.routines (household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+  pattern, anchor_on, repeat_every) VALUES
+  ('${FIXTURE_HOUSEHOLD}', 'Regar plantas', 'Terraza y salón', 'all', 'weekly', 1, '2026-08-10', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-10', 7),
+  ('${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', 'weekly', 1, '2026-08-09', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-09', 7),
+  ('${FIXTURE_HOUSEHOLD}', 'Repaso de uniformes', '', 'employee', 'weekly', 1, '2026-08-11', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-11', 7);
 
 INSERT INTO app.menu_groups (id, household_id, name, position)
 VALUES ('${GROUP_FAMILIA}', '${FIXTURE_HOUSEHOLD}', 'Familia', 0);
