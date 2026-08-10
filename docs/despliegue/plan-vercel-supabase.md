@@ -372,6 +372,20 @@ de regresión, y resuelve ClamAV), evaluando **C** más adelante como
 simplificación. A sólo tiene sentido si el objetivo explícito es no administrar
 ningún servidor y se acepta pagar Vercel Pro y perder ClamAV.
 
+> **Lo que se hizo, y por qué se separó de esta recomendación.** Ninguna de las
+> tres se aplicó tal cual: se implementó **A, pero con el planificador en la
+> base en vez de Vercel Cron**. Eso desactiva el único contra serio de A —el
+> cron diario del plan Hobby— sin pagar Pro: `pg_cron` dispara con `pg_net` una
+> llamada al endpoint cada cinco minutos. La refactorización fue la que este
+> apartado anticipaba (`createJobHandlers` extraído a
+> `apps/worker/src/registry.ts`, compartido por el demonio y el drenaje), así
+> que **B sigue disponible sin cambios**: el demonio no se ha tocado. De C no se
+> tomó nada: la lógica de los trabajos sigue entera en TypeScript y la cola
+> conserva sus reintentos y su `dead-lettering`. ClamAV queda como estaba —el
+> drenaje no lo necesita— y sigue exigiendo un host, que es el motivo por el que
+> B no desaparece del mapa. Procedimiento en
+> [`../runbooks/planificador-cola.md`](../runbooks/planificador-cola.md).
+
 ---
 
 ## 6. Adjuntos y ClamAV
