@@ -193,9 +193,9 @@ test('Alberto cambia de empleada y el expediente entero es el de la otra', async
   ]);
   // Y el desplegable señala uno de los suyos: sin salir de la página, el
   // catálogo cambió bajo los pies del formulario y no puede quedarse apuntando
-  // a un concepto del acuerdo anterior.
+  // a un concepto del contrato anterior.
   await expect(registerForm.getByLabel('Tipo')).toHaveValue(TYPE_JORNADA_COMPLETA);
   await expect(extrasCard).not.toContainText('Se quedó el sábado E2E');
   await expect(page.locator('article.card').filter({ hasText: 'Versiones y cambios de salario' }))
-    .toContainText('Acuerdo de Fixture Segunda Empleada Roble');
+    .toContainText('Contrato de Fixture Segunda Empleada Roble');
 });
