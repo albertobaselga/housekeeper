@@ -3,9 +3,12 @@ import { expect, test, type Page } from '@playwright/test';
 import { HOUSEHOLD, loginAs } from './helpers';
 
 // Flujo de la INTERNA (Ana, employee_live_in) contra Postgres real: registra
-// una jornada extra, envía el parte de la semana en curso con dos días, añade
-// un gasto con importe con coma, descarga su expediente (AC-13) y completa la
-// rutina de audiencia empleada. Serial: cada test asume el estado del previo.
+// una jornada extra, añade un gasto con importe con coma, descarga su
+// expediente (AC-13) y completa la rutina de audiencia empleada. Serial: cada
+// test asume el estado del previo.
+//
+// El envío del parte semanal estaba aquí y se fue con la migración 0029: la
+// pantalla ya no lo ofrece porque la aplicación ya no puede cumplirlo.
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 test.describe.configure({ mode: 'serial' });
 
@@ -34,24 +37,6 @@ test('Ana registra una jornada extra del catálogo, con la duración pactada', a
   await expect(newRow).toContainText('Jornada extra');
   await expect(newRow).toContainText('10 h');
   await expect(newRow).toContainText('Solicitada');
-});
-
-test('Ana envía el parte de la semana en curso con dos días', async ({ page }) => {
-  await gotoEmployment(page);
-
-  const weekCard = page.locator('article.card').filter({ hasText: 'Días trabajados esta semana' });
-  await expect(weekCard.getByRole('button', { name: 'Enviar mi semana' })).toBeVisible();
-
-  // Primera fila: hoy, 8 h por defecto. Segunda fila: otro día, 5 h.
-  await weekCard.getByRole('button', { name: 'Añadir día' }).click();
-  const hourInputs = weekCard.getByLabel('Horas', { exact: true });
-  await expect(hourInputs).toHaveCount(2);
-  await hourInputs.nth(1).fill('5');
-  await weekCard.getByLabel('Nota (opcional)').nth(1).fill('Media jornada E2E');
-  await weekCard.getByRole('button', { name: 'Enviar mi semana' }).click();
-
-  await expect(weekCard.locator('.status-chip').filter({ hasText: 'Semana enviada' })).toBeVisible();
-  await expect(weekCard.locator('.ledger-list')).toContainText('Enviado · pendiente de confirmación');
 });
 
 test('Ana añade un gasto con importe con coma', async ({ page }) => {

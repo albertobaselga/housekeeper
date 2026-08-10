@@ -5,10 +5,8 @@ import {
   ICS_SYNC_ALL_JOB,
   ICS_SYNC_INTERVAL_HOURS,
   ICS_SYNC_JOB,
-  ROUTINE_DUE_JOB,
   createIcsSyncAllHandler,
   createIcsSyncHandler,
-  createRoutineDueHandler,
   expandIcs,
   fetchIcsSource,
   parseSimpleRrule,
@@ -19,7 +17,6 @@ import {
 
 const HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
 const OLIVO = "20000000-0000-4000-8000-000000000001";
-const ROUTINE = "13000000-0000-4000-8000-0000000000aa";
 const SOURCE = "14000000-0000-4000-8000-0000000000bb";
 
 // «Ahora» estable para las ventanas de expansión de los tests.
@@ -344,65 +341,6 @@ describe("expandIcs: recurrencias simples", () => {
     ["FREQ=WEEKLY;BYDAY=XX", null],
   ])("parseSimpleRrule rechaza %s", (raw, expected) => {
     expect(parseSimpleRrule(raw)).toBe(expected);
-  });
-});
-
-describe("notification.routine_due", () => {
-  function dueJob(payload: unknown): ClaimedJob {
-    return { id: "job-routine", householdId: HOUSEHOLD, type: ROUTINE_DUE_JOB, payload, attempts: 1 };
-  }
-
-  it("envía el aviso a cada destinatario del payload, sin duplicados", async () => {
-    const sent: Array<{ to: string; subject: string; text: string }> = [];
-    const handler = createRoutineDueHandler({
-      sendEmail: async (input) => {
-        sent.push(input);
-      },
-    });
-    await handler(
-      dueJob({
-        routineId: ROUTINE,
-        title: "Cambiar filtros",
-        audience: "family",
-        recipients: ["admin.roble@example.com", "familiar.roble@example.com", "admin.roble@example.com"],
-      }),
-    );
-    expect(sent.map((email) => email.to)).toEqual([
-      "admin.roble@example.com",
-      "familiar.roble@example.com",
-    ]);
-    for (const email of sent) {
-      expect(email.subject).toContain("Cambiar filtros");
-      expect(email.text).toContain("Cambiar filtros");
-    }
-  });
-
-  it("una lista de destinatarios vacía completa sin enviar nada", async () => {
-    let sent = 0;
-    const handler = createRoutineDueHandler({
-      sendEmail: async () => {
-        sent += 1;
-      },
-    });
-    await handler(dueJob({ routineId: ROUTINE, title: "Regar", audience: "all", recipients: [] }));
-    expect(sent).toBe(0);
-  });
-
-  it.each([
-    [{}],
-    [{ routineId: ROUTINE, title: "x", audience: "family" }],
-    [{ routineId: ROUTINE, title: "x", audience: "vecinos", recipients: [] }],
-    [{ routineId: ROUTINE, title: "  ", audience: "all", recipients: [] }],
-    [{ routineId: ROUTINE, title: "x", audience: "all", recipients: ["ok@example.com", 7] }],
-  ])("payload inválido %# es fallo permanente sin enviar", async (payload) => {
-    let sent = 0;
-    const handler = createRoutineDueHandler({
-      sendEmail: async () => {
-        sent += 1;
-      },
-    });
-    await expect(handler(dueJob(payload))).rejects.toBeInstanceOf(PermanentJobError);
-    expect(sent).toBe(0);
   });
 });
 

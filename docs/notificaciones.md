@@ -6,6 +6,44 @@
 
 ---
 
+## 0. Enmienda de 11/08/2026 — qué avisos quedan SIN canal
+
+Decisión del propietario: **no hay correo en ninguna parte; el canal es la
+aplicación.** La migración 0029 retiró la salida SMTP entera —el remitente, el
+transporte, la política de destinatarios sintéticos— y, con ella, los dos únicos
+trabajos que sabían usarla. Lo que este documento describía como «el aviso B ya
+existe, solo le falta salida» hay que leerlo ahora al revés: **el aviso B ya no
+existe; lo que queda es el hecho que lo justificaba.**
+
+Hasta que existan las notificaciones al móvil que describe el resto de este
+documento, **estos avisos no llegan a ningún sitio**:
+
+| Aviso retirado | Qué se pierde | Dónde se ve mientras tanto |
+|---|---|---|
+| `notification.settlement_due` — «una liquidación vence en tres días», a quien administra, con reescalada cada 3 días | El empujón con plazo. Es el aviso **B** de §2.1 y sigue siendo el mejor candidato a push: hay fecha, hay consecuencia económica y hay una acción al otro lado | La decisión «Cuenta del mes por pagar» de **Hoy** (`today.server.ts`), que ya la pinta con su vencimiento. Nadie recibe nada si no abre la aplicación |
+| `notification.routine_due` — «una rutina vence hoy», a la audiencia de la rutina | Nada que este documento echase de menos: §2.2 ya lo descartaba con tres razones para push, y por correo era peor (un correo por ocurrencia) | **Hoy** y el **calendario**, que es donde se atienden las rutinas |
+| Auto-confirmación del parte semanal (`time_report.autoconfirm`) | Nada: el parte semanal se retiró entero en la misma migración. El «bloqueado, no descartado» de §2.2 pasa a **descartado** | — |
+
+Consecuencias para el resto del documento:
+
+- **El aviso A** (§2.1, «te han pagado: puedes confirmar el cobro») nunca tuvo
+  correo, así que no pierde nada. Sigue siendo el primero que debe existir, y
+  sigue sin necesitar reloj: sale del propio comando de pago.
+- **El «cambio obligatorio en B»** de §2.1 —sacar a la empleada de la lista de
+  destinatarios— ya se hizo antes de la retirada, y ahora es discutible por
+  construcción: no hay lista.
+- **El §3.1** decía que los manejadores reciben `sendEmail` inyectado y que
+  bastaba con sustituir esa dependencia por un `notify`. Ya no hay dependencia
+  que sustituir: cuando se implemente el push, el manejador nace nuevo, con el
+  hecho que lee (vencimiento, pago) y el canal que usa (suscripción de
+  dispositivo) decididos a la vez.
+- **La función `app_private.settlement_reminder_state`** (0006), que le daba al
+  worker las direcciones de correo de la casa, se retiró con la 0029. El push no
+  la necesita —no manda a direcciones, manda a dispositivos—, así que lo que
+  haga falta se declara de nuevo y con la superficie mínima del canal nuevo.
+
+---
+
 ## 1. Respuesta directa en tres líneas
 
 1. **¿Se puede?** Sí. Web Push con VAPID funciona en Android, escritorio y iPhone (16.4+, solo si la app se abre desde el icono de la pantalla de inicio), no cuesta nada, no exige cuenta de Apple ni de Google, y el contenido viaja cifrado de extremo a extremo por norma (RFC 8291).

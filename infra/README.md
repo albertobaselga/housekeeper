@@ -11,8 +11,11 @@ Esta carpeta define dos entornos sin datos reales ni secretos versionados. No es
 | Web | build de `@casa-clara/web`, puerto 3000 | `WEB_HEALTH_PATH` (por defecto `/api/health`) |
 | Worker | build de `@casa-clara/worker`, puerto 3001 | `/health` |
 | MinIO | release fechada, bucket privado | `/minio/health/live` |
-| Mailpit | `v1.30.0` | `/livez` |
 | ClamAV | `1.4.5` | ping de `clamd` |
+
+Aquí había un Mailpit para ver los correos del worker. La aplicación no manda
+correo a nadie (migración 0029): no hay remitente que configurar, ni servidor
+SMTP que levantar, ni bandeja local que mirar. El canal es la aplicación.
 
 Los filtros de workspace se pueden cambiar con `WEB_WORKSPACE_FILTER` y `WORKER_WORKSPACE_FILTER`. Los contenedores de aplicación se ejecutan sin root, con filesystem de solo lectura, sin capabilities y con `no-new-privileges`.
 
@@ -25,7 +28,7 @@ docker compose -f infra/compose.local.yml config --quiet
 docker compose -f infra/compose.local.yml up --build --wait
 ```
 
-La aplicación queda en `http://localhost:8080`, Mailpit en `http://localhost:8025` y MinIO en `http://localhost:9001`.
+La aplicación queda en `http://localhost:8080` y MinIO en `http://localhost:9001`.
 
 Para habilitar métricas locales:
 

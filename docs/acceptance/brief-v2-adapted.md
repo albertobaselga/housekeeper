@@ -11,6 +11,8 @@ Este documento es la fuente de verdad para declarar terminado el brief. Los dato
 5. **WhatsApp:** solo enlaces `wa.me` iniciados conscientemente por una persona. No se usa Cloud API ni se envían mensajes automáticos.
 6. **Idioma:** interfaz inicial únicamente en español, con claves y modelo preparados para i18n; no se exige contenido traducido en esta entrega.
 7. **Entornos:** esta oleada entrega local y staging sintético. No autoriza producción ni datos reales.
+8. **Sin correo (11/08/2026):** el canal es la aplicación. La migración 0029 retiró la salida SMTP y con ella los avisos que solo sabían usarla. Afecta a la letra de **AC-06A** y **AC-09**: el vencimiento y la escalada siguen existiendo como hecho y siguen visibles en Hoy, pero «por canales habilitados» hoy significa **ningún canal saliente** hasta que existan las notificaciones al móvil (`docs/notificaciones.md`, §0).
+9. **Sin parte semanal (11/08/2026):** retirado por decisión del propietario en la misma migración. La empleada ya no envía días trabajados y nadie los confirma; los partes enviados antes se conservan como histórico y se leen en `partes-semanales.csv`, dentro del ZIP de **AC-13**.
 
 Con estas adaptaciones, el objetivo es **25/26 literales y 26/26 según el contrato adaptado**.
 
@@ -43,7 +45,32 @@ Con estas adaptaciones, el objetivo es **25/26 literales y 26/26 según el contr
 | AC-23 | Duplicar semana copia platos, notas y recetas en una sola acción idempotente. | Test API/DB + E2E. | F3 |
 | AC-24 | Compra suma ingredientes equivalentes, respeta unidades y agrupa por sección. | Fixtures de agregación + E2E offline. | F3 |
 | AC-25 | Mantenimiento trimestral notifica a familia, no a empleada. | Test de recurrencia y destinatarios. | F3 |
-| AC-26 | No existe porcentaje ni histórico de cumplimiento de rutinas. | Búsqueda de API/esquema + revisión E2E de todas las vistas. | F3 |
+| AC-26 | (revisado 10/08/2026 — ver nota abajo) El historial de rutinas es consultable como hechos con su fecha y su autoría. No existe ningún indicador de cumplimiento —porcentaje, racha, media, comparativa ni codificación por color que califique—, en ninguna vista, API ni exportación. | Búsqueda de API/esquema + revisión E2E de todas las vistas. | F3 |
+
+### Nota al AC-26: por qué cambió, y qué decía antes
+
+**Redacción anterior:** «No existe porcentaje ni histórico de cumplimiento de
+rutinas.»
+
+**Fecha del cambio:** 10/08/2026. **Motivo:** petición expresa del propietario,
+recogida en la enmienda E2 de `docs/rutinas-y-calendario.md` con sus palabras
+—«además de poder ver lo que hizo en el pasado para comprobarlo»—. La redacción
+vieja prohibía dos cosas de un tirón, y solo una de ellas debía prohibirse:
+
+- el **porcentaje de cumplimiento**, que es una evaluación de desempeño sobre
+  una trabajadora, y esta aplicación no la hace; y
+- el **histórico**, que es simplemente la memoria de la casa: qué se hizo, qué
+  día y quién lo marcó (`app.routine_completions` ya lo guardaba).
+
+Prohibir el histórico para evitar el porcentaje era tirar la memoria para
+impedir el juicio. La redacción nueva separa las dos: el pasado se puede
+consultar, y sigue estando **expresamente prohibido** —con prueba que lo
+impida— cualquier porcentaje, racha, media, comparativa entre personas o color
+que califique el rendimiento, en pantallas, API y exportaciones.
+
+El criterio anterior existía por una razón y esa razón no ha desaparecido: es
+la que sostiene la mitad que se conserva. Queda escrito para que quien lo lea
+dentro de un año vea que se sustituyó a conciencia y no por descuido.
 
 ## Extensión de Fase 4 acordada
 

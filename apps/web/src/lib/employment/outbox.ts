@@ -10,7 +10,6 @@ import { dateLabel } from '$lib/employment/model';
  */
 
 export const EMPLOYMENT_AGGREGATES: readonly AggregateType[] = [
-  'time_entry',
   'extra_work',
   'settlement',
   'payment',
@@ -45,10 +44,6 @@ function payloadField(envelope: CommandEnvelopeV1, field: string): string | null
 export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
   const action = payloadField(envelope, 'action');
   switch (envelope.aggregateType) {
-    case 'time_entry': {
-      const week = payloadField(envelope, 'weekStartsOn');
-      return week ? `Días trabajados de la semana del ${dateLabel(week)}` : 'Días trabajados de la semana';
-    }
     case 'extra_work':
       switch (action) {
         case 'register': {

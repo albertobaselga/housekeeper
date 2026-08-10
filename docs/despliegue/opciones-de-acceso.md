@@ -14,6 +14,13 @@ Precios y límites verificados en agosto de 2026 (fuentes al final).
 > por qué se decidió lo que se decidió, no para leer el código de hoy. Sigue pendiente el
 > paso 8 (passkeys) y, fuera del acceso, el cambio a `@sveltejs/adapter-vercel` del paso 7.
 
+> **Cerrado el 11/08/2026: no hay correo en ninguna parte.** La §5 («Opción D — Correo
+> gratuito, por si algún día») queda como lo que es, un precio calculado que nadie va a
+> pagar. La migración 0029 retiró la salida SMTP entera —no solo del acceso, también de los
+> avisos del worker—, así que «rellenar `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM`» ya no enciende
+> nada: no queda código que las lea. Volver al correo sería construirlo de nuevo, no
+> reactivarlo.
+
 ---
 
 ## 1. Qué hay hoy en el repositorio

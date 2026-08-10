@@ -5,7 +5,7 @@ Este baseline aplica a local y staging sintético. No constituye autorización p
 ## Fronteras y activos
 
 - **Críticos:** expediente laboral, saldos, liquidaciones, pagos, auditoría, información de menores, alergias, autorizaciones y adjuntos.
-- **Fronteras:** navegador/service worker, Caddy, web/API, worker, Postgres, Storage, correo sintético y escáner de archivos.
+- **Fronteras:** navegador/service worker, Caddy, web/API, worker, Postgres, Storage y escáner de archivos. **Correo, ninguno**: la salida SMTP se retiró en la migración 0029 y con ella esa frontera entera.
 - **Amenazas prioritarias:** cruce de hogares, elevación de rol, sesión revocada aún válida, URL de objeto reutilizable, replay de outbox, edición retroactiva, archivo malicioso y filtrado de PII por logs.
 
 ## Controles obligatorios

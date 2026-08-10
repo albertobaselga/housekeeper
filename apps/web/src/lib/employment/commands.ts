@@ -14,8 +14,7 @@ import type {
   SettlementOpenPayloadV1,
   SettlementReceiptConfirmPayloadV1,
   VacationRecordPayloadV1,
-  VacationVoidPayloadV1,
-  WeeklyReportSubmitPayloadV1
+  VacationVoidPayloadV1
 } from '@casa-clara/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
@@ -53,28 +52,6 @@ export function parseEuroInput(value: string): string | null {
   const cents = BigInt(units) * 100n + BigInt(fraction === '' ? '0' : fraction);
   if (cents <= 0n) return null;
   return cents.toString();
-}
-
-export function submitWeek(
-  input: {
-    householdId: string;
-    agreementId: string;
-    weekStartsOn: string;
-    entries: WeeklyReportSubmitPayloadV1['entries'];
-  },
-  options: EnvelopeOptions = {}
-): CommandEnvelopeV1<WeeklyReportSubmitPayloadV1> {
-  return createCommandEnvelope({
-    ...options,
-    householdId: input.householdId,
-    aggregateType: 'time_entry',
-    payload: {
-      action: 'submit_week',
-      agreementId: input.agreementId,
-      weekStartsOn: input.weekStartsOn,
-      entries: input.entries
-    } satisfies WeeklyReportSubmitPayloadV1
-  }) as CommandEnvelopeV1<WeeklyReportSubmitPayloadV1>;
 }
 
 export function registerExtra(

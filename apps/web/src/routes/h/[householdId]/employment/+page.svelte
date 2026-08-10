@@ -7,7 +7,6 @@
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
   import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
-  import WeeklyReportCard from '$lib/components/employment/WeeklyReportCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
@@ -45,9 +44,6 @@
     overview?.agreements.find((option) => option.id === agreement?.id)?.employeeLabel ??
       'la empleada'
   );
-  // El parte semanal es siempre de la propia empleada: misma capacidad que
-  // registrar su trabajo, y solo sobre su propio acuerdo.
-  const canSubmitWeek = $derived(canRegisterExtra);
   const canSubmitExpense = $derived(isOwnAgreement && can(context.role, 'expense.create.self'));
   const canConfirmReceipt = $derived(isOwnAgreement && can(context.role, 'payment.confirm.self'));
   const canConfirmWork = $derived(agreement !== null && can(context.role, 'work.confirm'));
@@ -72,7 +68,7 @@
 
   // Jerarquía por rol: quien decide (la familia) ve las tarjetas con
   // decisiones pendientes arriba del expediente; la empleada conserva su orden
-  // (parte semanal y proyección primero).
+  // (la cuenta del mes primero).
   const pendingFirst = $derived(canConfirmWork || canCloseSettlement);
 
   function monthEnd(period: string): string {
@@ -225,15 +221,6 @@
       <div class="content-grid employment-grid">
         <div class="stack">
           {#if pendingFirst}{@render pendingDecisionCards()}{/if}
-
-          {#if agreement && canSubmitWeek}
-            <WeeklyReportCard
-              householdId={overview.householdId}
-              agreementId={agreement.id}
-              recentReports={overview.recentReports}
-              canSubmit={canSubmitWeek}
-            />
-          {/if}
 
           {#if seesAmounts}
             <article class="card ledger-card">

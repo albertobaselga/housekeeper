@@ -19,15 +19,21 @@ import {
   type ScheduleDayRow,
   type ScheduleRow,
   type SettlementLineRow,
-  type SettlementRow,
-  type WeeklyReportRow
+  type SettlementRow
 } from '$lib/employment/model';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:employment-export');
 
-export const EMPLOYMENT_EXPORT_VERSION = 1;
+/**
+ * Versión 2: el resumen en PDF pasó a llevar la cuenta de CADA mes con TODOS
+ * sus conceptos —los que suman, los que restan y los que constan sin
+ * transferirse—, y `liquidaciones.csv` estrena las filas `concepto_informativo`
+ * para decir lo mismo. Quien tenga un ZIP de la versión 1 no puede compararlo
+ * fichero a fichero con uno nuevo: la v1 solo enseñaba el total de cada mes.
+ */
+export const EMPLOYMENT_EXPORT_VERSION = 2;
 
 // --- Formateo CSV (RFC 4180) -------------------------------------------------
 
@@ -161,12 +167,136 @@ interface PaymentExportRow extends PaymentRow {
   status: string;
 }
 
+/**
+ * Un parte semanal histórico. El parte se retiró con la migración 0029 y las
+ * filas antiguas se conservaron como historia laboral; este fichero es el ÚNICO
+ * sitio donde se leen, y por eso el tipo vive aquí y no en el modelo de la
+ * pantalla, que ya no sabe nada de partes.
+ */
+interface WeeklyReportExportRow {
+  id: string;
+  weekStartsOn: string;
+  weekEndsOn: string;
+  status: string;
+  autoConfirmed: boolean;
+  disputeReason: string | null;
+}
+
+interface ManualAdjustmentExportRow {
+  id: string;
+  /** Mes al que se imputa, `YYYY-MM`. */
+  period: string;
+  label: string;
+  reason: string;
+  /** Con signo, tal como se apuntó. */
+  amountCents: string;
+  addsToPay: boolean;
+  status: string;
+}
+
+// --- La cuenta de un mes, entera ---------------------------------------------
+
+/**
+ * Un concepto del mes que NO mueve la transferencia.
+ *
+ * Son las dos piezas que el motor aparta de `lines` a propósito
+ * (`packages/domain/src/settlement.ts`): los complementos que la casa paga por
+ * su cuenta —un seguro médico— y los conceptos apuntados a mano con
+ * `adds_to_pay = false` —el ejemplo real: un anticipo ya devuelto en mano, que
+ * descontado otra vez se cobraría dos veces—.
+ *
+ * Van aparte de las líneas en el documento por el mismo motivo por el que van
+ * aparte en el motor: para que sea imposible sumarlos por descuido. Pero TIENEN
+ * que salir. El propietario lo pidió con estas palabras: «tiene que salir todos
+ * los conceptos que suman (o restan) en ese pago, los que apliquen en ese mes».
+ * Un concepto que existe y no aparece convierte el documento en una discusión.
+ */
+interface NotedConcept {
+  origin: 'complemento' | 'concepto_apuntado';
+  concept: string;
+  /** Con su signo. Los complementos de la casa son siempre positivos. */
+  amountCents: string;
+  /** Por qué no viaja en la transferencia, en una frase. */
+  note: string;
+}
+
+/** La cuenta de un mes tal como se cuenta: sus líneas, lo que consta y sus totales. */
+interface MonthAccount {
+  settlement: SettlementRow;
+  lines: readonly SettlementLineRow[];
+  noted: readonly NotedConcept[];
+}
+
+/** `2026-08-01` → `2026-08`. */
+function monthOf(isoDate: string): string {
+  return isoDate.slice(0, 7);
+}
+
+/**
+ * Reúne, mes a mes, todo lo que aplica: las líneas congeladas al cerrar y los
+ * conceptos que constan sin transferirse.
+ *
+ * Los que constan se reconstruyen desde los hechos, no desde la liquidación,
+ * porque la liquidación nunca los materializó como fila: el motor los aparta
+ * antes. Es la misma reconstrucción que hace el cierre —misma versión del
+ * contrato, misma ventana de vigencia—, así que el resultado coincide con lo
+ * que se decidió sobre ese mes.
+ */
+function buildMonthAccounts(input: {
+  settlements: readonly SettlementRow[];
+  lines: readonly SettlementLineRow[];
+  versions: readonly AgreementVersionRow[];
+  supplements: readonly RecurringSupplementRow[];
+  adjustments: readonly ManualAdjustmentExportRow[];
+}): MonthAccount[] {
+  return input.settlements.map((settlement) => {
+    const noted: NotedConcept[] = [];
+
+    // Complementos que paga la casa: los de la versión vigente el primer día
+    // del mes (la misma que pone el salario base) cuya vigencia toca el mes.
+    const version =
+      [...input.versions].filter((row) => row.effectiveFrom <= settlement.periodStart).at(-1) ??
+      null;
+    if (version) {
+      for (const row of input.supplements) {
+        if (row.agreementVersionId !== version.id) continue;
+        const view = buildSupplementView(row);
+        if (view.addsToPay || !view.active || view.amountCents === null) continue;
+        if (view.startsOn !== null && view.startsOn > settlement.periodEnd) continue;
+        if (view.endsOn !== null && view.endsOn < settlement.periodStart) continue;
+        noted.push({
+          origin: 'complemento',
+          concept: view.name,
+          amountCents: view.amountCents,
+          note: 'lo paga la casa aparte; no entra en la transferencia'
+        });
+      }
+    }
+
+    // Conceptos apuntados a mano imputados a ESTE mes y marcados como «consta,
+    // no se transfiere». Los anulados no cuentan: se anularon.
+    for (const adjustment of input.adjustments) {
+      if (adjustment.status !== 'recorded' || adjustment.addsToPay) continue;
+      if (adjustment.period !== monthOf(settlement.periodStart)) continue;
+      noted.push({
+        origin: 'concepto_apuntado',
+        concept: `${adjustment.label} · ${adjustment.reason}`,
+        amountCents: adjustment.amountCents,
+        note: 'consta en el expediente; no entra en la transferencia'
+      });
+    }
+
+    return {
+      settlement,
+      lines: input.lines.filter((line) => line.settlementId === settlement.id),
+      noted
+    };
+  });
+}
+
 // --- CSVs --------------------------------------------------------------------
 
-function settlementsCsv(
-  settlements: readonly SettlementRow[],
-  lines: readonly SettlementLineRow[]
-): string {
+function settlementsCsv(accounts: readonly MonthAccount[]): string {
   const header = [
     'liquidacion_id',
     'periodo_inicio',
@@ -189,7 +319,7 @@ function settlementsCsv(
     'gasto_id'
   ];
   const rows: (string | number | null)[][] = [];
-  for (const settlement of settlements) {
+  for (const { settlement, lines, noted } of accounts) {
     const base = [
       settlement.id,
       settlement.periodStart,
@@ -199,7 +329,7 @@ function settlementsCsv(
       settlement.receiptConfirmedAt,
       settlement.receiptNote
     ];
-    for (const line of lines.filter((row) => row.settlementId === settlement.id)) {
+    for (const line of lines) {
       rows.push([
         ...base,
         'linea',
@@ -214,6 +344,26 @@ function settlementsCsv(
         line.extraWorkEventId,
         line.advanceId,
         line.expenseId
+      ]);
+    }
+    // Lo que consta y no se transfiere, con su propio `tipo` para que ninguna
+    // hoja de cálculo lo sume junto a las líneas por descuido: filtrar por
+    // `tipo = 'linea'` sigue dando exactamente el total a transferir.
+    for (const concept of noted) {
+      rows.push([
+        ...base,
+        'concepto_informativo',
+        null,
+        'no_transferido',
+        concept.origin,
+        settlement.periodStart,
+        `${concept.concept} (${concept.note})`,
+        centsToDecimal(concept.amountCents),
+        concept.amountCents,
+        null,
+        null,
+        null,
+        null
       ]);
     }
     const total = (tipo: string, concepto: string, cents: string): (string | number | null)[] => [
@@ -295,7 +445,7 @@ function extrasCsv(extras: readonly ExtraWorkExportRow[]): string {
   );
 }
 
-function reportsCsv(reports: readonly WeeklyReportRow[]): string {
+function reportsCsv(reports: readonly WeeklyReportExportRow[]): string {
   return buildCsv(
     ['parte_id', 'semana_inicio', 'semana_fin', 'estado', 'auto_confirmado', 'motivo_disputa'],
     reports.map((report) => [
@@ -363,6 +513,48 @@ function balancesCsv(
 
 // --- PDF de resumen ----------------------------------------------------------
 
+/** Meses en español, para titular la cuenta de cada mes sin dependencias. */
+const MONTH_NAMES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+] as const;
+
+/** `2026-08-01` → `Agosto 2026`. */
+function monthTitle(isoDate: string): string {
+  const name = MONTH_NAMES[Number(isoDate.slice(5, 7)) - 1];
+  return name ? `${name} ${isoDate.slice(0, 4)}` : monthOf(isoDate);
+}
+
+/**
+ * Caracteres de WinAnsi que NO están en Latin-1 y que la fuente estándar sí
+ * sabe dibujar (comillas tipográficas, rayas, el símbolo del euro…).
+ */
+const WIN_ANSI_EXTRAS = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ';
+
+/**
+ * Texto que las fuentes estándar de pdf-lib saben dibujar.
+ *
+ * `StandardFonts.Helvetica` codifica en WinAnsi: un carácter fuera de ese
+ * repertorio hace que `drawText` LANCE. Y aquí se imprime texto que escribió
+ * una persona —el nombre de un concepto, el motivo de un apunte—, así que un
+ * emoji en una etiqueta tumbaría la exportación entera y la empleada se
+ * quedaría sin poder descargar su expediente. Se sustituye por «?» y el
+ * documento sale: perder un carácter es infinitamente mejor que perder el
+ * documento, y el CSV lleva el texto íntegro en UTF-8 al lado.
+ */
+function pdfSafe(text: string): string {
+  let out = '';
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code === 0x09 || code === 0x0a || code === 0x0d) out += ' ';
+    else if (code >= 0x20 && code <= 0x7e) out += char;
+    else if (code >= 0xa0 && code <= 0xff) out += char;
+    else if (WIN_ANSI_EXTRAS.includes(char)) out += char;
+    else out += '?';
+  }
+  return out;
+}
+
 interface SummaryInput {
   householdName: string;
   employeeName: string;
@@ -380,15 +572,30 @@ interface SummaryInput {
   currentSchedule: ScheduleRow | null;
   currentScheduleDays: readonly ScheduleDayRow[];
   agreement: AgreementExportRow | null;
-  settlements: readonly SettlementRow[];
+  /** La cuenta de cada mes con TODOS sus conceptos. */
+  accounts: readonly MonthAccount[];
   compensation: readonly CompensationBalanceRow[];
   advances: readonly AdvanceRow[];
 }
+
+const PAGE_WIDTH = 595.28;
+const PAGE_HEIGHT = 841.89;
+const LEFT = 48;
+const RIGHT = 547;
+/** Por debajo de aquí solo va el pie; el contenido salta de página. */
+const CONTENT_FLOOR = 76;
 
 /**
  * Resumen determinista con pdf-lib (patrón exacto de renderReceiptPdf en el
  * worker): metadatos fijados, fechas de creación/modificación = generatedAt y
  * sin object streams; el mismo instante produce siempre los mismos bytes.
+ *
+ * Paginado, a diferencia de la versión anterior. Dejó de caber en una hoja
+ * cuando el documento pasó a contar la cuenta de cada mes entera en vez de una
+ * línea por mes con su total: el propietario lo pidió literalmente —«tiene que
+ * salir todos los conceptos que suman (o restan) en ese pago, los que apliquen
+ * en ese mes»—, y un resumen que se corta por abajo cuando el historial crece
+ * es peor que no tenerlo, porque no se nota.
  */
 async function renderSummaryPdf(input: SummaryInput): Promise<Uint8Array> {
   const document = await PDFDocument.create({ updateMetadata: false });
@@ -401,41 +608,78 @@ async function renderSummaryPdf(input: SummaryInput): Promise<Uint8Array> {
 
   const regular = await document.embedFont(StandardFonts.Helvetica);
   const bold = await document.embedFont(StandardFonts.HelveticaBold);
-  const page = document.addPage([595.28, 841.89]);
-  const { height } = page.getSize();
-  let y = height - 54;
+
+  let page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+  let y = PAGE_HEIGHT - 54;
+
+  /** Salta de página si lo siguiente no cabe entero por encima del pie. */
+  const ensure = (space: number): void => {
+    if (y - space >= CONTENT_FLOOR) return;
+    page = document.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    y = PAGE_HEIGHT - 54;
+  };
+
+  const write = (
+    text: string,
+    options: { x?: number; size?: number; strong?: boolean; color?: ReturnType<typeof rgb> } = {}
+  ): void => {
+    page.drawText(pdfSafe(text), {
+      x: options.x ?? LEFT,
+      y,
+      size: options.size ?? 10,
+      font: options.strong ? bold : regular,
+      ...(options.color ? { color: options.color } : {})
+    });
+  };
+
+  /** Concepto a la izquierda, importe pegado al margen derecho. */
+  const money = (
+    concept: string,
+    amount: string,
+    options: { x?: number; size?: number; strong?: boolean; color?: ReturnType<typeof rgb> } = {}
+  ): void => {
+    const size = options.size ?? 10;
+    const font = options.strong ? bold : regular;
+    const safeAmount = pdfSafe(amount);
+    write(concept, options);
+    page.drawText(safeAmount, {
+      x: RIGHT - font.widthOfTextAtSize(safeAmount, size),
+      y,
+      size,
+      font,
+      ...(options.color ? { color: options.color } : {})
+    });
+  };
+
+  const heading = (text: string): void => {
+    ensure(34);
+    y -= 6;
+    write(text, { size: 12, strong: true });
+    y -= 20;
+  };
+
+  const row = (concept: string, value: string): void => {
+    ensure(16);
+    money(concept, value);
+    y -= 16;
+  };
 
   // Membrete: la casa que emite el documento, no el nombre del proyecto.
-  page.drawText(input.householdName.toLocaleUpperCase('es'), {
-    x: 48,
-    y,
+  write(input.householdName.toLocaleUpperCase('es'), {
     size: 11,
-    font: bold,
+    strong: true,
     color: rgb(0.08, 0.32, 0.27)
   });
   y -= 30;
-  page.drawText('Mi expediente laboral', { x: 48, y, size: 19, font: bold });
+  write('Mi expediente laboral', { size: 19, strong: true });
   y -= 22;
-  page.drawText(input.employeeName, { x: 48, y, size: 10, font: regular });
+  write(input.employeeName);
   y -= 28;
-  page.drawText('Documento doméstico no oficial', {
-    x: 48,
-    y,
-    size: 10,
-    font: bold,
+  write('Documento doméstico no oficial', {
+    strong: true,
     color: rgb(0.64, 0.28, 0.06)
   });
   y -= 34;
-
-  const heading = (text: string): void => {
-    page.drawText(text, { x: 48, y, size: 12, font: bold });
-    y -= 20;
-  };
-  const row = (concept: string, value: string): void => {
-    page.drawText(concept.slice(0, 64), { x: 48, y, size: 10, font: regular });
-    page.drawText(value.slice(0, 32), { x: 400, y, size: 10, font: bold });
-    y -= 16;
-  };
 
   heading('Contrato vigente');
   if (input.agreement && input.currentVersion) {
@@ -452,20 +696,13 @@ async function renderSummaryPdf(input: SummaryInput): Promise<Uint8Array> {
         days: input.currentScheduleDays,
         contractedWeeklyMinutes: input.currentVersion.contractedWeeklyMinutes
       });
-      // `row` recorta el valor a 32 caracteres, y la frase del horario es más
-      // larga: va como texto corrido, en su propia línea.
-      page.drawText('Horario', { x: 48, y, size: 10, font: regular });
+      ensure(46);
+      write('Horario');
       y -= 14;
-      page.drawText(schedule.sentence.slice(0, 96), { x: 60, y, size: 9, font: bold });
+      write(schedule.sentence, { x: 60, size: 9, strong: true });
       y -= 16;
       if (schedule.mismatchLabel) {
-        page.drawText(schedule.mismatchLabel.slice(0, 110), {
-          x: 60,
-          y,
-          size: 8,
-          font: regular,
-          color: rgb(0.64, 0.28, 0.06)
-        });
+        write(schedule.mismatchLabel, { x: 60, size: 8, color: rgb(0.64, 0.28, 0.06) });
         y -= 16;
       }
     }
@@ -477,44 +714,158 @@ async function renderSummaryPdf(input: SummaryInput): Promise<Uint8Array> {
     for (const supplement of input.currentSupplements) {
       const view = buildSupplementView(supplement);
       if (!view.active || view.amountLabel === null) continue;
-      row(
-        view.addsToPay ? view.name : `${view.name} (lo paga la casa)`,
-        view.amountLabel
-      );
+      row(view.addsToPay ? view.name : `${view.name} (lo paga la casa)`, view.amountLabel);
     }
   } else {
-    page.drawText('Sin contrato vigente visible.', { x: 48, y, size: 10, font: regular });
+    write('Sin contrato vigente visible.');
     y -= 16;
   }
   y -= 14;
 
-  heading('Liquidaciones');
-  if (input.settlements.length === 0) {
-    page.drawText('Sin liquidaciones registradas.', { x: 48, y, size: 10, font: regular });
+  // ── La cuenta de cada mes, con TODOS sus conceptos ────────────────────────
+  heading('La cuenta de cada mes');
+  if (input.accounts.length === 0) {
+    write('Todavía no hay ningún mes con cuenta.');
     y -= 16;
+  } else {
+    ensure(18);
+    write('De la más reciente a la más antigua. Cada mes suma sus líneas hasta el total a transferir.', {
+      size: 8,
+      color: rgb(0.35, 0.35, 0.35)
+    });
+    y -= 20;
   }
-  for (const settlement of input.settlements.slice(0, 18)) {
+
+  // Más reciente primero: quien abre el documento busca el mes de ahora, no el
+  // de hace tres años. El CSV mantiene el orden cronológico del libro.
+  for (const account of [...input.accounts].reverse()) {
+    const { settlement, lines, noted } = account;
     const state = label(SETTLEMENT_STATUS, settlement.status);
-    const confirmed = settlement.receiptConfirmedAt ? 'cobro confirmado' : 'cobro sin confirmar';
-    row(`${settlement.periodStart} a ${settlement.periodEnd} · ${state} · ${confirmed}`, euroLabel(settlement.transferTotalCents));
+    const collected = settlement.receiptConfirmedAt ? 'cobro confirmado' : 'cobro sin confirmar';
+
+    // La cabecera del mes y su primera línea no se separan: un título solo al
+    // pie de una página es justo lo que hace dudar de si falta algo.
+    ensure(56);
+    write(monthTitle(settlement.periodStart), { size: 11, strong: true });
+    y -= 13;
+    write(`del ${settlement.periodStart} al ${settlement.periodEnd} · vence el ${settlement.dueOn} · ${state} · ${collected}`, {
+      size: 8,
+      color: rgb(0.35, 0.35, 0.35)
+    });
+    y -= 16;
+
+    if (lines.length === 0) {
+      write(
+        settlement.status === 'open'
+          ? 'Mes sin cerrar: los conceptos se fijan al cerrarlo.'
+          : 'Sin conceptos registrados en este mes.',
+        { x: 56, size: 9 }
+      );
+      y -= 18;
+    } else {
+      for (const line of lines) {
+        ensure(15);
+        money(line.concept, euroLabel(line.amountCents), { x: 56, size: 9 });
+        y -= 15;
+      }
+
+      ensure(66);
+      page.drawLine({ start: { x: 56, y: y + 6 }, end: { x: RIGHT, y: y + 6 }, thickness: 0.5 });
+      y -= 6;
+      money('Salario del mes', euroLabel(settlement.salaryTotalCents), { x: 56, size: 9 });
+      y -= 14;
+      money('Reembolso de gastos', euroLabel(settlement.reimbursementTotalCents), { x: 56, size: 9 });
+      y -= 16;
+      money('Total a transferir', euroLabel(settlement.transferTotalCents), {
+        x: 56,
+        size: 11,
+        strong: true
+      });
+      y -= 14;
+      write(
+        `Pagado ${euroLabel(settlement.paidCents)} · pendiente ${euroLabel(settlement.pendingCents)}`,
+        { x: 56, size: 8, color: rgb(0.35, 0.35, 0.35) }
+      );
+      y -= 16;
+
+      // Que cuadre no es una aspiración: se comprueba. El total congelado sale
+      // de un disparador de la base y las líneas de otra consulta; si alguna
+      // vez dejaran de coincidir, el documento lo DICE en vez de enseñar una
+      // suma que no sale.
+      const printed = lines.reduce((total, line) => total + BigInt(line.amountCents), 0n);
+      if (printed !== BigInt(settlement.transferTotalCents)) {
+        ensure(16);
+        write(
+          `Aviso: las líneas de arriba suman ${euroLabel(printed.toString())} y el total congelado es ${euroLabel(settlement.transferTotalCents)}. Consúltalo con quien administra la casa.`,
+          { x: 56, size: 8, color: rgb(0.64, 0.28, 0.06) }
+        );
+        y -= 16;
+      }
+    }
+
+    if (noted.length > 0) {
+      ensure(18);
+      write('Consta en este mes y NO entra en la transferencia:', { x: 56, size: 9, strong: true });
+      y -= 14;
+      for (const concept of noted) {
+        ensure(26);
+        money(concept.concept, euroLabel(concept.amountCents), { x: 64, size: 9 });
+        y -= 11;
+        write(concept.note, { x: 64, size: 8, color: rgb(0.35, 0.35, 0.35) });
+        y -= 15;
+      }
+    }
+    y -= 10;
   }
-  y -= 14;
+  y -= 4;
 
   heading('Saldos actuales');
   for (const balance of input.compensation) {
-    row(`Compensación permanente (${label(BALANCE_TYPE, balance.balanceType)})`, `${balance.balanceMinutes} min`);
+    row(
+      `Compensación permanente (${label(BALANCE_TYPE, balance.balanceType)})`,
+      `${balance.balanceMinutes} min`
+    );
   }
   for (const advance of input.advances) {
     row(`Anticipo del ${advance.issuedOn} · pendiente`, euroLabel(advance.outstandingCents));
   }
   if (input.compensation.length === 0 && input.advances.length === 0) {
-    page.drawText('Sin saldos pendientes.', { x: 48, y, size: 10, font: regular });
+    ensure(16);
+    write('Sin saldos pendientes.');
     y -= 16;
   }
 
-  page.drawText(`Generado: ${input.generatedAt.toISOString()}`, { x: 48, y: 43, size: 8, font: regular });
+  // Pie en TODAS las hojas: una página suelta de este documento tiene que poder
+  // decir de qué documento es y de cuándo.
+  const pages = document.getPages();
+  pages.forEach((sheet, index) => {
+    sheet.drawText(pdfSafe(`${input.employeeName} · Mi expediente laboral · documento doméstico no oficial`), {
+      x: LEFT,
+      y: 56,
+      size: 8,
+      font: regular,
+      color: rgb(0.35, 0.35, 0.35)
+    });
+    sheet.drawText(`Generado: ${input.generatedAt.toISOString()}`, {
+      x: LEFT,
+      y: 43,
+      size: 8,
+      font: regular
+    });
+    const folio = `${index + 1} / ${pages.length}`;
+    sheet.drawText(folio, {
+      x: RIGHT - regular.widthOfTextAtSize(folio, 8),
+      y: 43,
+      size: 8,
+      font: regular
+    });
+  });
 
-  return document.save({ addDefaultPage: false, objectsPerTick: Number.POSITIVE_INFINITY, useObjectStreams: false });
+  return document.save({
+    addDefaultPage: false,
+    objectsPerTick: Number.POSITIVE_INFINITY,
+    useObjectStreams: false
+  });
 }
 
 function sha256(bytes: Uint8Array): string {
@@ -657,8 +1008,10 @@ export async function buildEmploymentExport(
           )
         : empty;
 
+      // Partes semanales: histórico cerrado (migración 0029). No se crean
+      // nuevos y ninguna pantalla los enseña; este CSV es donde se leen.
       const reports = agreementIds.length
-        ? await client.query<WeeklyReportRow>(
+        ? await client.query<WeeklyReportExportRow>(
             `select id,
                     week_starts_on::text as "weekStartsOn",
                     week_ends_on::text as "weekEndsOn",
@@ -705,6 +1058,26 @@ export async function buildEmploymentExport(
                 and line.expense_id = expense.id
               where expense.household_id = $1 and expense.agreement_id = any($2::uuid[])
               order by expense.incurred_on, expense.submitted_at, expense.id`,
+            [householdId, agreementIds]
+          )
+        : empty;
+
+      // Conceptos apuntados a mano (0022). Los que suman ya están dentro de las
+      // líneas de su liquidación; estos hacen falta enteros porque los que NO
+      // mueven la transferencia nunca se materializaron como línea —el motor
+      // los aparta a propósito— y aun así forman parte de lo que se decidió
+      // sobre ese mes.
+      const adjustments = agreementIds.length
+        ? await client.query<ManualAdjustmentExportRow>(
+            `select id,
+                    to_char(period_month, 'YYYY-MM') as "period",
+                    label, reason,
+                    amount_cents::text as "amountCents",
+                    adds_to_pay as "addsToPay",
+                    status::text as "status"
+               from app.manual_adjustments
+              where household_id = $1 and agreement_id = any($2::uuid[])
+              order by period_month, recorded_at, id`,
             [householdId, agreementIds]
           )
         : empty;
@@ -815,8 +1188,18 @@ export async function buildEmploymentExport(
         versions.rows[0] ??
         null;
 
+      // La cuenta de cada mes se arma UNA vez y la leen los dos formatos: el
+      // CSV y el PDF no pueden contar cosas distintas del mismo mes.
+      const accounts = buildMonthAccounts({
+        settlements: settlements.rows,
+        lines: lines.rows,
+        versions: versions.rows,
+        supplements: supplements.rows,
+        adjustments: adjustments.rows
+      });
+
       const files = new Map<string, Uint8Array>();
-      files.set('liquidaciones.csv', strToU8(settlementsCsv(settlements.rows, lines.rows)));
+      files.set('liquidaciones.csv', strToU8(settlementsCsv(accounts)));
       files.set('pagos.csv', strToU8(paymentsCsv(payments.rows, settlements.rows)));
       files.set('jornadas-extra.csv', strToU8(extrasCsv(extras.rows)));
       files.set('partes-semanales.csv', strToU8(reportsCsv(reports.rows)));
@@ -842,7 +1225,7 @@ export async function buildEmploymentExport(
             : null,
           currentScheduleDays: scheduleDays.rows,
           agreement: activeAgreement,
-          settlements: settlements.rows,
+          accounts,
           compensation: compensation.rows,
           advances: advances.rows
         })
