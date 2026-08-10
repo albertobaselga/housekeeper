@@ -1,3 +1,5 @@
+import type { Pool } from 'pg';
+
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
 import { isRole } from '@casa-clara/contracts';
 
@@ -21,9 +23,12 @@ function initialsFor(name: string): string {
 export async function resolveAppUser(
   userId: string,
   email: string,
-  fallbackName: string
+  fallbackName: string,
+  // Inyectable como en el resto de lecturas del servidor: la suite de
+  // integración le pasa su propio pool sin tocar DATABASE_URL del proceso.
+  databasePool: Pool | null = getDatabasePool()
 ): Promise<DemoUser | null> {
-  const pool = getDatabasePool();
+  const pool = databasePool;
   if (!pool) return null;
   const client = await pool.connect();
   try {
