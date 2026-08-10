@@ -5,6 +5,7 @@ import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { guardForPath } from '$lib/auth/routing';
 import { resolveAppUser } from '$lib/server/app-user.server';
 import { getAuth } from '$lib/server/auth.server';
+import { bootRefusal, refusalResponse, skipDuringBuild } from '$lib/server/boot-guard.server';
 import {
   DATA_UNAVAILABLE_MESSAGE,
   DATA_UNAVAILABLE_STATUS,
@@ -16,6 +17,15 @@ import { syntheticGuard } from '$lib/server/synthetic.server';
 import type { Session } from '$lib/auth/types';
 
 export const handle: Handle = async ({ event, resolve }) => {
+  // Lo PRIMERO, antes de tocar identidad, base de datos o rutas: la regla
+  // indivisible de configuración. Se calcula una vez por proceso; a partir de
+  // ahí es una comparación con null. Ver boot-guard.server.ts para por qué
+  // negarse aquí no deja a nadie de la casa fuera.
+  if (!skipDuringBuild()) {
+    const refusal = bootRefusal();
+    if (refusal) return refusalResponse(refusal);
+  }
+
   const auth = getAuth();
   // Control 9: el flag solo-sintético se lee aquí y viaja por layout data
   // hasta el banner persistente del AppShell.
@@ -56,12 +66,18 @@ export const handle: Handle = async ({ event, resolve }) => {
       event.locals.session = null;
       event.locals.user = null;
     }
-  } else {
-    // Modo demo sin base de datos: sesiones en memoria y cuentas fixture.
+  } else if (__FIXTURE_LOGIN__) {
+    // Modo demo sin base de datos: sesiones en memoria y cuentas fixture. La
+    // rama completa desaparece del paquete cuando la constante es falsa, y con
+    // ella la única vía que tenía una cookie `cc_demo_session` de convertirse
+    // en `locals.user` —y de ahí en `set_config('app.user_id', …)`—.
     const session = readDemoSession(event.cookies);
     const user = session ? getDemoUser(session.userId) : null;
     event.locals.session = user ? session : null;
     event.locals.user = user;
+  } else {
+    event.locals.session = null;
+    event.locals.user = null;
   }
 
   const guard = guardForPath(event.url.pathname);

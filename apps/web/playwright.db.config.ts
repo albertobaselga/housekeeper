@@ -51,8 +51,16 @@ export default defineConfig({
   webServer: {
     // Build de producción con adapter-node y DATABASE_URL: login por selector
     // demo (sin DATABASE_AUTH_URL) pero con datos reales bajo RLS.
+    //
+    // Ésta es, literalmente, la combinación que en producción sería letal: un
+    // selector de cuentas de mentira sobre datos de verdad. Aquí es legítima
+    // porque los datos son fixtures y porque exige declarar
+    // CASA_CLARA_FIXTURE_LOGIN, que es lo que la vuelve imposible de alcanzar
+    // por descuido: sin esa variable el selector no existe en el paquete, y con
+    // ella el paquete se niega a arrancar en cualquier despliegue de Vercel
+    // (deployment-config.js, 'fixture-bundle-with-database').
     command: `pnpm build && PORT=${PORT} ORIGIN=http://127.0.0.1:${PORT} node build`,
-    env: { DATABASE_URL: appDatabaseUrl() },
+    env: { DATABASE_URL: appDatabaseUrl(), CASA_CLARA_FIXTURE_LOGIN: 'true' },
     url: `http://127.0.0.1:${PORT}/login`,
     reuseExistingServer: false,
     timeout: 240_000
