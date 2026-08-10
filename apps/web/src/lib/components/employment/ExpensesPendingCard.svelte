@@ -260,9 +260,9 @@
         <span>
           <strong>{expense.description}</strong>
           <small>
-            {expense.incurredOnLabel} · pendiente de aprobación{#if expense.hasReceipt}&nbsp;·
+            {expense.incurredOnLabel} · pendiente de aprobación{#if expense.hasReceipt}&nbsp;· Justificante adjunto ✓ ·
               <!-- Se puede MIRAR antes de decidir: quien aprueba no tiene que
-                   fiarse de que la foto exista, y quien lo subió comprueba que
+                   fiarse de que la foto exista, y quien la subió comprueba que
                    salió legible. La ruta valida sesión y pertenencia. -->
               <a
                 href={`/api/v1/households/${householdId}/receipts/${expense.id}`}

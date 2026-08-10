@@ -8,11 +8,10 @@ import { E2E_SEED, HOUSEHOLD, loginAs } from './helpers';
 // volver la conexión la foto se sube primero y su identificador entra en el
 // mismo comando, así que el gasto nace ya con el justificante enlazado.
 //
-// La tubería de adjuntos real necesita almacén de objetos y antivirus, que no
-// existen en esta batería: se sustituye SOLO ese salto (la respuesta de
-// /attachments) por un objeto de almacenamiento sembrado de verdad en
-// Postgres. Todo lo demás —outbox, re-enlace, comando, RLS y documento— es
-// real.
+// La tubería de adjuntos real necesita un almacén de objetos, que no existe en
+// esta batería: se sustituye SOLO ese salto (la respuesta de /attachments) por
+// un objeto de almacenamiento sembrado de verdad en Postgres. Todo lo demás
+// —outbox, re-enlace, comando, RLS y documento— es real.
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 test.describe.configure({ mode: 'serial' });
 
@@ -53,7 +52,7 @@ test('Ana hace la foto sin conexión y el gasto llega con su justificante enlaza
   await loginAs(page, 'employee');
 
   // El único salto simulado: el almacén de objetos devuelve el identificador
-  // del objeto sembrado, como haría S3 + ClamAV en un entorno completo.
+  // del objeto sembrado, como haría Supabase Storage en un entorno completo.
   await page.route(`**/api/v1/households/${HOUSEHOLD}/attachments`, (route) =>
     route.fulfill({
       status: 201,
@@ -68,16 +67,22 @@ test('Ana hace la foto sin conexión y el gasto llega con su justificante enlaza
 
   await context.setOffline(true);
   try {
-    // La foto ya NO exige conexión: el campo sigue disponible sin red.
-    const receipt = form.locator('input[type="file"]');
-    await expect(receipt).toBeEnabled();
+    // La foto ya NO exige conexión: los campos siguen disponibles sin red.
+    // Son DOS: elegir un fichero y hacer la foto. Con `capture` puesto el móvil
+    // abre la cámara y deja de ofrecer la galería, así que uno solo no basta.
+    const camera = form.getByLabel('Hacer la foto ahora');
+    await expect(camera).toBeEnabled();
+    await expect(camera).toHaveAttribute('capture', 'environment');
+    await expect(form.getByLabel('Elegir un fichero o una foto guardada')).toBeEnabled();
     await expect(form).toContainText('Se guarda en este dispositivo y se une al gasto en cuanto vuelva la red');
 
-    await receipt.setInputFiles({
+    await camera.setInputFiles({
       name: 'ticket.jpg',
       mimeType: 'image/jpeg',
       buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46])
     });
+    // La foto se prepara al elegirla; el gasto no sale hasta que está lista.
+    await expect(form).toContainText('Adjunto: ticket.jpg');
     await form.getByLabel('Importe (€)').fill('21,75');
     await form.getByLabel('Descripción').fill(DESCRIPTION);
     await form.getByRole('button', { name: 'Añadir gasto' }).click();
