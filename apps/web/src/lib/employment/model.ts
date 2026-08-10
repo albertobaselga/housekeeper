@@ -345,9 +345,18 @@ export interface ScheduleDayView {
   startsAt: string | null;
   endsAt: string | null;
   longBreakMinutes: number;
+  /** «hora y media»; null los días de libranza o sin descanso pactado. */
+  breakLabel: string | null;
   effectiveMinutes: number;
   /** «8:00 a 16:30» o «Libra». */
   hoursLabel: string;
+  /**
+   * La línea entera de ese día: horas, descanso y nota, ya cosidas. Se arma
+   * aquí y no en la plantilla porque los separadores entre trozos opcionales
+   * son justo lo que Svelte se come al recortar el espacio en blanco de un
+   * bloque `{#if}`.
+   */
+  detailLabel: string;
   /** Minutos efectivos en palabras: «7 h», «5 h», «—» si libra. */
   effectiveLabel: string;
   /** true si este día NO es la jornada tipo. */
@@ -781,12 +790,35 @@ export function weeklyHoursLabel(minutes: number): string {
   return `${hours} h${rest > 0 ? ` ${rest} min` : ''} a la semana`;
 }
 
-/** «7 h», «7 h 30 min». Sin la coletilla semanal, para una celda de tabla. */
-function hoursLabel(minutes: number): string {
-  const hours = Math.trunc(minutes / 60);
-  const rest = minutes % 60;
+/** «7 h», «7 h 30 min», «30 min». Sin la coletilla semanal, para una celda. */
+export function hoursLabel(minutes: number): string {
+  const hours = Math.trunc(Math.abs(minutes) / 60);
+  const rest = Math.abs(minutes) % 60;
   if (hours === 0) return `${rest} min`;
   return `${hours} h${rest > 0 ? ` ${rest} min` : ''}`;
+}
+
+/**
+ * La frase que denuncia que el horario y la jornada contratada no dicen lo
+ * mismo, o null si cuadran.
+ *
+ * Vive aquí y no en la plantilla porque la escriben DOS sitios: el servidor,
+ * al pintar una versión guardada, y el editor de administración, mientras se
+ * teclea. Si cada uno la redactara por su cuenta, la misma incoherencia se
+ * contaría con dos números distintos según dónde se mirara — que es exactamente
+ * lo que pasó la primera vez que se escribió dos veces.
+ */
+export function scheduleMismatchLabel(
+  weeklyMinutes: number,
+  contractedWeeklyMinutes: number
+): string | null {
+  const difference = weeklyMinutes - contractedWeeklyMinutes;
+  if (difference === 0) return null;
+  return (
+    `El horario suma ${hoursLabel(weeklyMinutes)} a la semana y la jornada contratada ` +
+    `dice ${hoursLabel(contractedWeeklyMinutes)}: ` +
+    `${difference > 0 ? 'sobran' : 'faltan'} ${hoursLabel(difference)}.`
+  );
 }
 
 /**
@@ -828,7 +860,11 @@ export function buildScheduleView(input: {
 
   const week = resolveWeek(pure);
   const coherence = scheduleCoherence(pure, input.contractedWeeklyMinutes);
-  const excess = coherence.differenceMinutes > 0;
+  /** «lunes» → «Lunes»: el motor puro los dice en minúscula, en mitad de frase. */
+  const dayLabel = (weekday: Weekday): string => {
+    const name = weekdayName(weekday);
+    return `${name[0]!.toLocaleUpperCase('es')}${name.slice(1)}`;
+  };
 
   return {
     id: input.schedule.id,
@@ -842,32 +878,42 @@ export function buildScheduleView(input: {
     note: input.schedule.note,
     days: week.map((day) => ({
       weekday: day.weekday,
-      weekdayLabel: `${weekdayName(day.weekday)[0]!.toLocaleUpperCase('es')}${weekdayName(day.weekday).slice(1)}`,
+      weekdayLabel: dayLabel(day.weekday),
       works: day.works,
       startsAt: day.startsAt,
       endsAt: day.endsAt,
       longBreakMinutes: day.longBreakMinutes,
+      breakLabel:
+        day.works && day.longBreakMinutes > 0 ? spokenDuration(day.longBreakMinutes) : null,
       effectiveMinutes: day.effectiveMinutes,
       hoursLabel: day.works
         ? `${spokenTime(day.startsAt!)} a ${spokenTime(day.endsAt!)}`
         : 'Libra',
+      detailLabel: [
+        day.works ? `${spokenTime(day.startsAt!)} a ${spokenTime(day.endsAt!)}` : 'Libra',
+        day.works && day.longBreakMinutes > 0
+          ? `${spokenDuration(day.longBreakMinutes)} de descanso`
+          : null,
+        day.note === '' ? null : day.note
+      ]
+        .filter((piece): piece is string => piece !== null)
+        .join(' · '),
       effectiveLabel: day.works ? hoursLabel(day.effectiveMinutes) : '—',
       differs: day.differs,
       note: day.note
     })),
     restDayLabels: week
       .filter((day) => !day.works)
-      .map((day) => `${weekdayName(day.weekday)[0]!.toLocaleUpperCase('es')}${weekdayName(day.weekday).slice(1)}`),
+      .map((day) => dayLabel(day.weekday)),
     weeklyMinutes: coherence.weeklyMinutes,
     weeklyLabel: weeklyHoursLabel(coherence.weeklyMinutes),
     contractedWeeklyMinutes: coherence.contractedWeeklyMinutes,
     contractedLabel: weeklyHoursLabel(coherence.contractedWeeklyMinutes),
     matchesContract: coherence.matches,
-    mismatchLabel: coherence.matches
-      ? null
-      : `El horario suma ${hoursLabel(coherence.weeklyMinutes)} a la semana y la jornada contratada ` +
-        `dice ${hoursLabel(coherence.contractedWeeklyMinutes)}: ` +
-        `${excess ? 'sobran' : 'faltan'} ${hoursLabel(Math.abs(coherence.differenceMinutes))}.`
+    mismatchLabel: scheduleMismatchLabel(
+      coherence.weeklyMinutes,
+      coherence.contractedWeeklyMinutes
+    )
   };
 }
 

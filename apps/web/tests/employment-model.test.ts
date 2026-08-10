@@ -21,6 +21,7 @@ import {
   formatMinutes,
   parseCents,
   periodLabel,
+  scheduleMismatchLabel,
   sourceAnchor,
   vacationRangeLabel,
   type AgreementVersionRow,
@@ -164,11 +165,20 @@ describe('horario del contrato', () => {
     expect(view.days[0]).toMatchObject({
       weekdayLabel: 'Lunes',
       hoursLabel: '8:00 a 16:30',
+      breakLabel: 'hora y media',
       effectiveLabel: '7 h',
       differs: false
     });
+    // Un día libre no tiene descanso que anunciar.
+    expect(view.days[6]!.breakLabel).toBeNull();
+    expect(view.days[0]!.detailLabel).toBe('8:00 a 16:30 · hora y media de descanso');
     expect(view.days[5]).toMatchObject({ weekdayLabel: 'Sábado', hoursLabel: '8:00 a 14:30' });
-    expect(view.days[6]).toMatchObject({ weekdayLabel: 'Domingo', hoursLabel: 'Libra', effectiveLabel: '—' });
+    expect(view.days[6]).toMatchObject({
+      weekdayLabel: 'Domingo',
+      hoursLabel: 'Libra',
+      effectiveLabel: '—',
+      detailLabel: 'Libra'
+    });
     expect(view.restDayLabels).toEqual(['Domingo']);
     expect(view.weeklyLabel).toBe('40 h a la semana');
     expect(view.breakLabel).toBe('hora y media');
@@ -191,6 +201,19 @@ describe('horario del contrato', () => {
     expect(falta.mismatchLabel).toBe(
       'El horario suma 40 h a la semana y la jornada contratada dice 45 h: faltan 5 h.'
     );
+  });
+
+  it('una diferencia de menos de una hora se dice en minutos, no en «0 h»', () => {
+    // Lo escribe una sola función porque la escriben dos sitios —el servidor y
+    // el editor mientras se teclea—: cuando estaba duplicada, uno de los dos
+    // decía «sobran 0 h 30 min».
+    expect(scheduleMismatchLabel(2430, 2400)).toBe(
+      'El horario suma 40 h 30 min a la semana y la jornada contratada dice 40 h: sobran 30 min.'
+    );
+    expect(scheduleMismatchLabel(2400, 2430)).toBe(
+      'El horario suma 40 h a la semana y la jornada contratada dice 40 h 30 min: faltan 30 min.'
+    );
+    expect(scheduleMismatchLabel(2400, 2400)).toBeNull();
   });
 
   it('solo toma los días de SU horario, no los de otra versión', () => {

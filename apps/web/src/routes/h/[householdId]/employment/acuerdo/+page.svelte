@@ -7,7 +7,7 @@
     type Weekday
   } from '@casa-clara/domain';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import { centsToEuroInput } from '$lib/employment/model';
+  import { centsToEuroInput, scheduleMismatchLabel } from '$lib/employment/model';
   import type {
     AgreementVersionAdminView,
     EmployeeCandidateView
@@ -170,18 +170,14 @@
     };
     try {
       const coherence = scheduleCoherence(pure, draft.contractedWeeklyMinutes);
-      const hours = (minutes: number) => {
-        const whole = Math.trunc(Math.abs(minutes) / 60);
-        const rest = Math.abs(minutes) % 60;
-        return `${whole} h${rest > 0 ? ` ${rest} min` : ''}`;
-      };
       return {
         minutes: coherence.weeklyMinutes,
-        mismatch: coherence.matches
-          ? null
-          : `Este horario suma ${hours(coherence.weeklyMinutes)} a la semana y la jornada contratada dice ` +
-            `${hours(coherence.contractedWeeklyMinutes)}: ${coherence.differenceMinutes > 0 ? 'sobran' : 'faltan'} ` +
-            `${hours(coherence.differenceMinutes)}.`
+        // La frase la escribe el modelo, no esta plantilla: es la MISMA que
+        // verá luego la versión guardada y la que lee la empleada.
+        mismatch: scheduleMismatchLabel(
+          coherence.weeklyMinutes,
+          coherence.contractedWeeklyMinutes
+        )
       };
     } catch {
       return null;
@@ -295,6 +291,7 @@
   </label>
 
   {#if draft.schedule.declared}
+    {@const preview = livePreview(draft)}
     <div class="form-grid">
       <label>Entra a las
         <input type="time" name="schedule.startsAt" bind:value={draft.schedule.startsAt} required />
@@ -391,15 +388,12 @@
       jornada contratada es un hecho que la casa tiene que ver, no un error de
       tecleo que el programa pueda arreglar solo.
     -->
-    {#if livePreview(draft)}
-      {@const preview = livePreview(draft)!}
-      {#if preview.mismatch}
-        <p class="form-error" role="status">{preview.mismatch}</p>
-      {:else}
-        <p class="form-ok" role="status">
-          El horario cuadra con la jornada contratada: {Math.trunc(preview.minutes / 60)} h a la semana.
-        </p>
-      {/if}
+    {#if preview?.mismatch}
+      <p class="form-error" role="status">{preview.mismatch}</p>
+    {:else if preview}
+      <p class="form-ok" role="status">
+        El horario cuadra con la jornada contratada: {Math.trunc(preview.minutes / 60)} h a la semana.
+      </p>
     {/if}
   {/if}
 {/snippet}

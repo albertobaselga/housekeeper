@@ -68,10 +68,7 @@
           <div>
             <span>
               <strong>{day.weekdayLabel}</strong>
-              <small>
-                {day.hoursLabel}{#if day.works && day.longBreakMinutes > 0}
-                  · {day.longBreakMinutes} min de descanso{/if}{#if day.note} · {day.note}{/if}
-              </small>
+              <small>{day.detailLabel}</small>
             </span>
             <span><strong>{day.effectiveLabel}</strong></span>
           </div>

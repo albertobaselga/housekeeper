@@ -134,7 +134,7 @@ test('Alberto cambia una tarifa y una hora, y nace una versión nueva: la anteri
   // Media hora más de sábado y la jornada contratada sin tocar: el aviso salta
   // ANTES de guardar, que es cuando todavía se puede pactar otra cosa.
   await expect(form.locator('.form-error')).toContainText(
-    'Este horario suma 40 h 30 min a la semana y la jornada contratada dice 40 h: sobran 30 min.'
+    'El horario suma 40 h 30 min a la semana y la jornada contratada dice 40 h: sobran 30 min.'
   );
   // Y desaparece en cuanto las dos condiciones vuelven a decir lo mismo.
   await form.getByLabel('Jornada semanal (minutos)').fill('2430');
