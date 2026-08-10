@@ -446,9 +446,16 @@ BEGIN
   END IF;
 
   -- Ni la propia administración ni el visor aparecen en el resumen de acogida.
+  -- Sí las CUATRO personas que tienen que leerse la casa: familiar, las dos
+  -- internas del hogar de fixtures y el apoyo. La membresía revocada y la
+  -- caducada no cuentan, que para eso las filtra la función.
   SELECT count(DISTINCT membership_id)::integer INTO people FROM app.wiki_reading_overview();
-  IF people <> 3 THEN
-    RAISE EXCEPTION 'el resumen debería listar a familiar, interna y apoyo; listó % personas', people;
+  IF people <> 4 THEN
+    RAISE EXCEPTION 'el resumen debería listar a familiar, las dos internas y apoyo; listó % personas', people;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM app.wiki_reading_overview()
+                  WHERE membership_id = '11000000-0000-4000-8000-000000000006') THEN
+    RAISE EXCEPTION 'la segunda interna no aparece en el resumen de acogida';
   END IF;
   IF EXISTS (SELECT 1 FROM app.wiki_reading_overview()
               WHERE membership_id = '11000000-0000-4000-8000-000000000001'
