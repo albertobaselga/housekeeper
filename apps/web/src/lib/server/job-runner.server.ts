@@ -109,14 +109,14 @@ export function loadJobRunnerConfig(
   if (!databaseUrl || !token || !smtpHost || !smtpFrom || !endpoint || !bucket || !accessKeyId || !secretAccessKey) {
     return null;
   }
-  const lease = environment.JOB_RUNNER_LEASE_MS?.trim();
   return {
     databaseUrl,
     token,
     budgetMs: positiveInteger(environment.JOB_RUNNER_BUDGET_MS, DEFAULT_BUDGET_MS),
     // Mismo valor por omisión que el demonio (apps/worker/src/config.ts).
     maxAttempts: positiveInteger(environment.WORKER_MAX_JOB_ATTEMPTS, 5),
-    leaseMs: lease ? positiveInteger(lease, 0) || undefined : undefined,
+    // Sin declarar (o con un valor absurdo) manda el arriendo de la cola.
+    leaseMs: positiveInteger(environment.JOB_RUNNER_LEASE_MS, 0) || undefined,
     smtp: { host: smtpHost, port: positiveInteger(environment.SMTP_PORT, 1_025), from: smtpFrom },
     storage: {
       endpoint,
@@ -183,8 +183,17 @@ export async function drainJobQueue(pool: pg.Pool, options: DrainOptions): Promi
   // sembró), sin esto no vuelve a haber sincronización de calendarios ni poda
   // nunca más. Ambas son idempotentes y baratas: si ya hay una pendiente, no
   // hacen nada.
-  await ensurePruneDiscoveryScheduled(pool);
-  await ensureIcsSyncScheduled(pool);
+  //
+  // Un fallo re-armando no puede impedir el drenaje —igual que en el demonio,
+  // donde tampoco tumba el bucle—: queda en el log y la pasada sigue con lo que
+  // ya estuviera encolado.
+  for (const rearm of [ensurePruneDiscoveryScheduled, ensureIcsSyncScheduled]) {
+    try {
+      await rearm(pool);
+    } catch (error) {
+      log.warn('periodic chain could not be rearmed', { code: errorCode(error) });
+    }
+  }
 
   let ran = 0;
   let stoppedBy: 'empty' | 'budget' = 'budget';
@@ -260,13 +269,18 @@ export async function runJobDrainRequest(
   }
 
   const pool = overrides.pool ?? jobRunnerPool(config.databaseUrl);
+  // El cliente de S3 se construye la primera vez que hace falta subir algo: la
+  // pasada normal no genera ningún PDF y no tiene por qué pagarlo.
+  let storageClient: ReturnType<typeof objectStore> | null = null;
   const handlers =
     overrides.handlers ??
     createJobHandlers({
       pool,
       sendEmail: (input) => sendEmail(config.smtp, input),
-      uploadDocument: (key, body, contentType) =>
-        putPrivateObject(objectStore(config.storage), config.storage.bucket, key, body, contentType),
+      uploadDocument: (key, body, contentType) => {
+        storageClient ??= objectStore(config.storage);
+        return putPrivateObject(storageClient, config.storage.bucket, key, body, contentType);
+      },
       log,
       errorCode
     });
