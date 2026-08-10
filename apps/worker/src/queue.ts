@@ -92,6 +92,66 @@ export async function failJob(
   );
 }
 
+/**
+ * Duración máxima que se le concede a un trabajo reclamado antes de darlo por
+ * abandonado. Cinco minutos es dos órdenes de magnitud más que el más lento de
+ * los siete tipos (`ics.sync_source`, con un tope de 10 s de descarga), así que
+ * una fila que lleve más tiempo en `running` no está trabajando: su ejecutor ya
+ * no existe.
+ */
+export const DEFAULT_JOB_LEASE_MS = 300_000;
+
+/**
+ * Devuelve a la cola los trabajos cuyo ejecutor desapareció a mitad.
+ *
+ * `claimNextJob` solo mira filas `queued`, así que un trabajo que quedó en
+ * `running` porque el proceso murió —o, en el drenaje serverless, porque la
+ * plataforma cortó la función al agotarse su tiempo— se queda ahí para siempre
+ * y bloquea ese aviso, ese PDF o esa sincronización sin que nadie se entere.
+ * No es un fallo del trabajo: el handler nunca llegó a lanzar, así que los
+ * reintentos de `failJob` tampoco entran.
+ *
+ * `attempts` ya se incrementó al reclamarlo, de modo que el presupuesto de
+ * reintentos se respeta sin tocarlo: quien ya lo agotó pasa a `dead` con la
+ * causa escrita, y el resto vuelve a `queued` para el siguiente turno. Devuelve
+ * cuántas filas se movieron a cada estado.
+ */
+export async function reclaimStaleJobs(
+  pool: Pool,
+  maxAttempts: number,
+  leaseMs: number = DEFAULT_JOB_LEASE_MS,
+): Promise<{ requeued: number; dead: number }> {
+  const result = await pool.query<{ status: string }>(
+    `update app_private.job_queue
+        set status = (case when attempts >= $2 then 'dead' else 'queued' end)::app_private.job_status,
+            last_error = $3,
+            locked_at = null,
+            updated_at = now()
+      where status = 'running'
+        and locked_at is not null
+        and locked_at < now() - make_interval(secs => $1)
+      returning status::text as status`,
+    [Math.max(1, Math.round(leaseMs / 1_000)), maxAttempts, "AbandonedJobError: el ejecutor no terminó el trabajo"],
+  );
+  let requeued = 0;
+  let dead = 0;
+  for (const row of result.rows) {
+    if (row.status === "dead") dead += 1;
+    else requeued += 1;
+  }
+  return { requeued, dead };
+}
+
+/** Trabajos listos para ejecutarse ahora mismo (`queued` y con `run_at` vencido). */
+export async function countReadyJobs(pool: Pool): Promise<number> {
+  const result = await pool.query<{ ready: string }>(
+    `select count(*)::text as ready
+       from app_private.job_queue
+      where status = 'queued' and run_at <= now()`,
+  );
+  return Number(result.rows[0]?.ready ?? "0");
+}
+
 export async function runOneJob(
   pool: Pool,
   handlers: Readonly<Record<string, JobHandler>>,
