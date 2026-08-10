@@ -1,6 +1,12 @@
 // Alta del acuerdo laboral: validación del JSON (sin base) y escritura real
 // contra Postgres (solo con TEST_DATABASE_URL).
 //
+// La batería anterior daba luz verde a un acuerdo MUDO: comprobaba las columnas
+// de `app.agreement_versions` y ni miraba `app.extra_work_types`, así que no vio
+// que el guion no escribía ni una fila del catálogo de 0021. Aquí el catálogo es
+// lo primero que se comprueba, y hay una prueba dedicada a que un JSON sin
+// conceptos NO llegue a escribir nada.
+//
 // Todos los datos de estas pruebas son INVENTADOS. El JSON real del hogar vive
 // fuera del repositorio y no se copia aquí ni en parte.
 import pg from 'pg';
@@ -9,6 +15,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { applyMigrations } from './migrate.mjs';
 import {
   normalizeAgreementConfig,
+  relicRates,
   scheduleToText,
   seedEmploymentAgreement
 } from './seed-employment-agreement.mjs';
@@ -20,7 +27,11 @@ const ADMIN_MEMBERSHIP = '78000000-0000-4000-8000-000000000002';
 const EMPLOYEE_MEMBERSHIP = '78000000-0000-4000-8000-000000000003';
 const OTHER_HOUSEHOLD = '78000000-0000-4000-8000-000000000004';
 
-/** Fichero de ejemplo, con nombres y cifras inventados. */
+/**
+ * Fichero de ejemplo, con nombres y cifras inventados. Es el caso que pidió el
+ * propietario: salario mensual, jornada semanal, 30 días de vacaciones, DOS
+ * tipos de jornada extra con tarifa y NINGUNA hora suelta.
+ */
 function exampleConfig(overrides = {}) {
   return {
     household: { slug: 'casa-ejemplo', displayName: 'Casa Ejemplo' },
@@ -35,7 +46,6 @@ function exampleConfig(overrides = {}) {
       monthlySalaryCents: 123400,
       currencyCode: 'EUR',
       contractedWeeklyMinutes: 2400,
-      workedRestDayRateCents: 5000,
       annualVacationDays: 30,
       schedule: {
         from: '08:00',
@@ -45,6 +55,22 @@ function exampleConfig(overrides = {}) {
         weekly: 'Cinco jornadas de lunes a viernes. Fin de semana libre',
         _nota: 'Una nota interna del fichero que no debe viajar al acuerdo'
       },
+      extraWorkTypes: [
+        {
+          code: 'jornada_extra',
+          name: 'Jornada extra',
+          unit: 'per_shift',
+          rateCents: 5000,
+          referenceMinutes: 480
+        },
+        {
+          code: 'media_jornada_extra',
+          name: 'Media jornada extra',
+          unit: 'per_shift',
+          rateCents: 2500,
+          referenceMinutes: 240
+        }
+      ],
       ...overrides
     }
   };
@@ -69,32 +95,113 @@ describe('condiciones de horario como texto', () => {
   });
 });
 
-describe('validación del JSON del acuerdo', () => {
-  it('EXIGE la tarifa de hora extraordinaria y no la inventa', () => {
-    expect(() => normalizeAgreementConfig(exampleConfig())).toThrowError(
-      /tarifa de hora extraordinaria[\s\S]*NO la inventa/
+describe('el catálogo de conceptos es obligatorio', () => {
+  it('sin `extraWorkTypes` se niega, dice por qué y remite a la pantalla', () => {
+    const raw = exampleConfig();
+    delete raw.agreement.extraWorkTypes;
+    // Que el mensaje explique la consecuencia y no solo la falta: quien lee esto
+    // tiene que entender que el destrozo sería irreversible.
+    expect(() => normalizeAgreementConfig(raw)).toThrowError(/NO da de alta un acuerdo sin catálogo/);
+    expect(() => normalizeAgreementConfig(raw)).toThrowError(/no hay arreglo posible|inmutables/);
+    expect(() => normalizeAgreementConfig(raw)).toThrowError(/employment\/acuerdo/);
+    // Y que diga cómo decir «aquí no se pacta ningún trabajo extra».
+    expect(() => normalizeAgreementConfig(raw)).toThrowError(/"extraWorkTypes": \[\]/);
+  });
+
+  it('una lista vacía sí se acepta: es una decisión escrita, no un olvido', () => {
+    const config = normalizeAgreementConfig(exampleConfig({ extraWorkTypes: [] }));
+    expect(config.version.extraWorkTypes).toEqual([]);
+    // Y las columnas reliquia quedan en 0, no heredadas de ningún sitio.
+    expect(config.version.overtimeHourlyRateCents).toBe(0);
+    expect(config.version.workedRestDayRateCents).toBe(0);
+  });
+
+  it('exige de cada concepto lo mismo que 0021, antes de tocar la base', () => {
+    const withTypes = (types) => () => normalizeAgreementConfig(exampleConfig({ extraWorkTypes: types }));
+
+    expect(withTypes([{ code: 'Jornada Extra', name: 'X', unit: 'per_shift', rateCents: 1, referenceMinutes: 60 }]))
+      .toThrowError(/código en minúsculas/);
+    expect(withTypes([{ code: 'jornada_extra', name: 'X', unit: 'por_jornada', rateCents: 1 }]))
+      .toThrowError(/unit tiene que ser per_hour, per_shift, fixed_amount/);
+    expect(withTypes([{ code: 'jornada_extra', name: 'X', unit: 'per_shift', rateCents: 1 }]))
+      .toThrowError(/de cuántos minutos es/);
+    expect(withTypes([{ code: 'hora', name: 'X', unit: 'per_hour', rateCents: 1, referenceMinutes: 60 }]))
+      .toThrowError(/no lleva duración de referencia/);
+    expect(withTypes([{ code: 'jornada_extra', name: 'X', unit: 'per_shift', referenceMinutes: 60 }]))
+      .toThrowError(/rateCents falta/);
+    expect(
+      withTypes([
+        { code: 'jornada_extra', name: 'A', unit: 'per_shift', rateCents: 1, referenceMinutes: 60 },
+        { code: 'jornada_extra', name: 'B', unit: 'per_shift', rateCents: 2, referenceMinutes: 60 }
+      ])
+    ).toThrowError(/aparece dos veces/);
+  });
+
+  it('un complemento tiene que decir si es dinero para ella o gasto de la casa', () => {
+    const withSupplements = (supplements) => () =>
+      normalizeAgreementConfig(exampleConfig({ supplements }));
+
+    expect(withSupplements([{ code: 'antiguedad', name: 'Antigüedad', amountCents: 3000 }])).toThrowError(
+      /addsToPay falta/
     );
-    // El mensaje tiene que decir CÓMO arreglarlo, no solo que falta.
-    expect(() => normalizeAgreementConfig(exampleConfig())).toThrowError(
-      /overtimeHourlyRateCents|--overtime-hourly-rate-cents/
+    const config = normalizeAgreementConfig(
+      exampleConfig({
+        supplements: [
+          { code: 'antiguedad', name: 'Antigüedad', amountCents: 3000, addsToPay: true },
+          { code: 'seguro_medico', name: 'Seguro médico', amountCents: 4500, addsToPay: false }
+        ]
+      })
+    );
+    expect(config.version.supplements.map((row) => [row.code, row.addsToPay])).toEqual([
+      ['antiguedad', true],
+      ['seguro_medico', false]
+    ]);
+  });
+});
+
+describe('las condiciones de 0002 ya no se pactan a mano', () => {
+  it('rechaza las claves que el catálogo sustituyó, diciendo adónde se fueron', () => {
+    expect(() => normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 1000 }))).toThrowError(
+      /overtimeHourlyRateCents ya no se pacta aquí[\s\S]*per_hour/
+    );
+    expect(() => normalizeAgreementConfig(exampleConfig({ workedRestDayRateCents: 5000 }))).toThrowError(
+      /workedRestDayRateCents ya no se pacta aquí/
+    );
+    expect(() => normalizeAgreementConfig(exampleConfig({ allowsHourlyOvertime: false }))).toThrowError(
+      /el permiso real es el campo `active`/
     );
   });
 
-  it('la acepta del JSON o del argumento, y el argumento manda', () => {
-    const fromJson = normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 900 }));
-    expect(fromJson.version.overtimeHourlyRateCents).toBe(900);
-
-    const fromFlag = normalizeAgreementConfig(exampleConfig(), { overtimeHourlyRateCents: 1000 });
-    expect(fromFlag.version.overtimeHourlyRateCents).toBe(1000);
-
-    const both = normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 900 }), {
-      overtimeHourlyRateCents: 1000
+  it('deriva las columnas reliquia del catálogo, igual que la pantalla', () => {
+    // Sin ningún concepto por horas la tarifa horaria es 0: no hay ninguna
+    // cifra por hora escrita en ninguna parte de la base.
+    expect(relicRates([])).toEqual({
+      overtimeHourlyRateCents: 0,
+      workedRestDayRateCents: 0,
+      workedRestDayCreditMinutes: 1440
     });
-    expect(both.version.overtimeHourlyRateCents).toBe(1000);
-  });
+    const config = normalizeAgreementConfig(exampleConfig());
+    expect(config.version.overtimeHourlyRateCents).toBe(0);
+    // La primera jornada activa manda: 50 € y 480 minutos de crédito.
+    expect(config.version.workedRestDayRateCents).toBe(5000);
+    expect(config.version.workedRestDayCreditMinutes).toBe(480);
 
+    // Un concepto desactivado no presta su tarifa a la columna reliquia.
+    const desactivado = normalizeAgreementConfig(
+      exampleConfig({
+        extraWorkTypes: [
+          { code: 'hora_extra', name: 'Hora', unit: 'per_hour', rateCents: 1400, active: false },
+          { code: 'jornada_extra', name: 'Jornada', unit: 'per_shift', rateCents: 5000, referenceMinutes: 480 }
+        ]
+      })
+    );
+    expect(desactivado.version.overtimeHourlyRateCents).toBe(0);
+  });
+});
+
+describe('validación del JSON del acuerdo', () => {
   it('deja lo pactado tal y como va a escribirse', () => {
-    const config = normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 1000 }));
+    const config = normalizeAgreementConfig(exampleConfig());
     expect(config.householdSlug).toBe('casa-ejemplo');
     expect(config.employeeUsername).toBe('lucia');
     expect(config.startsOn).toBe('2026-01-07');
@@ -102,52 +209,40 @@ describe('validación del JSON del acuerdo', () => {
       // La versión 1 entra en vigor el día en que empieza el acuerdo.
       effectiveFrom: '2026-01-07',
       monthlySalaryCents: 123400,
-      workedRestDayRateCents: 5000,
-      workedRestDayCreditMinutes: 1440,
       contractedWeeklyMinutes: 2400,
       annualVacationDays: 30,
       currencyCode: 'EUR',
       reason: 'Alta inicial del acuerdo'
     });
     expect(config.version.terms.schedule).toContain('Presencia de 08:00 a 19:00.');
-    // Sin banderas de compensación, `terms` no inventa la clave.
-    expect(config.version.terms.compensation).toBeUndefined();
-  });
-
-  it('escribe en el acuerdo qué trabajo de más admite, cuando el JSON lo dice', () => {
-    const config = normalizeAgreementConfig(
-      exampleConfig({
-        overtimeHourlyRateCents: 1000,
-        allowsHourlyOvertime: false,
-        allowsExtraShifts: true
-      })
-    );
-    expect(config.version.terms.compensation).toEqual({
-      allowsHourlyOvertime: false,
-      allowsExtraShifts: true
-    });
-
-    expect(() =>
-      normalizeAgreementConfig(
-        exampleConfig({ overtimeHourlyRateCents: 1000, allowsHourlyOvertime: 'no' })
-      )
-    ).toThrowError(/allowsHourlyOvertime tiene que ser true o false/);
+    expect(config.version.extraWorkTypes).toEqual([
+      {
+        code: 'jornada_extra',
+        name: 'Jornada extra',
+        unit: 'per_shift',
+        rateCents: 5000,
+        referenceMinutes: 480,
+        active: true
+      },
+      {
+        code: 'media_jornada_extra',
+        name: 'Media jornada extra',
+        unit: 'per_shift',
+        rateCents: 2500,
+        referenceMinutes: 240,
+        active: true
+      }
+    ]);
   });
 
   it('firma por la casa la primera family_admin, o la que diga el JSON', () => {
-    const byDefault = normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 1000 }));
-    expect(byDefault.creatorUsername).toBe('rosa');
-
-    const declared = normalizeAgreementConfig(
-      exampleConfig({ overtimeHourlyRateCents: 1000, createdByUsername: 'nuria' })
+    expect(normalizeAgreementConfig(exampleConfig()).creatorUsername).toBe('rosa');
+    expect(normalizeAgreementConfig(exampleConfig({ createdByUsername: 'nuria' })).creatorUsername).toBe(
+      'nuria'
     );
-    expect(declared.creatorUsername).toBe('nuria');
-
-    expect(() =>
-      normalizeAgreementConfig(
-        exampleConfig({ overtimeHourlyRateCents: 1000, createdByUsername: 'lucia' })
-      )
-    ).toThrowError(/no es family_admin/);
+    expect(() => normalizeAgreementConfig(exampleConfig({ createdByUsername: 'lucia' }))).toThrowError(
+      /no es family_admin/
+    );
   });
 
   it('rechaza lo que no puede ser un acuerdo', () => {
@@ -155,35 +250,29 @@ describe('validación del JSON del acuerdo', () => {
       normalizeAgreementConfig({ household: { slug: 'casa-ejemplo' }, people: [] })
     ).toThrowError(/bloque `agreement`/);
 
-    expect(() =>
-      normalizeAgreementConfig(
-        exampleConfig({ overtimeHourlyRateCents: 1000, employeeUsername: 'rosa' })
-      )
-    ).toThrowError(/solo puede firmarse con employee_live_in o helper/);
+    expect(() => normalizeAgreementConfig(exampleConfig({ employeeUsername: 'rosa' }))).toThrowError(
+      /solo puede firmarse con employee_live_in o helper/
+    );
 
-    expect(() =>
-      normalizeAgreementConfig(
-        exampleConfig({ overtimeHourlyRateCents: 1000, employeeUsername: 'nadie' })
-      )
-    ).toThrowError(/no está en la lista people/);
+    expect(() => normalizeAgreementConfig(exampleConfig({ employeeUsername: 'nadie' }))).toThrowError(
+      /no está en la lista people/
+    );
 
-    expect(() =>
-      normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 1000, startsOn: '7/1/2026' }))
-    ).toThrowError(/AAAA-MM-DD/);
+    expect(() => normalizeAgreementConfig(exampleConfig({ startsOn: '7/1/2026' }))).toThrowError(
+      /AAAA-MM-DD/
+    );
 
-    expect(() =>
-      normalizeAgreementConfig(
-        exampleConfig({ overtimeHourlyRateCents: 1000, monthlySalaryCents: 1234.5 })
-      )
-    ).toThrowError(/monthlySalaryCents/);
+    expect(() => normalizeAgreementConfig(exampleConfig({ monthlySalaryCents: 1234.5 }))).toThrowError(
+      /monthlySalaryCents/
+    );
 
-    expect(() =>
-      normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 1000, schedule: null }))
-    ).toThrowError(/condiciones de horario/);
+    expect(() => normalizeAgreementConfig(exampleConfig({ schedule: null }))).toThrowError(
+      /condiciones de horario/
+    );
 
-    expect(() =>
-      normalizeAgreementConfig(exampleConfig({ overtimeHourlyRateCents: 1000, currencyCode: 'USD' }))
-    ).toThrowError(/Solo se admite EUR/);
+    expect(() => normalizeAgreementConfig(exampleConfig({ currencyCode: 'USD' }))).toThrowError(
+      /Solo se admite EUR/
+    );
   });
 });
 
@@ -207,11 +296,13 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
   beforeEach(async () => {
     await client.query('begin');
     await client.query('set local row_security = off');
-    // TRUNCATE y no DELETE: las versiones del acuerdo son append-only y su
-    // disparador rechaza cualquier borrado fila a fila (0002_employment.sql).
+    // TRUNCATE y no DELETE: las versiones del acuerdo y su catálogo son
+    // append-only y sus disparadores rechazan cualquier borrado fila a fila
+    // (0002_employment.sql, 0021_agreement_terms_catalogue.sql).
     await client.query(
-      `truncate app.agreement_versions, app.employment_agreements,
-                app.household_memberships, app.user_profiles, app.households cascade`
+      `truncate app.extra_work_types, app.recurring_supplements, app.agreement_versions,
+                app.employment_agreements, app.household_memberships, app.user_profiles,
+                app.households cascade`
     );
     await client.query(
       `insert into app.households (id, slug, display_name)
@@ -235,7 +326,7 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
 
   /** Ejecuta el alta en su propia transacción, como hace el guion. */
   async function seed(raw, options = {}) {
-    const config = normalizeAgreementConfig(raw, { overtimeHourlyRateCents: 1000 });
+    const config = normalizeAgreementConfig(raw);
     await client.query('begin');
     await client.query('set local row_security = off');
     try {
@@ -248,11 +339,16 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
     }
   }
 
-  it('crea el acuerdo y su versión 1 con lo pactado', async () => {
+  it('crea el acuerdo, su versión 1 y EL CATÁLOGO de esa versión', async () => {
     const report = await seed(exampleConfig());
-    expect(report.agreementCreated).toBe(true);
-    expect(report.versionCreated).toBe(true);
-    expect(report.employeeMembershipId).toBe(EMPLOYEE_MEMBERSHIP);
+    expect(report).toMatchObject({
+      agreementCreated: true,
+      versionCreated: true,
+      employeeMembershipId: EMPLOYEE_MEMBERSHIP,
+      extraWorkTypes: 2,
+      registrableTypes: 2,
+      supplements: 0
+    });
 
     const { rows } = await client.query(
       `select agreement.starts_on::text as starts_on,
@@ -262,6 +358,7 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
               version.monthly_salary_cents::text as monthly_salary_cents,
               version.overtime_hourly_rate_cents::text as overtime_hourly_rate_cents,
               version.worked_rest_day_rate_cents::text as worked_rest_day_rate_cents,
+              version.worked_rest_day_credit_minutes,
               version.contracted_weekly_minutes, version.annual_vacation_days,
               version.currency_code, version.terms, version.reason
          from app.employment_agreements as agreement
@@ -278,14 +375,87 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
       version_number: 1,
       effective_from: '2026-01-07',
       monthly_salary_cents: '123400',
-      overtime_hourly_rate_cents: '1000',
+      // Derivadas del catálogo: ninguna hora suelta pactada → 0.
+      overtime_hourly_rate_cents: '0',
       worked_rest_day_rate_cents: '5000',
+      worked_rest_day_credit_minutes: 480,
       contracted_weekly_minutes: 2400,
       annual_vacation_days: 30,
       currency_code: 'EUR',
       reason: 'Alta inicial del acuerdo'
     });
     expect(rows[0].terms.schedule).toContain('Presencia de 08:00 a 19:00.');
+
+    // LO QUE LA BATERÍA ANTERIOR NO MIRABA.
+    const catalogue = await client.query(
+      `select code, name, unit::text as unit, rate_cents::text as rate_cents,
+              reference_minutes, active, sort_order
+         from app.extra_work_types where household_id = $1 order by sort_order`,
+      [HOUSEHOLD]
+    );
+    expect(catalogue.rows).toEqual([
+      {
+        code: 'jornada_extra',
+        name: 'Jornada extra',
+        unit: 'per_shift',
+        rate_cents: '5000',
+        reference_minutes: 480,
+        active: true,
+        sort_order: 10
+      },
+      {
+        code: 'media_jornada_extra',
+        name: 'Media jornada extra',
+        unit: 'per_shift',
+        rate_cents: '2500',
+        reference_minutes: 240,
+        active: true,
+        sort_order: 20
+      }
+    ]);
+    // Y ninguna fila por horas: no hay tarifa horaria que se le pueda enseñar.
+    expect(catalogue.rows.some((row) => row.unit === 'per_hour')).toBe(false);
+  });
+
+  it('escribe los complementos con su `adds_to_pay` tal cual se pactó', async () => {
+    await seed(
+      exampleConfig({
+        supplements: [
+          { code: 'antiguedad', name: 'Antigüedad', amountCents: 3000, addsToPay: true },
+          {
+            code: 'seguro_medico',
+            name: 'Seguro médico',
+            amountCents: 4500,
+            addsToPay: false,
+            startsOn: '2026-02-01'
+          }
+        ]
+      })
+    );
+    const { rows } = await client.query(
+      `select code, amount_cents::text as amount_cents, adds_to_pay,
+              starts_on::text as starts_on, active, sort_order
+         from app.recurring_supplements where household_id = $1 order by sort_order`,
+      [HOUSEHOLD]
+    );
+    expect(rows).toEqual([
+      {
+        code: 'antiguedad',
+        amount_cents: '3000',
+        adds_to_pay: true,
+        starts_on: null,
+        active: true,
+        sort_order: 10
+      },
+      {
+        code: 'seguro_medico',
+        amount_cents: '4500',
+        adds_to_pay: false,
+        starts_on: '2026-02-01',
+        active: true,
+        sort_order: 20
+      }
+    ]);
   });
 
   it('repetirlo no escribe nada', async () => {
@@ -297,16 +467,21 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
 
     const counts = await client.query(
       `select (select count(*) from app.employment_agreements)::int as agreements,
-              (select count(*) from app.agreement_versions)::int as versions`
+              (select count(*) from app.agreement_versions)::int as versions,
+              (select count(*) from app.extra_work_types)::int as types`
     );
-    expect(counts.rows[0]).toEqual({ agreements: 1, versions: 1 });
+    expect(counts.rows[0]).toEqual({ agreements: 1, versions: 1, types: 2 });
   });
 
-  it('con --dry-run no deja rastro', async () => {
+  it('con --dry-run no deja rastro, ni del acuerdo ni del catálogo', async () => {
     const report = await seed(exampleConfig(), { dryRun: true });
     expect(report.agreementCreated).toBe(true);
-    const { rows } = await client.query('select count(*)::int as total from app.employment_agreements');
-    expect(rows[0].total).toBe(0);
+    expect(report.extraWorkTypes).toBe(2);
+    const { rows } = await client.query(
+      `select (select count(*) from app.employment_agreements)::int as agreements,
+              (select count(*) from app.extra_work_types)::int as types`
+    );
+    expect(rows[0]).toEqual({ agreements: 0, types: 0 });
   });
 
   it('si lo pactado cambió, manda añadir una versión desde la aplicación', async () => {
@@ -317,6 +492,24 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo contra Postgres', () => {
     await expect(seed(exampleConfig({ startsOn: '2026-02-02' }))).rejects.toThrowError(
       /ya tiene un acuerdo activo que empezó el 2026-01-07/
     );
+  });
+
+  it('si cambió una TARIFA del catálogo también aborta, en vez de decir que todo está igual', async () => {
+    await seed(exampleConfig());
+    // La media jornada no presta su tarifa a ninguna columna reliquia, así que
+    // solo la comparación del catálogo puede ver este cambio.
+    const subida = exampleConfig();
+    subida.agreement.extraWorkTypes[1].rateCents = 2600;
+    await expect(seed(subida)).rejects.toThrowError(/catálogo de conceptos no es el del JSON/);
+
+    const conUnoMas = exampleConfig();
+    conUnoMas.agreement.extraWorkTypes.push({
+      code: 'noche_de_guardia',
+      name: 'Noche de guardia',
+      unit: 'fixed_amount',
+      rateCents: 5000
+    });
+    await expect(seed(conUnoMas)).rejects.toThrowError(/catálogo de conceptos no es el del JSON/);
   });
 
   it('sin cuentas dadas de alta lo dice y manda ejecutar el otro guion', async () => {
