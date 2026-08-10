@@ -1,3 +1,8 @@
+// La matriz se importa del submódulo, NUNCA de la raíz `@casa-clara/contracts`:
+// la raíz viaja en el arranque de todas las pantallas (verifica la firma del
+// paquete offline) y arrastraría ~1,2 kB de tablas que el cliente no usa —
+// las capacidades de la sesión llegan ya resueltas en `AppContextV1`.
+// Ver la cabecera de `packages/contracts/src/capabilities.ts`.
 import {
   capabilities,
   hasCapability,
@@ -5,7 +10,7 @@ import {
   roles,
   type Capability,
   type Role
-} from '@casa-clara/contracts';
+} from '@casa-clara/contracts/capabilities';
 
 export const ROLES = roles;
 export const CAPABILITIES = capabilities;

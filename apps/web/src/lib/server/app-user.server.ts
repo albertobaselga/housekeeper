@@ -1,5 +1,5 @@
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
-import { isRole } from '@casa-clara/contracts';
+import { isRole } from '@casa-clara/contracts/capabilities';
 
 import { getDatabasePool } from './db.server';
 

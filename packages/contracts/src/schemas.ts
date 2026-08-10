@@ -1,11 +1,7 @@
 import { z } from "zod";
 
-import {
-  API_VERSION,
-  MAX_SYNC_COMMANDS,
-  capabilities,
-  roles,
-} from "./index.js";
+import { capabilities, roles } from "./capabilities.js";
+import { API_VERSION, MAX_SYNC_COMMANDS } from "./index.js";
 
 export const uuidSchema = z.string().uuid();
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);

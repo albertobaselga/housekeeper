@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { hasCapability, isRole } from "./capabilities.js";
 import {
   API_VERSION,
   assertSnapshotFresh,
-  hasCapability,
   isMoneyCents,
-  isRole,
   type CriticalSnapshotV1,
 } from "./index.js";
 import {
