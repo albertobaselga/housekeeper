@@ -3,7 +3,8 @@
   import { navigating, page } from '$app/state';
   import { onMount, tick, type Snippet } from 'svelte';
   import type { Action } from 'svelte/action';
-  import { ROLE_LABELS, type Capability } from '$lib/auth/capabilities';
+  import type { Capability } from '$lib/auth/capabilities';
+  import { ROLE_LABELS } from '$lib/auth/role-labels';
   import { householdPath, type HouseholdModule } from '$lib/auth/routing';
   import type { AppContext } from '$lib/auth/types';
   import { startSyncMonitor, syncStatus } from '$lib/offline/sync';

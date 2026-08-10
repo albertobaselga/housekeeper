@@ -55,6 +55,52 @@ Tres capas, cada una nacida de un fallo real:
 
 Este tercer gate no se relaja nunca: si falla, se le da al fichero el job o el entorno que necesita.
 
+## Presupuesto de arranque de Hoy
+
+`pnpm --filter @casa-clara/web verify:bundle` acota en 120 kB el JavaScript que
+la pantalla Hoy necesita antes de ser interactiva, y de paso vigila dos fugas
+concretas. Conviene entender **por qué** se escapan los bytes antes de tocarlo.
+
+El troceo de rolldown reparte los módulos por **alcanzabilidad**, no por binding
+usado. Si un módulo del arranque importa otro módulo, todo lo que ese segundo
+módulo exporte y esté vivo en algún punto de la aplicación acaba en el mismo
+fichero, aunque la pantalla Hoy no lo mire nunca. Un `export ... from` de más
+basta: no hay tree-shaking que lo arregle, porque la decisión de troceo es
+anterior.
+
+Eso costó dos apaños fallidos y medio presupuesto:
+
+- **`@casa-clara/contracts` (la raíz) la carga cualquier pantalla**, porque de
+  ahí sale `canonicalJson` y con él se verifica la firma del paquete offline en
+  el arranque. La matriz de roles y capacidades vivía en ese mismo módulo, así
+  que sus ~1,2 kB de tablas viajaban con él sin que nadie los usara: el servidor
+  resuelve las capacidades de la sesión en `+layout.server.ts` y las manda ya
+  resueltas dentro de `AppContextV1`. Vive ahora en
+  `@casa-clara/contracts/capabilities`, **sin reexport desde `index.ts`**.
+- **El layout `/h/[householdId]` se carga en todas las pantallas
+  autenticadas.** `AppShell` solo necesitaba las cinco etiquetas de rol, pero
+  convivían con `can()` y el troceo juntaba las dos cosas: 1,6 kB para escribir
+  «Empleada interna». Las etiquetas viven ahora en `$lib/auth/role-labels.ts`.
+
+La regla, en una línea: **de un módulo que se carga siempre solo pueden salir
+tipos y funciones pequeñas; las tablas de datos van a un submódulo propio.**
+
+Dos herramientas la sostienen:
+
+- El plugin `casa-clara:client-module-map` de `apps/web/vite.config.ts` escribe
+  `.svelte-kit/casa-clara-module-map.json` (fuera de `output/`, no se despliega)
+  con los bytes que cada módulo fuente aporta a cada trozo. Sin él, un trozo que
+  engorda es un misterio: el manifiesto de Vite no dice qué módulo cae dónde.
+- `apps/web/scripts/verify-today-bundle.mjs` usa ese mapa para listar los doce
+  módulos más pesados cuando el presupuesto se rompe, y mantiene una lista de
+  módulos **desterrados** del grafo inicial con la razón dentro del mensaje de
+  error. Para desterrar uno nuevo, se añade a `FORBIDDEN_IN_INITIAL_GRAPH`.
+
+La puerta mide el **nodo de página** de Hoy. El informe imprime además la carga
+real de la ruta (arranque del cliente + layouts + página), que es lo que baja el
+navegador; se informa y no se acota porque ahí es donde se escondió la matriz
+durante meses sin que ninguna cifra lo delatara.
+
 ## Límites de observabilidad
 
 - Prometheus recibe únicamente métricas técnicas agregadas: latencia, errores, edad de outbox/snapshot, conflictos y jobs.

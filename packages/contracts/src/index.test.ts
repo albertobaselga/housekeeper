@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { hasCapability, isRole } from "./capabilities.js";
+import * as barrel from "./index.js";
 import {
   API_VERSION,
   assertSnapshotFresh,
-  hasCapability,
   isMoneyCents,
-  isRole,
   type CriticalSnapshotV1,
 } from "./index.js";
 import {
@@ -43,6 +43,26 @@ const snapshot = (generatedAt: string, expiresAt: string): CriticalSnapshotV1 =>
 });
 
 describe("contratos públicos", () => {
+  /**
+   * El barril lo carga TODA pantalla del cliente (de aquí sale `canonicalJson`,
+   * que verifica la firma del paquete offline al arrancar). El troceo reparte
+   * por alcanzabilidad de módulo, así que reexportar aquí el modelo de
+   * autorización devuelve sus ~1,2 kB de tablas al arranque de Hoy aunque nadie
+   * las use. Esta prueba es la versión rápida de la guarda que
+   * `apps/web/scripts/verify-today-bundle.mjs` aplica sobre el paquete ya
+   * construido: falla en segundos, sin necesitar una construcción entera.
+   */
+  it("no reexporta el modelo de autorización: vive en @casa-clara/contracts/capabilities", () => {
+    expect(Object.keys(barrel).sort()).toEqual([
+      "API_VERSION",
+      "CRITICAL_SNAPSHOT_TTL_MS",
+      "MAX_SYNC_COMMANDS",
+      "assertSnapshotFresh",
+      "canonicalJson",
+      "isMoneyCents",
+    ]);
+  });
+
   it("deniega roles desconocidos", () => {
     expect(isRole("family_admin")).toBe(true);
     expect(isRole("owner")).toBe(false);

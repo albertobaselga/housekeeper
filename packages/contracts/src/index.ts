@@ -1,110 +1,29 @@
+/**
+ * Contratos de la superficie compartida cliente/servidor.
+ *
+ * ESTE MÓDULO LO CARGA TODA PANTALLA DEL CLIENTE. `canonicalJson` se usa para
+ * verificar la firma del paquete offline durante el arranque, así que el
+ * navegador descarga este fichero antes de pintar nada. De aquí solo pueden
+ * salir tipos (gratis en tiempo de ejecución) y funciones pequeñas: cualquier
+ * TABLA de datos que se exporte o se reexporte desde aquí viaja en el trozo
+ * compartido de la pantalla Hoy y se come el presupuesto de arranque.
+ *
+ * Por eso el modelo de autorización —roles, capacidades y su matriz— vive en
+ * `./capabilities.ts`, se importa como `@casa-clara/contracts/capabilities` y NO
+ * se reexporta desde aquí ni siquiera con `export { ... } from`: la arista de
+ * importación basta para que rolldown lo arrastre. Lo comprueba
+ * `apps/web/scripts/verify-today-bundle.mjs`.
+ */
+
+// Solo tipos, en las dos líneas: `import type` / `export type` se borran al
+// compilar y no crean dependencia de ejecución con `./capabilities.ts`. No los
+// conviertas en `import { ... }` ni en `export { ... } from`.
+import type { Capability, Role } from "./capabilities.js";
+export type { Capability, Role };
+
 export const API_VERSION = 1 as const;
 export const CRITICAL_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1_000;
 
-export const roles = [
-  "family_admin",
-  "family_member",
-  "employee_live_in",
-  "helper",
-  "viewer",
-] as const;
-
-export type Role = (typeof roles)[number];
-
-/**
- * `content.*` gobierna el CONTENIDO del hogar en general (el recetario, que la
- * familia mantiene). `guide.write` es más estrecha a propósito: escribir la
- * **Guía de la casa** —crear notas y apartados, editarlas, publicarlas,
- * destacarlas y usar modelos— es cosa de la administración y de nadie más,
- * porque la Guía es a la vez el manual de acogida de quien trabaja aquí. Sin
- * esta capacidad la interfaz NO dibuja ningún control de escritura, y la RLS
- * de `wiki_*` lo impone igualmente (migración 0026).
- */
-export const capabilities = [
-  "access.manage",
-  "agreement.read",
-  "agreement.write",
-  "calendar.read",
-  "calendar.write",
-  "comment.create",
-  "contact.read",
-  "contact.write",
-  "content.read",
-  "content.write",
-  "content.publish",
-  "emergency.read",
-  "expense.create.self",
-  "export.employment.self",
-  "guide.write",
-  "leave.approve",
-  "leave.request.self",
-  "menu.read",
-  "menu.write",
-  "payment.confirm.self",
-  "payment.register",
-  "routine.read",
-  "routine.toggle",
-  "search.use",
-  "settlement.close",
-  "settlement.read",
-  "work.confirm",
-  "work.register.self",
-] as const;
-
-export type Capability = (typeof capabilities)[number];
-
-const allCapabilities = [...capabilities];
-
-export const roleCapabilities: Readonly<Record<Role, readonly Capability[]>> = {
-  family_admin: allCapabilities,
-  family_member: [
-    "agreement.read",
-    "calendar.read",
-    "calendar.write",
-    "comment.create",
-    "contact.read",
-    "contact.write",
-    "content.publish",
-    "content.read",
-    "content.write",
-    "emergency.read",
-    "menu.read",
-    "menu.write",
-    "routine.read",
-    "routine.toggle",
-    "search.use",
-    "settlement.read",
-  ],
-  employee_live_in: [
-    "agreement.read",
-    "calendar.read",
-    "comment.create",
-    "contact.read",
-    "content.read",
-    "emergency.read",
-    "expense.create.self",
-    "export.employment.self",
-    "leave.request.self",
-    "menu.read",
-    "payment.confirm.self",
-    "routine.read",
-    "routine.toggle",
-    "search.use",
-    "settlement.read",
-    "work.register.self",
-  ],
-  helper: [
-    "comment.create",
-    "contact.read",
-    "content.read",
-    "emergency.read",
-    "menu.read",
-    "routine.read",
-    "routine.toggle",
-    "search.use",
-  ],
-  viewer: ["calendar.read", "contact.read", "emergency.read"],
-};
 export type UUID = string;
 export type ISODate = string;
 export type ISODateTime = string;
@@ -626,16 +545,8 @@ export function canonicalJson(value: unknown): string {
   return canonicalValue(value);
 }
 
-export function isRole(value: string): value is Role {
-  return (roles as readonly string[]).includes(value);
-}
-
 export function isMoneyCents(value: string): value is MoneyCents {
   return /^-?(0|[1-9]\d*)$/.test(value);
-}
-
-export function hasCapability(role: Role, capability: Capability): boolean {
-  return roleCapabilities[role].includes(capability);
 }
 
 export function assertSnapshotFresh(

@@ -1,6 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 
-import { hasCapability, type Role } from '@casa-clara/contracts';
+import type { Role } from '@casa-clara/contracts';
+import { hasCapability } from '@casa-clara/contracts/capabilities';
 import {
   AuthorizationError,
   createLogger,

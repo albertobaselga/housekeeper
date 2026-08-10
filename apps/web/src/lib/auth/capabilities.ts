@@ -1,3 +1,8 @@
+// La matriz se importa del submódulo, NUNCA de la raíz `@casa-clara/contracts`:
+// la raíz viaja en el arranque de todas las pantallas (verifica la firma del
+// paquete offline) y arrastraría ~1,2 kB de tablas que el cliente no usa —
+// las capacidades de la sesión llegan ya resueltas en `AppContextV1`.
+// Ver la cabecera de `packages/contracts/src/capabilities.ts`.
 import {
   capabilities,
   hasCapability,
@@ -5,20 +10,16 @@ import {
   roles,
   type Capability,
   type Role
-} from '@casa-clara/contracts';
+} from '@casa-clara/contracts/capabilities';
 
 export const ROLES = roles;
 export const CAPABILITIES = capabilities;
 export const ROLE_CAPABILITIES = roleCapabilities;
 export type { Capability, Role };
 
-export const ROLE_LABELS: Readonly<Record<Role, string>> = {
-  family_admin: 'Administrador familiar',
-  family_member: 'Miembro de la familia',
-  employee_live_in: 'Empleada interna',
-  helper: 'Apoyo del hogar',
-  viewer: 'Acceso puntual'
-};
+// Las etiquetas de los papeles NO están aquí: viven en `./role-labels.ts` para
+// que la cabecera del hogar pueda pintarlas sin arrastrar la matriz. No las
+// reexportes desde este módulo; volverías a juntar las dos cosas en el trozo.
 
 export function isRole(value: unknown): value is Role {
   return typeof value === 'string' && (roles as readonly string[]).includes(value);

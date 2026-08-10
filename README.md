@@ -117,7 +117,7 @@ comando y job de [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
 | Comando | Qué cubre | Necesita Postgres | Job |
 |---|---|---|---|
 | `pnpm lint` / `pnpm typecheck` / `pnpm build` | Análisis estático de todos los workspaces | no | `static-analysis` |
-| `pnpm --filter @casa-clara/web verify:bundle` | Presupuesto del JS inicial de Hoy y fuga de fixtures a cliente | no | `static-analysis` |
+| `pnpm --filter @casa-clara/web verify:bundle` | Presupuesto del JS inicial de Hoy, módulos desterrados del arranque y fuga de fixtures a cliente ([por qué](docs/architecture/delivery-quality-contract.md#presupuesto-de-arranque-de-hoy)) | no | `static-analysis` |
 | `pnpm test:unit` | Unidades y dominio de todos los workspaces | no | `unit` |
 | `pnpm test:legacy` | Batería `node:test` del prototipo conservado | no | `unit` |
 | `scripts/ci/validate-compose.sh` | Contratos de los modelos Compose | no | `compose` |
