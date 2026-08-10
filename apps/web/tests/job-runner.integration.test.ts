@@ -17,8 +17,16 @@ import { FIXTURE_HOUSEHOLD } from './helpers';
 
 // La demostración de que esto sirve para algo: un trabajo encolado por la
 // aplicación se EJECUTA cuando el planificador llama al endpoint, y su efecto
-// aparece en la base. Antes de esta oleada nadie vaciaba la cola y el parte
-// semanal se quedaba en `submitted` para siempre.
+// aparece en la base. Antes de esta oleada nadie vaciaba la cola y el
+// calendario no se refrescaba solo.
+//
+// El trabajo de ejemplo es `maintenance.prune_discovery`, la poda de los datos
+// de descubrimiento. Era `time_report.autoconfirm`, que se retiró con la
+// migración 0029 junto con el parte semanal. La poda sirve igual y además
+// mejor: es SQL puro (no toca red ni almacén), es idempotente, y su efecto se
+// mira sin sembrar nada porque al terminar SE RE-ENCOLA a siete días. Eso es
+// justo lo que hay que comprobar de un ejecutor: que el trabajo corrió entero,
+// no solo que la fila cambió de estado.
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const WORKER_LOGIN = 'it_casa_clara_jobrun_worker_login';
@@ -26,31 +34,8 @@ const WORKER_LOGIN = 'it_casa_clara_jobrun_worker_login';
 // filas de la cola, que no admite vecinos.
 const JOBS_DB = 'casaclara_jobrun_it';
 
-const AGREEMENT = '12000000-0000-4000-8000-000000000001';
-const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
 const TOKEN = 'secreto-de-prueba-32-bytes-largo-0';
-
-/** Cuatro partes semanales enviados hace cuatro días: la auto-confirmación procede. */
-const REPORTS = [
-  { id: '5a000000-0000-4000-8000-000000000001', week: '2025-04-07' },
-  { id: '5a000000-0000-4000-8000-000000000002', week: '2025-04-14' },
-  { id: '5a000000-0000-4000-8000-000000000003', week: '2025-04-21' },
-  { id: '5a000000-0000-4000-8000-000000000004', week: '2025-04-28' }
-];
-
-const SEED = `
-BEGIN;
-SET LOCAL row_security = off;
-INSERT INTO app.weekly_time_reports (
-  id, household_id, agreement_id, employee_membership_id, week_starts_on,
-  status, submitted_at, submitted_by_membership_id
-) VALUES
-${REPORTS.map(
-  (report) => `  ('${report.id}', '${FIXTURE_HOUSEHOLD}', '${AGREEMENT}', '${EMPLOYEE_MEMBERSHIP}',
-   '${report.week}', 'submitted', now() - interval '4 days', '${EMPLOYEE_MEMBERSHIP}')`
-).join(',\n')};
-COMMIT;
-`;
+const PRUNE_JOB = 'maintenance.prune_discovery';
 
 function jobsUrlFor(base: string): string {
   const url = new URL(base);
@@ -70,23 +55,15 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
   let workerPool: pg.Pool;
   let config: JobRunnerConfig;
 
-  async function enqueue(type: string, payload: unknown, runAt = 'now()'): Promise<void> {
-    await adminPool.query(
+  /** Encola una poda lista para ejecutarse y devuelve su id, para poder seguirla. */
+  async function enqueuePrune(): Promise<string> {
+    const inserted = await adminPool.query<{ id: string }>(
       `insert into app_private.job_queue (household_id, job_type, payload, run_at)
-       values ($1, $2, $3::jsonb, ${runAt})`,
-      [FIXTURE_HOUSEHOLD, type, JSON.stringify(payload)]
+       values ($1, $2, '{}'::jsonb, now())
+       returning id`,
+      [FIXTURE_HOUSEHOLD, PRUNE_JOB]
     );
-  }
-
-  async function reportStatuses(): Promise<Array<{ status: string; auto: boolean }>> {
-    const result = await adminPool.query<{ status: string; auto: boolean }>(
-      `select status::text as status, auto_confirmed as auto
-         from app.weekly_time_reports
-        where id = any($1::uuid[])
-        order by week_starts_on`,
-      [REPORTS.map((report) => report.id)]
-    );
-    return result.rows;
+    return inserted.rows[0]!.id;
   }
 
   async function jobStates(type: string): Promise<Array<{ status: string; attempts: number }>> {
@@ -98,6 +75,14 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       [type]
     );
     return result.rows;
+  }
+
+  async function jobById(id: string): Promise<{ status: string; attempts: number } | undefined> {
+    const result = await adminPool.query<{ status: string; attempts: number }>(
+      `select status::text as status, attempts from app_private.job_queue where id = $1`,
+      [id]
+    );
+    return result.rows[0];
   }
 
   beforeAll(async () => {
@@ -123,7 +108,6 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       for (const fixture of (await readdir(fixturesDir)).filter((f) => f.endsWith('.sql')).sort()) {
         await admin.query(await readFile(path.join(fixturesDir, fixture), 'utf8'));
       }
-      await admin.query(SEED);
       await admin.query(`drop role if exists ${WORKER_LOGIN}`);
       await admin.query(
         `create role ${WORKER_LOGIN} login password 'integration-only' nosuperuser nobypassrls in role casa_clara_worker`
@@ -171,8 +155,10 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
     await adminPool?.end();
   });
 
+  let firstPrune: string;
+
   it('sin el secreto correcto no ejecuta nada y responde 401', async () => {
-    await enqueue('time_report.autoconfirm', { reportId: REPORTS[0]!.id });
+    firstPrune = await enqueuePrune();
 
     // Sin cabecera, vacío, otro secreto y dos casi-aciertos: el que le sobra un
     // carácter y el que le falta. (Un token con espacios al final no se prueba
@@ -184,18 +170,17 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
     }
 
     // La cola sigue intacta: ni un trabajo reclamado.
-    expect(await jobStates('time_report.autoconfirm')).toEqual([{ status: 'queued', attempts: 0 }]);
-    expect((await reportStatuses())[0]).toEqual({ status: 'submitted', auto: false });
+    expect(await jobStates(PRUNE_JOB)).toEqual([{ status: 'queued', attempts: 0 }]);
   });
 
   it('sin configuración completa responde 503 y deja la cola quieta', async () => {
     const response = await runJobDrainRequest(drainRequest(), { config: null, pool: workerPool });
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: 'job_runner_unavailable' });
-    expect(await jobStates('time_report.autoconfirm')).toEqual([{ status: 'queued', attempts: 0 }]);
+    expect(await jobStates(PRUNE_JOB)).toEqual([{ status: 'queued', attempts: 0 }]);
   });
 
-  it('con el secreto correcto ejecuta el trabajo encolado y el parte queda confirmado', async () => {
+  it('con el secreto correcto ejecuta la cola entera con el catálogo real', async () => {
     const response = await runJobDrainRequest(drainRequest(), { config, pool: workerPool });
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
@@ -205,19 +190,18 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       reclaimed: { requeued: number; dead: number };
     };
 
-    // El efecto real: el parte que llevaba cuatro días enviado ya está
-    // confirmado, y sin actor humano.
-    expect((await reportStatuses())[0]).toEqual({ status: 'confirmed', auto: true });
-    expect(await jobStates('time_report.autoconfirm')).toEqual([
-      { status: 'completed', attempts: 1 }
-    ]);
-
-    // Y de paso el drenaje re-armó las dos cadenas periódicas, que en el demonio
-    // se sembraban al arrancar y aquí no tienen arranque al que agarrarse.
-    expect(await jobStates('maintenance.prune_discovery')).toEqual([
+    // El efecto real, y la prueba de que el manejador corrió ENTERO y no solo
+    // se marcó la fila: la poda encolada se completó y dejó la siguiente puesta
+    // para dentro de una semana.
+    expect(await jobById(firstPrune)).toEqual({ status: 'completed', attempts: 1 });
+    expect(await jobStates(PRUNE_JOB)).toEqual([
       { status: 'completed', attempts: 1 },
       { status: 'queued', attempts: 0 }
     ]);
+
+    // Y de paso el drenaje re-armó la cadena periódica de calendarios, que en
+    // el demonio se sembraba al arrancar y aquí no tiene arranque al que
+    // agarrarse. (La de la poda no hizo falta re-armarla: ya había una puesta.)
     expect(await jobStates('ics.sync_all')).toEqual([
       { status: 'completed', attempts: 1 },
       { status: 'queued', attempts: 0 }
@@ -226,24 +210,21 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
     // Se agotó la cola (los re-encolados quedan a +7 días y +6 horas) y no
     // quedaba nada listo.
     expect(body.stoppedBy).toBe('empty');
-    expect(body.ran).toBe(3);
+    expect(body.ran).toBe(2);
     expect(body.remaining).toBe(0);
     expect(body.reclaimed).toEqual({ requeued: 0, dead: 0 });
   });
 
   it('el presupuesto corta ENTRE trabajos: ninguno se queda a medias', async () => {
-    // Tres trabajos idénticos (la auto-confirmación es idempotente) para tener
-    // cola de sobra sin gastar los partes que usa la prueba siguiente.
-    for (let index = 0; index < 3; index += 1) {
-      await enqueue('time_report.autoconfirm', { reportId: REPORTS[1]!.id });
-    }
+    // Tres trabajos y un manejador de mentira: aquí no se comprueba qué hace la
+    // poda —eso es lo anterior— sino que el corte por reloj no deja ninguna
+    // fila reclamada a medias.
+    for (let index = 0; index < 3; index += 1) await enqueuePrune();
 
-    // Reloj falso: el primer trabajo entra dentro del presupuesto y el segundo
-    // ya no. Lo que importa es que el corte no deje ninguna fila en `running`.
     let tick = 0;
     const outcome = await drainJobQueue(workerPool, {
       handlers: {
-        'time_report.autoconfirm': async () => {
+        [PRUNE_JOB]: async () => {
           await new Promise((resolve) => setTimeout(resolve, 1));
         }
       },
@@ -265,32 +246,29 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
   });
 
   it('dos pasadas simultáneas se reparten la cola sin ejecutar nada dos veces', async () => {
-    for (const report of REPORTS.slice(2)) {
-      await enqueue('time_report.autoconfirm', { reportId: report.id });
-    }
-
     const [first, second] = await Promise.all([
       runJobDrainRequest(drainRequest(), { config, pool: workerPool }),
       runJobDrainRequest(drainRequest(), { config, pool: workerPool })
     ]);
     expect([first!.status, second!.status]).toEqual([200, 200]);
 
-    // Los cuatro partes confirmados y, sobre todo, CADA trabajo con un solo
-    // intento: nadie reclamó el mismo dos veces (`for update skip locked`).
-    expect(await reportStatuses()).toEqual(REPORTS.map(() => ({ status: 'confirmed', auto: true })));
-    // 1 del primer drenaje + 3 del presupuesto + 2 de aquí.
-    const states = await jobStates('time_report.autoconfirm');
-    expect(states).toHaveLength(6);
-    expect(states.every((job) => job.status === 'completed' && job.attempts === 1)).toBe(true);
+    // Lo que importa: NINGÚN trabajo con más de un intento. Dos pasadas a la vez
+    // se reparten la cola con `for update skip locked` y nadie reclama el mismo
+    // dos veces; un segundo intento sería justo la señal de que sí.
+    const states = await jobStates(PRUNE_JOB);
+    expect(states.filter((job) => job.attempts > 1)).toEqual([]);
+    expect(states.filter((job) => job.status === 'running')).toEqual([]);
+    expect(states.filter((job) => job.status === 'completed').length).toBeGreaterThanOrEqual(3);
   });
 
   it('un trabajo abandonado en `running` vuelve a la cola pasado su arriendo', async () => {
-    await enqueue('time_report.autoconfirm', { reportId: REPORTS[0]!.id });
+    const abandoned = await enqueuePrune();
     // Se simula el corte de la plataforma a mitad: reclamado y nunca cerrado.
     await adminPool.query(
       `update app_private.job_queue
           set status = 'running', attempts = 1, locked_at = now() - interval '30 minutes'
-        where job_type = 'time_report.autoconfirm' and status = 'queued'`
+        where id = $1`,
+      [abandoned]
     );
 
     const response = await runJobDrainRequest(drainRequest(), { config, pool: workerPool });
@@ -298,16 +276,16 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
     expect(body.reclaimed).toEqual({ requeued: 1, dead: 0 });
 
     // Rescatado y ejecutado en la misma pasada; el intento anterior se conserva.
-    const states = await jobStates('time_report.autoconfirm');
-    expect(states.at(-1)).toEqual({ status: 'completed', attempts: 2 });
+    expect(await jobById(abandoned)).toEqual({ status: 'completed', attempts: 2 });
   });
 
   it('un abandonado que ya agotó sus intentos pasa a `dead` en vez de girar para siempre', async () => {
-    await enqueue('time_report.autoconfirm', { reportId: REPORTS[1]!.id });
+    const exhausted = await enqueuePrune();
     await adminPool.query(
       `update app_private.job_queue
           set status = 'running', attempts = 5, locked_at = now() - interval '30 minutes'
-        where job_type = 'time_report.autoconfirm' and status = 'queued'`
+        where id = $1`,
+      [exhausted]
     );
 
     const response = await runJobDrainRequest(drainRequest(), { config, pool: workerPool });
