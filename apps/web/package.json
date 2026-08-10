@@ -23,6 +23,7 @@
     "@casa-clara/contracts": "workspace:*",
     "@casa-clara/domain": "workspace:*",
     "@casa-clara/server": "workspace:*",
+    "@casa-clara/worker": "workspace:*",
     "@milkdown/kit": "7.22.0",
     "better-auth": "1.6.26",
     "fflate": "0.8.3",

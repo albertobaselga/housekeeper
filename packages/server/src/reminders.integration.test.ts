@@ -112,7 +112,7 @@ describe.runIf(Boolean(adminUrl))("recordatorios y auto-confirmación sobre Post
   let settlementId: string;
   let reportId: string;
 
-  it("el cierre de mayo encola notification.settlement_due con run_at = due_on - 3 días", async () => {
+  it("el cierre de mayo encola notification.settlement_due la mañana de due_on - 3 días", async () => {
     const opened = await run(
       ADMIN,
       envelope("settlement", {
@@ -129,15 +129,34 @@ describe.runIf(Boolean(adminUrl))("recordatorios y auto-confirmación sobre Post
     const closed = await run(ADMIN, envelope("settlement", { action: "close", settlementId }));
     expect(closed).toMatchObject({ status: "accepted", resourceId: settlementId });
 
-    const job = await adminPool.query<{ run_at_matches: boolean; in_future: boolean; status: string }>(
-      `select run_at = $3::date::timestamptz - interval '3 days' as run_at_matches,
+    // La hora es la que fija app.job_run_at (0027): las 08:00 civiles de Madrid
+    // del día `due_on - 3`, no la medianoche de la zona de la sesión. La segunda
+    // columna lo comprueba de forma independiente de la función, formateando el
+    // instante EN Madrid: nunca puede volver a ser una hora de madrugada.
+    const job = await adminPool.query<{
+      run_at_matches: boolean;
+      madrid_wall_clock: string;
+      in_future: boolean;
+      status: string;
+    }>(
+      `select run_at = app.job_run_at($3::date - 3) as run_at_matches,
+              to_char(run_at at time zone 'Europe/Madrid', 'YYYY-MM-DD HH24:MI') as madrid_wall_clock,
               run_at > now() as in_future, status
          from app_private.job_queue
         where household_id = $1 and job_type = 'notification.settlement_due'
           and payload ->> 'settlementId' = $2`,
       [ROBLE_HOUSEHOLD, settlementId, DUE_ON],
     );
-    expect(job.rows).toEqual([{ run_at_matches: true, in_future: true, status: "queued" }]);
+    const expectedDay = new Date(`${DUE_ON}T00:00:00Z`);
+    expectedDay.setUTCDate(expectedDay.getUTCDate() - 3);
+    expect(job.rows).toEqual([
+      {
+        run_at_matches: true,
+        madrid_wall_clock: `${expectedDay.toISOString().slice(0, 10)} 08:00`,
+        in_future: true,
+        status: "queued",
+      },
+    ]);
   });
 
   it("settlement_reminder_state, ejecutada con el login del worker, expone pendiente y correos", async () => {

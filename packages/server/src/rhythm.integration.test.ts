@@ -189,15 +189,22 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
 
       // Dos avisos encolados: el primero al crear (run_at = primera ocurrencia)
       // y el segundo al completar (run_at = la nueva next_due_on). La igualdad
-      // se comprueba en SQL para no depender de la zona horaria del servidor.
+      // se comprueba en SQL para no depender de la zona horaria del servidor, y
+      // la hora civil se lee EN Madrid: el aviso del día X sale a las 08:00 de
+      // ese día (0027), no a la medianoche de la zona de la sesión.
       const jobs = await routineDueJobs(routineId);
       expect(jobs).toHaveLength(2);
       for (const [index, expectedDate] of [testCase.nextDueOn, testCase.expected].entries()) {
-        const match = await adminPool.query<{ ok: boolean }>(
-          "select $1::timestamptz = $2::date::timestamptz as ok",
+        const match = await adminPool.query<{ ok: boolean; madrid_wall_clock: string }>(
+          `select $1::timestamptz = app.job_run_at($2::date) as ok,
+                  to_char($1::timestamptz at time zone 'Europe/Madrid', 'YYYY-MM-DD HH24:MI')
+                    as madrid_wall_clock`,
           [jobs[index]?.runAt, expectedDate],
         );
-        expect(match.rows[0], `run_at del aviso ${index} de ${testCase.frequency}`).toEqual({ ok: true });
+        expect(match.rows[0], `run_at del aviso ${index} de ${testCase.frequency}`).toEqual({
+          ok: true,
+          madrid_wall_clock: `${expectedDate} 08:00`,
+        });
       }
     }
   });

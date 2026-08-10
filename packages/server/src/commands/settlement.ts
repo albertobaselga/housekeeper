@@ -500,14 +500,17 @@ async function closeSettlement(
     JSON.stringify(receipt),
   ]);
 
-  // Aviso de vencimiento: el worker despierta tres días antes de `due_on` (o ya
-  // mismo si ese momento pasó) y decide entonces, contra el estado real, si
-  // procede avisar. Mismo `app.enqueue_job` y misma transacción que el cierre.
+  // Aviso de vencimiento: el worker despierta la mañana de tres días antes de
+  // `due_on` (o ya mismo si ese momento pasó) y decide entonces, contra el
+  // estado real, si procede avisar. Mismo `app.enqueue_job` y misma transacción
+  // que el cierre. La hora la fija `app.job_run_at` (migración 0027) en la zona
+  // del hogar: con `::date::timestamptz` y el servidor en UTC el aviso caía a
+  // las 02:00 de la madrugada de Madrid.
   await client.query(
     `select app.enqueue_job(
        'notification.settlement_due',
        $1::jsonb,
-       greatest($2::date::timestamptz - interval '3 days', statement_timestamp())
+       greatest(app.job_run_at($2::date - 3), statement_timestamp())
      )`,
     [JSON.stringify({ settlementId: settlement.id }), settlement.due_on],
   );

@@ -162,7 +162,14 @@ async function resolveAudienceRecipients(
   return result.rows.map((row) => row.email);
 }
 
-/** Encola el aviso de una ocurrencia con run_at = su fecha de vencimiento. */
+/**
+ * Encola el aviso de una ocurrencia para la mañana de su fecha de vencimiento.
+ *
+ * `app.job_run_at` (migración 0027) traduce la fecha civil al instante real en
+ * la zona del hogar. Antes se usaba `::date::timestamptz`, que resuelve la
+ * medianoche en la zona de la SESIÓN: con el servidor en UTC el aviso salía a
+ * las 02:00 de la madrugada de Madrid.
+ */
 async function enqueueRoutineDue(
   client: PoolClient,
   householdId: UUID,
@@ -171,7 +178,7 @@ async function enqueueRoutineDue(
 ): Promise<void> {
   const recipients = await resolveAudienceRecipients(client, householdId, routine.audience);
   await client.query(
-    `select app.enqueue_job($1, $2::jsonb, greatest($3::date::timestamptz, statement_timestamp()))`,
+    `select app.enqueue_job($1, $2::jsonb, greatest(app.job_run_at($3::date), statement_timestamp()))`,
     [
       ROUTINE_DUE_JOB,
       JSON.stringify({
