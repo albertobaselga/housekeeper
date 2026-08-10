@@ -5,6 +5,7 @@ import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction 
 
 import {
   buildExtraWorkTypeView,
+  buildScheduleView,
   buildSupplementView,
   currentLocalDate,
   dateLabel,
@@ -13,8 +14,12 @@ import {
   type ExtraWorkTypeRow,
   type ExtraWorkTypeView,
   type RecurringSupplementRow,
+  type ScheduleDayRow,
+  type ScheduleRow,
+  type ScheduleView,
   type SupplementView
 } from '$lib/employment/model';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:agreement-terms');
@@ -51,6 +56,8 @@ export interface AgreementVersionAdminView {
   state: 'vigente' | 'futura' | 'historica';
   extraWorkTypes: ExtraWorkTypeView[];
   supplements: SupplementView[];
+  /** null = esta versión no declara horario. Se puede pactar uno apilando otra. */
+  schedule: ScheduleView | null;
 }
 
 export interface AgreementAdminView {
@@ -99,6 +106,7 @@ interface VersionRow {
 
 type CatalogueRow = ExtraWorkTypeRow & { agreementId: string };
 type SupplementCatalogueRow = RecurringSupplementRow & { agreementId: string };
+type ScheduleCatalogueRow = ScheduleRow & { agreementId: string };
 
 async function readAgreements(client: PoolClient, householdId: string): Promise<AgreementRow[]> {
   const result = await client.query<AgreementRow>(
@@ -195,6 +203,42 @@ export async function loadAgreementAdmin(
           )
         : empty;
 
+      // Horario de cada versión (0025). Una versión puede no tener ninguno:
+      // esta pantalla enseña ese hueco tal cual, porque es lo que la empleada
+      // verá —o mejor dicho, lo que NO verá— y quien administra tiene que
+      // saberlo antes de pactar.
+      const schedules = agreementIds.length
+        ? await client.query<ScheduleCatalogueRow>(
+            `select id,
+                    agreement_id as "agreementId",
+                    agreement_version_id as "agreementVersionId",
+                    to_char(starts_at, 'HH24:MI') as "startsAt",
+                    to_char(ends_at, 'HH24:MI') as "endsAt",
+                    long_break_minutes as "longBreakMinutes",
+                    note
+               from app.agreement_schedules
+              where household_id = $1 and agreement_id = any($2::uuid[])`,
+            [householdId, agreementIds]
+          )
+        : empty;
+
+      const scheduleDays = agreementIds.length
+        ? await client.query<ScheduleDayRow>(
+            `select id,
+                    schedule_id as "scheduleId",
+                    weekday,
+                    works,
+                    to_char(starts_at, 'HH24:MI') as "startsAt",
+                    to_char(ends_at, 'HH24:MI') as "endsAt",
+                    long_break_minutes as "longBreakMinutes",
+                    note
+               from app.agreement_schedule_days
+              where household_id = $1 and agreement_id = any($2::uuid[])
+              order by weekday`,
+            [householdId, agreementIds]
+          )
+        : empty;
+
       // Empleadas internas sin acuerdo activo. El modelo admite varios acuerdos
       // vivos en el mismo hogar —uno por persona—, así que esta lista puede
       // tener más de un nombre a la vez.
@@ -243,7 +287,19 @@ export async function loadAgreementAdmin(
             .map(buildExtraWorkTypeView),
           supplements: supplements.rows
             .filter((row) => row.agreementVersionId === version.id)
-            .map(buildSupplementView)
+            .map(buildSupplementView),
+          schedule: (() => {
+            const row = schedules.rows.find(
+              (candidate) => candidate.agreementVersionId === version.id
+            );
+            return row
+              ? buildScheduleView({
+                  schedule: row,
+                  days: scheduleDays.rows,
+                  contractedWeeklyMinutes: version.contractedWeeklyMinutes
+                })
+              : null;
+          })()
         });
         byAgreement.set(version.agreementId, list);
       }
@@ -268,10 +324,7 @@ export async function loadAgreementAdmin(
       } satisfies AgreementAdminOverview;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('agreement admin unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'agreement admin', cause);
   }
 }
 
@@ -380,21 +433,74 @@ async function insertVersion(
     );
   }
 
+  /*
+   * El horario, si esta versión declara uno. `terms.schedule === null` no
+   * escribe nada, y esa ausencia es la respuesta completa: la vista de la
+   * empleada no enseñará sección de horario.
+   *
+   * Ojo con lo que eso significa al apilar: una versión nueva sin horario RETIRA
+   * el horario a partir de su fecha, igual que un concepto que se deja fuera del
+   * catálogo deja de existir a partir de ella. Por eso el formulario parte
+   * siempre del horario vigente en vez de empezar en blanco.
+   */
+  if (terms.schedule) {
+    const insertedSchedule = await client.query<{ id: string }>(
+      `insert into app.agreement_schedules
+         (household_id, agreement_id, agreement_version_id, starts_at, ends_at,
+          long_break_minutes, note, created_by_membership_id)
+       values ($1, $2, $3, $4::time, $5::time, $6, $7, $8)
+       returning id`,
+      [
+        householdId,
+        agreementId,
+        versionId,
+        terms.schedule.startsAt,
+        terms.schedule.endsAt,
+        terms.schedule.longBreakMinutes,
+        terms.schedule.note,
+        actorMembershipId
+      ]
+    );
+    const scheduleId = insertedSchedule.rows[0]?.id;
+    if (!scheduleId) throw new Error('La inserción del horario no devolvió identificador');
+
+    for (const day of terms.schedule.days) {
+      await client.query(
+        `insert into app.agreement_schedule_days
+           (household_id, agreement_id, schedule_id, weekday, works, starts_at, ends_at,
+            long_break_minutes, note, created_by_membership_id)
+         values ($1, $2, $3, $4, $5, $6::time, $7::time, $8, $9, $10)`,
+        [
+          householdId,
+          agreementId,
+          scheduleId,
+          day.weekday,
+          day.works,
+          day.startsAt,
+          day.endsAt,
+          day.longBreakMinutes,
+          day.note,
+          actorMembershipId
+        ]
+      );
+    }
+  }
+
   return versionId;
 }
 
 /**
  * Traduce el fallo de Postgres a algo que una persona pueda corregir. Los
- * códigos vienen de los disparadores y CHECK de 0002 y 0021, que son quienes
- * mandan: aquí no se duplica ninguna regla, solo se le pone nombre.
+ * códigos vienen de los disparadores y CHECK de 0002, 0021 y 0025, que son
+ * quienes mandan: aquí no se duplica ninguna regla, solo se le pone nombre.
  */
 function explain(cause: unknown): string {
   const code = (cause as { code?: string }).code;
   if (code === '23505') {
-    return 'Ya hay una versión con esa fecha de entrada en vigor, o dos conceptos comparten código.';
+    return 'Ya hay una versión con esa fecha de entrada en vigor, o dos conceptos comparten código, o un día de la semana aparece dos veces en el horario.';
   }
   if (code === '23514') {
-    return 'Una versión nueva tiene que entrar en vigor DESPUÉS de la última. Revisa también que cada jornada diga de cuántas horas es.';
+    return 'Una versión nueva tiene que entrar en vigor DESPUÉS de la última. Revisa también que cada jornada diga de cuántas horas es y que ningún día del horario termine antes de empezar.';
   }
   if (code === '55000') {
     return 'Lo pactado no se reescribe: para cambiarlo hay que añadir una versión nueva.';

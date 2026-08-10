@@ -95,7 +95,7 @@
         title: composerTitle,
         bodyMarkdown: composerBody,
         tags: parseTermList(composerTags),
-        publish: publish && home.canPublish
+        publish: publish && home.canWrite
       })
     );
     if (outcome === 'synced' || outcome === 'queued') {
@@ -182,8 +182,6 @@
   let selectedPage = $derived(data.wiki?.pages.find((page) => page.id === selectedId) ?? filteredPages[0]);
 </script>
 
-<svelte:head><title>Guía de la casa · Casa Clara</title></svelte:head>
-
 {#snippet pageNode(node: WikiPageNode)}
   <li class="wiki-node">
     <div class="wiki-node-row">
@@ -229,7 +227,52 @@
       <button class="button primary" type="submit">Buscar</button>
     </form>
 
-    <!-- 2 · Un solo botón primario para escribir. -->
+    <!-- 2 · Leer la guía entera. Es la vía de la acogida y convive con la
+         consulta suelta: buscar y entrar a una nota sigue funcionando igual. -->
+    <section class="card guide-reading-card" aria-labelledby="lectura-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="lectura-title">Leerla entera, como un libro</h2>
+          <p class="audit-note">
+            {#if home.reading.total === 0}
+              Todavía no hay notas publicadas.
+            {:else if home.reading.complete}
+              Te la has leído entera: {home.reading.total} notas.
+              {#if home.reading.changed > 0}
+                {home.reading.changed} han cambiado desde entonces.
+              {/if}
+            {:else}
+              Llevas {home.reading.read} de {home.reading.total} notas.
+              {#if home.reading.nextTitle}Sigues por «{home.reading.nextTitle}».{/if}
+            {/if}
+          </p>
+        </div>
+        {#if home.reading.total > 0}
+          <a class="button primary" href={`${base}/libro`}>
+            {home.reading.read === 0 ? 'Empezar a leer' : home.reading.complete ? 'Releerla' : 'Seguir leyendo'}
+          </a>
+        {/if}
+      </div>
+      {#if home.reading.total > 0}
+        <div
+          class="book-progress-bar"
+          role="progressbar"
+          aria-label="Notas leídas de la guía"
+          aria-valuenow={home.reading.read}
+          aria-valuemin="0"
+          aria-valuemax={home.reading.total}
+        >
+          <span style={`width: ${Math.round((home.reading.read / home.reading.total) * 100)}%`}></span>
+        </div>
+        <p class="audit-note">
+          <a href={`${base}/progreso`}>
+            {home.canWrite ? 'Ver quién se la ha leído' : 'Ver qué me falta'}
+          </a>
+        </p>
+      {/if}
+    </section>
+
+    <!-- 3 · Un solo botón primario para escribir, solo para quien administra. -->
     {#if home.canWrite && !composerOpen}
       <div class="wiki-write-cta">
         <button class="button primary" type="button" onclick={() => void openComposer()}>
@@ -297,21 +340,17 @@
             </div>
           </details>
 
-          {#if home.canPublish}
-            <div class="wiki-composer-actions">
-              <button class="button primary" type="submit" disabled={busy}>Guardar y publicar</button>
-              <button class="text-button" type="button" disabled={busy} onclick={() => void submitComposer(false)}>
-                Guardar sin publicar todavía
-              </button>
-              <button class="text-button" type="button" onclick={() => (composerOpen = false)}>Cancelar</button>
-            </div>
-          {:else}
-            <div class="wiki-composer-actions">
-              <button class="button primary" type="submit" disabled={busy}>Guardar</button>
-              <button class="text-button" type="button" onclick={() => (composerOpen = false)}>Cancelar</button>
-            </div>
-            <p class="audit-note">Quedará guardada sin publicar hasta que la familia la publique.</p>
-          {/if}
+          <div class="wiki-composer-actions">
+            <button class="button primary" type="submit" disabled={busy}>Guardar y publicar</button>
+            <button class="text-button" type="button" disabled={busy} onclick={() => void submitComposer(false)}>
+              Guardar sin publicar todavía
+            </button>
+            <button class="text-button" type="button" onclick={() => (composerOpen = false)}>Cancelar</button>
+          </div>
+          <p class="audit-note">
+            Al publicarla entra en el libro de la guía y cuenta para la lectura de quien trabaja
+            en casa. Sin publicar no se le pide a nadie que la lea.
+          </p>
         </form>
       </section>
     {/if}
@@ -390,11 +429,9 @@
         <h2>La guía está vacía</h2>
         <p>Empieza por lo que más se pregunta en casa: ¿cómo va la lavadora? ¿a qué hora recogen a los niños?</p>
         <button class="button primary" type="button" onclick={() => void openComposer()}>Escribir la primera instrucción</button>
-        {#if home.canPublish}
-          <button class="text-button" type="button" disabled={busy} onclick={() => void createStarterSpaces()}>
-            Crear los apartados de serie (General, Aparatos, Cocina y recetas)
-          </button>
-        {/if}
+        <button class="text-button" type="button" disabled={busy} onclick={() => void createStarterSpaces()}>
+          Crear los apartados de serie (General, Aparatos, Cocina y recetas)
+        </button>
       </section>
     {:else}
       <section class="card empty-state">
@@ -405,7 +442,7 @@
     {/if}
 
     <!-- 5 · Mantenimiento, plegado y solo para quien administra. -->
-    {#if home.canPublish}
+    {#if home.canWrite}
       <details class="card wiki-maintenance">
         <summary>Mantenimiento de la guía</summary>
         <div class="stack">

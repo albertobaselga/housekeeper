@@ -1,21 +1,24 @@
 import { describe, expect, it } from "vitest";
 
+import { hasCapability, isRole } from "./capabilities.js";
+import * as barrel from "./index.js";
 import {
   API_VERSION,
   assertSnapshotFresh,
-  hasCapability,
   isMoneyCents,
-  isRole,
   type CriticalSnapshotV1,
 } from "./index.js";
 import {
   agreementCommandPayloadSchema,
   agreementCreateInputSchema,
+  agreementScheduleInputSchema,
   agreementTermsInputSchema,
   commandEnvelopeSchema,
   extraWorkCommandPayloadSchema,
   extraWorkTypeInputSchema,
   recurringSupplementInputSchema,
+  routineUpsertPayloadSchema,
+  scheduleDayInputSchema,
   vacationCommandPayloadSchema,
 } from "./schemas.js";
 
@@ -40,6 +43,26 @@ const snapshot = (generatedAt: string, expiresAt: string): CriticalSnapshotV1 =>
 });
 
 describe("contratos públicos", () => {
+  /**
+   * El barril lo carga TODA pantalla del cliente (de aquí sale `canonicalJson`,
+   * que verifica la firma del paquete offline al arrancar). El troceo reparte
+   * por alcanzabilidad de módulo, así que reexportar aquí el modelo de
+   * autorización devuelve sus ~1,2 kB de tablas al arranque de Hoy aunque nadie
+   * las use. Esta prueba es la versión rápida de la guarda que
+   * `apps/web/scripts/verify-today-bundle.mjs` aplica sobre el paquete ya
+   * construido: falla en segundos, sin necesitar una construcción entera.
+   */
+  it("no reexporta el modelo de autorización: vive en @casa-clara/contracts/capabilities", () => {
+    expect(Object.keys(barrel).sort()).toEqual([
+      "API_VERSION",
+      "CRITICAL_SNAPSHOT_TTL_MS",
+      "MAX_SYNC_COMMANDS",
+      "assertSnapshotFresh",
+      "canonicalJson",
+      "isMoneyCents",
+    ]);
+  });
+
   it("deniega roles desconocidos", () => {
     expect(isRole("family_admin")).toBe(true);
     expect(isRole("owner")).toBe(false);
@@ -220,6 +243,72 @@ describe("contratos públicos", () => {
         terms,
       }).success,
     ).toBe(true);
+    // Sin la clave `schedule`, unos términos válidos siguen siéndolo y el
+    // horario queda explícitamente en null: «este contrato no lo declara».
+    expect(agreementTermsInputSchema.parse(terms).schedule).toBeNull();
+  });
+
+  it("el horario declara la jornada tipo y solo los días que se desvían", () => {
+    const schedule = {
+      startsAt: "08:00",
+      endsAt: "16:30",
+      longBreakMinutes: 90,
+      note: "",
+      days: [
+        { weekday: 6, works: true, startsAt: null, endsAt: "14:30", longBreakMinutes: null, note: "" },
+        { weekday: 7, works: false, startsAt: null, endsAt: null, longBreakMinutes: null, note: "" },
+      ],
+    };
+    expect(agreementScheduleInputSchema.safeParse(schedule).success).toBe(true);
+
+    // La jornada tipo tiene que ser una jornada.
+    expect(
+      agreementScheduleInputSchema.safeParse({ ...schedule, endsAt: "07:00" }).success,
+    ).toBe(false);
+    // Y el descanso tiene que caber dentro de ella.
+    expect(
+      agreementScheduleInputSchema.safeParse({ ...schedule, longBreakMinutes: 600 }).success,
+    ).toBe(false);
+    // Un mismo día no puede decir dos cosas.
+    expect(
+      agreementScheduleInputSchema.safeParse({
+        ...schedule,
+        days: [...schedule.days, { ...schedule.days[1]!, works: false }],
+      }).success,
+    ).toBe(false);
+    for (const bad of ["8:00", "24:00", "08:60", "mediodía"]) {
+      expect(agreementScheduleInputSchema.safeParse({ ...schedule, startsAt: bad }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it("un día libre no declara horas y un día igual al resto no necesita fila", () => {
+    const base = {
+      weekday: 4 as const,
+      works: true,
+      startsAt: null,
+      endsAt: null,
+      longBreakMinutes: null,
+      note: "",
+    };
+    // Trabaja exactamente como el resto y no explica nada: sobra.
+    expect(scheduleDayInputSchema.safeParse(base).success).toBe(false);
+    // Basta con una nota para que la fila diga algo.
+    expect(scheduleDayInputSchema.safeParse({ ...base, note: "Lleva a los niños" }).success).toBe(
+      true,
+    );
+    // Terminar antes es una sola columna: no hay que repetir la entrada.
+    expect(scheduleDayInputSchema.safeParse({ ...base, endsAt: "15:00" }).success).toBe(true);
+    // Un día libre con horas sería una contradicción.
+    expect(
+      scheduleDayInputSchema.safeParse({ ...base, works: false, endsAt: "15:00" }).success,
+    ).toBe(false);
+    expect(scheduleDayInputSchema.safeParse({ ...base, works: false }).success).toBe(true);
+    // Y un día que declara las dos horas tiene que declararlas en orden.
+    expect(
+      scheduleDayInputSchema.safeParse({ ...base, startsAt: "15:00", endsAt: "09:00" }).success,
+    ).toBe(false);
   });
 
   it("rechaza snapshots con concesiones superiores a 24 horas", () => {
@@ -230,5 +319,165 @@ describe("contratos públicos", () => {
         now,
       ),
     ).toThrow(/24 horas/);
+  });
+});
+
+describe("alta de rutina: las dos formas conviven (§3.4)", () => {
+  const identity = { action: "upsert", title: "Cocina a fondo", audience: "employee" } as const;
+
+  it("acepta la cadencia rica y normaliza los conjuntos como la base", () => {
+    // Los días llegan en el orden en que se pulsaron los botones. La base exige
+    // el array ordenado y sin repetidos (`app.is_normalized_smallints`), y esa
+    // normalización se hace aquí para que un detalle de presentación no
+    // convierta un comando de la cola sin conexión en un rechazo.
+    expect(
+      routineUpsertPayloadSchema.parse({
+        ...identity,
+        pattern: "days_of_week",
+        anchorOn: "2026-08-10",
+        repeatEvery: 1,
+        weekdays: [4, 1, 4],
+      }),
+    ).toEqual({
+      ...identity,
+      pattern: "days_of_week",
+      anchorOn: "2026-08-10",
+      repeatEvery: 1,
+      weekdays: [1, 4],
+    });
+
+    expect(
+      routineUpsertPayloadSchema.parse({
+        ...identity,
+        pattern: "months_of_year",
+        anchorOn: "2026-06-01",
+        months: [12, 6],
+        monthDay: 1,
+      }),
+    ).toMatchObject({ months: [6, 12], monthDay: 1 });
+  });
+
+  it("cada patrón declara sus campos y ninguno más, igual que la CHECK de la 0023", () => {
+    // `every_n_days` no tiene días de la semana: sobran y se van. Si la unión no
+    // discriminara, «cada 3 días los lunes» entraría y el generador no sabría
+    // qué hacer con la mitad de la regla.
+    expect(
+      routineUpsertPayloadSchema.parse({
+        ...identity,
+        pattern: "every_n_days",
+        anchorOn: "2026-08-10",
+        repeatEvery: 3,
+        weekdays: [1],
+        months: [6],
+      }),
+    ).toEqual({ ...identity, pattern: "every_n_days", anchorOn: "2026-08-10", repeatEvery: 3 });
+
+    // Los mismos límites que la base: 366 días, 12 semanas, 36 meses (una
+    // `quarterly` heredada con intervalo 12), y -1 = «el último día del mes».
+    for (const impossible of [
+      { pattern: "every_n_days", anchorOn: "2026-08-10", repeatEvery: 0 },
+      { pattern: "every_n_days", anchorOn: "2026-08-10", repeatEvery: 367 },
+      { pattern: "days_of_week", anchorOn: "2026-08-10", repeatEvery: 13, weekdays: [1] },
+      { pattern: "days_of_week", anchorOn: "2026-08-10", repeatEvery: 1, weekdays: [] },
+      { pattern: "days_of_week", anchorOn: "2026-08-10", repeatEvery: 1, weekdays: [8] },
+      { pattern: "day_of_month", anchorOn: "2026-08-10", repeatEvery: 37, monthDay: 1 },
+      { pattern: "day_of_month", anchorOn: "2026-08-10", repeatEvery: 1, monthDay: 0 },
+      { pattern: "day_of_month", anchorOn: "2026-08-10", repeatEvery: 1, monthDay: -2 },
+      { pattern: "months_of_year", anchorOn: "2026-08-10", months: [13], monthDay: 1 },
+      { pattern: "every_n_days", repeatEvery: 1 },
+    ]) {
+      expect(
+        routineUpsertPayloadSchema.safeParse({ ...identity, ...impossible }).success,
+        JSON.stringify(impossible),
+      ).toBe(false);
+    }
+
+    expect(
+      routineUpsertPayloadSchema.safeParse({
+        ...identity,
+        pattern: "day_of_month",
+        anchorOn: "2026-08-10",
+        repeatEvery: 36,
+        monthDay: -1,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("una rutina no puede acabar antes de empezar", () => {
+    const ends = (endsOn: string) =>
+      routineUpsertPayloadSchema.safeParse({
+        ...identity,
+        pattern: "every_n_days",
+        anchorOn: "2026-08-10",
+        repeatEvery: 1,
+        endsOn,
+      }).success;
+    expect(ends("2026-08-09")).toBe(false);
+    expect(ends("2026-08-10")).toBe(true);
+  });
+
+  it("«todavía no lo sabemos» es un valor, no un hueco (§2.3)", () => {
+    expect(routineUpsertPayloadSchema.parse({ ...identity, pattern: null })).toEqual({
+      ...identity,
+      pattern: null,
+    });
+    // Y sin fecha: `pattern: null` implica que no hay nada más que decir. Lo
+    // que sobra se descarta en el borde, que es donde la CHECK de la base
+    // esperaría encontrarlo.
+    expect(
+      routineUpsertPayloadSchema.parse({ ...identity, pattern: null, anchorOn: "2026-08-10" }),
+    ).toEqual({ ...identity, pattern: null });
+  });
+
+  it("ni la próxima fecha ni la política de atrasadas se pueden dictar desde fuera", () => {
+    // `next_due_on` es caché derivada de la regla (§2.7) y `overdue_policy` se
+    // DERIVA del patrón en el servidor (§2.5). Que el contrato no tenga dónde
+    // ponerlas es lo que garantiza que nadie las decida por su cuenta.
+    const parsed = routineUpsertPayloadSchema.parse({
+      ...identity,
+      pattern: "every_n_days",
+      anchorOn: "2026-08-10",
+      repeatEvery: 1,
+      nextDueOn: "2030-01-01",
+      overduePolicy: "carry",
+    });
+    expect(parsed).not.toHaveProperty("nextDueOn");
+    expect(parsed).not.toHaveProperty("overduePolicy");
+  });
+
+  it("sigue aceptando la forma anterior al despliegue, para no perder la cola sin conexión", () => {
+    // Caso 21 de §9: un envelope encolado en IndexedDB antes de la 0023 llega
+    // después y NO se puede rechazar; retirar esta rama es trabajo de T10, un
+    // despliegue más tarde.
+    expect(
+      routineUpsertPayloadSchema.parse({
+        ...identity,
+        frequency: "quarterly",
+        intervalCount: 2,
+        nextDueOn: "2026-08-10",
+      }),
+    ).toEqual({ ...identity, frequency: "quarterly", intervalCount: 2, nextDueOn: "2026-08-10" });
+
+    // Un cliente de la transición que mande las dos formas entra por la rica:
+    // el orden de la unión no es casual.
+    expect(
+      routineUpsertPayloadSchema.parse({
+        ...identity,
+        pattern: "every_n_days",
+        anchorOn: "2026-08-10",
+        repeatEvery: 1,
+        frequency: "daily",
+        intervalCount: 1,
+        nextDueOn: "2026-08-10",
+      }),
+    ).toEqual({ ...identity, pattern: "every_n_days", anchorOn: "2026-08-10", repeatEvery: 1 });
+  });
+
+  it("una carga sin ninguna de las dos formas dice cuál falta", () => {
+    const failed = routineUpsertPayloadSchema.safeParse(identity);
+    expect(failed.success).toBe(false);
+    expect(failed.success === false && failed.error.issues[0]?.message).toMatch(
+      /pattern|frequency/,
+    );
   });
 });

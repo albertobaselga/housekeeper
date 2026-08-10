@@ -126,7 +126,7 @@
 
   {#if vacations.remainingDays < 0}
     <p class="audit-note" role="status">
-      Se han apuntado más días de los que reconoce el acuerdo. Casa Clara no lo corrige sola:
+      Se han apuntado más días de los que reconoce el contrato. La aplicación no lo corrige sola:
       lo enseña para que lo habléis y decidáis qué hacer.
     </p>
   {/if}

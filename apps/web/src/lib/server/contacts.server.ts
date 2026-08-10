@@ -1,10 +1,11 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { CONTACT_KINDS, type ContactKind } from '$lib/contacts/kinds';
 
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:contacts');
@@ -34,9 +35,13 @@ export interface ContactsDirectory {
 
 /**
  * Directorio real del hogar leído de Postgres bajo RLS: los cinco roles ven
- * los contactos (contacts_read exige contexto de hogar + rol activo). Devuelve
- * null solo sin pool (demo sin DATABASE_URL) o sin membresía autorizada; la
- * página cae entonces a la fixture de demostración.
+ * los contactos (contacts_read exige contexto de hogar + rol activo).
+ *
+ * `null` significa exactamente dos cosas, las dos inofensivas: no hay pool
+ * (demostración sin `DATABASE_URL`) o no hay membresía viva. Cualquier avería
+ * de infraestructura ya NO se colapsa aquí: sale como `DataUnavailableError` y
+ * la página responde 503. Esta distinción es la que impide que un corte de
+ * base de datos acabe pintando teléfonos inventados en Emergencias.
  */
 export async function loadContacts(
   user: { id: string },
@@ -69,10 +74,7 @@ export async function loadContacts(
       } satisfies ContactsDirectory;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('contacts unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'contacts', cause);
   }
 }
 
@@ -86,7 +88,7 @@ export interface EmergencyLive {
 /**
  * Vista de Emergencias real: solo los contactos destacados del hogar. El 112
  * NO sale de la base de datos: la página lo pinta siempre, fijo. Sin pool o
- * sin membresía devuelve null y la página conserva la maqueta de demostración.
+ * sin membresía devuelve null; con base configurada y avería, lanza.
  */
 export async function loadEmergencyContacts(
   user: { id: string },
@@ -112,7 +114,8 @@ export interface SnapshotContact {
 /**
  * Contactos del CriticalSnapshot (offline y búsqueda local): el 112 fijo
  * primero y después los destacados REALES del hogar. Devuelve null sin pool o
- * sin membresía: el snapshot conserva entonces la fixture de demostración.
+ * sin membresía; con base configurada el snapshot resultante lleva el 112 y
+ * nada más, nunca la maqueta.
  */
 export async function loadSnapshotContacts(
   user: { id: string },

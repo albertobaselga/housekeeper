@@ -53,6 +53,13 @@ export function deterministicUuid(householdId, key) {
 // Contenido a sembrar (claves estables → ids deterministas).
 // ─────────────────────────────────────────────────────────────────────────────
 
+/*
+ * Desde 0023 una rutina declara su PATRÓN, y la restricción
+ * `routines_pattern_shape` no deja escribir `next_due_on` sin él. Se declara el
+ * equivalente en días con el ancla en la próxima fecha, que es exactamente lo
+ * que hizo el relleno de la migración con las filas que ya existían: el manual
+ * no pacta «los lunes y los jueves», pacta una cadencia.
+ */
 const ROUTINES = [
   {
     key: 'routine:rutina-diaria-de-referencia',
@@ -62,6 +69,7 @@ const ROUTINES = [
     audience: 'employee',
     frequency: 'daily',
     intervalCount: 1,
+    repeatEveryDays: 1,
     nextDueOn: 'current_date',
   },
   {
@@ -72,6 +80,7 @@ const ROUTINES = [
     audience: 'employee',
     frequency: 'daily',
     intervalCount: 1,
+    repeatEveryDays: 1,
     nextDueOn: 'current_date',
   },
   {
@@ -82,6 +91,7 @@ const ROUTINES = [
     audience: 'family',
     frequency: 'weekly',
     intervalCount: 1,
+    repeatEveryDays: 7,
     // Próximo lunes (o hoy si es lunes): un plan semanal se revisa al abrir semana.
     nextDueOn: "(current_date + ((8 - extract(isodow from current_date))::int % 7))",
   },
@@ -93,6 +103,7 @@ const ROUTINES = [
     audience: 'all',
     frequency: 'weekly',
     intervalCount: 2,
+    repeatEveryDays: 14,
     nextDueOn: "(current_date + ((8 - extract(isodow from current_date))::int % 7))",
   },
   {
@@ -103,6 +114,7 @@ const ROUTINES = [
     audience: 'family',
     frequency: 'monthly',
     intervalCount: 1,
+    repeatEveryDays: 30,
     nextDueOn: "(date_trunc('month', current_date) + interval '1 month')::date",
   },
 ];
@@ -176,13 +188,18 @@ export async function seedManual(client, { householdId, membershipId, dryRun = f
       const result = await client.query(
         `insert into app.routines
            (id, household_id, title, details, audience, frequency, interval_count,
-            next_due_on, created_by_membership_id)
+            next_due_on, pattern, anchor_on, repeat_every, created_by_membership_id)
          values ($1, $2, $3, $4, $5::app.routine_audience, $6::app.routine_frequency,
-                 $7, ${routine.nextDueOn}, $8)
+                 $7, ${routine.nextDueOn}, 'every_n_days'::app.routine_pattern,
+                 ${routine.nextDueOn}, $8, $9)
          on conflict (id) do update
            set title = excluded.title, details = excluded.details,
                audience = excluded.audience, frequency = excluded.frequency,
-               interval_count = excluded.interval_count, archived_at = null
+               interval_count = excluded.interval_count,
+               -- La cadencia se redeclara; el ANCLA no, igual que next_due_on:
+               -- repetir la siembra no reinicia una recurrencia ya en marcha.
+               pattern = excluded.pattern, repeat_every = excluded.repeat_every,
+               archived_at = null
          returning (xmax = 0) as created`,
         [
           id,
@@ -192,6 +209,7 @@ export async function seedManual(client, { householdId, membershipId, dryRun = f
           routine.audience,
           routine.frequency,
           routine.intervalCount,
+          routine.repeatEveryDays,
           actorMembershipId,
         ]
       );

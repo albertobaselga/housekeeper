@@ -1,11 +1,12 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { dateLabel, formatCents, formatMinutes, parseCents, periodLabel } from '$lib/employment/model';
 import { addDays, mondayOf } from '$lib/food/dates';
 import type { MealSlot } from '$lib/food/commands';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:today');
@@ -127,6 +128,8 @@ export type TodayExtraStatus = 'requested' | 'accepted' | 'performed' | 'perform
 
 export interface TodayExtraRow {
   id: string;
+  /** Acuerdo del que cuelga: con varias personas empleadas, quién es. */
+  agreementId: string;
   workedOn: string;
   durationMinutes: number;
   note: string;
@@ -136,6 +139,7 @@ export interface TodayExtraRow {
 
 export interface TodayExpenseRow {
   id: string;
+  agreementId: string;
   incurredOn: string;
   description: string;
   amountCents: string;
@@ -143,6 +147,7 @@ export interface TodayExpenseRow {
 
 export interface TodaySettlementRow {
   id: string;
+  agreementId: string;
   periodStart: string;
   dueOn: string;
   status: string;
@@ -169,6 +174,16 @@ export interface TodayDecisionFacts {
   unconfirmedSlots: UnconfirmedSlotRow[];
   /** Rutinas del rol que vencen hoy o antes. */
   dueRoutines: TodayRoutineView[];
+}
+
+/**
+ * Destino que resuelve el asunto, con la persona a la que pertenece. El hogar
+ * puede emplear a varias y el expediente enseña el de una: sin decir cuál, el
+ * enlace de una decisión de la segunda aterrizaría en el de la primera y su
+ * ancla no existiría ahí.
+ */
+function employmentHref(base: string, agreementId: string, anchor = ''): string {
+  return `${base}/employment?empleada=${agreementId}${anchor}`;
 }
 
 function extraDetail(extra: TodayExtraRow): string {
@@ -202,7 +217,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `extra-${extra.id}`,
           title: 'Jornada extra solicitada',
           detail: extraDetail(extra),
-          href: `${base}/employment#extra-${extra.id}`,
+          href: employmentHref(base, extra.agreementId, `#extra-${extra.id}`),
           cta: 'Revisar',
           inline: { kind: 'accept_extra', id: extra.id }
         });
@@ -211,7 +226,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `extra-${extra.id}`,
           title: 'Jornada extra hecha: falta decidir la compensación',
           detail: extraDetail(extra),
-          href: `${base}/employment#extra-${extra.id}`,
+          href: employmentHref(base, extra.agreementId, `#extra-${extra.id}`),
           cta: 'Decidir'
         });
       }
@@ -224,7 +239,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
         key: `gasto-${expense.id}`,
         title: 'Gasto pendiente de aprobar',
         detail: `${expense.description} · ${formatCents(expense.amountCents)} · ${dateLabel(expense.incurredOn)}`,
-        href: `${base}/employment#gasto-${expense.id}`,
+        href: employmentHref(base, expense.agreementId, `#gasto-${expense.id}`),
         cta: 'Revisar'
       });
     }
@@ -255,7 +270,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `liquidacion-${settlement.id}`,
           title: `Cuenta de ${periodLabel(settlement.periodStart.slice(0, 7)).toLocaleLowerCase('es')} pendiente de pago`,
           detail: `Pendiente ${formatCents(settlement.pendingCents)} · vence el ${dateLabel(settlement.dueOn)}`,
-          href: `${base}/employment`,
+          href: employmentHref(base, settlement.agreementId),
           cta: 'Registrar pago'
         });
       }
@@ -269,7 +284,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `extra-${extra.id}`,
           title: 'Jornada aceptada: márcala cuando la realices',
           detail: extraDetail(extra),
-          href: `${base}/employment#extra-${extra.id}`,
+          href: employmentHref(base, extra.agreementId, `#extra-${extra.id}`),
           cta: 'Marcar realizada'
         });
       }
@@ -285,7 +300,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `cobro-${settlement.id}`,
           title: `Cobro de ${periodLabel(settlement.periodStart.slice(0, 7)).toLocaleLowerCase('es')} por confirmar`,
           detail: `${formatCents(settlement.paidCents)} pagados · confirma que lo has recibido`,
-          href: `${base}/employment`,
+          href: employmentHref(base, settlement.agreementId),
           cta: 'Confirmar cobro'
         });
       }
@@ -463,51 +478,55 @@ export async function loadTodayOverview(
         sourceLabel: row.sourceLabel
       }));
 
-      // Hechos laborales: el acuerdo más relevante y sus pendientes. Para roles
-      // sin acceso laboral (helper/viewer) RLS devuelve cero filas y el bloque
-      // queda sin items de empleo.
+      // Hechos laborales pendientes de TODOS los acuerdos visibles, no del
+      // primero: un hogar puede emplear a varias personas y una decisión que no
+      // se enseña es una decisión que no se toma. Para roles sin acceso laboral
+      // (helper/viewer) la RLS devuelve cero filas y el bloque queda vacío; a
+      // la empleada le devuelve el suyo y solo el suyo.
       const agreementResult = await client.query<{ id: string }>(
         `select id from app.employment_agreements
           where household_id = $1
-          order by (status = 'active') desc, starts_on desc
-          limit 1`,
+          order by (status = 'active') desc, starts_on desc`,
         [householdId]
       );
-      const agreementId = agreementResult.rows[0]?.id ?? null;
+      const agreementIds = agreementResult.rows.map((row) => row.id);
 
       let extras: TodayExtraRow[] = [];
       let pendingExpenses: TodayExpenseRow[] = [];
       let settlements: TodaySettlementRow[] = [];
-      if (agreementId) {
+      if (agreementIds.length > 0) {
         const extrasResult = await client.query<TodayExtraRow>(
           `select id,
+                  agreement_id as "agreementId",
                   worked_on::text as "workedOn",
                   duration_minutes as "durationMinutes",
                   note,
                   status::text as "status",
                   employee_membership_id as "employeeMembershipId"
              from app.extra_work_events
-            where household_id = $1 and agreement_id = $2
+            where household_id = $1 and agreement_id = any($2::uuid[])
               and status in ('requested', 'accepted', 'performed', 'performed_pending_resolution')
             order by worked_on, requested_at`,
-          [householdId, agreementId]
+          [householdId, agreementIds]
         );
         extras = extrasResult.rows;
 
         const expensesResult = await client.query<TodayExpenseRow>(
           `select id,
+                  agreement_id as "agreementId",
                   incurred_on::text as "incurredOn",
                   description,
                   amount_cents as "amountCents"
              from app.expenses
-            where household_id = $1 and agreement_id = $2 and status = 'pending'
+            where household_id = $1 and agreement_id = any($2::uuid[]) and status = 'pending'
             order by incurred_on, submitted_at`,
-          [householdId, agreementId]
+          [householdId, agreementIds]
         );
         pendingExpenses = expensesResult.rows;
 
         const settlementsResult = await client.query<{
           id: string;
+          agreementId: string;
           periodStart: string;
           dueOn: string;
           status: string;
@@ -516,6 +535,7 @@ export async function loadTodayOverview(
           receiptConfirmedAt: string | null;
         }>(
           `select settlement.id,
+                  settlement.agreement_id as "agreementId",
                   settlement.period_start::text as "periodStart",
                   settlement.due_on::text as "dueOn",
                   settlement.status::text as "status",
@@ -529,13 +549,14 @@ export async function loadTodayOverview(
              left join app.settlement_receipt_confirmations as confirmation
                on confirmation.household_id = settlement.household_id
               and confirmation.settlement_id = settlement.id
-            where settlement.household_id = $1 and settlement.agreement_id = $2
+            where settlement.household_id = $1 and settlement.agreement_id = any($2::uuid[])
               and settlement.status = 'closed'
             order by settlement.period_start desc`,
-          [householdId, agreementId]
+          [householdId, agreementIds]
         );
         settlements = settlementsResult.rows.map((row) => ({
           id: row.id,
+          agreementId: row.agreementId,
           periodStart: row.periodStart,
           dueOn: row.dueOn,
           status: row.status,
@@ -571,11 +592,6 @@ export async function loadTodayOverview(
       } satisfies TodayOverview;
     });
   } catch (cause) {
-    // Sin membresía viva no hay hogar que enseñar; cualquier otra avería
-    // degrada a la fixture para no tumbar la pantalla de aterrizaje.
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('today overview unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'today overview', cause);
   }
 }

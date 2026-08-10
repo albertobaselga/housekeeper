@@ -85,11 +85,12 @@ describe.runIf(Boolean(adminUrl))('vista de accesos del hogar desde Postgres baj
     await appPool?.end();
   });
 
-  it('loadAccessOverview para la administradora trae las cinco membresías con sus estados', async () => {
+  it('loadAccessOverview para la administradora trae las seis membresías con sus estados', async () => {
     const overview = await loadAccessOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
     expect(overview).not.toBeNull();
     expect(overview!.householdId).toBe(FIXTURE_HOUSEHOLD);
-    expect(overview!.memberships).toHaveLength(5);
+    // Seis desde que el hogar de la fixture emplea a dos personas a la vez.
+    expect(overview!.memberships).toHaveLength(6);
 
     const byId = new Map(overview!.memberships.map((member) => [member.id, member]));
     const admin = byId.get(ADMIN_MEMBERSHIP)!;

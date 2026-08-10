@@ -210,6 +210,101 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview!.versions[0]!.vacationDaysLabel).toBe('30 días naturales al año');
   });
 
+  it('la empleada ve los conceptos apuntados a mano: en su cuenta del mes y en su lista', async () => {
+    const admin = new pg.Client({ connectionString: adminUrl });
+    await admin.connect();
+    try {
+      await admin.query('set row_security = off');
+      await admin.query(
+        `insert into app.manual_adjustments
+           (id, household_id, agreement_id, employee_membership_id, period_month,
+            requested_period_month, label, reason, amount_cents, adds_to_pay,
+            deferral_note, recorded_by_membership_id)
+         values
+           ('eb100000-0000-4000-8000-000000000001', $1, $2, $3, '2026-08-01', '2026-08-01',
+            'Gratificación de verano', 'Acordada el 2 de agosto', 15000, true, '', $4),
+           -- Consta y no se transfiere: ya se lo pagaron en mano.
+           ('eb100000-0000-4000-8000-000000000002', $1, $2, $3, '2026-08-01', '2026-08-01',
+            'Anticipo devuelto en mano', 'Devolvió 200 € en efectivo el 12 de agosto',
+            -20000, false, '', $4),
+           -- Aplazado desde un mes que ya estaba cerrado: la fila lo cuenta.
+           ('eb100000-0000-4000-8000-000000000003', $1, $2, $3, '2026-08-01', '2026-07-01',
+            'Descuento acordado', 'Rotura de la vitrocerámica, a medias', -5000, true,
+            'Se pidió para julio de 2026, pero esa cuenta ya estaba cerrada: se imputa a agosto de 2026.',
+            $4),
+           ('eb100000-0000-4000-8000-000000000004', $1, $2, $3, '2026-08-01', '2026-08-01',
+            'Apuntado por error', 'El importe era otro', 9000, true, '', $4)`,
+        [
+          FIXTURE_HOUSEHOLD,
+          '12000000-0000-4000-8000-000000000001',
+          '11000000-0000-4000-8000-000000000003',
+          '11000000-0000-4000-8000-000000000001'
+        ]
+      );
+      await admin.query(
+        `update app.manual_adjustments
+            set status = 'voided', voided_by_membership_id = $1,
+                voided_at = now(), void_reason = 'Se apuntó dos veces'
+          where id = 'eb100000-0000-4000-8000-000000000004'`,
+        ['11000000-0000-4000-8000-000000000001']
+      );
+    } finally {
+      await admin.end();
+    }
+
+    const overview = await loadEmploymentOverview(
+      { id: 'fixture:roble:employee' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+
+    const accrual = overview!.accrual;
+    const adjustmentLines = accrual!.lines.filter((line) => line.kind === 'adjustment');
+    // Los dos que mueven la transferencia; el anulado no, y el que solo consta
+    // tampoco es línea de nada.
+    expect(adjustmentLines.map((line) => [line.concept, line.detail, line.amountLabel])).toEqual([
+      ['Gratificación de verano', 'Acordada el 2 de agosto', '+150,00 €'],
+      ['Descuento acordado', 'Rotura de la vitrocerámica, a medias', '−50,00 €']
+    ]);
+    expect(accrual!.notedAdjustments).toEqual([
+      {
+        id: 'eb100000-0000-4000-8000-000000000002',
+        label: 'Anticipo devuelto en mano',
+        reason: 'Devolvió 200 € en efectivo el 12 de agosto',
+        amountLabel: '−200,00 €'
+      }
+    ]);
+
+    // La lista los trae todos, anulado incluido, con su mes y su explicación.
+    expect(overview!.manualAdjustments.map((row) => row.id)).toEqual([
+      'eb100000-0000-4000-8000-000000000001',
+      'eb100000-0000-4000-8000-000000000002',
+      'eb100000-0000-4000-8000-000000000003',
+      'eb100000-0000-4000-8000-000000000004'
+    ]);
+    expect(overview!.manualAdjustments[0]).toMatchObject({
+      periodLabel: 'Agosto 2026',
+      transferLabel: 'Se suma a la transferencia',
+      voided: false
+    });
+    expect(overview!.manualAdjustments[1]!.transferLabel).toBe('Consta, no se transfiere');
+    expect(overview!.manualAdjustments[2]!.deferralNote).toContain('ya estaba cerrada');
+    expect(overview!.manualAdjustments[3]).toMatchObject({
+      voided: true,
+      voidReason: 'Se apuntó dos veces'
+    });
+
+    // Y a quien no le corresponde verlos, RLS no le devuelve ninguno.
+    const member = await loadEmploymentOverview(
+      { id: 'fixture:roble:family' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    expect(member!.manualAdjustments).toEqual([]);
+  });
+
   it('la familia no administradora ve las vacaciones; el apoyo, ni el saldo', async () => {
     // Los días son organización de la casa, no importes: por eso family_member
     // los lee (política `vacation_periods_read` con include_family_member).
@@ -251,6 +346,98 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(overview!.recentReports).toEqual([]);
     expect(overview!.vacations).toBeNull();
     expect(overview!.balances).toEqual({ compensation: [], advances: [] });
+  });
+
+  it('la empleada ve su horario en lenguaje llano y nadie más lo alcanza', async () => {
+    const employee = await loadEmploymentOverview(
+      { id: 'fixture:roble:employee' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    const schedule = employee!.terms!.schedule;
+    expect(schedule).not.toBeNull();
+    expect(schedule!.sentence).toBe(
+      'De 8:00 a 16:30, con hora y media de descanso al mediodía. Sábado hasta las 14:30. Domingo libre.'
+    );
+    expect(schedule!.restDayLabels).toEqual(['Domingo']);
+    // Cuadra con los 2400 minutos contratados de esa versión: sin aviso.
+    expect(schedule!.mismatchLabel).toBeNull();
+
+    const admin = await loadEmploymentOverview(
+      { id: 'fixture:roble:admin' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    expect(admin!.terms!.schedule!.sentence).toBe(schedule!.sentence);
+
+    /*
+     * PRUEBA NEGATIVA. La frontera es la de `agreement_versions_read`: quien no
+     * administra y no es la interesada no ve el horario. Y no se comprueba
+     * mirando la vista —que podría estar null por otra razón— sino contando las
+     * filas que Postgres deja salir a cada rol.
+     */
+    for (const [user, membership] of [
+      ['fixture:roble:family', '11000000-0000-4000-8000-000000000002'],
+      ['fixture:roble:helper', '11000000-0000-4000-8000-000000000004'],
+      ['fixture:roble:viewer', '11000000-0000-4000-8000-000000000005']
+    ] as const) {
+      const client = await appPool.connect();
+      try {
+        await client.query('begin');
+        await client.query(`select set_config('app.user_id', $1, true)`, [user]);
+        await client.query('select app.set_household_context($1, $2)', [
+          FIXTURE_HOUSEHOLD,
+          membership
+        ]);
+        const schedules = await client.query('select count(*)::int as total from app.agreement_schedules');
+        const days = await client.query('select count(*)::int as total from app.agreement_schedule_days');
+        expect(schedules.rows[0]!.total, `${user} alcanzó una jornada tipo`).toBe(0);
+        expect(days.rows[0]!.total, `${user} alcanzó un día del horario`).toBe(0);
+      } finally {
+        await client.query('rollback').catch(() => {});
+        client.release();
+      }
+    }
+
+    // Cruce entre hogares: la empleada del olivo tiene SU horario y ni una sola
+    // fila del roble, aunque pregunte por el identificador del vecino.
+    const client = await appPool.connect();
+    try {
+      await client.query('begin');
+      await client.query(`select set_config('app.user_id', 'fixture:olivo:employee', true)`);
+      await client.query('select app.set_household_context($1, $2)', [
+        '20000000-0000-4000-8000-000000000001',
+        '21000000-0000-4000-8000-000000000002'
+      ]);
+      const own = await client.query('select count(*)::int as total from app.agreement_schedules');
+      expect(own.rows[0]!.total).toBe(1);
+      const alien = await client.query(
+        'select count(*)::int as total from app.agreement_schedules where household_id = $1',
+        [FIXTURE_HOUSEHOLD]
+      );
+      expect(alien.rows[0]!.total).toBe(0);
+    } finally {
+      await client.query('rollback').catch(() => {});
+      client.release();
+    }
+  });
+
+  it('el horario que no cuadra con la jornada contratada se denuncia en la vista', async () => {
+    // El olivo lo tiene así a propósito: de 8:00 a 20:00 con dos horas de
+    // descanso y solo el domingo libre son 60 h frente a las 40 contratadas.
+    const overview = await loadEmploymentOverview(
+      { id: 'fixture:olivo:employee' },
+      '20000000-0000-4000-8000-000000000001',
+      appPool,
+      new Date('2026-08-07T10:00:00Z')
+    );
+    const schedule = overview!.terms!.schedule!;
+    expect(schedule.matchesContract).toBe(false);
+    expect(schedule.mismatchLabel).toBe(
+      'El horario suma 60 h a la semana y la jornada contratada dice 40 h: sobran 20 h.'
+    );
   });
 
   it('un usuario sin membresía en el hogar recibe null y la página cae a la fixture', async () => {

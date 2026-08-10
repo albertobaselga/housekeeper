@@ -56,10 +56,12 @@ test.beforeAll(async () => {
       SET LOCAL row_security = off;
       INSERT INTO app.routines (
         id, household_id, title, details, audience, frequency, interval_count,
-        next_due_on, created_by_membership_id
+        next_due_on, created_by_membership_id,
+        pattern, anchor_on, repeat_every
       ) VALUES (
         '${ROUTINE_LATENCIA}', '${HOUSEHOLD}', 'Riego optimista E2E-LAT', '',
-        'employee', 'weekly', 1, '${TODAY}', '${E2E_SEED.memberships.admin}'
+        'employee', 'weekly', 1, '${TODAY}', '${E2E_SEED.memberships.admin}',
+        'every_n_days', '${TODAY}', 7
       ) ON CONFLICT DO NOTHING;
       COMMIT;
     `);

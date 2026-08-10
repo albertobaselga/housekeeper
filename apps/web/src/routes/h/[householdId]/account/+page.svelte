@@ -7,8 +7,6 @@
   let changing = $state(false);
 </script>
 
-<svelte:head><title>Tu acceso · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   <PageHeader
     eyebrow="Tu acceso"

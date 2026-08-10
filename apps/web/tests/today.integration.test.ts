@@ -19,8 +19,13 @@ const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
 // Acuerdo laboral de las fixtures sintéticas de @casa-clara/db.
 const AGREEMENT = '12000000-0000-4000-8000-000000000001';
+// La segunda persona empleada del mismo hogar, con su propio acuerdo: lo que
+// tenga pendiente también necesita decisión y también tiene que salir en Hoy.
+const EMPLOYEE_TWO_MEMBERSHIP = '11000000-0000-4000-8000-000000000006';
+const AGREEMENT_TWO = '12000000-0000-4000-8000-000000000002';
 
 const EXTRA_REQUESTED = '51000000-0000-4000-8000-000000000001';
+const EXTRA_SEGUNDA = '51000000-0000-4000-8000-000000000003';
 const EXTRA_ACCEPTED = '51000000-0000-4000-8000-000000000002';
 const EXPENSE_PENDING = '52000000-0000-4000-8000-000000000001';
 const MENU_GROUP = '53000000-0000-4000-8000-000000000001';
@@ -65,7 +70,10 @@ INSERT INTO app.extra_work_events (
   ('${EXTRA_ACCEPTED}', '${FIXTURE_HOUSEHOLD}', '${AGREEMENT}', '${EMPLOYEE_MEMBERSHIP}',
    'overtime', '${addDays(TODAY, 1)}', 120, 'Canguro aceptado IT', 'employee_report',
    'accepted', '${EMPLOYEE_MEMBERSHIP}', now() - interval '3 days',
-   '${ADMIN_MEMBERSHIP}', now() - interval '1 day');
+   '${ADMIN_MEMBERSHIP}', now() - interval '1 day'),
+  ('${EXTRA_SEGUNDA}', '${FIXTURE_HOUSEHOLD}', '${AGREEMENT_TWO}', '${EMPLOYEE_TWO_MEMBERSHIP}',
+   'worked_rest_day', '${addDays(TODAY, -3)}', 600, 'Turno de la compañera IT', 'family_request',
+   'requested', '${ADMIN_MEMBERSHIP}', now() - interval '3 days', NULL, NULL);
 
 INSERT INTO app.extra_work_transitions (
   id, household_id, extra_work_event_id, sequence_number, from_status, to_status,
@@ -76,7 +84,9 @@ INSERT INTO app.extra_work_transitions (
   ('51100000-0000-4000-8000-000000000002', '${FIXTURE_HOUSEHOLD}', '${EXTRA_ACCEPTED}', 1, NULL, 'requested',
    '${EMPLOYEE_MEMBERSHIP}', now() - interval '3 days', 'Solicitada IT'),
   ('51100000-0000-4000-8000-000000000003', '${FIXTURE_HOUSEHOLD}', '${EXTRA_ACCEPTED}', 2, 'requested', 'accepted',
-   '${ADMIN_MEMBERSHIP}', now() - interval '1 day', 'Aceptada IT');
+   '${ADMIN_MEMBERSHIP}', now() - interval '1 day', 'Aceptada IT'),
+  ('51100000-0000-4000-8000-000000000004', '${FIXTURE_HOUSEHOLD}', '${EXTRA_SEGUNDA}', 1, NULL, 'requested',
+   '${ADMIN_MEMBERSHIP}', now() - interval '3 days', 'Apuntada por la familia IT');
 
 INSERT INTO app.expenses (
   id, household_id, agreement_id, employee_membership_id, incurred_on,
@@ -100,10 +110,11 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, free_text
   ('${SLOT_HOY}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', '${TODAY}', 'comida', 'Guiso de verduras IT', 'Apartar sin sal', '${ADMIN_MEMBERSHIP}'),
   ('${SLOT_FUERA_VENTANA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', '${addDays(TODAY, 5)}', 'cena', 'Sopa IT', '', '${ADMIN_MEMBERSHIP}');
 
-INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
-  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}'),
-  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', 'monthly', 1, '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}'),
-  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+  pattern, anchor_on, repeat_every) VALUES
+  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7),
+  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', 'monthly', 1, '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${addDays(TODAY, -1)}', 30),
+  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7);
 
 COMMIT;
 `;
@@ -171,11 +182,17 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(keys).not.toContain(`extra-${EXTRA_ACCEPTED}`);
 
     const jornada = overview!.decisions.find((item) => item.key === `extra-${EXTRA_REQUESTED}`)!;
-    expect(jornada.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment#extra-${EXTRA_REQUESTED}`);
+    // El enlace dice de quién es el expediente al que lleva: el hogar puede
+    // emplear a varias personas y el ancla solo existe en el de la suya.
+    expect(jornada.href).toBe(
+      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#extra-${EXTRA_REQUESTED}`
+    );
     expect(jornada.detail).toContain('Plancha del sábado IT');
 
     const gasto = overview!.decisions.find((item) => item.key === `gasto-${EXPENSE_PENDING}`)!;
-    expect(gasto.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment#gasto-${EXPENSE_PENDING}`);
+    expect(gasto.href).toBe(
+      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#gasto-${EXPENSE_PENDING}`
+    );
     expect(gasto.detail).toContain('21,75');
 
     // El hueco fuera de la ventana ±3d no cuenta: el item es singular y de hoy.
@@ -194,6 +211,22 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     ]);
     // La del botiquín venció ayer: aparece como atrasada.
     expect(overview!.routines.find((routine) => routine.title === 'Botiquín (IT)')!.overdue).toBe(true);
+  });
+
+  it('lo pendiente de la SEGUNDA empleada también necesita decisión, y el enlace dice de quién es', async () => {
+    const overview = await loadTodayOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    const segunda = overview!.decisions.find((item) => item.key === `extra-${EXTRA_SEGUNDA}`);
+    // Antes se leía un solo acuerdo y esta jornada no existía para Hoy: una
+    // decisión que no se enseña es una decisión que no se toma.
+    expect(segunda).toBeDefined();
+    expect(segunda!.detail).toContain('Turno de la compañera IT');
+    expect(segunda!.href).toBe(
+      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT_TWO}#extra-${EXTRA_SEGUNDA}`
+    );
+
+    // Y sigue sin cruzarse: la primera empleada no ve lo de su compañera.
+    const hers = await loadTodayOverview(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(hers!.decisions.map((item) => item.key)).not.toContain(`extra-${EXTRA_SEGUNDA}`);
   });
 
   it('family_member: gastos y huecos, sin jornadas ni liquidaciones', async () => {

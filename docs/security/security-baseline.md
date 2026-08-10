@@ -18,8 +18,10 @@ Este baseline aplica a local y staging sintético. No constituye autorización p
 6. Idempotency key por escritura offline, vinculada a hogar, actor y operación. Los conflictos de jornada requieren resolución humana.
 7. Caddy añade hardening de transporte; la aplicación emite una CSP con nonce/hash compatible con su renderizado.
 8. Logs con allowlist y redacción; nunca tokens, contraseñas, contenido, consultas, diagnósticos médicos o metadatos EXIF.
-9. Staging contiene solo fixtures sintéticos y establece `ALLOW_SYNTHETIC_DATA_ONLY=true`.
-10. Los enlaces `wa.me` requieren gesto del usuario y no incluyen información sensible en el texto o la URL.
+9. Staging contiene solo fixtures sintéticos y establece `ALLOW_SYNTHETIC_DATA_ONLY=true`. Producción **no la define**, y esa afirmación se sostiene sola: un despliegue que la lleve con `VERCEL_ENV=production` no arranca, y la build de producción la rechaza por existir. Comprobable desde fuera en `/api/health` (`"synthetic": false`). Ningún código puede distinguir un dato real de uno inventado; lo que este control garantiza es que la etiqueta no puede mentir, no que la base esté limpia. Ver `docs/adr/0003-configuracion-indivisible-y-cuentas-sinteticas.md`.
+10. El camino de acceso por cuentas sintéticas no existe en el paquete de producción: `__FIXTURE_LOGIN__` lo excluye en tiempo de compilación y la build lo comprueba sobre su propia salida. Comprobable en `/api/health` (`"fixtureLogin": false`).
+11. Base de datos e identidad son indivisibles: con `DATABASE_URL` configurada y `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET` o `BETTER_AUTH_URL` ausentes, la aplicación no sirve y nombra lo que falta.
+12. Los enlaces `wa.me` requieren gesto del usuario y no incluyen información sensible en el texto o la URL.
 
 ## Retención y privacidad
 

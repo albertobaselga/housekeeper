@@ -1,7 +1,7 @@
 # Alta de un hogar de verdad, de punta a punta
 
 Cómo se pone en pie un hogar real: base de datos vacía → tres personas entrando
-con su contraseña, el acuerdo laboral dado de alta, el manual de convivencia
+con su contraseña, el contrato laboral dado de alta, el manual de convivencia
 volcado y el calendario enlazado.
 
 El procedimiento está **ensayado entero en local** contra una base de datos que
@@ -26,7 +26,7 @@ de conexión. Los pasos van en este orden porque cada uno depende del anterior.
 
 ### El fichero de configuración (ejemplo inventado)
 
-Un solo fichero alimenta el alta de cuentas **y** la del acuerdo:
+Un solo fichero alimenta el alta de cuentas **y** la del contrato:
 
 ```json
 {
@@ -45,18 +45,26 @@ Un solo fichero alimenta el alta de cuentas **y** la del acuerdo:
     "monthlySalaryCents": 123400,
     "currencyCode": "EUR",
     "contractedWeeklyMinutes": 2400,
-    "overtimeHourlyRateCents": 1000,
-    "workedRestDayRateCents": 5000,
     "annualVacationDays": 30,
-    "allowsHourlyOvertime": false,
-    "allowsExtraShifts": true,
     "schedule": {
       "from": "08:00",
       "to": "19:00",
       "longBreakMinutes": 120,
       "effectiveHoursPerDay": 8,
-      "weekly": "Cinco jornadas de lunes a viernes. Fin de semana libre."
-    }
+      "weekly": "Cinco jornadas de lunes a viernes. Fin de semana libre.",
+      "restDays": ["sabado", "domingo"],
+      "days": { "viernes": { "to": "15:00" } }
+    },
+    "extraWorkTypes": [
+      { "code": "jornada_extra", "name": "Jornada extra", "unit": "per_shift",
+        "rateCents": 5000, "referenceMinutes": 480, "active": true },
+      { "code": "media_jornada_extra", "name": "Media jornada extra", "unit": "per_shift",
+        "rateCents": 2500, "referenceMinutes": 240, "active": true }
+    ],
+    "supplements": [
+      { "code": "antiguedad", "name": "Complemento de antigüedad",
+        "amountCents": 3000, "addsToPay": true }
+    ]
   }
 }
 ```
@@ -120,53 +128,192 @@ Repetirlo es inofensivo: sin banderas no toca ninguna contraseña en marcha.
 
 ---
 
-## 3. El acuerdo laboral
+## 3. El contrato laboral
+
+> **Lee esto antes de escribir nada.** El acuerdo se da de alta con DOS partes,
+> y ninguna de las dos se corrige después: la versión 1 —salario, jornada,
+> vacaciones— y su **catálogo de conceptos**, que dice qué trabajo extra existe
+> y a cuánto se paga (`app.extra_work_types`, migración 0021). **Sin catálogo,
+> el acuerdo es mudo**: quien trabaja no ve ningún concepto, la tarjeta de
+> trabajo extra dice «Sin trabajo extra disponible» y no puede registrar ni una
+> jornada.
+>
+> Y no se arregla hacia atrás. La versión y su catálogo son inmutables
+> (disparadores `agreement_versions_append_only` de 0002 y
+> `extra_work_types_frozen` de 0021), una versión nueva solo puede entrar en
+> vigor **después** de la anterior, y para valorar un día trabajado la base
+> exige el concepto de la versión vigente **ese día**
+> (`extra_work_events_type_freeze`). Los días entre el inicio del acuerdo y la
+> corrección se quedan sin nada **para siempre**.
+
+Hay dos vías, y escriben exactamente lo mismo. Elige según lo que te dé más
+tranquilidad:
+
+| Vía | Cuándo | Qué te da | Qué no |
+|---|---|---|---|
+| **La pantalla** — Pagos → «Administrar el acuerdo» (`/h/<hogar>/employment/acuerdo`) | Lo normal. Una familia sin terminal puede hacerlo sola | Autoría real, RLS, el historial delante y el formulario avisando si el catálogo queda vacío | **No tiene ensayo ni deshacer.** Lo que se envía queda escrito |
+| **El guion** `agreement:seed` | Cuando quieres ensayar el alta antes de hacerla | `--dry-run` de verdad (dice qué haría y hace rollback) e idempotencia por contenido | Se ejecuta por fuera de la RLS, con el rol propietario |
+
+### 3.a Desde la pantalla
+
+1. Entra como `family_admin` → **Pagos → «Administrar el acuerdo»**.
+2. **Nuevo acuerdo → «Dar de alta un acuerdo»**. Si el botón no aparece, es que
+   no hay ninguna empleada interna sin acuerdo activo: da de alta su acceso
+   antes (paso 2).
+3. Empleada, `El acuerdo empieza el`, `La primera versión rige desde` (lo normal
+   es el mismo día), salario mensual, minutos semanales, **días de vacaciones**
+   y motivo.
+4. **Trabajo extra.** Un bloque por concepto: código en minúsculas
+   (`jornada_extra`), nombre, cómo se paga, tarifa, y —en las jornadas— **los
+   minutos de referencia, que son obligatorios**. «Se lo permito» marcado.
+5. **Complementos**, si los hay. «Quién lo cobra» decide si el importe **suma a
+   su transferencia** o **lo paga la casa aparte**; lo segundo consta en sus
+   condiciones y no toca el total del mes.
+6. **Dar de alta el acuerdo.**
+
+**Repasa el formulario antes de enviarlo.** No hay ensayo, no hay deshacer y la
+versión es inmutable. Si envías dos veces, el segundo intento falla con «Esa
+persona ya tiene un acuerdo activo en este hogar» — eso no es un error, es el
+índice único `one_active_agreement_per_employee_idx` haciendo de red.
+
+### 3.b Desde el guion
 
 ```bash
 pnpm --filter @casa-clara/db agreement:seed --config /ruta/fuera/del/repo/hogar.json --dry-run
 pnpm --filter @casa-clara/db agreement:seed --config /ruta/fuera/del/repo/hogar.json
 ```
 
-Crea el acuerdo y su **versión 1**, que entra en vigor el mismo día en que
-empieza el acuerdo. Los campos de `agreement`:
+Escribe contrato, versión 1, catálogo y horario en una transacción. La versión 1
+entra en vigor el mismo día en que empieza el contrato. Los campos de
+`agreement`:
 
 | Campo | Qué es |
 |---|---|
-| `employeeUsername` | Quién trabaja. Su rol tiene que ser `employee_live_in` o `helper` |
+| `employeeUsername` | Quién trabaja. **Que sea `employee_live_in`** — ver el §8 sobre `helper` |
 | `createdByUsername` | Quién firma por la casa. Opcional: por defecto, la primera `family_admin` |
-| `startsOn` | Primer día del acuerdo, `AAAA-MM-DD` |
+| `startsOn` | Primer día del contrato, `AAAA-MM-DD`. La versión 1 rige desde ese mismo día |
 | `monthlySalaryCents` | Salario mensual en céntimos (`123400` = 1.234,00 €) |
 | `contractedWeeklyMinutes` | Minutos semanales contratados (`2400` = 40 h) |
-| `overtimeHourlyRateCents` | Tarifa de hora extraordinaria. **Obligatoria** — ver abajo |
-| `workedRestDayRateCents` | Lo que se paga un día de descanso trabajado |
 | `annualVacationDays` | Días naturales de vacaciones al año (mínimo legal español: 30) |
-| `schedule` | Las condiciones de horario. Texto, o campos que el guion redacta |
-| `allowsHourlyOvertime`, `allowsExtraShifts` | Opcionales. Qué trabajo de más admite el acuerdo |
+| `schedule` | El horario. Ver «El horario va a dos sitios», abajo |
+| `extraWorkTypes` | **Obligatorio.** El catálogo. Lista, posiblemente vacía |
+| `supplements` | Opcional. Complementos periódicos |
 
-### La tarifa de hora extraordinaria no se inventa
+Cada concepto de `extraWorkTypes`:
 
-Si falta, **el guion aborta** y explica que hay que pactarla. No la deduce del
-salario ni la deja en cero: es una condición del contrato y ponerle un número
-sería hablar por dos personas que no lo han acordado. Cuando esté pactada, va en
-el JSON, o por argumento si aún se está negociando:
+| Campo | Qué es |
+|---|---|
+| `code` | Identidad estable entre versiones: minúsculas, dígitos y `_`, de 3 a 40 caracteres |
+| `name` | Cómo se llama en pantalla |
+| `unit` | `per_shift` (por jornada), `per_hour` (por hora trabajada) o `fixed_amount` (importe fijo por supuesto) |
+| `rateCents` | Tarifa en céntimos. **Obligatorio**, y `null` es un valor legítimo: «pactado sin precio todavía», y entonces ella no lo ve |
+| `referenceMinutes` | De cuántos minutos es la jornada. **Obligatorio si `per_shift`**, prohibido si `per_hour` |
+| `active` | Opcional, por defecto `true`. Es el permiso: en `false` ella no lo ve por ninguna vía |
 
-```bash
-pnpm --filter @casa-clara/db agreement:seed --config /ruta/hogar.json \
-  --overtime-hourly-rate-cents 1000
+Cada complemento de `supplements`: `code`, `name`, `amountCents` (o `null`),
+`addsToPay` (**obligatorio**: `true` suma a la transferencia, `false` lo paga la
+casa aparte), y opcionalmente `startsOn`, `endsOn` y `active`.
+
+### Sin catálogo, el guion se niega
+
+Si el JSON no trae `extraWorkTypes`, **aborta sin escribir nada** y explica por
+qué. No lo rellena por su cuenta ni deja el acuerdo a medias: el fallo que esto
+sustituye era silencioso —terminaba con éxito y dejaba el destrozo hecho—, y un
+acuerdo mudo no se puede deshacer.
+
+Si de verdad no se pacta ningún trabajo extra, dilo escribiéndolo:
+
+```json
+"extraWorkTypes": []
 ```
+
+El guion lo acepta y avisa en la salida de lo que significa.
+
+### Desactivar las horas sueltas es no escribirlas
+
+Para que no haya horas extraordinarias, **no crees ningún concepto `per_hour`**.
+No hay bandera para esto y no hace falta: la política
+`extra_work_types_employee_read` solo le enseña conceptos activos y con tarifa,
+así que una fila que no existe y una fila desactivada son indistinguibles para
+ella — y no crearla es más limpio, porque entonces no queda **ninguna** tarifa
+horaria escrita en ningún sitio. Las columnas reliquia de 0002
+(`overtime_hourly_rate_cents`, `worked_rest_day_rate_cents`) se derivan del
+catálogo y quedan en cero.
+
+`overtimeHourlyRateCents`, `workedRestDayRateCents`,
+`workedRestDayCreditMinutes`, `allowsHourlyOvertime` y `allowsExtraShifts` **ya
+no se pactan en el JSON**: las dos primeras eran las tarifas que ahora son
+conceptos, la tercera es el `referenceMinutes` de la jornada, y las dos banderas
+decían ser un permiso sin serlo. Si el fichero las trae, el guion aborta
+diciendo adónde se fueron.
+
+### El horario va a dos sitios
+
+Desde la migración 0025 el horario deja de ser solo una frase. El mismo bloque
+`schedule` del JSON alimenta las dos cosas:
+
+- **La frase** de siempre, en `terms.schedule` del contrato. No se retira: es lo
+  que se pactó por escrito con los hogares ya dados de alta.
+- **El dato consultable**, en `app.agreement_schedules` y sus días, que es lo que
+  la aplicación enseña y compara con la jornada semanal contratada.
+
+`from`, `to` y `longBreakMinutes` ya existían y ahora construyen además la
+**jornada tipo**. Lo nuevo es opcional:
+
+| Clave | Qué es |
+|---|---|
+| `restDays` | Días que **no** se trabaja. Nombres castellanos (con o sin tilde) o números ISO (1 lunes … 7 domingo) |
+| `days` | Los días que se salen de la jornada tipo. Cada uno admite `from`, `to`, `longBreakMinutes` y `note` |
+
+Un día solo declara **lo que cambia**: terminar antes los viernes es
+`"days": { "viernes": { "to": "15:00" } }`, sin repetir la hora de entrada ni el
+descanso. Los días que no aparecen trabajan la jornada tipo.
+
+Si `schedule` es una **cadena** en vez de un objeto, sigue valiendo y sigue
+yendo solo a la frase: de una frase no se deduce un horario sin inventar, y el
+guion no inventa condiciones. En ese caso el contrato queda **sin horario
+consultable** y a la empleada no se le enseña ninguna sección de horario.
+
+**Si el horario no cuadra con `contractedWeeklyMinutes`, el guion lo dice y
+guarda igual.** Imprime un `AVISO` con las dos cifras y la diferencia. No aborta
+a propósito: no le toca decidir cuál de las dos condiciones está mal, pero sí
+que nadie se entere seis meses después. Ese mismo aviso aparece luego en la
+pantalla de administración y en la de la empleada.
+
+Añadir un horario a un contrato ya dado de alta **no se hace reenviando el
+guion**: aborta igual que con cualquier otra condición. Es una versión nueva,
+desde Contrato → Administrar el contrato.
+
+### Vacaciones: ninguna fila más
+
+Los 30 días **son** `annualVacationDays` de la versión. No hay tabla de saldo;
+`app.vacation_periods` solo se llena cuando se disfrutan días.
 
 ### Cambiar lo pactado no se hace con este guion
 
-Repetirlo con los mismos datos no escribe nada. Repetirlo con datos **distintos**
-aborta: las versiones del acuerdo son inmutables (el disparador
-`agreement_versions_append_only` rechaza cualquier reescritura). Una subida de
-salario o un cambio de vacaciones es una **versión nueva**, y se añade desde la
-aplicación, con autoría y motivo. El guion solo da el alta.
+Repetirlo con los mismos datos —incluido el mismo catálogo y el mismo horario—
+no escribe nada. Repetirlo con datos **distintos** aborta, y distingue si
+cambiaron las condiciones de la versión o una tarifa del catálogo: las versiones
+del contrato son inmutables (el disparador `agreement_versions_append_only`
+rechaza cualquier reescritura). Una subida de salario, una tarifa nueva, un
+concepto retirado o un horario distinto son una **versión nueva**, y se apila
+desde la aplicación, con autoría y motivo. El guion solo da el alta.
 
-**Qué se verifica.** En Pagos: la tarjeta «Versiones y cambios de salario» con
-`v1 · desde el <fecha>`, el salario, las tarifas y los días de vacaciones; y la
-tarjeta de vacaciones con el saldo del año en curso, **prorrateado** si el
-acuerdo empezó a mitad de año (la pantalla lo explica en una línea).
+**Qué se verifica**, entrando como la empleada:
+
+- **Mis condiciones**: salario, jornada, «30 días naturales al año» y **solo**
+  los conceptos pactados con su tarifa. **Ninguna tarifa por hora**. Y, si el
+  JSON declaró horario, la tarjeta **Tu jornada** con la frase del horario; si no
+  lo declaró, esa tarjeta no existe.
+- **Contrato**: la tarjeta de trabajo extra ofrece el formulario con los
+  conceptos en el desplegable, **no** el mensaje «Sin trabajo extra disponible».
+  Registra una jornada de prueba y resuélvela para comprobar el circuito entero.
+
+Y como `family_admin`, en **Administrar el contrato**: la tarjeta «Versiones y
+cambios de salario» con `v1 · desde el <fecha>`, el salario, los conceptos con su
+tarifa, el horario y los días de vacaciones; y la tarjeta de vacaciones con el
+saldo del año en curso, **prorrateado** si el contrato empezó a mitad de año (la
+pantalla lo explica en una línea).
 
 ---
 
@@ -242,9 +389,13 @@ de ejecución, `DATABASE_AUTH_URL` y `BETTER_AUTH_SECRET`):
 | Las rutinas | Rutinas | Las cinco del manual, con su cadencia y su próxima fecha |
 | Emergencias | Emergencias | El 112 entre los contactos destacados, con su etiqueta |
 | La plantilla | Menú → Semanas plantilla | «Semana tipo del manual (pendiente)» |
-| El acuerdo | Pagos | Versión 1 con el salario, las tarifas y los días de vacaciones |
-| Las vacaciones | Pagos | El saldo del año, prorrateado si el acuerdo empezó a mitad de año |
-| Quien trabaja ve lo suyo | Pagos, como la empleada | Su acuerdo, su saldo y su expediente descargable; **ningún** formulario de apuntar o anular vacaciones |
+| El contrato | Contrato | Versión 1 con el salario, el horario, las tarifas y los días de vacaciones |
+| **El catálogo llegó** | Contrato, como la empleada | La tarjeta de trabajo extra **ofrece el formulario** con los conceptos pactados. Si dice «Sin trabajo extra disponible», el contrato nació mudo: **para aquí y léete el §3** |
+| **Y puede usarlo** | Contrato, como la empleada | Registrar una jornada extra de prueba con fecha de hoy. Tiene que aceptarse |
+| **Y no ve lo que no le aplica** | Mis condiciones, como la empleada | Solo los conceptos pactados. Si no hay horas sueltas, **ninguna tarifa por hora** en ninguna parte |
+| El horario | Mis condiciones, como la empleada | La tarjeta «Tu jornada» con la frase y el detalle día a día. Si el JSON no declaró horario, esa tarjeta **no existe** |
+| Las vacaciones | Contrato | El saldo del año, prorrateado si el contrato empezó a mitad de año |
+| Quien trabaja ve lo suyo | Contrato, como la empleada | Su contrato, su horario, su saldo y su expediente descargable; **ningún** formulario de apuntar o anular vacaciones |
 | Y no lo ajeno | Ajustes del hogar, como la empleada | Un 403 con «no está incluida en tu acceso» |
 | Nada sintético | Cualquier pantalla | Ningún banner de entorno sintético; `ALLOW_SYNTHETIC_DATA_ONLY` sin definir o a `false` |
 
@@ -273,15 +424,25 @@ Los detalles de red, regiones y variables de Vercel están en
 
 ## 8. Lo que este procedimiento todavía no resuelve
 
-- **Los interruptores de compensación no se obedecen.** `allowsHourlyOvertime` y
-  `allowsExtraShifts` quedan escritos en `terms.compensation` del acuerdo, pero
-  hoy Pagos enseña la tarifa horaria y el tipo «Horas extraordinarias» a quien
-  trabaja aunque el acuerdo diga que no hay horas sueltas. Si el hogar lo pactó
-  así, hay que llevarlo a la interfaz antes de dar el alta por buena.
-- **No hay pantalla para dar de alta un acuerdo.** Solo el guion del paso 3. Una
-  familia sin terminal no puede hacerlo sola.
-- **Cambiar lo pactado exige la aplicación** (versión nueva). Correcto de diseño,
-  pero conviene tenerlo probado antes de necesitarlo.
+- **El alta del contrato no tiene deshacer, y la pantalla tampoco tiene ensayo.**
+  No existe ninguna ruta en el código para cerrar o anular un contrato. Si el
+  formulario se envía mal, la única salida es apilar una versión nueva, que rige
+  **desde su fecha** y no repara los días anteriores. Por eso el guion del §3.b
+  conserva su `--dry-run`: es el único ensayo que hay.
+- **Un contrato con `helper` nace mudo.** El guion admite ese rol y el esquema
+  también, pero la política `extra_work_types_employee_read` de 0021 solo enseña
+  el catálogo a `employee_live_in`, y la pantalla solo ofrece como candidatas a
+  quienes tienen ese rol. Hasta que se decida qué debe ver un `helper`, el
+  contrato se firma con `employee_live_in`.
+- **La primera versión rige desde el inicio del contrato, y no es configurable
+  en el guion.** Es deliberado —una v1 posterior dejaría días trabajados sin
+  condiciones—, pero significa que el contrato no se puede dar de alta con
+  efectos retroactivos parciales. La pantalla sí deja separar ambas fechas,
+  exigiendo que la versión no empiece antes que el contrato.
+- **El horario que no cuadra con la jornada contratada se avisa, no se impide.**
+  Ni el guion ni la pantalla deciden cuál de las dos condiciones está mal: las
+  dos se guardan y la diferencia queda escrita a la vista de la casa y de quien
+  trabaja.
 - **El grupo de comensales se crea a mano y se puede duplicar.**
 - **La primera lectura del calendario depende del trabajador de fondo.** Sin él
   el calendario queda enlazado y vacío.

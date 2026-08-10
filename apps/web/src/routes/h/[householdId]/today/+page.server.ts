@@ -1,3 +1,4 @@
+import { demoOrUnavailable } from '$lib/server/data-source.server';
 import { getTodayFixture } from '$lib/server/fixtures.server';
 import { loadTodayOverview } from '$lib/server/today.server';
 import type { PageServerLoad } from './$types';
@@ -9,6 +10,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     ? await loadTodayOverview({ id: locals.user.id }, params.householdId)
     : null;
   if (overview) return { overview, today: null };
-  // Sin base de datos (o sin membresía autorizada) la demo conserva la fixture.
-  return { overview: null, today: getTodayFixture() };
+  // Con base de datos configurada aquí no hay maqueta que servir: 503 honesto
+  // y registrado (data-source.server.ts). Sin base, la demostración sigue.
+  return demoOrUnavailable(() => ({ overview: null, today: getTodayFixture() }));
 };

@@ -1,7 +1,14 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import {
+    scheduleCoherence,
+    weekdayName,
+    type AgreementSchedule,
+    type Weekday
+  } from '@casa-clara/domain';
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import { centsToEuroInput } from '$lib/employment/model';
+  import { PAYER_CHOICES, type PayerChoice } from '$lib/employment/payer';
+  import { centsToEuroInput, scheduleMismatchLabel } from '$lib/employment/model';
   import type {
     AgreementVersionAdminView,
     EmployeeCandidateView
@@ -11,6 +18,9 @@
   let { data, form }: { data: PageData; form: ActionData } = $props();
 
   const admin = $derived(data.admin);
+
+  const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
+  const capitalise = (text: string) => `${text[0]!.toLocaleUpperCase('es')}${text.slice(1)}`;
 
   /**
    * Fila editable del catálogo. Se parte SIEMPRE de la versión vigente, porque
@@ -28,14 +38,39 @@
     active: boolean;
   };
 
+  /** `addsToPay` viaja como texto, y por la misma constante que lee el servidor. */
   type SupplementDraft = {
     code: string;
     name: string;
     amount: string;
-    addsToPay: boolean;
+    addsToPay: PayerChoice;
     startsOn: string;
     endsOn: string;
     active: boolean;
+  };
+
+  /**
+   * Un día de la semana en el editor. `mode` es la única pregunta que se le
+   * hace a quien administra —«¿este día es como los demás, es distinto, o se
+   * libra?»— y de las tres respuestas solo la primera no guarda nada.
+   */
+  type ScheduleDayDraft = {
+    weekday: Weekday;
+    mode: 'tipo' | 'distinto' | 'libra';
+    startsAt: string;
+    endsAt: string;
+    longBreakMinutes: string;
+    note: string;
+  };
+
+  type ScheduleDraft = {
+    /** Sin marcar no se escribe nada y la empleada no ve sección de horario. */
+    declared: boolean;
+    startsAt: string;
+    endsAt: string;
+    longBreakMinutes: number;
+    note: string;
+    days: ScheduleDayDraft[];
   };
 
   type Draft = {
@@ -46,7 +81,110 @@
     reason: string;
     types: TypeDraft[];
     supplements: SupplementDraft[];
+    schedule: ScheduleDraft;
   };
+
+  function emptyScheduleDraft(): ScheduleDraft {
+    return {
+      declared: false,
+      startsAt: '09:00',
+      endsAt: '18:00',
+      longBreakMinutes: 60,
+      note: '',
+      days: WEEKDAYS.map((weekday) => ({
+        weekday,
+        mode: 'tipo' as const,
+        startsAt: '',
+        endsAt: '',
+        longBreakMinutes: '',
+        note: ''
+      }))
+    };
+  }
+
+  /**
+   * El horario vigente convertido en borrador. Se parte de él y no de una
+   * pantalla en blanco por una razón concreta: apilar una versión SIN horario
+   * se lo retira a la empleada a partir de esa fecha, y eso tiene que ser una
+   * decisión, no un despiste.
+   */
+  function scheduleDraftFrom(version: AgreementVersionAdminView | undefined): ScheduleDraft {
+    const current = version?.schedule ?? null;
+    if (!current) return emptyScheduleDraft();
+    return {
+      declared: true,
+      startsAt: current.startsAt,
+      endsAt: current.endsAt,
+      longBreakMinutes: current.longBreakMinutes,
+      note: current.note,
+      days: WEEKDAYS.map((weekday) => {
+        const day = current.days.find((candidate) => candidate.weekday === weekday);
+        if (!day || (!day.differs && day.note === '')) {
+          return { weekday, mode: 'tipo' as const, startsAt: '', endsAt: '', longBreakMinutes: '', note: '' };
+        }
+        if (!day.works) {
+          return { weekday, mode: 'libra' as const, startsAt: '', endsAt: '', longBreakMinutes: '', note: day.note };
+        }
+        return {
+          weekday,
+          mode: 'distinto' as const,
+          startsAt: day.startsAt ?? '',
+          endsAt: day.endsAt ?? '',
+          longBreakMinutes: String(day.longBreakMinutes),
+          note: day.note
+        };
+      })
+    };
+  }
+
+  /**
+   * Lo que sumaría a la semana el horario que se está escribiendo, comparado
+   * con la jornada contratada del mismo formulario.
+   *
+   * Usa el MISMO motor que el servidor y las pruebas (`@casa-clara/domain`): si
+   * este aviso se calculara aquí con aritmética propia, la pantalla y lo
+   * guardado podrían decir dos cosas distintas del mismo horario.
+   *
+   * Devuelve null mientras el borrador no sea un horario válido —en mitad de
+   * teclear «1» en un campo de hora no lo es—, porque avisar de una incoherencia
+   * calculada sobre datos a medio escribir sería ruido, no información.
+   */
+  function livePreview(draft: Draft): { minutes: number; mismatch: string | null } | null {
+    if (!draft.schedule.declared) return null;
+    const pure: AgreementSchedule = {
+      startsAt: draft.schedule.startsAt,
+      endsAt: draft.schedule.endsAt,
+      longBreakMinutes: Number(draft.schedule.longBreakMinutes),
+      note: draft.schedule.note,
+      days: draft.schedule.days
+        .filter((day) => day.mode !== 'tipo')
+        .map((day) => ({
+          weekday: day.weekday,
+          works: day.mode !== 'libra',
+          startsAt: day.mode === 'distinto' && day.startsAt !== '' ? day.startsAt : null,
+          endsAt: day.mode === 'distinto' && day.endsAt !== '' ? day.endsAt : null,
+          longBreakMinutes:
+            day.mode === 'distinto' && day.longBreakMinutes !== ''
+              ? Number(day.longBreakMinutes)
+              : null,
+          note: day.note
+        }))
+    };
+    try {
+      const coherence = scheduleCoherence(pure, draft.contractedWeeklyMinutes);
+      return {
+        minutes: coherence.weeklyMinutes,
+        // La frase la escribe el modelo, no esta plantilla: es la MISMA que
+        // verá luego la versión guardada y la que lee la empleada.
+        mismatch: scheduleMismatchLabel(
+          coherence.weeklyMinutes,
+          coherence.contractedWeeklyMinutes
+        )
+      };
+    } catch {
+      return null;
+    }
+  }
 
   function draftFromVersion(version: AgreementVersionAdminView | undefined, today: string): Draft {
     return {
@@ -67,11 +205,12 @@
         code: supplement.code,
         name: supplement.name,
         amount: supplement.amountCents === null ? '' : centsToEuroInput(supplement.amountCents),
-        addsToPay: supplement.addsToPay,
+        addsToPay: supplement.addsToPay ? PAYER_CHOICES.addsToPay : PAYER_CHOICES.paidByHousehold,
         startsOn: supplement.startsOn ?? '',
         endsOn: supplement.endsOn ?? '',
         active: supplement.active
-      }))
+      })),
+      schedule: scheduleDraftFrom(version)
     };
   }
 
@@ -87,7 +226,7 @@
     code: '',
     name: '',
     amount: '',
-    addsToPay: true,
+    addsToPay: PAYER_CHOICES.addsToPay,
     startsOn: '',
     endsOn: '',
     active: true
@@ -103,7 +242,8 @@
     annualVacationDays: 30,
     reason: '',
     types: [{ ...EMPTY_TYPE }],
-    supplements: []
+    supplements: [],
+    schedule: emptyScheduleDraft()
   });
   let createEmployee = $state('');
   let createStartsOn = $state('');
@@ -117,6 +257,15 @@
     drafts = { ...drafts, [agreementId]: draftFromVersion(current, today) };
     openAgreementId = agreementId;
   }
+
+  /**
+   * Cuántos conceptos del alta podría registrar ella de verdad. Es la misma
+   * condición que la política `extra_work_types_employee_read` de 0021 —activo Y
+   * con tarifa—, calculada aquí solo para poder avisar antes de enviar.
+   */
+  const registrableCount = $derived(
+    createDraft.types.filter((type) => type.active && type.rate.trim() !== '').length
+  );
 
   function addType(draft: Draft): void {
     draft.types = [...draft.types, { ...EMPTY_TYPE }];
@@ -133,11 +282,136 @@
 
 </script>
 
-<svelte:head><title>Condiciones del acuerdo · Casa Clara</title></svelte:head>
+<!--
+  El editor de horario, uno para las dos formas (alta y versión nueva): la
+  pregunta que hay que hacer es la misma, y tenerla escrita dos veces
+  garantizaría que un día se cambie en una y no en la otra.
+-->
+{#snippet scheduleFields(draft: Draft)}
+  <h3>Horario</h3>
+  <p>
+    <small>
+      El horario es una condición del contrato: cambiarlo aquí crea versión nueva, igual
+      que el salario. Si no lo declaras, a la empleada no se le enseña ninguna sección de
+      horario —ni vacía ni con guiones—.
+    </small>
+  </p>
+  <label class="check-label">
+    <input type="checkbox" name="schedule.declared" bind:checked={draft.schedule.declared} />
+    Este contrato declara horario
+  </label>
+
+  {#if draft.schedule.declared}
+    {@const preview = livePreview(draft)}
+    <div class="form-grid">
+      <label>Entra a las
+        <input type="time" name="schedule.startsAt" bind:value={draft.schedule.startsAt} required />
+      </label>
+      <label>Sale a las
+        <input type="time" name="schedule.endsAt" bind:value={draft.schedule.endsAt} required />
+      </label>
+      <label>Descanso al mediodía (minutos)
+        <input
+          type="number"
+          name="schedule.longBreakMinutes"
+          bind:value={draft.schedule.longBreakMinutes}
+          min="0"
+          max="1439"
+          required
+        />
+      </label>
+    </div>
+    <label>Nota sobre el horario (opcional)
+      <input
+        type="text"
+        name="schedule.note"
+        bind:value={draft.schedule.note}
+        maxlength="500"
+        placeholder="Cuándo se toma el descanso, por ejemplo"
+      />
+    </label>
+
+    <p>
+      <small>
+        Los días que no toques trabajan la jornada de arriba. Solo hace falta decir lo
+        que cambia: para terminar antes un día basta con su hora de salida.
+      </small>
+    </p>
+    <table class="schedule-table">
+      <thead>
+        <tr><th scope="col">Día</th><th scope="col">Cómo es</th><th scope="col">Ese día</th></tr>
+      </thead>
+      <tbody>
+        {#each draft.schedule.days as day (day.weekday)}
+          <tr>
+            <th scope="row">{capitalise(weekdayName(day.weekday))}</th>
+            <td>
+              <!-- Etiqueta envolvente y no `for`/`id`: los dos formularios de
+                   esta página (alta y versión nueva) pueden estar abiertos a la
+                   vez y dos identificadores iguales romperían la asociación. -->
+              <label>
+                <span class="sr-only">Cómo es el {weekdayName(day.weekday)}</span>
+                <select name={`schedule.day.${day.weekday}.mode`} bind:value={day.mode}>
+                  <option value="tipo">Como la jornada de arriba</option>
+                  <option value="distinto">Horario distinto</option>
+                  <option value="libra">Libra</option>
+                </select>
+              </label>
+            </td>
+            <td>
+              {#if day.mode === 'distinto'}
+                <div class="form-grid compact">
+                  <label>Entra
+                    <input type="time" name={`schedule.day.${day.weekday}.startsAt`} bind:value={day.startsAt} />
+                  </label>
+                  <label>Sale
+                    <input type="time" name={`schedule.day.${day.weekday}.endsAt`} bind:value={day.endsAt} />
+                  </label>
+                  <label>Descanso (min)
+                    <input
+                      type="number"
+                      name={`schedule.day.${day.weekday}.longBreakMinutes`}
+                      bind:value={day.longBreakMinutes}
+                      min="0"
+                      max="1439"
+                    />
+                  </label>
+                  <label>Nota
+                    <input type="text" name={`schedule.day.${day.weekday}.note`} bind:value={day.note} maxlength="200" />
+                  </label>
+                </div>
+              {:else if day.mode === 'libra'}
+                <label>Nota
+                  <input type="text" name={`schedule.day.${day.weekday}.note`} bind:value={day.note} maxlength="200" />
+                </label>
+              {:else}
+                <span class="audit-note">Sin cambios</span>
+              {/if}
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+
+    <!--
+      La incoherencia se dice ANTES de guardar, que es cuando todavía se puede
+      pactar otra cosa. No bloquea el envío: un horario que no cuadra con la
+      jornada contratada es un hecho que la casa tiene que ver, no un error de
+      tecleo que el programa pueda arreglar solo.
+    -->
+    {#if preview?.mismatch}
+      <p class="form-error" role="status">{preview.mismatch}</p>
+    {:else if preview}
+      <p class="form-ok" role="status">
+        El horario cuadra con la jornada contratada: {Math.trunc(preview.minutes / 60)} h a la semana.
+      </p>
+    {/if}
+  {/if}
+{/snippet}
 
 <PageHeader
-  eyebrow="Acuerdo"
-  title="Condiciones del acuerdo"
+  eyebrow="Contrato"
+  title="Condiciones del contrato"
   description="Cada cambio crea una versión nueva. Lo ya pactado no se reescribe nunca."
 />
 
@@ -150,7 +424,7 @@
   </article>
 {:else}
   {#if form?.created}
-    <p class="form-ok" role="status">Acuerdo dado de alta con su primera versión.</p>
+    <p class="form-ok" role="status">Contrato dado de alta con su primera versión.</p>
   {/if}
   {#if form?.stacked}
     <p class="form-ok" role="status">Versión nueva añadida. La anterior sigue en el historial.</p>
@@ -187,6 +461,21 @@
                   {supplement.addsToPay ? '(suma al pago)' : '(lo paga la casa)'}{supplement.active ? '' : ' · retirado'}{' · '}
                 {/each}
               </small>
+              <!--
+                El horario de ESTA versión, con la frase que de verdad lee la
+                empleada. Sin horario se dice que no lo hay, porque es lo que
+                ella no verá y hay que saberlo antes de pactar.
+              -->
+              <small>
+                {#if version.schedule}
+                  Horario: {version.schedule.sentence}
+                {:else}
+                  Horario: sin declarar · la empleada no ve ninguna sección de horario
+                {/if}
+              </small>
+              {#if version.schedule?.mismatchLabel}
+                <small class="schedule-mismatch">⚠ {version.schedule.mismatchLabel}</small>
+              {/if}
             </span>
             <span>
               <strong>{version.salaryLabel}</strong>
@@ -245,6 +534,8 @@
             <input type="text" name="reason" bind:value={draft.reason} maxlength="500" required placeholder="Por qué cambian las condiciones" />
           </label>
 
+          {@render scheduleFields(draft)}
+
           <h3>Trabajo extra</h3>
           <p><small>Lo que esté desactivado o sin tarifa no lo verá la empleada, ni en sus condiciones ni al registrar trabajo.</small></p>
           {#each draft.types as type, index (index)}
@@ -298,8 +589,8 @@
               </label>
               <label>Quién lo cobra
                 <select name={`supplement.${index}.addsToPay`} bind:value={supplement.addsToPay}>
-                  <option value={true}>Suma a su transferencia</option>
-                  <option value={false}>Lo paga la casa aparte</option>
+                  <option value={PAYER_CHOICES.addsToPay}>Suma a su transferencia</option>
+                  <option value={PAYER_CHOICES.paidByHousehold}>Lo paga la casa aparte</option>
                 </select>
               </label>
               <label>Desde (opcional)
@@ -332,12 +623,12 @@
 
   <article class="card">
     <div class="section-heading">
-      <div><p class="eyebrow">Alta</p><h2>Nuevo acuerdo</h2></div>
+      <div><p class="eyebrow">Alta</p><h2>Nuevo contrato</h2></div>
     </div>
     {#if admin.candidates.length === 0}
       <p>
-        No hay ninguna empleada interna sin acuerdo activo. Da de alta primero su acceso
-        en Ajustes; el hogar admite varios acuerdos vivos a la vez, uno por persona.
+        No hay ninguna empleada interna sin contrato activo. Da de alta primero su acceso
+        en Ajustes; el hogar admite varios contratos vivos a la vez, uno por persona.
       </p>
     {:else}
       <div class="action-row">
@@ -346,7 +637,7 @@
           type="button"
           aria-expanded={creating}
           onclick={() => (creating = !creating)}
-        >Dar de alta un acuerdo</button>
+        >Dar de alta un contrato</button>
       </div>
       {#if creating}
         <form
@@ -367,7 +658,7 @@
                 {/each}
               </select>
             </label>
-            <label>El acuerdo empieza el
+            <label>El contrato empieza el
               <input type="date" name="startsOn" bind:value={createStartsOn} required />
             </label>
             <label>La primera versión rige desde
@@ -384,17 +675,26 @@
             </label>
           </div>
           <label>Motivo
-            <input type="text" name="reason" bind:value={createDraft.reason} maxlength="500" required placeholder="Alta del acuerdo" />
+            <input type="text" name="reason" bind:value={createDraft.reason} maxlength="500" required placeholder="Alta del contrato" />
           </label>
 
+          {@render scheduleFields(createDraft)}
+
           <h3>Trabajo extra</h3>
+          <p>
+            <small>
+              Lo que esté desactivado o sin tarifa no lo verá la empleada, ni en sus
+              condiciones ni al registrar trabajo. Para que no haya horas sueltas, no
+              añadas ningún concepto «por hora»: sin fila no hay tarifa horaria que ver.
+            </small>
+          </p>
           {#each createDraft.types as type, index (index)}
             <div class="form-grid">
               <label>Código
-                <input type="text" name={`type.${index}.code`} bind:value={type.code} required placeholder="jornada_extra" />
+                <input type="text" name={`type.${index}.code`} bind:value={type.code} required placeholder="jornada_extra" pattern="[a-z][a-z0-9_]{'{'}1,38{'}'}[a-z0-9]" />
               </label>
               <label>Nombre
-                <input type="text" name={`type.${index}.name`} bind:value={type.name} required maxlength="80" />
+                <input type="text" name={`type.${index}.name`} bind:value={type.name} required maxlength="80" placeholder="Jornada extra" />
               </label>
               <label>Se paga
                 <select name={`type.${index}.unit`} bind:value={type.unit}>
@@ -404,7 +704,7 @@
                 </select>
               </label>
               <label>Tarifa (vacío = sin tarifa)
-                <input type="text" inputmode="decimal" name={`type.${index}.rate`} bind:value={type.rate} />
+                <input type="text" inputmode="decimal" name={`type.${index}.rate`} bind:value={type.rate} placeholder="sin tarifa" />
               </label>
               {#if type.unit !== 'per_hour'}
                 <label>Duración de la jornada (minutos)
@@ -417,34 +717,57 @@
                 <input type="checkbox" name={`type.${index}.active`} bind:checked={type.active} />
                 Se lo permito
               </label>
+              <button class="button secondary small-button" type="button" onclick={() => removeType(createDraft, index)}>Quitar</button>
             </div>
           {/each}
           <div class="action-row">
             <button class="button secondary small-button" type="button" onclick={() => addType(createDraft)}>Añadir tipo</button>
           </div>
+          <!--
+            El aviso que evita el alta muda. Un acuerdo sin ningún concepto activo
+            y con tarifa deja a la empleada sin poder registrar nada, y la versión
+            es inmutable: la corrección solo puede entrar en vigor más adelante, y
+            los días de en medio se quedan así para siempre. Que se vea ANTES de
+            enviar, no después.
+          -->
+          {#if registrableCount === 0}
+            <p class="form-error" role="status">
+              Ningún concepto activo y con tarifa: con este acuerdo no podrá registrar
+              ninguna jornada extra, y eso no se arregla hacia atrás. Si es lo que
+              quieres, adelante; si no, revísalo antes de dar de alta.
+            </p>
+          {/if}
 
           <h3>Complementos</h3>
+          <p><small>«Lo paga la casa» consta en sus condiciones pero NO entra en la transferencia del mes.</small></p>
           {#each createDraft.supplements as supplement, index (index)}
             <div class="form-grid">
               <label>Código
-                <input type="text" name={`supplement.${index}.code`} bind:value={supplement.code} required />
+                <input type="text" name={`supplement.${index}.code`} bind:value={supplement.code} required placeholder="antiguedad" pattern="[a-z][a-z0-9_]{'{'}1,38{'}'}[a-z0-9]" />
               </label>
               <label>Nombre
-                <input type="text" name={`supplement.${index}.name`} bind:value={supplement.name} required maxlength="80" />
+                <input type="text" name={`supplement.${index}.name`} bind:value={supplement.name} required maxlength="80" placeholder="Complemento de antigüedad" />
               </label>
               <label>Importe al mes
-                <input type="text" inputmode="decimal" name={`supplement.${index}.amount`} bind:value={supplement.amount} />
+                <input type="text" inputmode="decimal" name={`supplement.${index}.amount`} bind:value={supplement.amount} placeholder="30,00" />
               </label>
               <label>Quién lo cobra
                 <select name={`supplement.${index}.addsToPay`} bind:value={supplement.addsToPay}>
-                  <option value={true}>Suma a su transferencia</option>
-                  <option value={false}>Lo paga la casa aparte</option>
+                  <option value={PAYER_CHOICES.addsToPay}>Suma a su transferencia</option>
+                  <option value={PAYER_CHOICES.paidByHousehold}>Lo paga la casa aparte</option>
                 </select>
+              </label>
+              <label>Desde (opcional)
+                <input type="date" name={`supplement.${index}.startsOn`} bind:value={supplement.startsOn} />
+              </label>
+              <label>Hasta (opcional)
+                <input type="date" name={`supplement.${index}.endsOn`} bind:value={supplement.endsOn} />
               </label>
               <label class="check-label">
                 <input type="checkbox" name={`supplement.${index}.active`} bind:checked={supplement.active} />
                 Vigente
               </label>
+              <button class="button secondary small-button" type="button" onclick={() => removeSupplement(createDraft, index)}>Quitar</button>
             </div>
           {/each}
           <div class="action-row">
@@ -455,7 +778,7 @@
             <p class="form-error" role="alert">{form.createError}</p>
           {/if}
           <div class="action-row">
-            <button class="button primary small-button" type="submit">Dar de alta el acuerdo</button>
+            <button class="button primary small-button" type="submit">Dar de alta el contrato</button>
           </div>
         </form>
       {/if}
@@ -468,5 +791,31 @@
     flex-direction: row;
     align-items: center;
     gap: 0.5rem;
+  }
+
+  /* Tabla estrecha y con scroll propio: siete días con cuatro campos cada uno
+     no caben en un móvil, y el remedio nunca es que la página entera se
+     desplace de lado (spec mobile-overflow). */
+  .schedule-table {
+    display: block;
+    overflow-x: auto;
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.5rem 0;
+  }
+
+  .schedule-table th,
+  .schedule-table td {
+    text-align: left;
+    vertical-align: top;
+    padding: 0.35rem 0.5rem 0.35rem 0;
+  }
+
+  .form-grid.compact {
+    gap: 0.4rem;
+  }
+
+  .schedule-mismatch {
+    font-weight: 600;
   }
 </style>

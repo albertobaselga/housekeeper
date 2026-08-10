@@ -42,7 +42,9 @@ export const GET: RequestHandler = async ({ params }) => {
   if (result.rows.length === 0) error(404, 'Ese calendario ya no existe');
 
   const calendar = ical({
-    name: 'Casa Clara · rutinas',
+    // El feed es público por token: se nombra por lo que trae, no por la casa
+    // que hay detrás (quien tenga la URL no tiene por qué saberlo).
+    name: 'Rutinas del hogar',
     prodId: { company: 'Casa Clara', product: 'routines', language: 'ES' }
   });
 

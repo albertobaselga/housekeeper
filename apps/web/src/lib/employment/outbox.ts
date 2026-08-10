@@ -16,7 +16,8 @@ export const EMPLOYMENT_AGGREGATES: readonly AggregateType[] = [
   'payment',
   'expense',
   'leave_request',
-  'agreement'
+  'agreement',
+  'manual_adjustment'
 ];
 
 /** Registros que la sección "Cambios sin sincronizar" debe listar. */
@@ -93,10 +94,17 @@ export function describeEmploymentCommand(envelope: CommandEnvelopeV1): string {
         ? `Vacaciones apuntadas desde el ${dateLabel(startsOn)}`
         : 'Vacaciones apuntadas';
     }
+    case 'manual_adjustment': {
+      if (action === 'void') return 'Anulación de un concepto apuntado a mano';
+      const label = payloadField(envelope, 'label');
+      const period = payloadField(envelope, 'period');
+      const suffix = period ? ` para ${period}` : '';
+      return label ? `Concepto «${label}»${suffix}` : `Concepto apuntado a mano${suffix}`;
+    }
     case 'agreement':
       return action === 'set_vacation_entitlement'
-        ? 'Cambio de los días de vacaciones del acuerdo'
-        : 'Cambio en el acuerdo';
+        ? 'Cambio de los días de vacaciones del contrato'
+        : 'Cambio en el contrato';
     default:
       return 'Cambio pendiente';
   }

@@ -26,4 +26,4 @@ publicar: al completarla, publícala con un toque y desaparecerá de este
 - Contactos y emergencias (Anexo G): completar el primer y segundo contacto familiar, pediatría y mantenimiento en Contactos.
 - Alergias, intolerancias y restricciones: por comensal, en Comida → Comensales.
 - Recetas y semanas tipo (Anexo D): en el Recetario y las plantillas del menú.
-- Horarios y jornada: en Empleo → Acuerdos y pagos.
+- Horarios y jornada: en Contrato → Administrar el contrato.

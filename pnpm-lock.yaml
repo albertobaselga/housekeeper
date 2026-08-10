@@ -47,6 +47,9 @@ importers:
       '@casa-clara/server':
         specifier: workspace:*
         version: link:../../packages/server
+      '@casa-clara/worker':
+        specifier: workspace:*
+        version: link:../worker
       '@milkdown/kit':
         specifier: 7.22.0
         version: 7.22.0(@codemirror/language@6.12.4)(@codemirror/state@6.7.1)(@codemirror/view@6.43.8)(typescript@6.0.3)

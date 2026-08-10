@@ -21,18 +21,23 @@ const corpusDir = path.join(packageRoot, 'content', 'manual');
 
 const PENDIENTE = '> **Pendiente de completar por la familia:**';
 
+// Orden de LECTURA, no de uso (ver el comentario del test): quien llega nuevo
+// necesita primero saber qué casa es esta y cómo se trata la gente, después el
+// plano y la forma del día, después quiénes viven aquí, y solo entonces el
+// detalle operativo. Mantenimiento cierra porque se consulta, no se estudia.
 const EXPECTED_SPACES = [
-  'la-casa-y-sus-zonas',
-  'limpieza',
-  'cocina',
-  'ropa-y-colada',
-  'los-ninos',
   'convivencia',
+  'la-casa-y-sus-zonas',
+  'los-ninos',
+  'cocina',
+  'limpieza',
+  'ropa-y-colada',
   'mantenimiento',
 ];
 
 const EXPECTED_PINNED = [
   'guia-rapida-cierre-de-jornada',
+  'guia-rapida-durante-la-jornada',
   'guia-rapida-inicio-de-jornada',
   'pendientes-de-completar',
   'principios-generales',
@@ -57,7 +62,7 @@ describe('corpus real del manual de convivencia', () => {
     );
   });
 
-  it('trae ~45 notas y las tres consultas diarias + índice fijadas', () => {
+  it('trae ~45 notas y las tres guías rápidas de la jornada + índice fijadas', () => {
     expect(plan.pages.length).toBeGreaterThanOrEqual(45);
     expect(plan.pages.length).toBeLessThanOrEqual(60);
     const pinned = plan.pages

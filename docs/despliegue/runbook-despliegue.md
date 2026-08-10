@@ -11,7 +11,7 @@
 > | Web (SvelteKit) | Vercel, región `fra1` | Ninguna ruta necesita estado en proceso ni larga duración |
 > | Base de datos | Supabase, región UE | Postgres gestionado con copias del proveedor |
 > | Adjuntos | Supabase Storage (API REST, clave de servicio) | Sin claves que crear a mano; el bucket lo crea la app, privado |
-> | Worker | Host aparte (Fly.io u otro) | Es un demonio: no cabe en serverless |
+> | Cola de trabajos | Host aparte (§4.1–§4.5) **o** `pg_cron` llamando a la web (§4.6) | El demonio conserva `/health` y el sondeo de 1 s; el planificador en la base no cuesta nada ni añade proveedor |
 > | ClamAV | **No desplegado** | No cabe en serverless y no hay host propio. Opcional: [adjuntos-sin-antivirus.md](../security/adjuntos-sin-antivirus.md) |
 >
 > **Bloqueo previo del ADR 0001**: revisión legal, política de retención y
@@ -207,19 +207,32 @@ problema en el runtime de Node de Vercel.
 
 ---
 
-## 4. Desplegar el worker y (si se quiere) ClamAV
+## 4. Ejecutar la cola de trabajos (y, si se quiere, ClamAV)
 
 > **El antivirus es OPCIONAL y hoy no está desplegado.** Sin `CLAMAV_HOST` los
-> adjuntos funcionan igual, solo que sin escanear. El riesgo asumido, lo que
-> ocupa su lugar y el procedimiento exacto para reactivarlo están en
+> adjuntos funcionan igual, solo que sin escanear, así que ya **no** es un
+> motivo para necesitar host propio. El riesgo asumido, lo que ocupa su lugar y
+> el procedimiento exacto para reactivarlo están en
 > [docs/security/adjuntos-sin-antivirus.md](../security/adjuntos-sin-antivirus.md).
-> Todo lo que sigue en §4.3, §4.4 y en `infra/clamav` describe cómo montarlo
-> **el día que haya un host donde ejecutarlo**; el código no ha cambiado y lo
-> único que hace falta para encenderlo son las variables.
+> Lo que sigue sobre ClamAV describe cómo montarlo **el día que haya un host
+> donde ejecutarlo**; el código no ha cambiado y lo único que hace falta para
+> encenderlo son las variables.
 
-El worker se despliega **tal cual**: mismo bucle de sondeo, mismo `/health`,
-mismo `/metrics`, mismo apagado ordenado. No se convierte en función ni se
-trocea.
+Hay **dos maneras** de que los trabajos encolados se ejecuten de verdad, y son
+excluyentes solo en el sentido de que basta con una:
+
+- **Con host propio** (§4.1–§4.5): el worker se despliega **tal cual**, mismo
+  bucle de sondeo, mismo `/health`, mismo `/metrics`, mismo apagado ordenado.
+  No se convierte en función ni se trocea. Es también el único sitio donde
+  cabría ClamAV, si algún día se quiere escaneo.
+- **Sin host propio** (§4.6): el planificador vive en la propia base
+  (`pg_cron` + `pg_net`) y llama cada pocos minutos a un endpoint de la web que
+  vacía la cola con los mismos manejadores. Coste cero, ningún proveedor más.
+  **Los adjuntos ya no atan a esta decisión**: funcionan con Supabase Storage y
+  sin antivirus (§3.1).
+
+Los dos pueden convivir sin coordinarse: el reclamo usa
+`for update skip locked`.
 
 ### 4.1 Con Fly.io
 
@@ -314,6 +327,26 @@ insert into app.job_queue (household_id, job_type, run_at, payload)
 values ('<uuid-del-hogar>', 'ics.sync_all', now(), '{}'::jsonb);
 ```
 
+Con el drenaje de §4.6 el agujero es más pequeño: ese endpoint re-arma las dos
+cadenas periódicas en **cada** pasada, no solo al arrancar, así que basta con
+que exista una fila cualquiera en la cola —el alta del hogar ya deja varias—
+para que se enganchen solas. La siembra manual sigue siendo necesaria únicamente
+en el caso extremo de una cola completamente vacía.
+
+### 4.6 Sin host propio: el planificador en la base
+
+`pg_cron` dispara cada cinco minutos una llamada con `pg_net` a
+`POST /api/v1/jobs/run`, protegida por un secreto compartido que vive en el
+Vault de Supabase (nunca en el SQL del cron). El endpoint ejecuta trabajos
+durante un presupuesto de tiempo, para limpio y deja lo que sobra para la
+pasada siguiente.
+
+**Los comandos exactos, la justificación de la frecuencia y el diagnóstico
+están en [`docs/runbooks/planificador-cola.md`](../runbooks/planificador-cola.md).**
+Resumen de lo que hay que tener a mano: `JOB_RUNNER_TOKEN` y
+`WORKER_DATABASE_URL` en Vercel (§6b y §1 de `.env.example`), y el token
+también en `vault.create_secret`.
+
 Criterio de salida del paso 4: el calendario se sincroniza solo y llega un
 aviso de rutina de verdad.
 
@@ -355,8 +388,20 @@ aviso de rutina de verdad.
    CLAMAV_HOST= CLAMAV_PORT=3311 CLAMAV_TLS=true CLAMAV_TOKEN=
    ```
 
-   **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `ENABLE_DEMO_PASSWORD_AUTH`:
-   su ausencia es el estado seguro.
+   **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `CASA_CLARA_FIXTURE_LOGIN`: su
+   ausencia es el estado seguro, y ahora está además impuesta. Definir
+   cualquiera de las dos en una build de producción la detiene, con el
+   despliegue anterior sirviendo mientras tanto.
+   (`ENABLE_DEMO_PASSWORD_AUTH` figuraba aquí y **no existe en el código**: no
+   la busques.)
+
+   **Las cuatro primeras entran en la misma operación.** `DATABASE_URL`,
+   `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET` y `BETTER_AUTH_URL` son una regla
+   indivisible: con la base puesta y alguna de las otras ausente, la aplicación
+   no sirve nada y responde 503 nombrando la que falta. Media configuración es
+   peor que ninguna, porque dejaba en pie el camino sintético sobre datos
+   reales. Ver
+   [`../adr/0003-configuracion-indivisible-y-cuentas-sinteticas.md`](../adr/0003-configuracion-indivisible-y-cuentas-sinteticas.md).
 
    **`ORIGIN` no existe en Vercel** y no hay que ponerla: la comprobación CSRF
    de SvelteKit deriva el origen de `x-forwarded-host`. `HOST` y `PORT`
@@ -505,8 +550,21 @@ está en [`../runbooks/backup-restore.md`](../runbooks/backup-restore.md).
 
 ## 9. La bandera de datos sintéticos
 
-`ALLOW_SYNTHETIC_DATA_ONLY` **no se define en producción**, y se auditó que su
-ausencia es segura:
+**Comprobación de un solo comando**, que sustituye a leer esta sección entera:
+
+```bash
+curl -s https://www.homekeeping.app/api/health
+# {"status":"ok",…,"synthetic":false,"fixtureLogin":false}
+```
+
+`synthetic: true` en producción es un incidente: significa que la bandera está
+puesta. `fixtureLogin: true` es peor: significa que el paquete desplegado lleva
+dentro el selector de cuentas sintéticas. Ninguna de las dos debería poder
+llegar ahí —la build las rechaza y el arranque también—, así que si aparecen,
+lo que hay que revisar es cómo se subió ese despliegue.
+
+`ALLOW_SYNTHETIC_DATA_ONLY` **no se define en producción**, y su ausencia es
+segura:
 
 - **Nada de producción depende de que esté puesta.** Sus cuatro consumidores
   tratan «sin definir» como el comportamiento normal: el banner no se pinta, la

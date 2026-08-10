@@ -1,5 +1,6 @@
 import { error, redirect } from '@sveltejs/kit';
 
+import { demoOrUnavailable } from '$lib/server/data-source.server';
 import { getWikiFixture } from '$lib/server/fixtures.server';
 import { loadWikiPage } from '$lib/server/wiki.server';
 import { parseWikiMarkdown } from '$lib/wiki/markdown';
@@ -23,17 +24,25 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     if (view.kind === 'not_found') error(404, 'Esta nota no está en la guía de esta casa.');
     return {
       view,
+      // Título de pestaña de ESTA nota (ver `$lib/app-title`): el layout de la
+      // raíz lo antepone al nombre del hogar.
+      section: view.revision.title,
       blocks: parseWikiMarkdown(view.revision.bodyMarkdown, { wikiBasePath: base }),
       fixture: null
     };
   }
 
-  // Sin base de datos (o sin membresía autorizada): la demo sirve la fixture.
-  const fixture = getWikiFixture().pages.find((page) => page.id === params.slug) ?? null;
-  if (!fixture) error(404, 'Esta nota no está en la guía de esta casa.');
-  return {
-    view: null,
-    blocks: parseWikiMarkdown(fixture.body, { wikiBasePath: base }),
-    fixture
-  };
+  // Con base de datos configurada aquí no hay maqueta que servir: 503 honesto
+  // y registrado (data-source.server.ts). Sin base, la demostración sigue, y
+  // devuelve `section` para que el layout de la raíz titule la pestaña.
+  return demoOrUnavailable(() => {
+    const fixture = getWikiFixture().pages.find((page) => page.id === params.slug) ?? null;
+    if (!fixture) error(404, 'Esta nota no está en la guía de esta casa.');
+    return {
+      view: null,
+      section: fixture.title,
+      blocks: parseWikiMarkdown(fixture.body, { wikiBasePath: base }),
+      fixture
+    };
+  });
 };

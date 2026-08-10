@@ -21,4 +21,4 @@ tags:
 
 > **Pendiente de completar por la familia:** Horarios de descanso y actividades ruidosas concretas.
 
-Los horarios y la jornada acordados viven en Empleo (Acuerdos y pagos); esta nota solo recoge los campos del manual aún sin confirmar.
+Los horarios y la jornada acordados viven en Contrato; esta nota solo recoge los campos del manual aún sin confirmar.

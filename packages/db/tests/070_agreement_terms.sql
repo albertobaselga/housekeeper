@@ -421,9 +421,12 @@ DECLARE
   types integer;
   supplements integer;
 BEGIN
+  -- Ocho: los seis del acuerdo de la primera empleada y los dos del acuerdo de
+  -- su compañera. Quien administra apunta trabajo a cualquiera de las dos y por
+  -- eso necesita ver ambos catálogos.
   SELECT count(*)::integer INTO types FROM app.extra_work_types;
-  IF types <> 6 THEN
-    RAISE EXCEPTION 'family_admin should read the six roble catalogued types, saw %', types;
+  IF types <> 8 THEN
+    RAISE EXCEPTION 'family_admin should read the eight roble catalogued types, saw %', types;
   END IF;
 
   SELECT count(*)::integer INTO supplements FROM app.recurring_supplements;

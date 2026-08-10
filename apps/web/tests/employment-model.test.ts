@@ -5,10 +5,14 @@ import {
   buildAccrual,
   centsToEuroInput,
   buildAdvanceBalanceViews,
+  buildAgreementOptionViews,
+  buildAgreementTermsView,
   buildAgreementVersionViews,
   buildCompensationBalanceViews,
+  buildManualAdjustmentViews,
   buildPendingExpenseViews,
   buildPendingExtraViews,
+  buildScheduleView,
   buildSettlementViews,
   buildVacationView,
   annualVacationDaysInForce,
@@ -19,9 +23,13 @@ import {
   formatMinutes,
   parseCents,
   periodLabel,
+  scheduleMismatchLabel,
   sourceAnchor,
   vacationRangeLabel,
   type AgreementVersionRow,
+  type ManualAdjustmentRow,
+  type ScheduleDayRow,
+  type ScheduleRow,
   type SettlementLineRow,
   type SettlementRow
 } from '../src/lib/employment/model';
@@ -112,6 +120,145 @@ describe('versiones del acuerdo', () => {
     // Antes de la primera versión se cae a la primera, no a cero: cero mentiría.
     expect(annualVacationDaysInForce(VERSIONS, '2024-01-01')).toBe(30);
     expect(annualVacationDaysInForce([], '2025-04-01')).toBe(0);
+  });
+});
+
+describe('horario del contrato', () => {
+  const SCHEDULE: ScheduleRow = {
+    id: 'h1',
+    agreementVersionId: 'v2',
+    startsAt: '08:00',
+    endsAt: '16:30',
+    longBreakMinutes: 90,
+    note: 'El descanso se toma al mediodía.'
+  };
+  const DAYS: ScheduleDayRow[] = [
+    {
+      id: 'd1',
+      scheduleId: 'h1',
+      weekday: 6,
+      works: true,
+      startsAt: null,
+      endsAt: '14:30',
+      longBreakMinutes: null,
+      note: ''
+    },
+    {
+      id: 'd2',
+      scheduleId: 'h1',
+      weekday: 7,
+      works: false,
+      startsAt: null,
+      endsAt: null,
+      longBreakMinutes: null,
+      note: ''
+    }
+  ];
+
+  it('redacta la frase, resuelve los siete días y suma la semana', () => {
+    const view = buildScheduleView({
+      schedule: SCHEDULE,
+      days: DAYS,
+      contractedWeeklyMinutes: 2400
+    });
+    expect(view.sentence).toBe(
+      'De 8:00 a 16:30, con hora y media de descanso al mediodía. Sábado hasta las 14:30. Domingo libre.'
+    );
+    expect(view.days).toHaveLength(7);
+    expect(view.days[0]).toMatchObject({
+      weekdayLabel: 'Lunes',
+      hoursLabel: '8:00 a 16:30',
+      breakLabel: 'hora y media',
+      effectiveLabel: '7 h',
+      differs: false
+    });
+    // Un día libre no tiene descanso que anunciar.
+    expect(view.days[6]!.breakLabel).toBeNull();
+    expect(view.days[0]!.detailLabel).toBe('8:00 a 16:30 · hora y media de descanso');
+    expect(view.days[5]).toMatchObject({ weekdayLabel: 'Sábado', hoursLabel: '8:00 a 14:30' });
+    expect(view.days[6]).toMatchObject({
+      weekdayLabel: 'Domingo',
+      hoursLabel: 'Libra',
+      effectiveLabel: '—',
+      detailLabel: 'Libra'
+    });
+    expect(view.restDayLabels).toEqual(['Domingo']);
+    expect(view.weeklyLabel).toBe('40 h a la semana');
+    expect(view.breakLabel).toBe('hora y media');
+  });
+
+  it('calla cuando el horario cuadra con la jornada contratada', () => {
+    const view = buildScheduleView({ schedule: SCHEDULE, days: DAYS, contractedWeeklyMinutes: 2400 });
+    expect(view.matchesContract).toBe(true);
+    expect(view.mismatchLabel).toBeNull();
+  });
+
+  it('lo dice sin rodeos cuando no cuadra, en las dos direcciones', () => {
+    const sobra = buildScheduleView({ schedule: SCHEDULE, days: DAYS, contractedWeeklyMinutes: 2100 });
+    expect(sobra.matchesContract).toBe(false);
+    expect(sobra.mismatchLabel).toBe(
+      'El horario suma 40 h a la semana y la jornada contratada dice 35 h: sobran 5 h.'
+    );
+
+    const falta = buildScheduleView({ schedule: SCHEDULE, days: DAYS, contractedWeeklyMinutes: 2700 });
+    expect(falta.mismatchLabel).toBe(
+      'El horario suma 40 h a la semana y la jornada contratada dice 45 h: faltan 5 h.'
+    );
+  });
+
+  it('una diferencia de menos de una hora se dice en minutos, no en «0 h»', () => {
+    // Lo escribe una sola función porque la escriben dos sitios —el servidor y
+    // el editor mientras se teclea—: cuando estaba duplicada, uno de los dos
+    // decía «sobran 0 h 30 min».
+    expect(scheduleMismatchLabel(2430, 2400)).toBe(
+      'El horario suma 40 h 30 min a la semana y la jornada contratada dice 40 h: sobran 30 min.'
+    );
+    expect(scheduleMismatchLabel(2400, 2430)).toBe(
+      'El horario suma 40 h a la semana y la jornada contratada dice 40 h 30 min: faltan 30 min.'
+    );
+    expect(scheduleMismatchLabel(2400, 2400)).toBeNull();
+  });
+
+  it('solo toma los días de SU horario, no los de otra versión', () => {
+    const otro: ScheduleDayRow = { ...DAYS[0]!, id: 'd9', scheduleId: 'otro-horario', weekday: 3 };
+    const view = buildScheduleView({
+      schedule: SCHEDULE,
+      days: [...DAYS, otro],
+      contractedWeeklyMinutes: 2400
+    });
+    expect(view.days[2]!.differs).toBe(false);
+    expect(view.weeklyMinutes).toBe(2400);
+  });
+
+  it('«si aplica»: sin fila de horario, las condiciones no traen ninguna', () => {
+    const version: AgreementVersionRow = VERSIONS[1]!;
+    // Con horario de SU versión: viaja.
+    expect(
+      buildAgreementTermsView({
+        version,
+        types: [],
+        supplements: [],
+        schedules: [SCHEDULE],
+        scheduleDays: DAYS
+      }).schedule
+    ).not.toBeNull();
+
+    // Sin horario ninguno: null, y la plantilla no pinta sección.
+    expect(
+      buildAgreementTermsView({ version, types: [], supplements: [] }).schedule
+    ).toBeNull();
+
+    // Con horario de OTRA versión: tampoco. El «si aplica» es por versión, no
+    // por contrato: una versión vieja con horario no se lo presta a la vigente.
+    expect(
+      buildAgreementTermsView({
+        version: VERSIONS[0]!,
+        types: [],
+        supplements: [],
+        schedules: [SCHEDULE],
+        scheduleDays: DAYS
+      }).schedule
+    ).toBeNull();
   });
 });
 
@@ -280,6 +427,7 @@ describe('devengo del periodo en curso', () => {
           workedOn: '2026-08-03',
           durationMinutes: 120,
           note: 'Cena tardía',
+          origin: 'employee_report',
           resolution: 'money',
           frozenUnitRateCents: '1400',
           frozenAmountCents: '2800',
@@ -292,6 +440,9 @@ describe('devengo del periodo en curso', () => {
           workedOn: '2026-08-09',
           durationMinutes: 480,
           note: '',
+          // Esta la apuntó la familia a su nombre: el devengo tiene que poder
+          // decirlo sin cambiar ni un céntimo del cálculo.
+          origin: 'family_request',
           resolution: 'time_off',
           frozenUnitRateCents: '8000',
           frozenAmountCents: '0',
@@ -333,6 +484,17 @@ describe('devengo del periodo en curso', () => {
     expect(accrual!.lines[3]!.href).toBe('#anticipo-a1');
     expect(accrual!.lines[3]!.amountLabel).toBe('−100,00 €');
     expect(accrual!.lines[1]!.detail).toBe('2 h × 14,00 €');
+    // El origen viaja con la línea de la jornada y solo con ella: el salario,
+    // el anticipo y el gasto no tienen a quién atribuirse.
+    expect(accrual!.lines[1]!.originLabel).toBe('La apuntó la empleada');
+    expect(accrual!.lines[2]!.originLabel).toBe('La apuntó la familia');
+    expect(accrual!.lines.map((line) => line.originLabel)).toEqual([
+      null,
+      'La apuntó la empleada',
+      'La apuntó la familia',
+      null,
+      null
+    ]);
   });
 
   it('limita la cuota del anticipo al saldo pendiente y omite anticipos saldados', () => {
@@ -458,12 +620,124 @@ describe('liquidaciones y saldos', () => {
   });
 });
 
+describe('conceptos apuntados a mano en la cuenta del mes', () => {
+  const ADJUSTMENTS: ManualAdjustmentRow[] = [
+    {
+      id: 'c1',
+      period: '2026-08',
+      requestedPeriod: '2026-08',
+      label: 'Gratificación de verano',
+      reason: 'Acordada el 2 de agosto',
+      amountCents: '15000',
+      addsToPay: true,
+      deferralNote: '',
+      status: 'recorded',
+      voidReason: null
+    },
+    {
+      id: 'c2',
+      period: '2026-08',
+      requestedPeriod: '2026-08',
+      label: 'Anticipo devuelto en mano',
+      reason: 'Devolvió 200 € en efectivo el 12 de agosto',
+      amountCents: '-20000',
+      addsToPay: false,
+      deferralNote: '',
+      status: 'recorded',
+      voidReason: null
+    },
+    {
+      id: 'c3',
+      period: '2026-08',
+      requestedPeriod: '2026-08',
+      label: 'Apuntado por error',
+      reason: 'El importe era otro',
+      amountCents: '9000',
+      addsToPay: true,
+      deferralNote: '',
+      status: 'voided',
+      voidReason: 'Se apuntó dos veces'
+    }
+  ];
+
+  function august(adjustments: ManualAdjustmentRow[]) {
+    return buildAccrual({
+      period: '2026-08',
+      versions: VERSIONS,
+      extras: [],
+      advances: [],
+      expenses: [],
+      adjustments
+    });
+  }
+
+  it('suma el que es dinero para ella, con su motivo como explicación de la línea', () => {
+    const accrual = august([ADJUSTMENTS[0]!]);
+    expect(accrual!.transferTotalCents).toBe('165000');
+    const line = accrual!.lines.find((candidate) => candidate.sourceId === 'c1');
+    expect(line!.concept).toBe('Gratificación de verano');
+    // Etiqueta y motivo van separados: la interfaz enseña el título arriba y
+    // la explicación debajo, sin repetirla ni pegarla con dos puntos.
+    expect(line!.detail).toBe('Acordada el 2 de agosto');
+    expect(line!.amountLabel).toBe('+150,00 €');
+    expect(line!.href).toBe('#concepto-c1');
+  });
+
+  it('el que no es dinero para ella no toca el total y consta aparte', () => {
+    const accrual = august([ADJUSTMENTS[1]!]);
+    // El salario pelado de la v2: descontarlo otra vez sería cobrárselo dos veces.
+    expect(accrual!.transferTotalCents).toBe('150000');
+    expect(accrual!.lines.some((line) => line.kind === 'adjustment')).toBe(false);
+    expect(accrual!.notedAdjustments).toEqual([
+      {
+        id: 'c2',
+        label: 'Anticipo devuelto en mano',
+        reason: 'Devolvió 200 € en efectivo el 12 de agosto',
+        amountLabel: '−200,00 €'
+      }
+    ]);
+  });
+
+  it('el anulado no cuenta, ni en el total ni como línea', () => {
+    const accrual = august(ADJUSTMENTS);
+    expect(accrual!.transferTotalCents).toBe('165000');
+    expect(accrual!.lines.filter((line) => line.kind === 'adjustment')).toHaveLength(1);
+  });
+
+  it('la lista los ordena por mes y dice a dónde fue cada uno y por qué', () => {
+    const views = buildManualAdjustmentViews([
+      ADJUSTMENTS[2]!,
+      {
+        id: 'c4',
+        period: '2026-09',
+        requestedPeriod: '2026-08',
+        label: 'Descuento acordado',
+        reason: 'Rotura de la vitrocerámica, a medias',
+        amountCents: '-5000',
+        addsToPay: true,
+        deferralNote:
+          'Se pidió para agosto de 2026, pero esa cuenta ya estaba cerrada: se imputa a septiembre de 2026.',
+        status: 'recorded',
+        voidReason: null
+      }
+    ]);
+    expect(views.map((view) => view.id)).toEqual(['c4', 'c3']);
+    expect(views[0]!.periodLabel).toBe('Septiembre 2026');
+    expect(views[0]!.amountLabel).toBe('−50,00 €');
+    expect(views[0]!.transferLabel).toBe('Se suma a la transferencia');
+    expect(views[0]!.deferralNote).toContain('ya estaba cerrada');
+    // El anulado se queda en la lista: la corrección es parte del rastro.
+    expect(views[1]!.voided).toBe(true);
+    expect(views[1]!.voidReason).toBe('Se apuntó dos veces');
+  });
+});
+
 describe('trabajo y gastos pendientes de acción', () => {
   it('marca qué acción admite cada jornada extra según su estado', () => {
     const views = buildPendingExtraViews([
-      { id: 'e1', kind: 'overtime', typeName: null, workedOn: '2026-08-05', durationMinutes: 90, note: '', status: 'requested', employeeMembershipId: 'm1' },
-      { id: 'e2', kind: 'worked_rest_day', typeName: null, workedOn: '2026-08-09', durationMinutes: 480, note: 'Domingo', status: 'accepted', employeeMembershipId: 'm1' },
-      { id: 'e3', kind: 'overtime', typeName: null, workedOn: '2026-08-10', durationMinutes: 45, note: '', status: 'performed_pending_resolution', employeeMembershipId: 'm1' }
+      { id: 'e1', kind: 'overtime', typeName: null, workedOn: '2026-08-05', durationMinutes: 90, note: '', origin: 'employee_report', status: 'requested', employeeMembershipId: 'm1' },
+      { id: 'e2', kind: 'worked_rest_day', typeName: null, workedOn: '2026-08-09', durationMinutes: 480, note: 'Domingo', origin: 'family_request', status: 'accepted', employeeMembershipId: 'm1' },
+      { id: 'e3', kind: 'overtime', typeName: null, workedOn: '2026-08-10', durationMinutes: 45, note: '', origin: 'weekly_report', status: 'performed_pending_resolution', employeeMembershipId: 'm1' }
     ]);
     expect(views.map((view) => [view.acceptable, view.performable, view.resolvable])).toEqual([
       [true, true, false],
@@ -473,6 +747,57 @@ describe('trabajo y gastos pendientes de acción', () => {
     expect(views[0]!.durationLabel).toBe('1 h 30 min');
     expect(views[1]!.kindLabel).toBe('Festivo o descanso trabajado');
     expect(views[2]!.statusLabel).toBe('Hecha sin acordarla antes · falta decidir la compensación');
+    // Quién apuntó cada jornada, dicho igual para las dos partes.
+    expect(views.map((view) => view.originLabel)).toEqual([
+      'La apuntó la empleada',
+      'La apuntó la familia',
+      'Viene del parte semanal'
+    ]);
+  });
+
+  it('nombra a cada persona empleada del hogar y no inventa nombre cuando la RLS lo oculta', () => {
+    const options = buildAgreementOptionViews([
+      {
+        id: 'ac1',
+        status: 'active',
+        startsOn: '2025-02-03',
+        endsOn: null,
+        employeeMembershipId: 'm1',
+        employeeName: 'Nombre Inventado Uno'
+      },
+      {
+        id: 'ac2',
+        status: 'ended',
+        startsOn: '2024-01-07',
+        endsOn: '2025-06-30',
+        employeeMembershipId: 'm2',
+        // Sin perfil visible: quien no administra no lee el nombre de los
+        // demás. La etiqueta neutra es preferible a enseñar un identificador.
+        employeeName: null
+      }
+    ]);
+    expect(options).toEqual([
+      {
+        id: 'ac1',
+        employeeMembershipId: 'm1',
+        employeeLabel: 'Nombre Inventado Uno',
+        status: 'active',
+        active: true,
+        startsOn: '2025-02-03',
+        endsOn: null,
+        periodLabel: 'Desde el 3 feb 2025'
+      },
+      {
+        id: 'ac2',
+        employeeMembershipId: 'm2',
+        employeeLabel: 'Empleada del hogar',
+        status: 'ended',
+        active: false,
+        startsOn: '2024-01-07',
+        endsOn: '2025-06-30',
+        periodLabel: 'Del 7 ene 2024 al 30 jun 2025'
+      }
+    ]);
   });
 
   it('presenta los gastos pendientes con importe en céntimos formateado', () => {

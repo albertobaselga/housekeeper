@@ -25,7 +25,7 @@ describe('capability matrix', () => {
       'access.manage', 'agreement.read', 'agreement.write', 'calendar.read', 'calendar.write',
       'comment.create', 'contact.read', 'contact.write', 'content.read', 'content.write',
       'content.publish', 'emergency.read', 'expense.create.self', 'export.employment.self',
-      'leave.approve', 'leave.request.self', 'menu.read', 'menu.write', 'payment.confirm.self',
+      'guide.write', 'leave.approve', 'leave.request.self', 'menu.read', 'menu.write', 'payment.confirm.self',
       'payment.register', 'routine.read', 'routine.toggle', 'search.use', 'settlement.close',
       'settlement.read', 'work.confirm', 'work.register.self'
     ]);
@@ -41,6 +41,13 @@ describe('capability matrix', () => {
     expect(can('family_member', 'settlement.close')).toBe(false);
     expect(can('employee_live_in', 'work.register.self')).toBe(true);
     expect(can('employee_live_in', 'content.write')).toBe(false);
+    // Escribir la Guía de la casa es SOLO de la administración: ni la familia
+    // no administradora ni la interna dibujan un control de escritura.
+    expect(can('family_admin', 'guide.write')).toBe(true);
+    expect(can('family_member', 'guide.write')).toBe(false);
+    expect(can('employee_live_in', 'guide.write')).toBe(false);
+    expect(can('helper', 'guide.write')).toBe(false);
+    expect(can('viewer', 'guide.write')).toBe(false);
     expect(can('helper', 'routine.toggle')).toBe(true);
     expect(can('helper', 'calendar.read')).toBe(false);
     expect(capabilitiesFor('viewer')).toEqual(

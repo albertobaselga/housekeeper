@@ -140,18 +140,29 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, free_text
    'ab300000-0000-4000-8000-000000000001', '2026-08-10', 'cena', 'Sopa del olivo',
    '21000000-0000-4000-8000-000000000001');
 
-INSERT INTO app.routines (id, household_id, title, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
+-- Las columnas de patrón (0023) van explícitas porque `routines_pattern_shape`
+-- no admite una fila con fecha y sin cadencia: `pattern IS NULL` significa «se
+-- hace, falta decidir cuándo» y obliga a `next_due_on IS NULL`. Las heredadas
+-- (`frequency`, `interval_count`) siguen aquí a propósito: son NOT NULL hasta
+-- que la 0024 las retire, y esa retirada y esta línea van en la MISMA tarea.
+-- Ni una aserción de este fichero cambia: las columnas nuevas no abren nada.
+INSERT INTO app.routines (id, household_id, title, audience, frequency, interval_count, next_due_on,
+  pattern, anchor_on, repeat_every, weekdays, month_day, overdue_policy, created_by_membership_id) VALUES
   ('aa500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
    'Revisión de seguros (familia)', 'family', 'monthly', 1, '2026-09-01',
+   'day_of_month', '2026-09-01', 1, NULL, 1, 'carry',
    '11000000-0000-4000-8000-000000000001'),
   ('aa500000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
    'Plancha semanal (empleada)', 'employee', 'weekly', 1, '2026-08-17',
+   'days_of_week', '2026-08-17', 1, ARRAY[1]::smallint[], NULL, 'skip',
    '11000000-0000-4000-8000-000000000001'),
   ('aa500000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
    'Riego de plantas (todos)', 'all', 'daily', 1, '2026-08-08',
+   'every_n_days', '2026-08-08', 1, NULL, NULL, 'skip',
    '11000000-0000-4000-8000-000000000001'),
   ('ab500000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
    'Rutina del olivo', 'all', 'weekly', 1, '2026-08-17',
+   'days_of_week', '2026-08-17', 1, ARRAY[1]::smallint[], NULL, 'skip',
    '21000000-0000-4000-8000-000000000001');
 
 -- Employment rows for olivo so the cross-tenant checks have something to leak.
@@ -222,10 +233,12 @@ BEGIN
   END IF;
 
   -- Full read surface of the administrator over roble.
+  -- Dos acuerdos activos y sus tres versiones: el hogar puede emplear a más de
+  -- una persona y quien administra las ve a todas.
   IF (SELECT count(*) FROM app.settlement_lines) <> 8
      OR (SELECT count(*) FROM app.payments) <> 2
-     OR (SELECT count(*) FROM app.employment_agreements) <> 1
-     OR (SELECT count(*) FROM app.agreement_versions) <> 2
+     OR (SELECT count(*) FROM app.employment_agreements) <> 2
+     OR (SELECT count(*) FROM app.agreement_versions) <> 3
      OR (SELECT count(*) FROM app.expenses) <> 2
      OR (SELECT count(*) FROM app.wiki_pages) <> 2
      OR (SELECT count(*) FROM app.wiki_revisions) <> 2
@@ -263,9 +276,10 @@ BEGIN
 END
 $assert_admin_no_olivo$;
 
--- family_member: sees the agreement relationship, household expenses, wiki
--- (drafts included: it is a writer role), menu and every routine audience, but
--- NO salary-bearing rows (agreement versions, settlements, lines, payments).
+-- family_member: sees the agreement relationship, household expenses, the
+-- PUBLISHED guide (drafts belong to whoever administers it since migration
+-- 0026), menu and every routine audience, but NO salary-bearing rows
+-- (agreement versions, settlements, lines, payments).
 SELECT set_config('app.user_id', 'fixture:roble:family', true);
 SELECT set_config('app.household_id', '', true);
 SELECT set_config('app.membership_id', '', true);
@@ -278,11 +292,11 @@ SELECT app.set_household_context(
 DO $assert_family_member_rls$
 BEGIN
   IF (SELECT count(*) FROM app.households) <> 1
-     OR (SELECT count(*) FROM app.employment_agreements) <> 1
+     OR (SELECT count(*) FROM app.employment_agreements) <> 2
      OR (SELECT count(*) FROM app.expenses) <> 2
-     OR (SELECT count(*) FROM app.wiki_pages) <> 2
-     OR (SELECT count(*) FROM app.wiki_pages WHERE status = 'draft') <> 1
-     OR (SELECT count(*) FROM app.wiki_revisions) <> 2
+     OR (SELECT count(*) FROM app.wiki_pages) <> 1
+     OR (SELECT count(*) FROM app.wiki_pages WHERE status = 'draft') <> 0
+     OR (SELECT count(*) FROM app.wiki_revisions) <> 1
      OR (SELECT count(*) FROM app.menu_slots) <> 1
      OR (SELECT count(*) FROM app.routines) <> 3 THEN
     RAISE EXCEPTION 'family_member positive read matrix failed';
@@ -306,8 +320,9 @@ END
 $assert_family_member_rls$;
 
 -- employee_live_in: full view of her own employment record (settlement, lines,
--- payments, agreement versions, expenses), wiki as a writer (drafts included),
--- menu, and routines with audience employee/all — never the family-only ones.
+-- payments, agreement versions, expenses), the PUBLISHED guide only (she reads
+-- it, she no longer writes it: migración 0026), menu, and routines with
+-- audience employee/all — never the family-only ones.
 SELECT set_config('app.user_id', 'fixture:roble:employee', true);
 SELECT set_config('app.household_id', '', true);
 SELECT set_config('app.membership_id', '', true);
@@ -329,14 +344,26 @@ BEGIN
      OR (SELECT count(*) FROM app.employment_agreements) <> 1
      OR (SELECT count(*) FROM app.agreement_versions) <> 2
      OR (SELECT count(*) FROM app.expenses) <> 2
-     OR (SELECT count(*) FROM app.wiki_pages) <> 2
-     OR (SELECT count(*) FROM app.wiki_revisions) <> 2
+     OR (SELECT count(*) FROM app.wiki_pages) <> 1
+     OR (SELECT count(*) FROM app.wiki_pages WHERE status = 'draft') <> 0
+     OR (SELECT count(*) FROM app.wiki_revisions) <> 1
      OR (SELECT count(*) FROM app.menu_slots) <> 1 THEN
     RAISE EXCEPTION 'employee_live_in positive read matrix failed';
   END IF;
   IF (SELECT count(*) FROM app.routines) <> 2
      OR (SELECT count(*) FROM app.routines WHERE audience = 'family') <> 0 THEN
     RAISE EXCEPTION 'employee_live_in must not see family-audience routines';
+  END IF;
+  -- Con DOS empleadas en el hogar, «ve su expediente» significa «ve el suyo y
+  -- nada del de su compañera»: ni el acuerdo, ni sus versiones, ni el catálogo
+  -- de conceptos con el que se le pagan las jornadas.
+  IF (SELECT count(*) FROM app.employment_agreements
+       WHERE employee_membership_id <> '11000000-0000-4000-8000-000000000003') <> 0
+     OR (SELECT count(*) FROM app.agreement_versions
+          WHERE agreement_id = '12000000-0000-4000-8000-000000000002') <> 0
+     OR (SELECT count(*) FROM app.extra_work_types
+          WHERE agreement_id = '12000000-0000-4000-8000-000000000002') <> 0 THEN
+    RAISE EXCEPTION 'employee_live_in leaked the other employee record';
   END IF;
   IF (SELECT count(*) FROM app.settlements WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0
      OR (SELECT count(*) FROM app.expenses WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0

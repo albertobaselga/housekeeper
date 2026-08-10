@@ -1,9 +1,10 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { addDays } from '$lib/food/dates';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:calendar');
@@ -206,9 +207,6 @@ export async function loadCalendar(
       } satisfies CalendarOverview;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('calendar unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'calendar', cause);
   }
 }

@@ -3,6 +3,7 @@
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
   import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
+  import ManualAdjustmentsCard from '$lib/components/employment/ManualAdjustmentsCard.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
   import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
@@ -11,6 +12,7 @@
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { openSettlement } from '$lib/employment/commands';
+  import { currentPeriod } from '$lib/employment/model';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -32,6 +34,17 @@
   );
 
   const canRegisterExtra = $derived(isOwnAgreement && can(context.role, 'work.register.self'));
+  // Apuntar trabajo a nombre de otra persona es cosa de quien administra: misma
+  // capacidad con la que ya acepta y decide compensaciones. El servidor lo
+  // vuelve a comprobar por rol; esto solo decide qué se dibuja.
+  const canRegisterForEmployee = $derived(agreement !== null && can(context.role, 'work.confirm'));
+  // Quién es la persona del expediente que se está mirando. Si la RLS no dejó
+  // ver su perfil (solo quien administra los ve), el modelo ya puso una
+  // etiqueta neutra en su lugar.
+  const selectedEmployeeLabel = $derived(
+    overview?.agreements.find((option) => option.id === agreement?.id)?.employeeLabel ??
+      'la empleada'
+  );
   // El parte semanal es siempre de la propia empleada: misma capacidad que
   // registrar su trabajo, y solo sobre su propio acuerdo.
   const canSubmitWeek = $derived(canRegisterExtra);
@@ -117,8 +130,6 @@
   }
 </script>
 
-<svelte:head><title>Pagos · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   {#snippet actions()}
     {#if openableAccrual && !openSent}
@@ -140,9 +151,10 @@
       <span class="status-chip success">Apertura enviada</span>
     {/if}
   {/snippet}
-  <!-- P2-3 (revisión UX v3): un solo nombre para la sección — «Pagos» — con el
-       subtítulo «Acuerdo, nómina y gastos» en vez de «Expediente laboral». -->
-  <PageHeader eyebrow="Acuerdo, nómina y gastos" title="Pagos" description="Importes claros, confirmaciones separadas y un historial que se entiende." {actions} />
+  <!-- Un solo nombre para la sección, ahora «Contrato» por decisión del
+       propietario. Sigue valiendo la regla de P2-3 (revisión UX v3): un nombre,
+       el mismo en la barra lateral, en la hoja «Más» y aquí. -->
+  <PageHeader eyebrow="Condiciones, nómina y gastos" title="Contrato" description="Importes claros, confirmaciones separadas y un historial que se entiende." {actions} />
 
   <ActionStatus status={actionStatus} />
 
@@ -150,8 +162,8 @@
     {#if !overview.hasEmploymentData}
       <article class="card quiet-card">
         <span class="card-icon" aria-hidden="true">·</span>
-        <h2>Sin acuerdo de trabajo registrado</h2>
-        <p>Cuando el hogar registre un acuerdo con la empleada, aquí se verán sus pagos.</p>
+        <h2>Sin contrato de trabajo registrado</h2>
+        <p>Cuando el hogar registre un contrato con la empleada, aquí se verán sus condiciones y sus pagos.</p>
       </article>
     {:else}
       {#if seesAmounts}
@@ -163,10 +175,27 @@
         </section>
       {/if}
 
+      <!-- Un hogar puede emplear a varias personas a la vez. Cuando así es,
+           quien administra elige de quién es el expediente que mira; la
+           elección viaja en la URL para poder volver a ella. A la empleada la
+           RLS solo le devuelve su acuerdo, así que no ve ningún selector. -->
+      {#if overview.agreements.length > 1}
+        <nav class="action-row" aria-label="Elegir de quién es el expediente">
+          {#each overview.agreements as option (option.id)}
+            <a
+              class="button {option.id === agreement?.id ? 'primary' : 'secondary'} small-button"
+              href={`?empleada=${option.id}`}
+              aria-current={option.id === agreement?.id ? 'page' : undefined}
+              data-sveltekit-noscroll
+            >{option.employeeLabel}{option.active ? '' : ' (acuerdo terminado)'}</a>
+          {/each}
+        </nav>
+      {/if}
+
       <OutboxTriageCard householdId={overview.householdId} />
 
       {#snippet pendingDecisionCards()}
-        {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra)}
+        {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra || canRegisterForEmployee)}
           <ExtraWorkPendingCard
             householdId={overview.householdId}
             agreementId={agreement.id}
@@ -174,6 +203,8 @@
             types={overview.registrableTypes}
             ownMembershipId={context.user.membershipId}
             canRegister={canRegisterExtra}
+            canRegisterForEmployee={canRegisterForEmployee}
+            employeeLabel={selectedEmployeeLabel}
             canConfirm={canConfirmWork}
           />
         {/if}
@@ -218,6 +249,9 @@
                         <strong>{line.concept}</strong>
                         <small>
                           {#if line.href}<a href={line.href}>{line.detail || 'Ver origen'}</a>{:else}{line.detail}{/if}
+                          <!-- Una jornada que apuntó la familia lo dice también
+                               aquí, ya valorada con la tarifa congelada. -->
+                          {#if line.originLabel}&nbsp;· {line.originLabel}{/if}
                         </small>
                       </span>
                       <strong>{line.amountLabel}</strong>
@@ -234,8 +268,17 @@
                     {#each overview.accrual.householdPaidSupplements as supplement, index (supplement.id)}{index > 0 ? ', ' : ''}{supplement.label} ({supplement.amountLabel}){/each}. No entra en la transferencia.
                   </p>
                 {/if}
+                <!-- Mismo criterio: conceptos apuntados a mano que constan sin
+                     mover la transferencia. Debajo del total y nunca dentro,
+                     porque sumarlos haría que la cuenta mintiera. -->
+                {#if overview.accrual.notedAdjustments.length > 0}
+                  <p class="audit-note">
+                    También consta, sin cambiar la transferencia:
+                    {#each overview.accrual.notedAdjustments as noted, index (noted.id)}{index > 0 ? ', ' : ''}{noted.label} ({noted.amountLabel}, {noted.reason}){/each}.
+                  </p>
+                {/if}
               {:else}
-                <p class="audit-note">El acuerdo todavía no está en vigor este mes.</p>
+                <p class="audit-note">El contrato todavía no está en vigor este mes.</p>
               {/if}
               <p class="audit-note">Cada importe dice de dónde sale y se calcula con la tarifa acordada en la fecha en que se trabajó.</p>
             </article>
@@ -244,6 +287,20 @@
           <!-- Vacaciones del año en curso: saldo, lo apuntado y el formulario
                de la familia. Va con el resto del expediente porque quien mira
                «cuántos días quedan» está mirando lo pactado, no la nómina. -->
+          <!-- Conceptos apuntados a mano: va pegado a la cuenta del mes porque
+               es donde acaban sus importes. La empleada lo ve en solo lectura
+               (la RLS de 0022 le enseña sus filas); apunta y anula quien
+               administra, que es quien cierra la cuenta. -->
+          {#if agreement && seesAmounts}
+            <ManualAdjustmentsCard
+              householdId={overview.householdId}
+              agreementId={agreement.id}
+              adjustments={overview.manualAdjustments}
+              currentPeriod={overview.accrual?.period ?? currentPeriod()}
+              canRecord={canCloseSettlement}
+            />
+          {/if}
+
           {#if agreement && overview.vacations}
             <VacationsCard
               householdId={overview.householdId}
@@ -279,12 +336,14 @@
               <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/condiciones`}>Ver mis condiciones</a>
             {/if}
             {#if canCloseSettlement}
-              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/acuerdo`}>Administrar el acuerdo</a>
+              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/acuerdo`}>Administrar el contrato</a>
             {/if}
           </nav>
           <article class="card">
             <div class="section-heading">
-              <div><p class="eyebrow">Acuerdo</p><h2>Versiones y cambios de salario</h2></div>
+              <!-- Con varias personas empleadas, «Contrato» a secas no dice de
+                   quién: el nombre elegido va en el epígrafe. -->
+              <div><p class="eyebrow">{overview.agreements.length > 1 ? `Contrato de ${selectedEmployeeLabel}` : 'Contrato'}</p><h2>Versiones y cambios de salario</h2></div>
               {#if overview.agreement}
                 <span class="status-chip {overview.agreement.status === 'active' ? 'success' : 'warning'}">{overview.agreement.status === 'active' ? 'Activo' : 'Finalizado'}</span>
               {/if}

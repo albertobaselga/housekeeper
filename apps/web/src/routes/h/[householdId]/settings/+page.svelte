@@ -2,7 +2,8 @@
   import { enhance } from '$app/forms';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
-  import { ROLE_LABELS, type Role } from '$lib/auth/capabilities';
+  import type { Role } from '$lib/auth/capabilities';
+  import { ROLE_LABELS } from '$lib/auth/role-labels';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { revokeMembership, setMembershipExpiry } from '$lib/access/commands';
   import type { ActionData, PageData } from './$types';
@@ -92,8 +93,6 @@
     resettingId = resettingId === membershipId ? null : membershipId;
   }
 </script>
-
-<svelte:head><title>Ajustes · Casa Clara</title></svelte:head>
 
 <div class="page-wrap">
   <PageHeader eyebrow="Administración" title="Ajustes del hogar" description="Miembros, acceso y preferencias generales de esta demo." />
@@ -229,15 +228,26 @@
   {/if}
 
   <div class="settings-layout">
-    <section class="card"><p class="eyebrow">Miembros</p><h2>Accesos activos</h2>
-      <div class="member-list">
-        {#each data.settings.members as member}
-          <div><span class="avatar">{member.initials}</span><span><strong>{member.name}</strong><small>{ROLE_LABELS[member.role as Role]}</small></span><span class="status-chip success">Demo</span></div>
-        {/each}
-      </div>
-    </section>
+    <!--
+      Censo y preferencias de la MAQUETA: solo existen en la demostración sin
+      base de datos. Con hogar real detrás, `data.settings` es null y quien
+      manda es la sección de accesos de arriba, que sale de la base bajo RLS.
+    -->
+    {#if data.settings}
+      <section class="card"><p class="eyebrow">Miembros</p><h2>Accesos activos</h2>
+        <div class="member-list">
+          {#each data.settings.members as member}
+            <div><span class="avatar">{member.initials}</span><span><strong>{member.name}</strong><small>{ROLE_LABELS[member.role as Role]}</small></span><span class="status-chip success">Demo</span></div>
+          {/each}
+        </div>
+      </section>
+    {/if}
     <div class="stack">
-      <section class="card"><p class="eyebrow">Hogar</p><h2>{data.settings.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>{data.settings.preferences.locale}</dd></div><div><dt>Zona horaria</dt><dd>{data.settings.preferences.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>{data.settings.preferences.weekStarts}</dd></div></dl></section>
+      {#if data.settings}
+        <section class="card"><p class="eyebrow">Hogar</p><h2>{data.settings.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>{data.settings.preferences.locale}</dd></div><div><dt>Zona horaria</dt><dd>{data.settings.preferences.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>{data.settings.preferences.weekStarts}</dd></div></dl></section>
+      {:else}
+        <section class="card"><p class="eyebrow">Hogar</p><h2>{context.household.name}</h2><dl class="settings-list"><div><dt>Idioma</dt><dd>Español (España)</dd></div><div><dt>Zona horaria</dt><dd>{context.timeZone}</dd></div><div><dt>Primero de la semana</dt><dd>Lunes</dd></div></dl></section>
+      {/if}
       {#if data.handover}
         <section class="card">
           <p class="eyebrow">Traspaso</p>

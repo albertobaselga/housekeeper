@@ -44,9 +44,9 @@ export async function renderReceiptPdf(input: ReceiptInput): Promise<Uint8Array>
 
   const document = await PDFDocument.create({ updateMetadata: false });
   document.setTitle(`Recibo informativo ${input.period}`);
-  document.setAuthor("Casa Clara");
-  document.setCreator("Casa Clara worker");
-  document.setProducer("Casa Clara worker");
+  document.setAuthor(input.householdName);
+  document.setCreator("Gestión del personal doméstico (worker)");
+  document.setProducer("Gestión del personal doméstico (worker)");
   document.setCreationDate(generatedAt);
   document.setModificationDate(generatedAt);
 
@@ -56,11 +56,18 @@ export async function renderReceiptPdf(input: ReceiptInput): Promise<Uint8Array>
   const { height } = page.getSize();
   let y = height - 54;
 
-  page.drawText("CASA CLARA", { x: 48, y, size: 11, font: bold, color: rgb(0.08, 0.32, 0.27) });
+  // Membrete: la casa que emite el documento, no el nombre del proyecto.
+  page.drawText(input.householdName.toLocaleUpperCase("es"), {
+    x: 48,
+    y,
+    size: 11,
+    font: bold,
+    color: rgb(0.08, 0.32, 0.27),
+  });
   y -= 30;
   page.drawText(`Recibo informativo · ${input.period}`, { x: 48, y, size: 19, font: bold });
   y -= 22;
-  page.drawText(`${input.employeeName} · ${input.householdName}`, { x: 48, y, size: 10, font: regular });
+  page.drawText(input.employeeName, { x: 48, y, size: 10, font: regular });
   y -= 28;
   page.drawText("Documento doméstico no oficial", {
     x: 48,

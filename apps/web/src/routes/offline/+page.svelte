@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { onMount } from 'svelte';
   import { readCriticalSnapshot } from '$lib/offline/idb';
+  import { savedAtLabel, snapshotProvenance } from '$lib/offline/saved';
 
   interface SnapshotContact {
     id: string;
@@ -45,6 +46,13 @@
   let routines = $state<SnapshotRoutine[]>([]);
   let guidePages = $state<SnapshotGuidePage[]>([]);
   let snapshotLoaded = $state(false);
+  /**
+   * De dónde salió lo que se está enseñando y desde cuándo. Se pinta siempre
+   * que haya paquete: quien lee esto puede estar decidiendo a quién llamar, y
+   * tiene derecho a saber si son los datos de la casa o los de una demostración,
+   * y de qué día son.
+   */
+  let savedLabel = $state('');
 
   function asContact(value: unknown): SnapshotContact | null {
     if (!value || typeof value !== 'object') return null;
@@ -127,6 +135,11 @@
       if (!householdId) return;
       const snapshot = await readCriticalSnapshot(householdId);
       if (!snapshot) return;
+      const provenance = snapshotProvenance(snapshot);
+      savedLabel =
+        provenance === 'fixture'
+          ? 'Datos de DEMOSTRACIÓN guardados en este dispositivo. No son los de una casa real.'
+          : savedAtLabel(snapshot.generatedAt);
       contacts = snapshot.payload.contacts.map(asContact).filter((value): value is SnapshotContact => value !== null);
       notes = snapshot.payload.emergency.map(asNote).filter((value): value is SnapshotNote => value !== null);
       const today = (snapshot.payload.today ?? {}) as Record<string, unknown>;
@@ -147,8 +160,6 @@
   });
 </script>
 
-<svelte:head><title>Sin conexión · Casa Clara</title></svelte:head>
-
 <!--
   Página de último recurso: puede servirse desde la caché del service worker
   cuando todo lo demás falla, incluida la hoja de estilos. Por eso el bloque
@@ -158,7 +169,7 @@
   <section class="error-card" aria-labelledby="offline-title" style="margin-bottom: 1.5rem;">
     <span class="brand-mark" aria-hidden="true">⌂</span>
     <p class="eyebrow">Sin conexión</p>
-    <h1 id="offline-title">Casa Clara sigue guardando lo esencial</h1>
+    <h1 id="offline-title">Lo esencial sigue guardado en este dispositivo</h1>
     <p>Vuelve a una página que ya hayas visitado o usa la información de emergencia guardada en este dispositivo. Los cambios compatibles esperan aquí hasta recibir confirmación.</p>
     <button class="button primary" type="button" onclick={() => history.back()}>Volver</button>
   </section>
@@ -196,7 +207,7 @@
           {/each}
         </ul>
       {/if}
-      <p style="margin: 0.75rem 0 0; font-size: 0.8rem; color: #666;">Información guardada en este dispositivo la última vez que hubo conexión.</p>
+      <p style="margin: 0.75rem 0 0; font-size: 0.8rem; color: #666;">{savedLabel || 'Información guardada en este dispositivo la última vez que hubo conexión.'}</p>
     {:else}
       <p style="margin: 0; font-size: 0.9rem; color: #444;">Si has iniciado sesión en este dispositivo, los contactos de emergencia guardados aparecerán aquí en cuanto la página termine de cargar.</p>
     {/if}

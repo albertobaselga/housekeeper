@@ -1,100 +1,29 @@
+/**
+ * Contratos de la superficie compartida cliente/servidor.
+ *
+ * ESTE MÓDULO LO CARGA TODA PANTALLA DEL CLIENTE. `canonicalJson` se usa para
+ * verificar la firma del paquete offline durante el arranque, así que el
+ * navegador descarga este fichero antes de pintar nada. De aquí solo pueden
+ * salir tipos (gratis en tiempo de ejecución) y funciones pequeñas: cualquier
+ * TABLA de datos que se exporte o se reexporte desde aquí viaja en el trozo
+ * compartido de la pantalla Hoy y se come el presupuesto de arranque.
+ *
+ * Por eso el modelo de autorización —roles, capacidades y su matriz— vive en
+ * `./capabilities.ts`, se importa como `@casa-clara/contracts/capabilities` y NO
+ * se reexporta desde aquí ni siquiera con `export { ... } from`: la arista de
+ * importación basta para que rolldown lo arrastre. Lo comprueba
+ * `apps/web/scripts/verify-today-bundle.mjs`.
+ */
+
+// Solo tipos, en las dos líneas: `import type` / `export type` se borran al
+// compilar y no crean dependencia de ejecución con `./capabilities.ts`. No los
+// conviertas en `import { ... }` ni en `export { ... } from`.
+import type { Capability, Role } from "./capabilities.js";
+export type { Capability, Role };
+
 export const API_VERSION = 1 as const;
 export const CRITICAL_SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1_000;
 
-export const roles = [
-  "family_admin",
-  "family_member",
-  "employee_live_in",
-  "helper",
-  "viewer",
-] as const;
-
-export type Role = (typeof roles)[number];
-
-export const capabilities = [
-  "access.manage",
-  "agreement.read",
-  "agreement.write",
-  "calendar.read",
-  "calendar.write",
-  "comment.create",
-  "contact.read",
-  "contact.write",
-  "content.read",
-  "content.write",
-  "content.publish",
-  "emergency.read",
-  "expense.create.self",
-  "export.employment.self",
-  "leave.approve",
-  "leave.request.self",
-  "menu.read",
-  "menu.write",
-  "payment.confirm.self",
-  "payment.register",
-  "routine.read",
-  "routine.toggle",
-  "search.use",
-  "settlement.close",
-  "settlement.read",
-  "work.confirm",
-  "work.register.self",
-] as const;
-
-export type Capability = (typeof capabilities)[number];
-
-const allCapabilities = [...capabilities];
-
-export const roleCapabilities: Readonly<Record<Role, readonly Capability[]>> = {
-  family_admin: allCapabilities,
-  family_member: [
-    "agreement.read",
-    "calendar.read",
-    "calendar.write",
-    "comment.create",
-    "contact.read",
-    "contact.write",
-    "content.publish",
-    "content.read",
-    "content.write",
-    "emergency.read",
-    "menu.read",
-    "menu.write",
-    "routine.read",
-    "routine.toggle",
-    "search.use",
-    "settlement.read",
-  ],
-  employee_live_in: [
-    "agreement.read",
-    "calendar.read",
-    "comment.create",
-    "contact.read",
-    "content.read",
-    "emergency.read",
-    "expense.create.self",
-    "export.employment.self",
-    "leave.request.self",
-    "menu.read",
-    "payment.confirm.self",
-    "routine.read",
-    "routine.toggle",
-    "search.use",
-    "settlement.read",
-    "work.register.self",
-  ],
-  helper: [
-    "comment.create",
-    "contact.read",
-    "content.read",
-    "emergency.read",
-    "menu.read",
-    "routine.read",
-    "routine.toggle",
-    "search.use",
-  ],
-  viewer: ["calendar.read", "contact.read", "emergency.read"],
-};
 export type UUID = string;
 export type ISODate = string;
 export type ISODateTime = string;
@@ -131,6 +60,7 @@ export type AggregateType =
   | "food"
   | "ics_feed"
   | "leave_request"
+  | "manual_adjustment"
   | "membership"
   | "menu_group"
   | "menu_slot"
@@ -226,6 +156,17 @@ export interface ExtraWorkRegisterPayloadV1 {
   workedOn: ISODate;
   durationMinutes: number;
   note?: string;
+  /**
+   * Resolución en el acto (solo administración). Lo normal al apuntar trabajo
+   * de otra persona es que ya haya ocurrido: en vez de obligar a un baile de
+   * estados que nadie va a hacer, el mismo hecho puede llegar resuelto. El
+   * servidor encadena `requested → performed_pending_resolution → resolved`
+   * con una transición firmada por quien administra en cada paso.
+   */
+  resolveNow?: {
+    resolution: "money" | "time_off";
+    reason: string;
+  };
 }
 
 /** `aggregateType: "extra_work"` — aceptación previa por la familia. */
@@ -351,6 +292,34 @@ export interface RecurringSupplementInputV1 {
   active: boolean;
 }
 
+/** ISO-8601: 1 lunes … 7 domingo, el mismo convenio que la columna `weekday`. */
+export type WeekdayV1 = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
+/**
+ * Excepción de un día del horario. `null` en un campo significa «como la
+ * jornada tipo», así que terminar antes un día es rellenar `endsAt` y nada más.
+ */
+export interface ScheduleDayInputV1 {
+  weekday: WeekdayV1;
+  /** false = libranza; entonces los tres campos de hora van a null. */
+  works: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  longBreakMinutes: number | null;
+  note: string;
+}
+
+/** Horario pactado en una versión: la jornada tipo y lo que se desvía de ella. */
+export interface AgreementScheduleInputV1 {
+  /** «HH:MM». */
+  startsAt: string;
+  endsAt: string;
+  /** Minutos del descanso largo del mediodía. 0 = no se pactó ninguno. */
+  longBreakMinutes: number;
+  note: string;
+  days: ScheduleDayInputV1[];
+}
+
 /**
  * Términos completos de UNA versión. Nunca se editan: cada cambio apila una
  * versión nueva con su catálogo entero, y el historial enseña las dos.
@@ -363,6 +332,11 @@ export interface AgreementTermsInputV1 {
   reason: string;
   extraWorkTypes: ExtraWorkTypeInputV1[];
   supplements: RecurringSupplementInputV1[];
+  /**
+   * null = el contrato no declara horario. No es un hueco por rellenar: es la
+   * respuesta que hace que la empleada no vea una sección vacía.
+   */
+  schedule: AgreementScheduleInputV1 | null;
 }
 
 /** Alta del acuerdo: la relación laboral y su primera versión, a la vez. */
@@ -395,6 +369,46 @@ export interface VacationRecordPayloadV1 {
 export interface VacationVoidPayloadV1 {
   action: "void";
   vacationPeriodId: UUID;
+  reason: string;
+}
+
+/**
+ * `aggregateType: "manual_adjustment"` — un importe suelto que no nace de
+ * ningún hecho del sistema (una gratificación, un descuento acordado, la parte
+ * proporcional de algo) y que se imputa a la cuenta de un mes concreto.
+ *
+ * `period` es el mes ELEGIDO por quien lo apunta. Puede ser el mes en curso,
+ * aunque su liquidación ya esté abierta. Si ese mes ya está CERRADO el servidor
+ * no reescribe la cuenta: imputa el concepto al primer mes posterior que siga
+ * abierto y lo deja dicho en la propia fila.
+ */
+export interface ManualAdjustmentRecordPayloadV1 {
+  action: "record";
+  agreementId: UUID;
+  /** Mes al que se pide imputar, `YYYY-MM`. */
+  period: string;
+  /** Cómo se llama el concepto en la cuenta. */
+  label: string;
+  /** Por qué existe. Obligatorio: un importe suelto sin motivo es una discusión. */
+  reason: string;
+  /** Con signo: positivo suma a la cuenta del mes, negativo resta. Nunca cero. */
+  amountCents: MoneyCents;
+  /**
+   * `true`: el importe mueve la transferencia del mes. `false`: consta y no la
+   * toca, porque ese dinero se movió por otro sitio (un anticipo devuelto en
+   * mano). Misma semántica que `adds_to_pay` en los complementos recurrentes.
+   */
+  addsToPay: boolean;
+}
+
+/**
+ * `aggregateType: "manual_adjustment"` — corrección de un concepto mal
+ * apuntado. Anula, no borra. No se puede anular lo que ya entró en una cuenta
+ * cerrada: para eso se apunta el contrario en un mes abierto.
+ */
+export interface ManualAdjustmentVoidPayloadV1 {
+  action: "void";
+  manualAdjustmentId: UUID;
   reason: string;
 }
 
@@ -531,16 +545,8 @@ export function canonicalJson(value: unknown): string {
   return canonicalValue(value);
 }
 
-export function isRole(value: string): value is Role {
-  return (roles as readonly string[]).includes(value);
-}
-
 export function isMoneyCents(value: string): value is MoneyCents {
   return /^-?(0|[1-9]\d*)$/.test(value);
-}
-
-export function hasCapability(role: Role, capability: Capability): boolean {
-  return roleCapabilities[role].includes(capability);
 }
 
 export function assertSnapshotFresh(

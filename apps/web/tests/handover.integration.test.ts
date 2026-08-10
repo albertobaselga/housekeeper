@@ -82,10 +82,11 @@ UPDATE app.wiki_pages SET current_revision_id = '${REV_LAVADORA}' WHERE id = '${
 UPDATE app.wiki_pages SET current_revision_id = '${REV_CALDERA}' WHERE id = '${PAGE_CALDERA}';
 UPDATE app.wiki_pages SET current_revision_id = '${REV_DRAFT}' WHERE id = '${PAGE_DRAFT}';
 
-INSERT INTO app.routines (household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id) VALUES
-  ('${FIXTURE_HOUSEHOLD}', 'Regar plantas', 'Terraza y salón', 'all', 'weekly', 1, '2026-08-10', '${ADMIN_MEMBERSHIP}'),
-  ('${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', 'weekly', 1, '2026-08-09', '${ADMIN_MEMBERSHIP}'),
-  ('${FIXTURE_HOUSEHOLD}', 'Repaso de uniformes', '', 'employee', 'weekly', 1, '2026-08-11', '${ADMIN_MEMBERSHIP}');
+INSERT INTO app.routines (household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+  pattern, anchor_on, repeat_every) VALUES
+  ('${FIXTURE_HOUSEHOLD}', 'Regar plantas', 'Terraza y salón', 'all', 'weekly', 1, '2026-08-10', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-10', 7),
+  ('${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', 'weekly', 1, '2026-08-09', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-09', 7),
+  ('${FIXTURE_HOUSEHOLD}', 'Repaso de uniformes', '', 'employee', 'weekly', 1, '2026-08-11', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-11', 7);
 
 INSERT INTO app.menu_groups (id, household_id, name, position)
 VALUES ('${GROUP_FAMILIA}', '${FIXTURE_HOUSEHOLD}', 'Familia', 0);
@@ -93,6 +94,13 @@ VALUES ('${GROUP_FAMILIA}', '${FIXTURE_HOUSEHOLD}', 'Familia', 0);
 INSERT INTO app.menu_slots (household_id, group_id, on_date, meal, free_text, notes, updated_by_membership_id) VALUES
   ('${FIXTURE_HOUSEHOLD}', '${GROUP_FAMILIA}', '${WEEK_MONDAY}', 'comida', 'Lentejas con verduras', 'Triturar una ración para Leo', '${ADMIN_MEMBERSHIP}'),
   ('${FIXTURE_HOUSEHOLD}', '${GROUP_FAMILIA}', '${WEEK_MONDAY}', 'cena', 'Tortilla francesa', '', '${ADMIN_MEMBERSHIP}');
+
+-- Contactos REALES del hogar: son los que tiene que llevar el ZIP. Uno de
+-- ellos está archivado y no puede viajar.
+INSERT INTO app.contacts (household_id, name, role_label, phone, kind, featured, position, archived_at, created_by_membership_id) VALUES
+  ('${FIXTURE_HOUSEHOLD}', 'Portería Fixture', 'Portería del edificio', '900 000 001', 'home', true, 0, NULL, '${ADMIN_MEMBERSHIP}'),
+  ('${FIXTURE_HOUSEHOLD}', 'Fontanería Fixture', 'Averías de agua', '900 000 002', 'service', false, 1, NULL, '${ADMIN_MEMBERSHIP}'),
+  ('${FIXTURE_HOUSEHOLD}', 'Contacto Retirado', 'Ya no atiende', '900 000 003', 'service', false, 2, now(), '${ADMIN_MEMBERSHIP}');
 
 -- Canario laboral: gasto pendiente cuya descripción contiene «Liquidación» y
 -- cuyo importe replica el salario. El traspaso no debe olerlo siquiera.
@@ -240,7 +248,7 @@ describe.runIf(Boolean(adminUrl))('traspaso operativo (F4-02) desde Postgres baj
     expect(familyRoutines).toContain('Repaso de uniformes');
   });
 
-  it('menu-semana.md trae la semana en curso legible y contactos.md la fixture compartida', async () => {
+  it('menu-semana.md trae la semana en curso y contactos.md los contactos REALES', async () => {
     const entries = await buildZip('helper');
     const menu = strFromU8(entries['menu-semana.md']!);
     expect(menu).toContain(WEEK_MONDAY);
@@ -248,9 +256,16 @@ describe.runIf(Boolean(adminUrl))('traspaso operativo (F4-02) desde Postgres baj
     expect(menu).toContain('Cena · Familia: Tortilla francesa');
 
     const contacts = strFromU8(entries['contactos.md']!);
-    expect(contacts).toContain('Emergencias');
-    expect(contacts).toContain('112');
-    expect(contacts).toContain('Carmen · 2.º B');
+    expect(contacts).toContain('Portería Fixture');
+    expect(contacts).toContain('900 000 001');
+    expect(contacts).toContain('Fontanería Fixture');
+    // Lo archivado no viaja…
+    expect(contacts).not.toContain('Contacto Retirado');
+    // …y la maqueta compartida tampoco: el ZIP que recibe quien va a llevar la
+    // casa no puede mezclar los datos del hogar con teléfonos inventados.
+    expect(contacts).not.toContain('Centro Pediátrico Olmo');
+    expect(contacts).not.toContain('910 000 111');
+    expect(contacts).not.toContain('Carmen · 2.º B');
   });
 
   it('JAMÁS expediente laboral: ninguna entrada contiene los canarios sembrados', async () => {

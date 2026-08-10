@@ -11,7 +11,13 @@ export const REMINDER_ESCALATION_DAYS = 3;
 
 const DAY_MS = 86_400_000;
 
-/** Fila de `app_private.settlement_reminder_state` normalizada a camelCase. */
+/**
+ * Fila de `app_private.settlement_reminder_state` normalizada a camelCase.
+ *
+ * La función de la 0006 devuelve también `employee_email`, pero aquí no se lee:
+ * este aviso es para quien administra (ver `createSettlementDueHandler`), y un
+ * correo que no se va a usar es un dato personal que no hace falta mover.
+ */
 export interface SettlementReminderState {
   dueOn: string;
   periodStart: string;
@@ -19,7 +25,6 @@ export interface SettlementReminderState {
   status: string;
   pendingCents: string;
   receiptConfirmed: boolean;
-  employeeEmail: string | null;
   adminEmails: ReadonlyArray<string | null>;
 }
 
@@ -64,7 +69,7 @@ function formatDateEs(isoDate: string): string {
 
 function reminderEmailBody(state: SettlementReminderState): { subject: string; text: string } {
   return {
-    subject: `Casa Clara: liquidación pendiente de pago (vence el ${formatDateEs(state.dueOn)})`,
+    subject: `Liquidación pendiente de pago (vence el ${formatDateEs(state.dueOn)})`,
     text: [
       "Hola:",
       "",
@@ -75,7 +80,7 @@ function reminderEmailBody(state: SettlementReminderState): { subject: string; t
       "Este aviso automático se repetirá cada 3 días hasta que el pago se complete",
       "y la empleada confirme el cobro.",
       "",
-      "— Casa Clara",
+      "— Gestión del personal doméstico",
     ].join("\n"),
   };
 }
@@ -87,6 +92,12 @@ function reminderEmailBody(state: SettlementReminderState): { subject: string; t
  * cerrada, con pendiente y sin confirmación de cobro; en ese caso además se
  * re-encola a sí mismo a +3 días (escalada). Pagada, confirmada o anulada:
  * completa sin efectos.
+ *
+ * Va SOLO a `family_admin`. Durante un tiempo se mandó también a la empleada, y
+ * era un aviso mal dirigido: quien lo recibía no podía hacer nada al respecto
+ * —pagar la liquidación es cosa de quien administra la casa— y lo que llegaba
+ * a su bandeja cada tres días era el recordatorio de una deuda ajena. Ella tiene
+ * su propia palanca, la confirmación de cobro, y esa sí sale de su pantalla.
  */
 export function createSettlementDueHandler(deps: SettlementDueDeps): JobHandler {
   const now = deps.now ?? (() => new Date());
@@ -102,7 +113,7 @@ export function createSettlementDueHandler(deps: SettlementDueDeps): JobHandler 
 
     const recipients = [
       ...new Set(
-        [...state.adminEmails, state.employeeEmail].filter(
+        state.adminEmails.filter(
           (email): email is string => typeof email === "string" && email.trim().length > 0,
         ),
       ),
@@ -147,6 +158,8 @@ export function createReminderQueries(pool: Pool): {
 } {
   return {
     readSettlementReminderState: async (householdId, settlementId) => {
+      // `employee_email` existe en la función pero no se selecciona: el aviso es
+      // solo para quien administra y ese correo no tiene por qué salir de la base.
       const result = await pool.query<{
         due_on: string;
         period_start: string;
@@ -154,13 +167,12 @@ export function createReminderQueries(pool: Pool): {
         status: string;
         pending_cents: string;
         receipt_confirmed: boolean;
-        employee_email: string | null;
         admin_emails: (string | null)[];
       }>(
         `select due_on::text as due_on, period_start::text as period_start,
                 period_end::text as period_end, status,
                 pending_cents::text as pending_cents, receipt_confirmed,
-                employee_email, admin_emails
+                admin_emails
            from app_private.settlement_reminder_state($1, $2)`,
         [householdId, settlementId],
       );
@@ -173,7 +185,6 @@ export function createReminderQueries(pool: Pool): {
         status: row.status,
         pendingCents: row.pending_cents,
         receiptConfirmed: row.receipt_confirmed,
-        employeeEmail: row.employee_email,
         adminEmails: row.admin_emails,
       };
     },

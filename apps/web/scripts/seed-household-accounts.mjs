@@ -23,7 +23,7 @@
 // Formato del JSON (ejemplo en docs/despliegue/acceso-produccion.md):
 //
 //   {
-//     "household": { "slug": "casa-clara", "displayName": "Casa Clara" },
+//     "household": { "slug": "casa-roble", "displayName": "Casa Roble" },
 //     "people": [
 //       { "username": "alberto", "name": "Alberto", "email": "alberto@ejemplo.es", "role": "family_admin" },
 //       { "username": "nuria",  "name": "Nuria",  "email": "nuria@casa.local", "role": "employee_live_in" }

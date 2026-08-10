@@ -21,6 +21,21 @@ export interface MonetaryInput {
   amountCents: bigint;
 }
 
+/**
+ * Un concepto apuntado a mano (migración 0022): importe con signo, motivo
+ * obligatorio y la misma distinción que traen los complementos recurrentes.
+ *
+ * `addsToPay` NO se reinventa: significa exactamente lo que en
+ * `RecurringSupplement`. `true` = el importe mueve la transferencia del mes;
+ * `false` = consta en el expediente y no la toca, porque ese dinero se movió
+ * por otro sitio (el ejemplo real: un anticipo ya devuelto en mano, que
+ * descontado otra vez se le cobraría dos veces).
+ */
+export interface ManualAdjustmentInput extends MonetaryInput {
+  reason: string;
+  addsToPay: boolean;
+}
+
 export interface SettlementInput {
   period: string;
   agreementVersions: readonly AgreementVersion[];
@@ -28,7 +43,7 @@ export interface SettlementInput {
   extraPay: readonly MonetaryInput[];
   advanceDeductions: readonly MonetaryInput[];
   unpaidAbsences: readonly MonetaryInput[];
-  adjustments: readonly (MonetaryInput & { reason: string })[];
+  adjustments: readonly ManualAdjustmentInput[];
   expenses: readonly MonetaryInput[];
   /**
    * Complementos recurrentes de la versión vigente. Opcional para no romper a
@@ -57,6 +72,13 @@ export interface SettlementLine {
   sourceType: string;
   sourceId: string;
   sourceHref: string;
+  /**
+   * Explicación en lenguaje llano que acompaña a la etiqueta: el motivo de un
+   * concepto apuntado a mano. Vacía en el resto de las líneas, cuyo origen ya
+   * se explica solo. Va aparte de `label` para que la interfaz pueda enseñar
+   * «Gratificación de verano» como título y el motivo debajo, sin repetirlo.
+   */
+  note: string;
 }
 
 /**
@@ -67,6 +89,20 @@ export interface SettlementLine {
 export interface HouseholdPaidSupplement {
   id: string;
   label: string;
+  amountCents: bigint;
+}
+
+/**
+ * Un concepto apuntado a mano que NO mueve la transferencia. Igual que
+ * `HouseholdPaidSupplement`, viaja fuera de `lines` para que sea imposible
+ * sumarlo por descuido; a diferencia de aquel, lleva su motivo, porque un
+ * importe suelto sin explicación no se entiende solo.
+ */
+export interface NotedAdjustment {
+  id: string;
+  label: string;
+  reason: string;
+  /** Con su signo, tal como se apuntó: aquí no hay nada que normalizar. */
   amountCents: bigint;
 }
 
@@ -84,6 +120,11 @@ export interface SettlementProjection {
    * incluye.
    */
   householdPaidSupplements: readonly HouseholdPaidSupplement[];
+  /**
+   * Conceptos apuntados a mano con `addsToPay: false`: constan en la cuenta del
+   * mes y ningún total los toca. Mismo criterio y misma razón.
+   */
+  notedAdjustments: readonly NotedAdjustment[];
 }
 
 function periodBounds(period: string): { first: string; last: string } {
@@ -118,6 +159,7 @@ function moneyLine(
     sourceType,
     sourceId: input.id,
     sourceHref: `/laboral/${sourceType}/${encodeURIComponent(input.id)}`,
+    note: "",
   };
 }
 
@@ -139,6 +181,7 @@ export function calculateSettlement(input: SettlementInput): SettlementProjectio
       sourceType: "agreement-version",
       sourceId: agreement.id,
       sourceHref: `/laboral/acuerdo/versiones/${encodeURIComponent(agreement.id)}`,
+      note: "",
     },
   ];
 
@@ -166,6 +209,7 @@ export function calculateSettlement(input: SettlementInput): SettlementProjectio
       sourceType: "jornadas-extra",
       sourceId: event.id,
       sourceHref: `/laboral/jornadas-extra/${encodeURIComponent(event.id)}`,
+      note: "",
     });
   }
 
@@ -196,17 +240,36 @@ export function calculateSettlement(input: SettlementInput): SettlementProjectio
       sourceType: "complementos",
       sourceId: supplement.id,
       sourceHref: `/laboral/complementos/${encodeURIComponent(supplement.id)}`,
+      note: "",
     });
   }
 
   lines.push(...input.extraPay.map((item) => moneyLine(item, "extra_pay", 1n, "pagas-extra")));
   lines.push(...input.advanceDeductions.map((item) => moneyLine(item, "advance_deduction", -1n, "anticipos")));
   lines.push(...input.unpaidAbsences.map((item) => moneyLine(item, "unpaid_absence", -1n, "ausencias")));
+  // Conceptos apuntados a mano. El signo es el que trae el apunte —una
+  // gratificación suma, un descuento acordado resta—, y los que NO mueven la
+  // transferencia se apartan a `notedAdjustments` por la misma razón que los
+  // complementos que paga la casa: el total del mes no puede inflarse (ni
+  // menguar) con dinero que nadie transfiere.
+  const notedAdjustments: NotedAdjustment[] = [];
   for (const adjustment of input.adjustments) {
     if (!adjustment.reason.trim()) throw new TypeError("Cada ajuste manual necesita un motivo");
+    if (adjustment.amountCents === 0n) {
+      throw new RangeError("Un concepto apuntado a mano no puede valer cero");
+    }
+    if (!adjustment.addsToPay) {
+      notedAdjustments.push({
+        id: adjustment.id,
+        label: adjustment.label,
+        reason: adjustment.reason,
+        amountCents: adjustment.amountCents,
+      });
+      continue;
+    }
     lines.push({
       ...moneyLine(adjustment, "adjustment", adjustment.amountCents < 0n ? -1n : 1n, "ajustes"),
-      label: `${adjustment.label}: ${adjustment.reason}`,
+      note: adjustment.reason,
     });
   }
 
@@ -227,6 +290,7 @@ export function calculateSettlement(input: SettlementInput): SettlementProjectio
     transferTotalCents: salaryCents + reimbursementCents,
     permanentCreditMinutes,
     householdPaidSupplements: Object.freeze(householdPaidSupplements),
+    notedAdjustments: Object.freeze(notedAdjustments),
   };
 }
 

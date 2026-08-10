@@ -241,8 +241,6 @@
   let selected = $derived(data.recipes ? (data.recipes.recipes.find((entry) => entry.id === selectedId) ?? data.recipes.recipes[0]) : undefined);
 </script>
 
-<svelte:head><title>Recetas · Casa Clara</title></svelte:head>
-
 <div class="page-wrap">
   {#if catalog}
     <PageHeader

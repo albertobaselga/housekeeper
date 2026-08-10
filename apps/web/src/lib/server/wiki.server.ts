@@ -1,15 +1,30 @@
 import type { Pool, PoolClient } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, listSearchGapClusters, withAuthorizedTransaction } from '@casa-clara/server';
+import { hasCapability } from '@casa-clara/contracts/capabilities';
+import {
+  AuthorizationError,
+  createLogger,
+  errorCode,
+  listSearchGapClusters,
+  withAuthorizedTransaction
+} from '@casa-clara/server';
 
 import { diffLines, type WikiDiffLine } from '$lib/wiki/diff';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:wiki');
 
-const WRITER_ROLES: readonly Role[] = ['family_admin', 'family_member', 'employee_live_in'];
-const PUBLISHER_ROLES: readonly Role[] = ['family_admin', 'family_member'];
+/**
+ * Escribir la Guía de la casa es de la administración y de nadie más. Un botón
+ * que siempre falla es una mentira, así que la interfaz no lo dibuja; la RLS de
+ * la migración 0026 lo impone igualmente por debajo.
+ */
+function canWriteGuide(role: Role): boolean {
+  return hasCapability(role, 'guide.write');
+}
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const DATE_LABEL = new Intl.DateTimeFormat('es-ES', {
@@ -86,18 +101,65 @@ export interface WikiHome {
   householdId: string;
   role: Role;
   canWrite: boolean;
-  canPublish: boolean;
   spaces: WikiSpaceView[];
   /** Espacios marcados como plantilla, listados aparte de los espacios vivos. */
   templates: WikiSpaceView[];
   pinned: WikiHomeEntry[];
   recent: WikiHomeEntry[];
   /**
-   * Huecos documentales (AC-18), solo para la familia: clusters deterministas
-   * de búsquedas sin resultado o sin clic de los últimos 30 días. Vacío para
-   * el resto de roles (RLS tampoco les daría filas).
+   * Huecos documentales (AC-18), solo para quien mantiene la Guía: clusters
+   * deterministas de búsquedas sin resultado o sin clic de los últimos 30 días.
    */
   searchGaps: WikiSearchGapView[];
+  /** Lo que le queda por leer a QUIEN MIRA. Nunca lo de otra persona. */
+  reading: GuideReadingSummary;
+}
+
+/**
+ * Estado de lectura de una nota para quien mira. `changed` no es «no leída»:
+ * es «la leíste, y desde entonces cambiaron las palabras». La diferencia
+ * importa porque decirle a alguien que nunca leyó algo que sí leyó es mentir.
+ */
+export type GuideNoteReadState = 'pending' | 'read' | 'changed';
+
+export interface GuideNoteEntry {
+  id: string;
+  slug: string;
+  title: string;
+  /** Índice global dentro del libro, empezando en 1. */
+  order: number;
+  /** Profundidad en la jerarquía del apartado (0 = nota de primer nivel). */
+  depth: number;
+  state: GuideNoteReadState;
+}
+
+export interface GuideChapter {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  notes: GuideNoteEntry[];
+  total: number;
+  read: number;
+}
+
+export interface GuideReadingSummary {
+  total: number;
+  read: number;
+  /** Leídas cuyo texto ha cambiado desde entonces. */
+  changed: number;
+  complete: boolean;
+  /** Por dónde seguir: la primera pendiente, o la primera que cambió. */
+  nextSlug: string | null;
+  nextTitle: string | null;
+}
+
+export interface GuideOutline {
+  householdId: string;
+  chapters: GuideChapter[];
+  /** El libro entero en orden de lectura, capítulo a capítulo. */
+  order: GuideNoteEntry[];
+  summary: GuideReadingSummary;
 }
 
 interface PageRow {
@@ -111,6 +173,143 @@ interface PageRow {
   updatedAt: Date;
   title: string;
   reads30d: number;
+}
+
+interface OutlineRow {
+  spaceId: string;
+  spaceSlug: string;
+  spaceName: string;
+  spaceDescription: string;
+  pageId: string;
+  parentPageId: string | null;
+  slug: string;
+  title: string;
+  readFingerprint: string | null;
+  currentFingerprint: string;
+}
+
+/**
+ * El libro entero tal y como se lee: capítulos en el orden que la casa les ha
+ * dado y, dentro de cada uno, las notas de padres a hijas. Solo notas
+ * PUBLICADAS de apartados de la GUÍA — un borrador no se puede pedir que se
+ * lea, y el recetario no es el manual de la casa.
+ *
+ * El estado de lectura sale de `app.wiki_reading_progress`, que bajo RLS solo
+ * devuelve las filas de quien pregunta: esta consulta no puede leer el
+ * progreso de otra persona ni queriendo.
+ */
+async function loadGuideOutlineWith(
+  client: PoolClient,
+  householdId: string
+): Promise<GuideOutline> {
+  const rows = await client.query<OutlineRow>(
+    `select space.id as "spaceId",
+            space.slug as "spaceSlug",
+            space.name as "spaceName",
+            space.description as "spaceDescription",
+            page.id as "pageId",
+            page.parent_page_id as "parentPageId",
+            page.current_slug as "slug",
+            revision.title,
+            progress.content_fingerprint as "readFingerprint",
+            revision.reading_fingerprint as "currentFingerprint"
+       from app.wiki_spaces as space
+       join app.wiki_pages as page
+         on page.household_id = space.household_id
+        and page.space_id = space.id
+        and page.archived_at is null
+        and page.status = 'published'
+       join app.wiki_revisions as revision
+         on revision.household_id = page.household_id
+        and revision.id = page.current_revision_id
+       left join app.wiki_reading_progress as progress
+         on progress.household_id = page.household_id
+        and progress.page_id = page.id
+      where space.household_id = $1
+        and space.archived_at is null
+        and space.kind = 'guide'
+        and space.is_template = false
+      order by space.position, space.name, page.position, revision.title`,
+    [householdId]
+  );
+
+  const chapters: GuideChapter[] = [];
+  const byChapter = new Map<string, GuideChapter>();
+  const rowsByChapter = new Map<string, OutlineRow[]>();
+  for (const row of rows.rows) {
+    let chapter = byChapter.get(row.spaceId);
+    if (!chapter) {
+      chapter = {
+        id: row.spaceId,
+        slug: row.spaceSlug,
+        name: row.spaceName,
+        description: row.spaceDescription,
+        notes: [],
+        total: 0,
+        read: 0
+      };
+      byChapter.set(row.spaceId, chapter);
+      chapters.push(chapter);
+      rowsByChapter.set(row.spaceId, []);
+    }
+    rowsByChapter.get(row.spaceId)!.push(row);
+  }
+
+  const order: GuideNoteEntry[] = [];
+  for (const chapter of chapters) {
+    const chapterRows = rowsByChapter.get(chapter.id) ?? [];
+    const visible = new Set(chapterRows.map((row) => row.pageId));
+    const children = new Map<string | null, OutlineRow[]>();
+    for (const row of chapterRows) {
+      // Si el padre no está publicado (o vive en otro apartado), la hija cuelga
+      // de la raíz: nunca desaparece del libro por culpa de su padre.
+      const parent = row.parentPageId && visible.has(row.parentPageId) ? row.parentPageId : null;
+      const siblings = children.get(parent) ?? [];
+      siblings.push(row);
+      children.set(parent, siblings);
+    }
+    const walk = (parent: string | null, depth: number): void => {
+      for (const row of children.get(parent) ?? []) {
+        const state: GuideNoteReadState =
+          row.readFingerprint === null
+            ? 'pending'
+            : row.readFingerprint === row.currentFingerprint
+              ? 'read'
+              : 'changed';
+        const entry: GuideNoteEntry = {
+          id: row.pageId,
+          slug: row.slug,
+          title: row.title,
+          order: order.length + 1,
+          depth,
+          state
+        };
+        order.push(entry);
+        chapter.notes.push(entry);
+        chapter.total += 1;
+        if (state !== 'pending') chapter.read += 1;
+        walk(row.pageId, depth + 1);
+      }
+    };
+    walk(null, 0);
+  }
+
+  const read = order.filter((note) => note.state !== 'pending').length;
+  const changed = order.filter((note) => note.state === 'changed').length;
+  const next = order.find((note) => note.state === 'pending') ?? order.find((note) => note.state === 'changed') ?? null;
+  return {
+    householdId,
+    chapters,
+    order,
+    summary: {
+      total: order.length,
+      read,
+      changed,
+      complete: order.length > 0 && read === order.length,
+      nextSlug: next?.slug ?? null,
+      nextTitle: next?.title ?? null
+    }
+  };
 }
 
 /**
@@ -127,6 +326,8 @@ export async function loadWikiHome(
   if (!pool) return null;
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      // Solo la GUÍA: el recetario tiene su propia pantalla y no es el manual
+      // de la casa (migración 0026).
       const spaces = await client.query<{
         id: string;
         slug: string;
@@ -136,7 +337,7 @@ export async function loadWikiHome(
       }>(
         `select id, slug, name, description, is_template as "isTemplate"
            from app.wiki_spaces
-          where household_id = $1 and archived_at is null
+          where household_id = $1 and archived_at is null and kind = 'guide'
           order by position, name`,
         [householdId]
       );
@@ -153,6 +354,10 @@ export async function loadWikiHome(
                 coalesce(revision.title, page.current_slug) as "title",
                 coalesce(reads.total, 0)::int as "reads30d"
            from app.wiki_pages as page
+           join app.wiki_spaces as space
+             on space.household_id = page.household_id
+            and space.id = page.space_id
+            and space.kind = 'guide'
            left join app.wiki_revisions as revision
              on revision.household_id = page.household_id
             and revision.id = page.current_revision_id
@@ -228,10 +433,11 @@ export async function loadWikiHome(
         .slice(0, 6)
         .map(toEntry);
 
-      // Huecos documentales, solo familia: la agrupación determinista vive en
-      // @casa-clara/server y RLS acota las filas al hogar; para el resto de
-      // roles ni siquiera se consulta.
-      const searchGaps: WikiSearchGapView[] = PUBLISHER_ROLES.includes(membership.role)
+      const canWrite = canWriteGuide(membership.role);
+
+      // Huecos documentales: son la lista de tareas de quien mantiene la Guía,
+      // así que solo se consultan para quien puede escribirla.
+      const searchGaps: WikiSearchGapView[] = canWrite
         ? (await listSearchGapClusters(client, { days: 30, limit: 10 })).map((cluster) => ({
             representative: cluster.representative,
             variants: cluster.variants,
@@ -242,25 +448,26 @@ export async function loadWikiHome(
           }))
         : [];
 
+      // Lo que le queda por leer a quien mira, nunca a otra persona: RLS solo
+      // devuelve su propio progreso.
+      const outline = await loadGuideOutlineWith(client, householdId);
+
       return {
         householdId,
         role: membership.role,
-        canWrite: WRITER_ROLES.includes(membership.role),
-        canPublish: PUBLISHER_ROLES.includes(membership.role),
+        canWrite,
         // Las plantillas se listan aparte: no son espacios "vivos" de lectura
         // sino orígenes de clonación (F4-01).
         spaces: spaceViews.filter((space) => !space.isTemplate),
         templates: spaceViews.filter((space) => space.isTemplate),
         pinned,
         recent,
-        searchGaps
+        searchGaps,
+        reading: outline.summary
       } satisfies WikiHome;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('wiki home unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'wiki home', cause);
   }
 }
 
@@ -301,7 +508,14 @@ export interface WikiPageView {
   diff: WikiDiffLine[] | null;
   diffAgainst: number | null;
   canWrite: boolean;
-  canPublish: boolean;
+  /**
+   * Estado de lectura de ESTA nota para quien mira, y si cuenta para la
+   * acogida (una receta o un borrador no cuentan). `null` cuando la nota no
+   * pertenece a la Guía.
+   */
+  reading: { state: GuideNoteReadState; counts: boolean } | null;
+  /** Nota anterior y siguiente en el libro, para poder seguir leyendo. */
+  neighbours: { previous: GuideNoteEntry | null; next: GuideNoteEntry | null };
 }
 
 export type WikiPageLoad =
@@ -433,6 +647,22 @@ export async function loadWikiPage(
         await client.query('select app.record_wiki_read($1)', [page.id]);
       }
 
+      // El libro sirve también a la consulta suelta: una nota abierta desde la
+      // búsqueda enseña por dónde iba y a dónde seguir, sin obligar a entrar
+      // por el modo libro.
+      const outline = await loadGuideOutlineWith(client, householdId);
+      const position = outline.order.findIndex((note) => note.id === page.id);
+      const reading = {
+        state:
+          position >= 0
+            ? { state: outline.order[position]!.state, counts: true }
+            : null,
+        neighbours: {
+          previous: position > 0 ? outline.order[position - 1]! : null,
+          next: position >= 0 && position < outline.order.length - 1 ? outline.order[position + 1]! : null
+        }
+      };
+
       const updated = isoAndLabel(page.updatedAt);
       return {
         kind: 'page',
@@ -467,13 +697,262 @@ export async function loadWikiPage(
         })),
         diff: previous ? diffLines(previous.bodyMarkdown, current.bodyMarkdown) : null,
         diffAgainst: previous?.number ?? null,
-        canWrite: WRITER_ROLES.includes(membership.role),
-        canPublish: PUBLISHER_ROLES.includes(membership.role)
+        canWrite: canWriteGuide(membership.role),
+        reading: reading.state,
+        neighbours: reading.neighbours
       } satisfies WikiPageView;
     });
   } catch (cause) {
+    return unreadable(log, 'wiki page', cause);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Modo libro y progreso de lectura
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GuideBookPage {
+  outline: GuideOutline;
+  /** La nota abierta, con su cuerpo Markdown y su sitio en el libro. */
+  note: {
+    id: string;
+    slug: string;
+    title: string;
+    bodyMarkdown: string;
+    chapterName: string;
+    chapterSlug: string;
+    order: number;
+    state: GuideNoteReadState;
+  };
+  previous: GuideNoteEntry | null;
+  next: GuideNoteEntry | null;
+}
+
+export type GuideBookLoad =
+  | { kind: 'book'; book: GuideBookPage }
+  | { kind: 'redirect'; slug: string }
+  | { kind: 'empty'; outline: GuideOutline }
+  | { kind: 'not_found' };
+
+/**
+ * Índice del libro y, si se pide una nota, su contenido. Sin `slug` devuelve
+ * un `redirect` a por dónde toca seguir (la primera pendiente, o la primera del
+ * libro si ya está entera leída): el modo libro se entra por su portada y nunca
+ * deja a nadie en una pantalla en blanco.
+ */
+export async function loadGuideBook(
+  user: { id: string },
+  householdId: string,
+  slug: string | null,
+  pool: Pool | null = getDatabasePool()
+): Promise<GuideBookLoad | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+      const outline = await loadGuideOutlineWith(client, householdId);
+      if (outline.order.length === 0) return { kind: 'empty', outline } as const;
+
+      if (slug === null) {
+        const target = outline.summary.nextSlug ?? outline.order[0]!.slug;
+        return { kind: 'redirect', slug: target } as const;
+      }
+
+      const normalized = slug.toLowerCase();
+      const position = outline.order.findIndex((note) => note.slug === normalized);
+      if (position < 0) {
+        // Puede ser un slug histórico: se resuelve como en la vista de nota.
+        const resolved = await client.query<{ slug: string }>(
+          `select page.current_slug as slug
+             from app.wiki_page_slugs as historic
+             join app.wiki_pages as page
+               on page.household_id = historic.household_id and page.id = historic.page_id
+            where historic.household_id = $1 and historic.slug = $2`,
+          [householdId, normalized]
+        );
+        const current = resolved.rows[0]?.slug;
+        if (current && outline.order.some((note) => note.slug === current)) {
+          return { kind: 'redirect', slug: current } as const;
+        }
+        return { kind: 'not_found' } as const;
+      }
+
+      const entry = outline.order[position]!;
+      const chapter = outline.chapters.find((candidate) =>
+        candidate.notes.some((note) => note.id === entry.id)
+      )!;
+
+      const body = await client.query<{ bodyMarkdown: string }>(
+        `select revision.body_markdown as "bodyMarkdown"
+           from app.wiki_pages as page
+           join app.wiki_revisions as revision
+             on revision.household_id = page.household_id and revision.id = page.current_revision_id
+          where page.household_id = $1 and page.id = $2`,
+        [householdId, entry.id]
+      );
+      if (!body.rows[0]) return { kind: 'not_found' } as const;
+
+      // La lectura anónima agregada (0007) también cuenta aquí: el modo libro
+      // no deja de ser gente leyendo la Guía.
+      await client.query('select app.record_wiki_read($1)', [entry.id]);
+
+      return {
+        kind: 'book',
+        book: {
+          outline,
+          note: {
+            id: entry.id,
+            slug: entry.slug,
+            title: entry.title,
+            bodyMarkdown: body.rows[0].bodyMarkdown,
+            chapterName: chapter.name,
+            chapterSlug: chapter.slug,
+            order: entry.order,
+            state: entry.state
+          },
+          previous: position > 0 ? outline.order[position - 1]! : null,
+          next: position < outline.order.length - 1 ? outline.order[position + 1]! : null
+        }
+      } as const;
+    });
+  } catch (cause) {
     if (!(cause instanceof AuthorizationError)) {
-      log.error('wiki page unavailable', { code: errorCode(cause) });
+      log.error('guide book unavailable', { code: errorCode(cause) });
+    }
+    return null;
+  }
+}
+
+/**
+ * Marca una nota como leída PARA QUIEN LLAMA. La función de la base no acepta
+ * membresía, así que aquí tampoco hay forma de marcar por otro. Devuelve
+ * `false` cuando la nota no cuenta para la acogida (borrador o receta), para
+ * que la interfaz no diga que ha apuntado algo que no ha apuntado.
+ */
+export async function markGuideNoteRead(
+  user: { id: string },
+  householdId: string,
+  pageId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<boolean | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+      const marked = await client.query<{ fingerprint: string | null }>(
+        'select app.mark_wiki_note_read($1) as fingerprint',
+        [pageId]
+      );
+      return marked.rows[0]?.fingerprint !== null;
+    });
+  } catch (cause) {
+    if (!(cause instanceof AuthorizationError)) {
+      log.error('guide read not recorded', { code: errorCode(cause) });
+    }
+    return null;
+  }
+}
+
+export interface GuideOverviewChapter {
+  spaceId: string;
+  name: string;
+  total: number;
+  read: number;
+}
+
+export interface GuideOverviewPerson {
+  membershipId: string;
+  name: string;
+  roleLabel: string;
+  total: number;
+  read: number;
+  complete: boolean;
+  chapters: GuideOverviewChapter[];
+}
+
+export interface GuideProgressView {
+  householdId: string;
+  canWrite: boolean;
+  /** Lo propio: siempre, para todo el mundo. */
+  outline: GuideOutline;
+  /**
+   * Avance de la casa, solo para quien administra. Son CUENTAS por apartado:
+   * ni qué nota abrió cada cual ni cuándo, porque la base no lo guarda.
+   */
+  household: GuideOverviewPerson[] | null;
+}
+
+const ROLE_LABELS: Readonly<Record<string, string>> = {
+  family_admin: 'Administración',
+  family_member: 'Familia',
+  employee_live_in: 'Interna',
+  helper: 'Apoyo',
+  viewer: 'Acceso puntual'
+};
+
+export async function loadGuideProgress(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<GuideProgressView | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      const outline = await loadGuideOutlineWith(client, householdId);
+      const canWrite = canWriteGuide(membership.role);
+      if (!canWrite) {
+        return { householdId, canWrite, outline, household: null } satisfies GuideProgressView;
+      }
+
+      const rows = await client.query<{
+        membershipId: string;
+        displayName: string;
+        membershipRole: string;
+        spaceId: string;
+        spaceName: string;
+        notesTotal: string;
+        notesRead: string;
+      }>(
+        `select membership_id as "membershipId",
+                display_name as "displayName",
+                membership_role::text as "membershipRole",
+                space_id as "spaceId",
+                space_name as "spaceName",
+                notes_total as "notesTotal",
+                notes_read as "notesRead"
+           from app.wiki_reading_overview()
+          order by display_name, space_position, space_name`
+      );
+
+      const people = new Map<string, GuideOverviewPerson>();
+      for (const row of rows.rows) {
+        let person = people.get(row.membershipId);
+        if (!person) {
+          person = {
+            membershipId: row.membershipId,
+            name: row.displayName,
+            roleLabel: ROLE_LABELS[row.membershipRole] ?? row.membershipRole,
+            total: 0,
+            read: 0,
+            complete: false,
+            chapters: []
+          };
+          people.set(row.membershipId, person);
+        }
+        const total = Number(row.notesTotal);
+        const read = Number(row.notesRead);
+        person.chapters.push({ spaceId: row.spaceId, name: row.spaceName, total, read });
+        person.total += total;
+        person.read += read;
+      }
+      const household = [...people.values()].map((person) => ({
+        ...person,
+        complete: person.total > 0 && person.read === person.total
+      }));
+
+      return { householdId, canWrite, outline, household } satisfies GuideProgressView;
+    });
+  } catch (cause) {
+    if (!(cause instanceof AuthorizationError)) {
+      log.error('guide progress unavailable', { code: errorCode(cause) });
     }
     return null;
   }
@@ -551,9 +1030,6 @@ export async function searchWikiPages(
       return result.rows;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('wiki search unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'wiki search', cause);
   }
 }

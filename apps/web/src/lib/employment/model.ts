@@ -1,10 +1,19 @@
 import {
   calculateSettlement,
+  describeSchedule,
+  resolveWeek,
+  scheduleCoherence,
+  spokenDuration,
+  spokenTime,
   vacationYearBalance,
+  weekdayName,
+  type AgreementSchedule,
   type AgreementVersion as DomainAgreementVersion,
   type MonetaryInput,
+  type ScheduleDay as DomainScheduleDay,
   type SettledExtraWork,
-  type SettlementLine
+  type SettlementLine,
+  type Weekday
 } from '@casa-clara/domain';
 
 /**
@@ -141,6 +150,32 @@ export interface RecurringSupplementRow {
   active: boolean;
 }
 
+/**
+ * Horario pactado en una versión (migración 0025). Las horas llegan ya como
+ * «HH:MM»: la consulta las formatea con `to_char` en vez de dejar que pg
+ * entregue el `time` completo y que cada lector recorte los segundos por su
+ * cuenta.
+ */
+export interface ScheduleRow {
+  id: string;
+  agreementVersionId: string;
+  startsAt: string;
+  endsAt: string;
+  longBreakMinutes: number;
+  note: string;
+}
+
+export interface ScheduleDayRow {
+  id: string;
+  scheduleId: string;
+  weekday: number;
+  works: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  longBreakMinutes: number | null;
+  note: string;
+}
+
 export interface VacationPeriodRow {
   id: string;
   startsOn: string;
@@ -151,6 +186,41 @@ export interface VacationPeriodRow {
   voidReason: string | null;
 }
 
+/**
+ * Concepto apuntado a mano (migración 0022) tal y como sale de Postgres.
+ *
+ * `period` es el mes al que se imputa DE VERDAD y `requestedPeriod` el que se
+ * pidió: distintos solo cuando aquel ya estaba cerrado. La `deferralNote` viene
+ * congelada de la fila, no se recalcula aquí: la frase que se guardó el día del
+ * apunte es la que debe leerse siempre.
+ */
+export interface ManualAdjustmentRow {
+  id: string;
+  /** `YYYY-MM`. */
+  period: string;
+  /** `YYYY-MM`. */
+  requestedPeriod: string;
+  label: string;
+  reason: string;
+  /** Con signo: positivo suma, negativo resta. */
+  amountCents: string;
+  addsToPay: boolean;
+  deferralNote: string;
+  status: 'recorded' | 'voided';
+  voidReason: string | null;
+}
+
+/**
+ * Quién apuntó la jornada. Viaja con el hecho hasta la pantalla porque no es lo
+ * mismo que una jornada la anote la empleada a que se la apunte la familia: el
+ * expediente tiene que decir de dónde salió cada línea.
+ */
+export type ExtraWorkOrigin =
+  | 'employee_report'
+  | 'family_request'
+  | 'weekly_report'
+  | 'system_import';
+
 export interface ResolvedExtraWorkRow {
   id: string;
   kind: 'overtime' | 'worked_rest_day';
@@ -159,6 +229,7 @@ export interface ResolvedExtraWorkRow {
   workedOn: string;
   durationMinutes: number;
   note: string;
+  origin: ExtraWorkOrigin;
   resolution: 'money' | 'time_off';
   frozenUnitRateCents: string;
   frozenAmountCents: string;
@@ -195,8 +266,23 @@ export interface PendingExtraWorkRow {
   workedOn: string;
   durationMinutes: number;
   note: string;
+  origin: ExtraWorkOrigin;
   status: PendingExtraWorkStatus;
   employeeMembershipId: string;
+}
+
+/**
+ * Acuerdo del hogar tal y como sale de Postgres. `employeeName` es null cuando
+ * la RLS no deja leer el perfil de esa persona (solo quien administra los ve
+ * todos); la vista pone entonces una etiqueta neutra, nunca un hueco.
+ */
+export interface AgreementRow {
+  id: string;
+  status: string;
+  startsOn: string;
+  endsOn: string | null;
+  employeeMembershipId: string;
+  employeeName: string | null;
 }
 
 export interface PendingExpenseRow {
@@ -301,6 +387,74 @@ export interface SupplementView {
   validityLabel: string | null;
 }
 
+/** Un día de la semana ya resuelto contra la jornada tipo. */
+export interface ScheduleDayView {
+  weekday: number;
+  /** «Lunes», «Sábado». */
+  weekdayLabel: string;
+  works: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  longBreakMinutes: number;
+  /** «hora y media»; null los días de libranza o sin descanso pactado. */
+  breakLabel: string | null;
+  effectiveMinutes: number;
+  /** «8:00 a 16:30» o «Libra». */
+  hoursLabel: string;
+  /**
+   * La línea entera de ese día: horas, descanso y nota, ya cosidas. Se arma
+   * aquí y no en la plantilla porque los separadores entre trozos opcionales
+   * son justo lo que Svelte se come al recortar el espacio en blanco de un
+   * bloque `{#if}`.
+   */
+  detailLabel: string;
+  /** Minutos efectivos en palabras: «7 h», «5 h», «—» si libra. */
+  effectiveLabel: string;
+  /** true si este día NO es la jornada tipo. */
+  differs: boolean;
+  note: string;
+}
+
+/**
+ * El horario de una versión, listo para pintar.
+ *
+ * Que este objeto sea `null` en `AgreementTermsView` es el «si aplica» del
+ * encargo llegando hasta la plantilla: sin horario pactado no hay fila en
+ * Postgres, no hay vista, y la página no enseña ni sección vacía ni guiones.
+ */
+export interface ScheduleView {
+  id: string;
+  /**
+   * El horario en una frase de castellano llano. Es lo único que la empleada
+   * necesita leer; la tabla día a día es para quien administra.
+   */
+  sentence: string;
+  startsAt: string;
+  endsAt: string;
+  /** «De 8:00 a 16:30». */
+  spanLabel: string;
+  longBreakMinutes: number;
+  /** «hora y media», null si no se pactó descanso. */
+  breakLabel: string | null;
+  note: string;
+  /** Los siete días resueltos, de lunes a domingo. */
+  days: ScheduleDayView[];
+  /** «Domingo», «Sábado y domingo»; vacío si no se declara ninguna libranza. */
+  restDayLabels: string[];
+  weeklyMinutes: number;
+  /** «40 h a la semana». */
+  weeklyLabel: string;
+  contractedWeeklyMinutes: number;
+  contractedLabel: string;
+  matchesContract: boolean;
+  /**
+   * null cuando cuadra. Cuando no, la frase que lo dice sin rodeos: callarlo
+   * sería dejar que dos condiciones del mismo contrato se contradigan en
+   * silencio.
+   */
+  mismatchLabel: string | null;
+}
+
 /**
  * Las condiciones de contrato en lenguaje llano: lo que la empleada tiene que
  * poder leer sin preguntar. Se construye SIEMPRE desde las filas que la RLS
@@ -319,6 +473,8 @@ export interface AgreementTermsView {
   paidSupplements: SupplementView[];
   /** Complementos que la casa paga por su cuenta; constan, no se transfieren. */
   householdPaidSupplements: SupplementView[];
+  /** null = este contrato no declara horario; no hay sección que enseñar. */
+  schedule: ScheduleView | null;
 }
 
 export interface AgreementVersionView {
@@ -360,6 +516,11 @@ export interface AccrualLineView {
   sourceType: string;
   sourceId: string;
   href: string | null;
+  /**
+   * De dónde salió la jornada extra que produjo esta línea; null en el resto de
+   * líneas (salario, anticipos, gastos), que no tienen a quién atribuir.
+   */
+  originLabel: string | null;
 }
 
 export interface AccrualView {
@@ -380,6 +541,37 @@ export interface AccrualView {
    * sumarlo por descuido.
    */
   householdPaidSupplements: { id: string; label: string; amountLabel: string }[];
+  /**
+   * Conceptos apuntados a mano que NO mueven la transferencia. Mismo trato y
+   * mismo motivo que `householdPaidSupplements`: fuera de `lines` para que
+   * ningún total pueda sumarlos por descuido, pero a la vista, porque forman
+   * parte de lo que se decidió sobre este mes.
+   */
+  notedAdjustments: { id: string; label: string; reason: string; amountLabel: string }[];
+}
+
+/**
+ * Un concepto apuntado a mano, listo para pintar en su lista. Lleva ya
+ * resueltas las dos frases que la interfaz no debería componer por su cuenta:
+ * a qué mes va y por qué no fue al que se pidió.
+ */
+export interface ManualAdjustmentView {
+  id: string;
+  period: string;
+  /** «Abril 2026». */
+  periodLabel: string;
+  label: string;
+  reason: string;
+  amountCents: string;
+  /** Con signo siempre: «+150,00 €» / «−50,00 €». */
+  amountLabel: string;
+  addsToPay: boolean;
+  /** «Se suma a la transferencia» / «Consta, no se transfiere». */
+  transferLabel: string;
+  /** Frase congelada del aplazamiento, o cadena vacía si cayó en su mes. */
+  deferralNote: string;
+  voided: boolean;
+  voidReason: string | null;
 }
 
 export interface SettlementLineView {
@@ -505,6 +697,9 @@ export interface PendingExtraWorkView {
   durationMinutes: number;
   durationLabel: string;
   note: string;
+  origin: ExtraWorkOrigin;
+  /** «La apuntó la familia», «La apuntó la empleada»… Nunca vacío. */
+  originLabel: string;
   status: PendingExtraWorkStatus;
   statusLabel: string;
   employeeMembershipId: string;
@@ -538,16 +733,35 @@ export interface WeeklyReportView {
   disputeReason: string | null;
 }
 
+/**
+ * Una persona empleada entre las que el hogar puede tener a la vez. Es lo que
+ * se pinta en el selector de quien administra: nombre, si el acuerdo sigue vivo
+ * y desde cuándo. No lleva ni un importe: elegir a quién se mira no es todavía
+ * mirar sus cuentas.
+ */
+export interface AgreementOptionView {
+  id: string;
+  employeeMembershipId: string;
+  /** Nombre del perfil, o «Empleada del hogar» si la RLS no dejó leerlo. */
+  employeeLabel: string;
+  status: string;
+  active: boolean;
+  startsOn: string;
+  endsOn: string | null;
+  /** «Desde el 3 feb 2025» o «Del 3 feb 2025 al 1 jul 2026». */
+  periodLabel: string;
+}
+
 export interface EmploymentOverview {
   householdId: string;
   hasEmploymentData: boolean;
-  agreement: {
-    id: string;
-    status: string;
-    startsOn: string;
-    endsOn: string | null;
-    employeeMembershipId: string;
-  } | null;
+  agreement: AgreementRow | null;
+  /**
+   * Todos los acuerdos que quien mira puede ver, para poder elegir de quién es
+   * el expediente. A la empleada la RLS solo le devuelve el suyo, así que su
+   * lista tiene exactamente un elemento y no hay nada que elegir.
+   */
+  agreements: AgreementOptionView[];
   versions: AgreementVersionView[];
   /**
    * Condiciones de la versión vigente hoy, en lenguaje llano. null si no hay
@@ -568,6 +782,13 @@ export interface EmploymentOverview {
   recentReports: WeeklyReportView[];
   /** Vacaciones del año natural en curso; null si no hay acuerdo visible. */
   vacations: VacationView | null;
+  /**
+   * Conceptos apuntados a mano, del mes más reciente al más antiguo, con los
+   * anulados incluidos: la lista es el rastro, no el resultado. La RLS de 0022
+   * la enseña a quien administra y a la propia empleada; a nadie más le llega
+   * ninguna fila.
+   */
+  manualAdjustments: ManualAdjustmentView[];
   balances: {
     compensation: CompensationBalanceView[];
     advances: AdvanceBalanceView[];
@@ -580,6 +801,23 @@ const EXTRA_WORK_LABELS: Record<ResolvedExtraWorkRow['kind'], string> = {
   overtime: 'Horas extraordinarias',
   worked_rest_day: 'Festivo o descanso trabajado'
 };
+
+/**
+ * Origen del hecho en lenguaje de casa. Se dice en tercera persona («la
+ * empleada», «la familia») porque la misma frase la leen las dos partes: quien
+ * administra tiene que ver quién apuntó cada jornada y ella tiene que ver
+ * cuáles le apuntaron sin haberlas pedido.
+ */
+const EXTRA_WORK_ORIGIN_LABELS: Record<ExtraWorkOrigin, string> = {
+  employee_report: 'La apuntó la empleada',
+  family_request: 'La apuntó la familia',
+  weekly_report: 'Viene del parte semanal',
+  system_import: 'Viene de una importación'
+};
+
+export function extraWorkOriginLabel(origin: ExtraWorkOrigin | null | undefined): string {
+  return (origin && EXTRA_WORK_ORIGIN_LABELS[origin]) || 'Origen sin registrar';
+}
 
 const BALANCE_TYPE_LABELS: Record<string, string> = {
   vacation: 'Vacaciones',
@@ -616,6 +854,8 @@ export function sourceAnchor(sourceType: string, sourceId: string): string | nul
       return `#anticipo-${sourceId}`;
     case 'gastos':
       return `#gasto-${sourceId}`;
+    case 'ajustes':
+      return `#concepto-${sourceId}`;
     default:
       return null;
   }
@@ -685,6 +925,133 @@ export function weeklyHoursLabel(minutes: number): string {
   return `${hours} h${rest > 0 ? ` ${rest} min` : ''} a la semana`;
 }
 
+/** «7 h», «7 h 30 min», «30 min». Sin la coletilla semanal, para una celda. */
+export function hoursLabel(minutes: number): string {
+  const hours = Math.trunc(Math.abs(minutes) / 60);
+  const rest = Math.abs(minutes) % 60;
+  if (hours === 0) return `${rest} min`;
+  return `${hours} h${rest > 0 ? ` ${rest} min` : ''}`;
+}
+
+/**
+ * La frase que denuncia que el horario y la jornada contratada no dicen lo
+ * mismo, o null si cuadran.
+ *
+ * Vive aquí y no en la plantilla porque la escriben DOS sitios: el servidor,
+ * al pintar una versión guardada, y el editor de administración, mientras se
+ * teclea. Si cada uno la redactara por su cuenta, la misma incoherencia se
+ * contaría con dos números distintos según dónde se mirara — que es exactamente
+ * lo que pasó la primera vez que se escribió dos veces.
+ */
+export function scheduleMismatchLabel(
+  weeklyMinutes: number,
+  contractedWeeklyMinutes: number
+): string | null {
+  const difference = weeklyMinutes - contractedWeeklyMinutes;
+  if (difference === 0) return null;
+  return (
+    `El horario suma ${hoursLabel(weeklyMinutes)} a la semana y la jornada contratada ` +
+    `dice ${hoursLabel(contractedWeeklyMinutes)}: ` +
+    `${difference > 0 ? 'sobran' : 'faltan'} ${hoursLabel(difference)}.`
+  );
+}
+
+/**
+ * El horario de una versión, resuelto y redactado.
+ *
+ * La frase y los minutos salen del motor puro (`@casa-clara/domain`), no de
+ * aquí: son las mismas reglas que aplican el guion de alta y las pruebas, y
+ * reescribirlas en la capa de vista sería tener dos horarios distintos según
+ * quién los mire.
+ *
+ * La comparación con la jornada contratada se calcula SIEMPRE, cuadre o no. No
+ * hay tolerancia: los dos lados son minutos enteros, así que cualquier
+ * diferencia es real y merece decirse.
+ */
+export function buildScheduleView(input: {
+  schedule: ScheduleRow;
+  days: readonly ScheduleDayRow[];
+  contractedWeeklyMinutes: number;
+}): ScheduleView {
+  const mine = input.days
+    .filter((row) => row.scheduleId === input.schedule.id)
+    .map(
+      (row): DomainScheduleDay => ({
+        weekday: row.weekday as Weekday,
+        works: row.works,
+        startsAt: row.startsAt,
+        endsAt: row.endsAt,
+        longBreakMinutes: row.longBreakMinutes,
+        note: row.note
+      })
+    );
+  const pure: AgreementSchedule = {
+    startsAt: input.schedule.startsAt,
+    endsAt: input.schedule.endsAt,
+    longBreakMinutes: input.schedule.longBreakMinutes,
+    note: input.schedule.note,
+    days: mine
+  };
+
+  const week = resolveWeek(pure);
+  const coherence = scheduleCoherence(pure, input.contractedWeeklyMinutes);
+  /** «lunes» → «Lunes»: el motor puro los dice en minúscula, en mitad de frase. */
+  const dayLabel = (weekday: Weekday): string => {
+    const name = weekdayName(weekday);
+    return `${name[0]!.toLocaleUpperCase('es')}${name.slice(1)}`;
+  };
+
+  return {
+    id: input.schedule.id,
+    sentence: describeSchedule(pure),
+    startsAt: input.schedule.startsAt,
+    endsAt: input.schedule.endsAt,
+    spanLabel: `De ${spokenTime(input.schedule.startsAt)} a ${spokenTime(input.schedule.endsAt)}`,
+    longBreakMinutes: input.schedule.longBreakMinutes,
+    breakLabel:
+      input.schedule.longBreakMinutes > 0 ? spokenDuration(input.schedule.longBreakMinutes) : null,
+    note: input.schedule.note,
+    days: week.map((day) => ({
+      weekday: day.weekday,
+      weekdayLabel: dayLabel(day.weekday),
+      works: day.works,
+      startsAt: day.startsAt,
+      endsAt: day.endsAt,
+      longBreakMinutes: day.longBreakMinutes,
+      breakLabel:
+        day.works && day.longBreakMinutes > 0 ? spokenDuration(day.longBreakMinutes) : null,
+      effectiveMinutes: day.effectiveMinutes,
+      hoursLabel: day.works
+        ? `${spokenTime(day.startsAt!)} a ${spokenTime(day.endsAt!)}`
+        : 'Libra',
+      detailLabel: [
+        day.works ? `${spokenTime(day.startsAt!)} a ${spokenTime(day.endsAt!)}` : 'Libra',
+        day.works && day.longBreakMinutes > 0
+          ? `${spokenDuration(day.longBreakMinutes)} de descanso`
+          : null,
+        day.note === '' ? null : day.note
+      ]
+        .filter((piece): piece is string => piece !== null)
+        .join(' · '),
+      effectiveLabel: day.works ? hoursLabel(day.effectiveMinutes) : '—',
+      differs: day.differs,
+      note: day.note
+    })),
+    restDayLabels: week
+      .filter((day) => !day.works)
+      .map((day) => dayLabel(day.weekday)),
+    weeklyMinutes: coherence.weeklyMinutes,
+    weeklyLabel: weeklyHoursLabel(coherence.weeklyMinutes),
+    contractedWeeklyMinutes: coherence.contractedWeeklyMinutes,
+    contractedLabel: weeklyHoursLabel(coherence.contractedWeeklyMinutes),
+    matchesContract: coherence.matches,
+    mismatchLabel: scheduleMismatchLabel(
+      coherence.weeklyMinutes,
+      coherence.contractedWeeklyMinutes
+    )
+  };
+}
+
 /**
  * Condiciones de la versión indicada. Lo que llega aquí ya pasó por la RLS: si
  * la persona que preguntó es la empleada, `types` no contiene los conceptos
@@ -695,6 +1062,8 @@ export function buildAgreementTermsView(input: {
   version: AgreementVersionRow;
   types: readonly ExtraWorkTypeRow[];
   supplements: readonly RecurringSupplementRow[];
+  schedules?: readonly ScheduleRow[];
+  scheduleDays?: readonly ScheduleDayRow[];
 }): AgreementTermsView {
   const mine = input.types
     .filter((row) => row.agreementVersionId === input.version.id)
@@ -717,8 +1086,47 @@ export function buildAgreementTermsView(input: {
     } al año`,
     extraWorkTypes: mine,
     paidSupplements: supplements.filter((view) => view.addsToPay),
-    householdPaidSupplements: supplements.filter((view) => !view.addsToPay)
+    householdPaidSupplements: supplements.filter((view) => !view.addsToPay),
+    // Sin fila de horario en esta versión no hay vista, y sin vista la página
+    // no enseña sección. El «si aplica» viaja como null desde Postgres hasta la
+    // plantilla sin que nadie tenga que acordarse de comprobarlo dos veces.
+    schedule: (() => {
+      const row = (input.schedules ?? []).find(
+        (candidate) => candidate.agreementVersionId === input.version.id
+      );
+      return row
+        ? buildScheduleView({
+            schedule: row,
+            days: input.scheduleDays ?? [],
+            contractedWeeklyMinutes: input.version.contractedWeeklyMinutes
+          })
+        : null;
+    })()
   };
+}
+
+/**
+ * Las personas que el hogar emplea, en el orden en que llegan de Postgres
+ * (activo primero). El nombre puede faltar por RLS —quien no administra no lee
+ * el perfil de los demás—; en ese caso se dice «Empleada del hogar» en vez de
+ * dejar un hueco o, peor, inventar un identificador en pantalla.
+ */
+export function buildAgreementOptionViews(
+  rows: readonly AgreementRow[]
+): AgreementOptionView[] {
+  return rows.map((row) => ({
+    id: row.id,
+    employeeMembershipId: row.employeeMembershipId,
+    employeeLabel: row.employeeName?.trim() || 'Empleada del hogar',
+    status: row.status,
+    active: row.status === 'active',
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
+    periodLabel:
+      row.endsOn === null
+        ? `Desde el ${dateLabel(row.startsOn)}`
+        : `Del ${dateLabel(row.startsOn)} al ${dateLabel(row.endsOn)}`
+  }));
 }
 
 export function buildAgreementVersionViews(
@@ -783,6 +1191,10 @@ export function toDomainVersions(rows: readonly AgreementVersionRow[]): DomainAg
 }
 
 function accrualDetail(line: SettlementLine): string {
+  // El motivo de un concepto apuntado a mano viaja en `note`, aparte de la
+  // etiqueta, precisamente para poder enseñarlo como explicación de la línea en
+  // vez de pegarlo al título con dos puntos.
+  if (line.note) return line.note;
   switch (line.kind) {
     case 'base_salary':
       return 'Salario mensual de la versión vigente';
@@ -807,6 +1219,12 @@ export interface AccrualFacts {
   expenses: readonly ApprovedExpenseRow[];
   /** Complementos de la versión vigente el primer día del periodo. */
   supplements?: readonly RecurringSupplementRow[];
+  /**
+   * Conceptos apuntados a mano IMPUTADOS a este mes y sin anular. Se filtran
+   * por el mes que decidió quien los apuntó, no por ninguna fecha de hecho:
+   * eso es exactamente lo que significa «que se contabilicen el mes que toque».
+   */
+  adjustments?: readonly ManualAdjustmentRow[];
 }
 
 /**
@@ -858,7 +1276,15 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       extraPay: [],
       advanceDeductions,
       unpaidAbsences: [],
-      adjustments: [],
+      adjustments: (facts.adjustments ?? [])
+        .filter((row) => row.status === 'recorded')
+        .map((row) => ({
+          id: row.id,
+          label: row.label,
+          reason: row.reason,
+          amountCents: parseCents(row.amountCents),
+          addsToPay: row.addsToPay
+        })),
       expenses,
       supplements: (facts.supplements ?? []).map((row) => ({
         id: row.id,
@@ -877,13 +1303,21 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
     throw cause;
   }
 
+  // El origen se recupera del hecho, no de la línea: el motor de dominio
+  // calcula dinero y no tiene por qué saber quién apuntó la jornada.
+  const originByExtraId = new Map(facts.extras.map((row) => [row.id, row.origin]));
+
   const lines: AccrualLineView[] = projection.lines.map((line) => {
     const anchorId =
       line.sourceType === 'jornadas-extra'
         ? `extra-${line.sourceId}`
         : line.sourceType === 'gastos'
           ? `gasto-${line.sourceId}`
-          : null;
+          : line.sourceType === 'ajustes'
+            ? `linea-concepto-${line.sourceId}`
+            : null;
+    const origin =
+      line.sourceType === 'jornadas-extra' ? originByExtraId.get(line.sourceId) : undefined;
     return {
       id: line.id,
       anchorId,
@@ -894,7 +1328,8 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
       sourceType: line.sourceType,
       sourceId: line.sourceId,
-      href: sourceAnchor(line.sourceType, line.sourceId)
+      href: sourceAnchor(line.sourceType, line.sourceId),
+      originLabel: origin === undefined ? null : extraWorkOriginLabel(origin)
     };
   });
 
@@ -914,8 +1349,46 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       id: item.id,
       label: item.label,
       amountLabel: formatCents(item.amountCents)
+    })),
+    notedAdjustments: projection.notedAdjustments.map((item) => ({
+      id: item.id,
+      label: item.label,
+      reason: item.reason,
+      amountLabel: formatCents(item.amountCents, { signed: true })
     }))
   };
+}
+
+const TRANSFER_LABELS = {
+  adds: 'Se suma a la transferencia',
+  noted: 'Consta, no se transfiere'
+} as const;
+
+/**
+ * Lista de conceptos apuntados a mano, del mes más reciente al más antiguo.
+ * Los anulados vienen dentro, no fuera: la corrección es parte del rastro y
+ * esconderla convertiría la lista en un resumen, que es justo lo contrario de
+ * lo que un expediente append-only promete.
+ */
+export function buildManualAdjustmentViews(
+  rows: readonly ManualAdjustmentRow[]
+): ManualAdjustmentView[] {
+  return [...rows]
+    .sort((left, right) => right.period.localeCompare(left.period))
+    .map((row) => ({
+      id: row.id,
+      period: row.period,
+      periodLabel: periodLabel(row.period),
+      label: row.label,
+      reason: row.reason,
+      amountCents: row.amountCents,
+      amountLabel: formatCents(row.amountCents, { signed: true }),
+      addsToPay: row.addsToPay,
+      transferLabel: row.addsToPay ? TRANSFER_LABELS.adds : TRANSFER_LABELS.noted,
+      deferralNote: row.deferralNote,
+      voided: row.status === 'voided',
+      voidReason: row.voidReason
+    }));
 }
 
 export function settlementLineHref(row: SettlementLineRow): string | null {
@@ -1023,6 +1496,8 @@ export function buildPendingExtraViews(
     durationMinutes: row.durationMinutes,
     durationLabel: formatMinutes(row.durationMinutes),
     note: row.note,
+    origin: row.origin,
+    originLabel: extraWorkOriginLabel(row.origin),
     status: row.status,
     statusLabel: PENDING_EXTRA_STATUS_LABELS[row.status] ?? row.status,
     employeeMembershipId: row.employeeMembershipId,

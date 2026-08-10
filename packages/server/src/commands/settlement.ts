@@ -4,6 +4,7 @@ import type { UUID } from "@casa-clara/contracts";
 import { settlementCommandPayloadSchema } from "@casa-clara/contracts/schemas";
 import {
   calculateSettlement,
+  type ManualAdjustmentInput,
   type SettledExtraWork,
   type MonetaryInput,
 } from "@casa-clara/domain";
@@ -85,7 +86,8 @@ interface SettlementLineRow {
     | "time_off_compensation"
     | "supplement"
     | "advance_deduction"
-    | "expense_reimbursement";
+    | "expense_reimbursement"
+    | "adjustment";
   occurredOn: string;
   concept: string;
   amountCents: bigint;
@@ -94,6 +96,7 @@ interface SettlementLineRow {
   advanceLedgerEntryId: UUID | null;
   expenseId: UUID | null;
   recurringSupplementId: UUID | null;
+  manualAdjustmentId: UUID | null;
   provenance: Record<string, unknown>;
 }
 
@@ -225,6 +228,38 @@ async function closeSettlement(
   const supplements = await loadRecurringSupplements(client, householdId, versionForPeriod.id);
   const supplementById = new Map(supplements.map((row) => [row.id, row]));
 
+  // Conceptos apuntados a mano IMPUTADOS a este mes (0022). Se filtran por
+  // `period_month`, que es una decisión explícita de quien los apuntó, no por
+  // una fecha de hecho: es justamente lo que significa «que se contabilicen el
+  // mes que toque». Los anulados no cuentan.
+  //
+  // No hace falta marcarlos de ninguna manera al incluirlos —a diferencia de
+  // los gastos, que pasan a `reimbursed`—: el mes está escrito en la fila, así
+  // que el cierre del mes siguiente no puede volver a leerlos. Y el disparador
+  // de 0022 impide que aparezca uno nuevo con este mes una vez cerrado.
+  const adjustmentRows = await client.query<{
+    id: string;
+    label: string;
+    reason: string;
+    amount_cents: string;
+    adds_to_pay: boolean;
+  }>(
+    `select id, label, reason, amount_cents::text as amount_cents, adds_to_pay
+       from app.manual_adjustments
+      where household_id = $1 and agreement_id = $2 and status = 'recorded'
+        and period_month = date_trunc('month', $3::date)::date
+      order by recorded_at, id`,
+    [householdId, settlement.agreement_id, settlement.period_start],
+  );
+  const adjustments: ManualAdjustmentInput[] = adjustmentRows.rows.map((row) => ({
+    id: row.id,
+    label: row.label,
+    reason: row.reason,
+    amountCents: BigInt(row.amount_cents),
+    addsToPay: row.adds_to_pay,
+  }));
+  const adjustmentById = new Map(adjustmentRows.rows.map((row) => [row.id, row]));
+
   const projection = calculateSettlement({
     period,
     agreementVersions: versions,
@@ -232,7 +267,7 @@ async function closeSettlement(
     extraPay: [],
     advanceDeductions,
     unpaidAbsences: [],
-    adjustments: [],
+    adjustments,
     expenses,
     supplements,
   });
@@ -240,13 +275,17 @@ async function closeSettlement(
   const dbLines: SettlementLineRow[] = projection.lines.map((line, index) => {
     const base: Omit<SettlementLineRow, "kind" | "section" | "occurredOn"> = {
       lineNumber: index + 1,
-      concept: line.label,
+      // El concepto congelado se explica solo: una línea de ajuste lleva su
+      // motivo pegado a la etiqueta, porque el recibo se lee sin la aplicación
+      // al lado y «Gratificación» a secas no dice nada dentro de un año.
+      concept: line.note ? `${line.label} · ${line.note}` : line.label,
       amountCents: line.amountCents,
       agreementVersionId: null,
       extraWorkEventId: null,
       advanceLedgerEntryId: null,
       expenseId: null,
       recurringSupplementId: null,
+      manualAdjustmentId: null,
       provenance: {
         engineLineId: line.id,
         sourceType: line.sourceType,
@@ -286,6 +325,19 @@ async function closeSettlement(
           recurringSupplementId: fact.id as UUID,
         };
       }
+      case "adjustment": {
+        const fact = adjustmentById.get(line.sourceId);
+        if (!fact) throw new Error(`Ajuste sin concepto de origen: ${line.sourceId}`);
+        return {
+          ...base,
+          kind: "adjustment",
+          section: "salary",
+          // El día 1 del mes: un concepto apuntado a mano no ocurre un día, se
+          // imputa a un mes. Fingir una fecha exacta sería inventarse un hecho.
+          occurredOn: settlement.period_start,
+          manualAdjustmentId: fact.id as UUID,
+        };
+      }
       case "advance_deduction": {
         const fact = advanceById.get(line.sourceId);
         if (!fact) throw new Error(`Deducción sin asiento de anticipo de origen: ${line.sourceId}`);
@@ -319,8 +371,8 @@ async function closeSettlement(
          (household_id, settlement_id, agreement_id, employee_membership_id, line_number,
           section, kind, occurred_on, concept, amount_cents,
           agreement_version_id, extra_work_event_id, advance_ledger_entry_id, expense_id,
-          recurring_supplement_id, provenance)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb)`,
+          recurring_supplement_id, manual_adjustment_id, provenance)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb)`,
       [
         householdId,
         settlement.id,
@@ -337,6 +389,7 @@ async function closeSettlement(
         line.advanceLedgerEntryId,
         line.expenseId,
         line.recurringSupplementId,
+        line.manualAdjustmentId,
         JSON.stringify(line.provenance),
       ],
     );
@@ -378,6 +431,15 @@ async function closeSettlement(
       extraWorkEventId: line.extraWorkEventId,
       advanceLedgerEntryId: line.advanceLedgerEntryId,
       expenseId: line.expenseId,
+      manualAdjustmentId: line.manualAdjustmentId,
+    })),
+    // Los conceptos que NO mueven la transferencia no son línea de nada, pero
+    // sí forman parte de lo que se decidió sobre este mes: entran en el hash
+    // para que el snapshot cuente la verdad entera y no solo la que suma.
+    notedAdjustments: projection.notedAdjustments.map((noted) => ({
+      manualAdjustmentId: noted.id,
+      concept: `${noted.label} · ${noted.reason}`,
+      amountCents: noted.amountCents.toString(),
     })),
     salaryTotalCents: projection.salaryCents.toString(),
     reimbursementTotalCents: projection.reimbursementCents.toString(),
@@ -438,14 +500,17 @@ async function closeSettlement(
     JSON.stringify(receipt),
   ]);
 
-  // Aviso de vencimiento: el worker despierta tres días antes de `due_on` (o ya
-  // mismo si ese momento pasó) y decide entonces, contra el estado real, si
-  // procede avisar. Mismo `app.enqueue_job` y misma transacción que el cierre.
+  // Aviso de vencimiento: el worker despierta la mañana de tres días antes de
+  // `due_on` (o ya mismo si ese momento pasó) y decide entonces, contra el
+  // estado real, si procede avisar. Mismo `app.enqueue_job` y misma transacción
+  // que el cierre. La hora la fija `app.job_run_at` (migración 0027) en la zona
+  // del hogar: con `::date::timestamptz` y el servidor en UTC el aviso caía a
+  // las 02:00 de la madrugada de Madrid.
   await client.query(
     `select app.enqueue_job(
        'notification.settlement_due',
        $1::jsonb,
-       greatest($2::date::timestamptz - interval '3 days', statement_timestamp())
+       greatest(app.job_run_at($2::date - 3), statement_timestamp())
      )`,
     [JSON.stringify({ settlementId: settlement.id }), settlement.due_on],
   );

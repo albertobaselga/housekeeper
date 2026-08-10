@@ -1,14 +1,16 @@
 import type { Pool } from 'pg';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import {
   buildAccrual,
   buildAdvanceBalanceViews,
+  buildAgreementOptionViews,
   buildAgreementTermsView,
   buildAgreementVersionViews,
   buildExtraWorkTypeView,
   buildCompensationBalanceViews,
+  buildManualAdjustmentViews,
   buildPendingExpenseViews,
   buildPendingExtraViews,
   buildSettlementViews,
@@ -19,21 +21,26 @@ import {
   currentPeriod,
   currentVacationYear,
   type AdvanceRow,
+  type AgreementRow,
   type AgreementVersionRow,
   type ApprovedExpenseRow,
   type CompensationBalanceRow,
   type EmploymentOverview,
   type ExtraWorkTypeRow,
+  type ManualAdjustmentRow,
   type PaymentRow,
   type RecurringSupplementRow,
   type PendingExpenseRow,
   type PendingExtraWorkRow,
   type ResolvedExtraWorkRow,
+  type ScheduleDayRow,
+  type ScheduleRow,
   type SettlementLineRow,
   type SettlementRow,
   type VacationPeriodRow,
   type WeeklyReportRow
 } from '$lib/employment/model';
+import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:employment');
@@ -54,12 +61,19 @@ function monthBounds(period: string): { first: string; last: string } {
  *
  * Los importes se mantienen como cadenas de céntimos de extremo a extremo: pg
  * entrega los bigint como string y aquí nunca pasan por Number.
+ *
+ * `selectedAgreementId` elige de quién es el expediente cuando el hogar emplea
+ * a más de una persona. No es una reja de seguridad y no pretende serlo: la
+ * lista de acuerdos llega ya filtrada por la RLS, así que a la empleada solo le
+ * consta el suyo y pedir el de otra no la lleva a ninguna parte —cae en su
+ * propio expediente—. Quien decide sigue siendo Postgres.
  */
 export async function loadEmploymentOverview(
   user: { id: string },
   householdId: string,
   pool: Pool | null = getDatabasePool(),
-  now: Date = new Date()
+  now: Date = new Date(),
+  selectedAgreementId: string | null = null
 ): Promise<EmploymentOverview | null> {
   if (!pool) return null;
   const period = currentPeriod(now);
@@ -67,30 +81,37 @@ export async function loadEmploymentOverview(
 
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
-      const agreementResult = await client.query<{
-        id: string;
-        status: string;
-        startsOn: string;
-        endsOn: string | null;
-        employeeMembershipId: string;
-      }>(
-        `select id,
-                status::text as "status",
-                starts_on::text as "startsOn",
-                ends_on::text as "endsOn",
-                employee_membership_id as "employeeMembershipId"
-           from app.employment_agreements
-          where household_id = $1
-          order by (status = 'active') desc, starts_on desc
-          limit 1`,
+      // Todos los acuerdos visibles, no el primero: un hogar puede tener varios
+      // vivos a la vez y quien administra tiene que poder elegir. El nombre sale
+      // del perfil de la persona empleada; si la RLS no deja verlo (la propia
+      // empleada solo lee su perfil) el LEFT JOIN devuelve null y la vista pone
+      // una etiqueta neutra en su lugar.
+      const agreementResult = await client.query<AgreementRow>(
+        `select agreement.id,
+                agreement.status::text as "status",
+                agreement.starts_on::text as "startsOn",
+                agreement.ends_on::text as "endsOn",
+                agreement.employee_membership_id as "employeeMembershipId",
+                profile.display_name as "employeeName"
+           from app.employment_agreements as agreement
+           left join app.household_memberships as membership
+             on membership.household_id = agreement.household_id
+            and membership.id = agreement.employee_membership_id
+           left join app.user_profiles as profile
+             on profile.user_id = membership.user_id
+          where agreement.household_id = $1
+          order by (agreement.status = 'active') desc, agreement.starts_on desc`,
         [householdId]
       );
-      const agreement = agreementResult.rows[0] ?? null;
+      const agreements = agreementResult.rows;
+      const agreement =
+        agreements.find((row) => row.id === selectedAgreementId) ?? agreements[0] ?? null;
       if (!agreement) {
         return {
           householdId,
           hasEmploymentData: false,
           agreement: null,
+          agreements: [],
           versions: [],
           terms: null,
           registrableTypes: [],
@@ -100,6 +121,7 @@ export async function loadEmploymentOverview(
           pendingExpenses: [],
           recentReports: [],
           vacations: null,
+          manualAdjustments: [],
           balances: { compensation: [], advances: [] }
         } satisfies EmploymentOverview;
       }
@@ -157,6 +179,43 @@ export async function loadEmploymentOverview(
         [householdId, agreement.id]
       );
 
+      /*
+       * Horario de todas las versiones visibles (0025). No se filtra por
+       * versión aquí: el historial tiene que poder enseñar cómo cambió el
+       * horario, igual que enseña cómo cambió el salario.
+       *
+       * Las horas salen ya como «HH:MM» de `to_char`. Dejar que pg entregue el
+       * `time` completo obligaría a cada lector —vista, guion, prueba— a
+       * recortar los segundos por su cuenta, y basta con que uno se olvide para
+       * que en pantalla aparezca «08:00:00».
+       */
+      const schedules = await client.query<ScheduleRow>(
+        `select schedule.id,
+                schedule.agreement_version_id as "agreementVersionId",
+                to_char(schedule.starts_at, 'HH24:MI') as "startsAt",
+                to_char(schedule.ends_at, 'HH24:MI') as "endsAt",
+                schedule.long_break_minutes as "longBreakMinutes",
+                schedule.note
+           from app.agreement_schedules as schedule
+          where schedule.household_id = $1 and schedule.agreement_id = $2`,
+        [householdId, agreement.id]
+      );
+
+      const scheduleDays = await client.query<ScheduleDayRow>(
+        `select day.id,
+                day.schedule_id as "scheduleId",
+                day.weekday,
+                day.works,
+                to_char(day.starts_at, 'HH24:MI') as "startsAt",
+                to_char(day.ends_at, 'HH24:MI') as "endsAt",
+                day.long_break_minutes as "longBreakMinutes",
+                day.note
+           from app.agreement_schedule_days as day
+          where day.household_id = $1 and day.agreement_id = $2
+          order by day.weekday`,
+        [householdId, agreement.id]
+      );
+
       // Vacaciones del año natural en curso. Se piden los periodos que TOCAN el
       // año, no los que empiezan en él: uno del 24 de diciembre al 5 de enero
       // gasta días de los dos, y el motor de dominio reparte cuáles son de cada
@@ -177,6 +236,31 @@ export async function loadEmploymentOverview(
         [householdId, agreement.id, `${vacationYear}-01-01`, `${vacationYear}-12-31`]
       );
 
+      // Conceptos apuntados a mano (0022). Se piden por `period_month` —el mes
+      // que decidió quien los apuntó— y no por la fecha en que se escribieron:
+      // un concepto de marzo apuntado en abril pertenece a la cuenta de marzo.
+      // La ventana llega hasta un año atrás y no corta por delante, porque un
+      // concepto puede estar imputado a un mes que aún no ha llegado (elegido a
+      // propósito o aplazado por un cierre). Los anulados vienen también: se
+      // listan tachados y el devengo los descarta.
+      const manualAdjustments = await client.query<ManualAdjustmentRow>(
+        `select id,
+                to_char(period_month, 'YYYY-MM') as "period",
+                to_char(requested_period_month, 'YYYY-MM') as "requestedPeriod",
+                label,
+                reason,
+                amount_cents::text as "amountCents",
+                adds_to_pay as "addsToPay",
+                deferral_note as "deferralNote",
+                status::text as "status",
+                void_reason as "voidReason"
+           from app.manual_adjustments
+          where household_id = $1 and agreement_id = $2
+            and period_month >= (date_trunc('month', $3::date) - interval '11 months')::date
+          order by period_month desc, recorded_at desc`,
+        [householdId, agreement.id, first]
+      );
+
       const extras = await client.query<ResolvedExtraWorkRow>(
         `select id,
                 kind::text as "kind",
@@ -186,6 +270,7 @@ export async function loadEmploymentOverview(
                 worked_on::text as "workedOn",
                 duration_minutes as "durationMinutes",
                 note,
+                origin::text as "origin",
                 resolution::text as "resolution",
                 frozen_unit_rate_cents as "frozenUnitRateCents",
                 frozen_amount_cents as "frozenAmountCents",
@@ -210,6 +295,9 @@ export async function loadEmploymentOverview(
                 worked_on::text as "workedOn",
                 duration_minutes as "durationMinutes",
                 note,
+                -- Quién apuntó el hecho viaja con él: una jornada que puso la
+                -- familia tiene que verse como tal en el expediente de ella.
+                origin::text as "origin",
                 status::text as "status",
                 employee_membership_id as "employeeMembershipId"
            from app.extra_work_events
@@ -391,7 +479,9 @@ export async function loadEmploymentOverview(
         ? buildAgreementTermsView({
             version: versionInForce,
             types: extraWorkTypes.rows,
-            supplements: supplements.rows
+            supplements: supplements.rows,
+            schedules: schedules.rows,
+            scheduleDays: scheduleDays.rows
           })
         : null;
 
@@ -399,6 +489,7 @@ export async function loadEmploymentOverview(
         householdId,
         hasEmploymentData: true,
         agreement,
+        agreements: buildAgreementOptionViews(agreements),
         versions: buildAgreementVersionViews(
           versions.rows,
           first,
@@ -423,7 +514,8 @@ export async function loadEmploymentOverview(
           expenses: expenses.rows,
           supplements: supplements.rows.filter(
             (row) => row.agreementVersionId === (versionInForce?.id ?? '')
-          )
+          ),
+          adjustments: manualAdjustments.rows.filter((row) => row.period === period)
         }),
         settlements: buildSettlementViews(
           settlements.rows,
@@ -449,6 +541,7 @@ export async function loadEmploymentOverview(
                 agreementEndsOn: agreement.endsOn,
                 periods: vacationPeriods.rows
               }),
+        manualAdjustments: buildManualAdjustmentViews(manualAdjustments.rows),
         balances: {
           compensation: buildCompensationBalanceViews(compensation.rows),
           advances: buildAdvanceBalanceViews(advances.rows)
@@ -456,11 +549,6 @@ export async function loadEmploymentOverview(
       } satisfies EmploymentOverview;
     });
   } catch (cause) {
-    // Sin membresía viva no hay expediente que enseñar; cualquier otra avería
-    // degrada a la fixture para no tumbar la página de demo.
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('employment overview unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'employment overview', cause);
   }
 }

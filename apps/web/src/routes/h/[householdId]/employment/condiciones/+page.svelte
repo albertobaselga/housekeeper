@@ -6,10 +6,8 @@
   const terms = $derived(data.terms);
 </script>
 
-<svelte:head><title>Mis condiciones · Casa Clara</title></svelte:head>
-
 <PageHeader
-  eyebrow="Acuerdo"
+  eyebrow="Contrato"
   title="Mis condiciones"
   description="Lo que está pactado ahora mismo, tal y como se aplica a tu pago."
 />
@@ -18,7 +16,7 @@
   <article class="card">
     <p>
       Todavía no hay condiciones que enseñarte aquí. Aparecerán en cuanto la familia
-      dé de alta el acuerdo.
+      dé de alta el contrato.
     </p>
   </article>
 {:else}
@@ -46,17 +44,64 @@
     </div>
   </article>
 
+  <!--
+    «Si aplica», literal: sin horario pactado no hay fila en Postgres, `terms.schedule`
+    llega como null y aquí no se pinta ni una sección vacía ni un hueco con guiones.
+    La sección sencillamente no está.
+  -->
+  {#if terms.schedule}
+    <article class="card" data-testid="mi-horario">
+      <div class="section-heading">
+        <div><p class="eyebrow">Horario</p><h2>Tu jornada</h2></div>
+        <span class="status-chip success">{terms.schedule.weeklyLabel}</span>
+      </div>
+      <!-- Lo primero y en grande: la frase. El resto es el detalle para quien
+           quiera comprobarlo día a día. -->
+      <p class="schedule-sentence">{terms.schedule.sentence}</p>
+      {#if terms.schedule.note}
+        <p>{terms.schedule.note}</p>
+      {/if}
+      <div class="ledger-list">
+        {#each terms.schedule.days as day (day.weekday)}
+          <div>
+            <span>
+              <strong>{day.weekdayLabel}</strong>
+              <small>{day.detailLabel}</small>
+            </span>
+            <span><strong>{day.effectiveLabel}</strong></span>
+          </div>
+        {/each}
+      </div>
+      <!--
+        Si el horario y la jornada contratada del mismo contrato se contradicen,
+        se le dice a ella también. Es su tiempo: enterarse por la aplicación es
+        mejor que no enterarse.
+      -->
+      {#if terms.schedule.mismatchLabel}
+        <p class="audit-note" role="status">
+          ⚠ {terms.schedule.mismatchLabel} Coméntalo con quien administra el hogar: una de
+          las dos condiciones tiene que cambiar, y cambiarla crea una versión nueva.
+        </p>
+      {:else}
+        <p class="audit-note">
+          Las horas de este horario cuadran con la jornada de {terms.weeklyHoursLabel} que
+          dice tu contrato.
+        </p>
+      {/if}
+    </article>
+  {/if}
+
   <article class="card">
     <div class="section-heading">
       <div><p class="eyebrow">Trabajo extra</p><h2>Qué puedes hacer y a cuánto se paga</h2></div>
     </div>
     <!--
       La lista viene de la RLS, no de un filtro de plantilla: lo que no te
-      aplica no llegó hasta aquí. Si está vacía es que ahora mismo el acuerdo no
+      aplica no llegó hasta aquí. Si está vacía es que ahora mismo el contrato no
       contempla trabajo extra, y decirlo así es más honesto que no decir nada.
     -->
     {#if terms.extraWorkTypes.length === 0}
-      <p>Tu acuerdo no contempla trabajo extra por ahora.</p>
+      <p>Tu contrato no contempla trabajo extra por ahora.</p>
     {:else}
       <div class="ledger-list">
         {#each terms.extraWorkTypes as type (type.id)}
@@ -105,3 +150,13 @@
     </article>
   {/if}
 {/if}
+
+<style>
+  /* La frase del horario es lo primero que se lee y lo único imprescindible:
+     el detalle día a día va debajo, en el cuerpo de siempre. */
+  .schedule-sentence {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.5;
+  }
+</style>

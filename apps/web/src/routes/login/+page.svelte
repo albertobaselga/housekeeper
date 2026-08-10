@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { APP_NAME } from '$lib/app-title';
   import type { ActionData, PageData } from './$types';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -7,13 +8,14 @@
   let signingIn = $state(false);
 </script>
 
-<svelte:head><title>Entrar · Casa Clara</title></svelte:head>
-
 <main class="login-stage">
   <section class="login-card" aria-labelledby="login-title">
+    <!-- Cabecera sin sesión: el producto genérico. Quien todavía no ha entrado
+         no tiene por qué saber qué casa hay detrás de esta instalación, y una
+         misma instalación sirve a varias. -->
     <div class="login-brand">
       <span class="brand-mark" aria-hidden="true">⌂</span>
-      <div><strong>Casa Clara</strong><span>La casa, en orden</span></div>
+      <div><strong>{APP_NAME}</strong></div>
     </div>
 
     {#if data.mode === 'password'}

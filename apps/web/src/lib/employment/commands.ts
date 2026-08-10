@@ -7,6 +7,8 @@ import type {
   ExtraWorkMarkPerformedPayloadV1,
   ExtraWorkRegisterPayloadV1,
   ExtraWorkResolvePayloadV1,
+  ManualAdjustmentRecordPayloadV1,
+  ManualAdjustmentVoidPayloadV1,
   PaymentRecordPayloadV1,
   SettlementClosePayloadV1,
   SettlementOpenPayloadV1,
@@ -85,10 +87,26 @@ export function registerExtra(
     workedOn: string;
     durationMinutes: number;
     note?: string;
+    /**
+     * Compensación decidida en el mismo gesto, solo para quien administra: se
+     * apunta una jornada que YA ocurrió y se cierra ahí. El importe lo sigue
+     * congelando el concepto del catálogo; aquí solo viaja la decisión y el
+     * motivo. Si el motivo llega vacío no se manda nada: el contrato lo exige y
+     * el hecho se apunta como pendiente, que es lo honesto.
+     */
+    resolveNow?: {
+      resolution: NonNullable<ExtraWorkRegisterPayloadV1['resolveNow']>['resolution'];
+      reason: string;
+    };
   },
   options: EnvelopeOptions = {}
 ): CommandEnvelopeV1<ExtraWorkRegisterPayloadV1> {
   const note = trimmedOrUndefined(input.note);
+  const reason = trimmedOrUndefined(input.resolveNow?.reason);
+  const resolveNow =
+    input.resolveNow && reason
+      ? { resolveNow: { resolution: input.resolveNow.resolution, reason } }
+      : {};
   return createCommandEnvelope({
     ...options,
     householdId: input.householdId,
@@ -100,7 +118,8 @@ export function registerExtra(
       kind: input.kind,
       workedOn: input.workedOn,
       durationMinutes: input.durationMinutes,
-      ...(note ? { note } : {})
+      ...(note ? { note } : {}),
+      ...resolveNow
     } satisfies ExtraWorkRegisterPayloadV1
   }) as CommandEnvelopeV1<ExtraWorkRegisterPayloadV1>;
 }
@@ -333,6 +352,65 @@ export function voidVacation(
       reason: input.reason.trim()
     } satisfies VacationVoidPayloadV1
   }) as CommandEnvelopeV1<VacationVoidPayloadV1>;
+}
+
+/**
+ * Concepto apuntado a mano. El importe llega en céntimos POSITIVOS desde el
+ * formulario y el signo es una decisión aparte («suma» / «resta»), porque un
+ * campo de dinero con un menos delante se teclea mal y se lee peor.
+ *
+ * El `period` que se envía es el que se PIDE. Si ese mes ya está cerrado el
+ * servidor imputa el concepto al primer mes abierto posterior y guarda la nota
+ * que lo explica: aquí no se adivina, porque el cliente no sabe (ni puede
+ * saber sin carreras) qué meses están cerrados en el instante de escribir.
+ */
+export function recordManualAdjustment(
+  input: {
+    householdId: string;
+    agreementId: string;
+    period: string;
+    label: string;
+    reason: string;
+    /** Céntimos en positivo; `direction` decide el signo que viaja. */
+    amountCents: string;
+    direction: 'adds' | 'subtracts';
+    addsToPay: boolean;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<ManualAdjustmentRecordPayloadV1> {
+  const magnitude = BigInt(input.amountCents);
+  const signed = input.direction === 'subtracts' ? -magnitude : magnitude;
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'manual_adjustment',
+    payload: {
+      action: 'record',
+      agreementId: input.agreementId,
+      period: input.period,
+      label: input.label.trim(),
+      reason: input.reason.trim(),
+      amountCents: signed.toString(),
+      addsToPay: input.addsToPay
+    } satisfies ManualAdjustmentRecordPayloadV1
+  }) as CommandEnvelopeV1<ManualAdjustmentRecordPayloadV1>;
+}
+
+export function voidManualAdjustment(
+  input: { householdId: string; manualAdjustmentId: string; reason: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<ManualAdjustmentVoidPayloadV1> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'manual_adjustment',
+    aggregateId: input.manualAdjustmentId,
+    payload: {
+      action: 'void',
+      manualAdjustmentId: input.manualAdjustmentId,
+      reason: input.reason.trim()
+    } satisfies ManualAdjustmentVoidPayloadV1
+  }) as CommandEnvelopeV1<ManualAdjustmentVoidPayloadV1>;
 }
 
 export function setVacationEntitlement(

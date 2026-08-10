@@ -5,33 +5,11 @@ import { Pool } from "pg";
 import { createLogger, errorCode } from "@casa-clara/server/logging";
 
 import { loadWorkerConfig } from "./config.js";
-import { RENDER_RECEIPT_JOB, createRenderReceiptHandler } from "./handlers.js";
-import {
-  ICS_SYNC_ALL_JOB,
-  ICS_SYNC_JOB,
-  ROUTINE_DUE_JOB,
-  createIcsQueries,
-  createIcsSyncAllHandler,
-  createIcsSyncHandler,
-  createRoutineDueHandler,
-  ensureIcsSyncScheduled,
-  fetchIcsSource,
-} from "./ics.js";
+import { ensureIcsSyncScheduled } from "./ics.js";
 import { objectStore, putPrivateObject, sendEmail } from "./integrations.js";
-import {
-  PRUNE_DISCOVERY_JOB,
-  createMaintenanceQueries,
-  createPruneDiscoveryHandler,
-  ensurePruneDiscoveryScheduled,
-} from "./maintenance.js";
-import { runOneJob, type JobHandler } from "./queue.js";
-import {
-  AUTOCONFIRM_JOB,
-  SETTLEMENT_DUE_JOB,
-  createAutoconfirmHandler,
-  createReminderQueries,
-  createSettlementDueHandler,
-} from "./reminders.js";
+import { ensurePruneDiscoveryScheduled } from "./maintenance.js";
+import { reclaimStaleJobs, runOneJob } from "./queue.js";
+import { createJobHandlers } from "./registry.js";
 
 const config = loadWorkerConfig();
 const pool = new Pool({ connectionString: config.databaseUrl, max: 4 });
@@ -42,72 +20,16 @@ let lastSuccessfulPollAt: string | null = null;
 let processedJobs = 0;
 let pollFailures = 0;
 
-/**
- * Observabilidad de jobs sin PII (control 8): cada handler queda envuelto en
- * el logger compartido con redacción — solo identificadores técnicos, duración
- * y código de error. El fallo se relanza para que la cola aplique reintentos.
- */
-function withJobLogging(jobType: string, handler: JobHandler): JobHandler {
-  return async (job) => {
-    const startedAt = Date.now();
-    try {
-      await handler(job);
-      log.info("job completed", {
-        jobId: job.id,
-        jobType,
-        householdId: job.householdId,
-        ms: Date.now() - startedAt,
-      });
-    } catch (error) {
-      log.error("job failed", {
-        jobId: job.id,
-        jobType,
-        householdId: job.householdId,
-        ms: Date.now() - startedAt,
-        code: errorCode(error),
-      });
-      throw error;
-    }
-  };
-}
-
-const handlers: Record<string, JobHandler> = Object.create(null) as Record<string, JobHandler>;
-handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler((key, body, contentType) =>
-  putPrivateObject(storageClient, config.storage.bucket, key, body, contentType),
-);
-const reminderQueries = createReminderQueries(pool);
-handlers[SETTLEMENT_DUE_JOB] = createSettlementDueHandler({
-  readState: reminderQueries.readSettlementReminderState,
-  enqueue: reminderQueries.enqueueJob,
+// El catálogo de trabajos es común con el drenaje por HTTP de apps/web
+// (registry.ts); aquí solo se enchufan los efectos externos de este proceso.
+const handlers = createJobHandlers({
+  pool,
   sendEmail: (input) => sendEmail(config.smtp, input),
+  uploadDocument: (key, body, contentType) =>
+    putPrivateObject(storageClient, config.storage.bucket, key, body, contentType),
+  log,
+  errorCode,
 });
-handlers[AUTOCONFIRM_JOB] = createAutoconfirmHandler({
-  autoconfirm: reminderQueries.autoconfirmWeeklyReport,
-});
-handlers[ROUTINE_DUE_JOB] = createRoutineDueHandler({
-  sendEmail: (input) => sendEmail(config.smtp, input),
-});
-const maintenanceQueries = createMaintenanceQueries(pool);
-handlers[PRUNE_DISCOVERY_JOB] = createPruneDiscoveryHandler({
-  prune: maintenanceQueries.pruneDiscoveryData,
-  enqueue: maintenanceQueries.enqueueJob,
-});
-// Fontanería ICS entrante (Ola E): descarga con guard SSRF y expansión de
-// recurrencias en ics.ts; persistencia y registro SOLO vía funciones definer
-// (0009/0015), sin lectura ni escritura directa sobre app.ics_*.
-const icsQueries = createIcsQueries(pool);
-handlers[ICS_SYNC_JOB] = createIcsSyncHandler({
-  fetchSource: (url) => fetchIcsSource(url),
-  persistEvents: icsQueries.replaceSourceEvents,
-  recordSync: icsQueries.recordSync,
-});
-handlers[ICS_SYNC_ALL_JOB] = createIcsSyncAllHandler({
-  listSources: icsQueries.listSourcesForSync,
-  enqueue: maintenanceQueries.enqueueJob,
-});
-for (const [type, handler] of Object.entries(handlers)) {
-  handlers[type] = withJobLogging(type, handler);
-}
 
 const healthServer = createServer(async (request, response) => {
   if (request.url === "/metrics") {
@@ -140,6 +62,17 @@ const healthServer = createServer(async (request, response) => {
 healthServer.listen(config.healthPort, "0.0.0.0");
 
 async function loop(): Promise<void> {
+  // Trabajos que se quedaron en `running` porque el proceso anterior murió a
+  // mitad: nadie los reclamaría nunca más. Al arrancar es justo el momento de
+  // devolverlos a la cola (o darlos por muertos si ya agotaron sus intentos).
+  try {
+    const reclaimed = await reclaimStaleJobs(pool, config.maxJobAttempts);
+    if (reclaimed.requeued > 0 || reclaimed.dead > 0) {
+      log.warn("stale jobs reclaimed", { counts: reclaimed });
+    }
+  } catch {
+    pollFailures += 1;
+  }
   // Retención de descubrimiento: si no hay ninguna poda pendiente, se encola
   // una al arrancar (re-encolado semanal al completar). Un fallo aquí no debe
   // tumbar el worker: el siguiente arranque —o el operador— la encolará.

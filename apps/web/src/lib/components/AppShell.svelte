@@ -3,7 +3,8 @@
   import { navigating, page } from '$app/state';
   import { onMount, tick, type Snippet } from 'svelte';
   import type { Action } from 'svelte/action';
-  import { ROLE_LABELS, type Capability } from '$lib/auth/capabilities';
+  import type { Capability } from '$lib/auth/capabilities';
+  import { ROLE_LABELS } from '$lib/auth/role-labels';
   import { householdPath, type HouseholdModule } from '$lib/auth/routing';
   import type { AppContext } from '$lib/auth/types';
   import { startSyncMonitor, syncStatus } from '$lib/offline/sync';
@@ -24,7 +25,10 @@
 
   const NAV_ENTRIES: Readonly<Record<string, NavEntry>> = {
     today: { module: 'today', label: 'Hoy', short: 'Hoy', capability: 'emergency.read' },
-    employment: { module: 'employment', label: 'Pagos', short: 'Pagos', capability: 'settlement.read' },
+    // El nombre visible de la sección es «Contrato» (decisión del propietario);
+    // la ruta, la capacidad y las tablas siguen llamándose employment. Es un
+    // cambio de idioma de cara a la persona, no de arquitectura.
+    employment: { module: 'employment', label: 'Contrato', short: 'Contrato', capability: 'settlement.read' },
     menu: { module: 'menu', label: 'Menú', short: 'Menú', capability: 'menu.read' },
     wiki: { module: 'wiki', label: 'Guía de la casa', short: 'Guía', capability: 'content.read' },
     routines: { module: 'routines', label: 'Rutinas', short: 'Rutinas', capability: 'routine.read' },
@@ -35,7 +39,7 @@
 
   // Orden por rol según el mapa del informe heurístico (H-02/H-12): quien
   // trabaja la casa (registra jornadas o no gestiona pagos) lleva Rutinas al
-  // frente; la familia prioriza Menú, Pagos y Agenda. Recetas deja de ser
+  // frente; la familia prioriza Menú, Contrato y Agenda. Recetas deja de ser
   // destino de primer nivel: vive dentro de Menú y sigue accesible por URL.
   const handsOnOrder = ['today', 'routines', 'menu', 'employment', 'wiki', 'calendar', 'contacts'];
   const familyOrder = ['today', 'menu', 'employment', 'calendar', 'wiki', 'routines', 'contacts'];
@@ -204,7 +208,7 @@
 
 <div class="app-shell" class:with-banner={$syncStatus.phase === 'offline' || $syncStatus.phase === 'conflict' || $syncStatus.phase === 'error'}>
   <aside class="sidebar" aria-label="Navegación principal">
-    <a class="brand" href={pathFor('today')} aria-label="Casa Clara, ir a Hoy">
+    <a class="brand" href={pathFor('today')} aria-label={`${context.household.name}, ir a Hoy`}>
       <span class="brand-mark" aria-hidden="true">⌂</span>
       <span class="brand-copy"><strong>{context.household.name}</strong><small>{context.household.subtitle}</small></span>
     </a>
@@ -243,8 +247,10 @@
 
   <div class="main-column">
     <header class="topbar">
-      <a class="mobile-brand" href={pathFor('today')} aria-label="Casa Clara, ir a Hoy">
-        <span class="brand-mark small" aria-hidden="true">⌂</span><strong>Casa Clara</strong>
+      <!-- Cabecera con sesión: manda el nombre del hogar al que se ha entrado,
+           el mismo que ya luce la barra lateral. Nunca el del proyecto. -->
+      <a class="mobile-brand" href={pathFor('today')} aria-label={`${context.household.name}, ir a Hoy`}>
+        <span class="brand-mark small" aria-hidden="true">⌂</span><strong>{context.household.name}</strong>
       </a>
       {#if has('search.use')}
         <button type="button" class="global-search" aria-haspopup="dialog" aria-label="Buscar en toda la casa" onclick={openSearch}>

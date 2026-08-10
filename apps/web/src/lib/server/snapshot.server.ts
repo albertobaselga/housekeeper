@@ -2,11 +2,9 @@ import type { Pool } from 'pg';
 
 import { API_VERSION, CRITICAL_SNAPSHOT_TTL_MS, type CriticalSnapshotV1 } from '@casa-clara/contracts';
 import {
-  AuthorizationError,
   canonicalSha256,
   computeMenuSlotHash,
   createLogger,
-  errorCode,
   signCriticalSnapshot,
   withAuthorizedTransaction
 } from '@casa-clara/server';
@@ -15,6 +13,7 @@ import { dateLabel } from '$lib/employment/model';
 import type { MealSlot } from '$lib/food/commands';
 
 import type { SnapshotContact } from './contacts.server';
+import { fixturesAllowed, unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 import {
   getCriticalSnapshotPayload,
@@ -160,21 +159,26 @@ export async function loadSnapshotHousehold(
       } satisfies SnapshotHouseholdData;
     });
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('snapshot household unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    return unreadable(log, 'snapshot household', cause);
   }
 }
 
 /**
  * Construye y firma el snapshot crítico del contrato. Con datos reales
  * (`realContacts` de app.contacts y `realHousehold` de loadSnapshotHousehold,
- * ambos bajo RLS) el paquete offline deja de servir fixtures: contactos, menú
- * del día, rutinas que vencen y notas fijadas de la Guía son los del hogar.
- * Sin pool (demo) el contenido sigue siendo la fixture sintética; la
- * envolvente (versión, etag, caducidad de 24 h y firma Ed25519) es real en
- * ambos casos.
+ * ambos bajo RLS) el paquete offline lleva contactos, menú del día, rutinas
+ * que vencen y notas fijadas de la Guía del hogar.
+ *
+ * La marca de procedencia va en `version` y es la que el dispositivo lee para
+ * saber de qué se puede fiar:
+ *
+ * - `live-…`   contenido real del hogar.
+ * - `partial-…` hay hogar real pero no se pudo leer: solo el 112.
+ * - `fixture-…` demostración sin base de datos.
+ *
+ * La envolvente (etag, caducidad de 24 h y firma Ed25519) es real en los tres
+ * casos, y por eso mismo la marca importa: una firma válida sobre datos
+ * inventados es peor que no tener paquete.
  */
 export function buildCriticalSnapshot(
   householdId: string,
@@ -186,13 +190,14 @@ export function buildCriticalSnapshot(
   const etag = canonicalSha256(payload);
   const generatedAt = new Date();
   const expiresAt = new Date(generatedAt.getTime() + CRITICAL_SNAPSHOT_TTL_MS);
+  const provenance = realContacts ? 'live' : fixturesAllowed() ? 'fixture' : 'partial';
   return signCriticalSnapshot(
     {
       apiVersion: API_VERSION,
       schemaVersion: 1,
       householdId,
       membershipId,
-      version: `${realContacts ? 'live' : 'fixture'}-${etag.slice(0, 12)}`,
+      version: `${provenance}-${etag.slice(0, 12)}`,
       etag,
       cursor: generatedAt.toISOString(),
       generatedAt: generatedAt.toISOString(),

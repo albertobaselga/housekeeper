@@ -14,8 +14,40 @@ import {
   type CommandHandlers,
 } from "../sync.js";
 
-const WIKI_WRITER_ROLES = new Set(["family_admin", "family_member", "employee_live_in"]);
-const SPACE_ADMIN_ROLES = new Set(["family_admin", "family_member"]);
+export type WikiSpaceKind = "guide" | "recipes";
+
+/**
+ * Quién escribe qué (migración 0026). La **Guía de la casa** es también el
+ * manual de acogida de quien trabaja aquí: la escribe la administración y nadie
+ * más. El **recetario** es contenido doméstico del día a día y conserva la
+ * regla anterior, porque «Nueva receta desde el hueco del menú» es un flujo de
+ * la familia. La RLS impone las dos reglas; aquí se rechaza antes con un código
+ * claro para que el cliente pueda explicarlo.
+ */
+const GUIDE_WRITER_ROLES = new Set(["family_admin"]);
+const RECIPE_WRITER_ROLES = new Set(["family_admin", "family_member"]);
+
+function writerRolesFor(kind: WikiSpaceKind): ReadonlySet<string> {
+  return kind === "recipes" ? RECIPE_WRITER_ROLES : GUIDE_WRITER_ROLES;
+}
+
+function requireSpaceWriter(role: string, kind: WikiSpaceKind): void {
+  if (writerRolesFor(kind).has(role)) return;
+  throw new CommandRejectedError(
+    "not_allowed",
+    kind === "recipes"
+      ? "Solo la familia mantiene el recetario"
+      : "Solo la administración escribe la Guía de la casa",
+  );
+}
+
+/**
+ * Slugs que la Guía usa para sus propias vistas (`/wiki/libro`,
+ * `/wiki/progreso`) y que por tanto no puede llevar ninguna nota: si una nota
+ * los ocupara, quedaría inalcanzable para siempre. Se desambiguan como
+ * cualquier otra colisión (`libro-2`), y la base lo respalda con un CHECK.
+ */
+export const RESERVED_WIKI_SLUGS: ReadonlySet<string> = new Set(["libro", "progreso"]);
 
 /**
  * Slug estable: minúsculas, sin acentos (NFKD + eliminación de diacríticos) y
@@ -34,7 +66,7 @@ export function slugifyWikiTitle(value: string): string {
 }
 
 function nextFreeSlug(base: string, taken: ReadonlySet<string>): string {
-  if (!taken.has(base)) return base;
+  if (!taken.has(base) && !RESERVED_WIKI_SLUGS.has(base)) return base;
   for (let suffix = 2; ; suffix += 1) {
     const candidate = `${base}-${suffix}`;
     if (!taken.has(candidate)) return candidate;
@@ -74,7 +106,7 @@ async function ensurePageSlug(
   );
   const owners = new Map(existing.rows.map((row) => [row.slug, row.page_id]));
   let candidate = base;
-  for (let suffix = 2; owners.has(candidate); suffix += 1) {
+  for (let suffix = 2; owners.has(candidate) || RESERVED_WIKI_SLUGS.has(candidate); suffix += 1) {
     if (owners.get(candidate) === pageId) return candidate;
     candidate = `${base}-${suffix}`;
   }
@@ -154,24 +186,64 @@ async function resolveSpaceSlug(
 /**
  * Creación de espacio con slug desambiguado. Exportada para que el flujo
  * «Nueva receta desde el menú» pueda crear el espacio «Recetas» del hogar la
- * primera vez, con el mismo camino que el comando `wiki_space.create`.
+ * primera vez, con el mismo camino que el comando `wiki_space.create`; ese
+ * flujo pasa `kind: "recipes"` para que el apartado nazca ya como recetario y
+ * no como capítulo de la Guía.
  */
 export async function createWikiSpace(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
-  payload: { name: string; slug?: string | undefined; description?: string | undefined },
+  payload: {
+    name: string;
+    slug?: string | undefined;
+    description?: string | undefined;
+    kind?: WikiSpaceKind | undefined;
+  },
 ): Promise<{ resourceId: UUID }> {
+  const kind = payload.kind ?? "guide";
+  requireSpaceWriter(membership.role, kind);
   const slug = await resolveSpaceSlug(client, householdId, payload.name, payload.slug);
   const inserted = await client.query<{ id: string }>(
-    `insert into app.wiki_spaces (household_id, slug, name, description, created_by_membership_id)
-     values ($1, $2, $3, $4, $5)
+    `insert into app.wiki_spaces (household_id, slug, name, description, kind, created_by_membership_id)
+     values ($1, $2, $3, $4, $5, $6)
      returning id`,
-    [householdId, slug, payload.name, payload.description ?? "", membership.id],
+    [householdId, slug, payload.name, payload.description ?? "", kind, membership.id],
   );
   const spaceId = inserted.rows[0]?.id;
   if (!spaceId) throw new Error("La inserción del espacio no devolvió identificador");
   return { resourceId: spaceId };
+}
+
+/** Tipo del apartado, o null si no existe (o no es visible) en este hogar. */
+async function spaceKind(
+  client: PoolClient,
+  householdId: UUID,
+  spaceId: UUID,
+): Promise<WikiSpaceKind | null> {
+  const row = await client.query<{ kind: WikiSpaceKind }>(
+    `select kind::text as kind from app.wiki_spaces
+      where household_id = $1 and id = $2 and archived_at is null`,
+    [householdId, spaceId],
+  );
+  return row.rows[0]?.kind ?? null;
+}
+
+/** Tipo del apartado al que pertenece una nota. */
+async function pageSpaceKind(
+  client: PoolClient,
+  householdId: UUID,
+  pageId: UUID,
+): Promise<WikiSpaceKind | null> {
+  const row = await client.query<{ kind: WikiSpaceKind }>(
+    `select space.kind::text as kind
+       from app.wiki_pages as page
+       join app.wiki_spaces as space
+         on space.household_id = page.household_id and space.id = page.space_id
+      where page.household_id = $1 and page.id = $2 and page.archived_at is null`,
+    [householdId, pageId],
+  );
+  return row.rows[0]?.kind ?? null;
 }
 
 /** Marca o desmarca un espacio como plantilla clonable (solo familia). */
@@ -238,8 +310,8 @@ async function cloneTemplateSpace(
   householdId: UUID,
   payload: { templateSpaceId: UUID; name: string; slug?: string | undefined },
 ): Promise<{ resourceId: UUID }> {
-  const origin = await client.query<{ description: string }>(
-    `select description from app.wiki_spaces
+  const origin = await client.query<{ description: string; kind: WikiSpaceKind }>(
+    `select description, kind::text as kind from app.wiki_spaces
       where household_id = $1 and id = $2 and is_template = true and archived_at is null`,
     [householdId, payload.templateSpaceId],
   );
@@ -252,10 +324,17 @@ async function cloneTemplateSpace(
 
   const spaceSlug = await resolveSpaceSlug(client, householdId, payload.name, payload.slug);
   const insertedSpace = await client.query<{ id: string }>(
-    `insert into app.wiki_spaces (household_id, slug, name, description, created_by_membership_id)
-     values ($1, $2, $3, $4, $5)
+    `insert into app.wiki_spaces (household_id, slug, name, description, kind, created_by_membership_id)
+     values ($1, $2, $3, $4, $5, $6)
      returning id`,
-    [householdId, spaceSlug, payload.name, origin.rows[0]?.description ?? "", membership.id],
+    [
+      householdId,
+      spaceSlug,
+      payload.name,
+      origin.rows[0]?.description ?? "",
+      origin.rows[0]?.kind ?? "guide",
+      membership.id,
+    ],
   );
   const newSpaceId = insertedSpace.rows[0]?.id;
   if (!newSpaceId) throw new Error("La inserción del espacio clonado no devolvió identificador");
@@ -375,15 +454,19 @@ async function cloneTemplateSpace(
 }
 
 /**
- * `wiki_space` — create / set_template / clone_template, reservado a la
- * familia (RLS lo respalda con `wiki_spaces_admin_write`; aquí se rechaza
- * antes con un código claro). `clone_template` exige un origen del MISMO
- * hogar con `is_template = true`; en cualquier otro caso responde
- * `template_not_found`.
+ * `wiki_space` — create / set_template / clone_template. Los apartados de la
+ * GUÍA son de la administración (RLS lo respalda con `wiki_spaces_write`; aquí
+ * se rechaza antes con un código claro). Por esta vía solo se crean apartados
+ * de la Guía: el recetario nace desde el menú, no desde la portada.
+ * `clone_template` exige un origen del MISMO hogar con `is_template = true`;
+ * en cualquier otro caso responde `template_not_found`.
  */
 export const wikiSpaceCommandHandler: CommandHandler = async (client, membership, envelope) => {
-  if (!SPACE_ADMIN_ROLES.has(membership.role)) {
-    throw new CommandRejectedError("not_allowed", "Solo la familia administra espacios de la wiki");
+  if (!GUIDE_WRITER_ROLES.has(membership.role)) {
+    throw new CommandRejectedError(
+      "not_allowed",
+      "Solo la administración organiza los apartados de la Guía de la casa",
+    );
   }
   const parsed = wikiSpaceCommandPayloadSchema.safeParse(envelope.payload);
   if (!parsed.success) {
@@ -411,33 +494,34 @@ export const wikiSpaceCommandHandler: CommandHandler = async (client, membership
 /**
  * Apartado donde va la nota. Con `spaceId` se exige que exista. Con
  * `spaceSlug` se busca por slug y, si el hogar aún no lo tiene, se CREA en la
- * misma transacción (alta implícita, solo familia): así se puede escribir la
- * primera instrucción sin conexión, porque el cliente ya no depende de un
- * identificador que antes solo llegaba con el ACK del apartado.
+ * misma transacción (alta implícita, solo la administración): así se puede
+ * escribir la primera instrucción sin conexión, porque el cliente ya no
+ * depende de un identificador que antes solo llegaba con el ACK del apartado.
+ *
+ * Devuelve también el TIPO del apartado, para que quien llama compruebe el
+ * permiso con la regla que toca: la Guía es de la administración, el recetario
+ * sigue siendo de la familia.
  */
 async function resolvePageSpace(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
   payload: { spaceId?: UUID | undefined; spaceSlug?: string | undefined; spaceName?: string | undefined },
-): Promise<UUID> {
+): Promise<{ spaceId: UUID; kind: WikiSpaceKind }> {
   if (payload.spaceId !== undefined) {
-    const space = await client.query(
-      `select 1 from app.wiki_spaces where household_id = $1 and id = $2 and archived_at is null`,
-      [householdId, payload.spaceId],
-    );
-    if ((space.rowCount ?? 0) === 0) {
+    const kind = await spaceKind(client, householdId, payload.spaceId);
+    if (kind === null) {
       throw new CommandRejectedError("space_not_found", "El espacio no existe o no es visible");
     }
-    return payload.spaceId;
+    return { spaceId: payload.spaceId, kind };
   }
 
   const slug = payload.spaceSlug;
   if (slug === undefined) {
     throw new CommandRejectedError("invalid_payload", "La nota necesita un apartado");
   }
-  const existing = await client.query<{ id: string; archived: boolean }>(
-    `select id, (archived_at is not null) as archived
+  const existing = await client.query<{ id: string; kind: WikiSpaceKind; archived: boolean }>(
+    `select id, kind::text as kind, (archived_at is not null) as archived
        from app.wiki_spaces where household_id = $1 and slug = $2`,
     [householdId, slug],
   );
@@ -446,16 +530,16 @@ async function resolvePageSpace(
     if (row.archived) {
       throw new CommandRejectedError("space_not_found", "Ese apartado está archivado");
     }
-    return row.id;
+    return { spaceId: row.id, kind: row.kind };
   }
-  if (!SPACE_ADMIN_ROLES.has(membership.role)) {
-    throw new CommandRejectedError("not_allowed", "Solo la familia crea apartados nuevos");
-  }
+  // Un apartado que nace desde una nota es siempre capítulo de la Guía; el
+  // recetario solo se estrena desde el menú (commands/menu.ts).
   const created = await createWikiSpace(client, membership, householdId, {
     name: payload.spaceName ?? slug,
     slug,
+    kind: "guide",
   });
-  return created.resourceId;
+  return { spaceId: created.resourceId, kind: "guide" };
 }
 
 export async function createWikiPage(
@@ -474,7 +558,8 @@ export async function createWikiPage(
     publish?: boolean | undefined;
   },
 ): Promise<{ resourceId: UUID; revision: number }> {
-  const spaceId = await resolvePageSpace(client, membership, householdId, payload);
+  const { spaceId, kind } = await resolvePageSpace(client, membership, householdId, payload);
+  requireSpaceWriter(membership.role, kind);
 
   // El slug se calcula antes de insertar porque `current_slug` es NOT NULL; el
   // registro en wiki_page_slugs llega justo después, en la misma transacción.
@@ -621,21 +706,29 @@ async function setPageState(
 }
 
 /**
- * `wiki_page` — create / edit / set_state. La escritura pertenece a familia y
- * empleada (viewer y helper se rechazan aquí con `not_allowed`, además del
- * respaldo RLS). `edit` exige `envelope.baseRevision` igual a la revisión
- * vigente; en caso contrario el ACK es `conflict` con resolución humana.
+ * `wiki_page` — create / edit / set_state. Quién puede depende del apartado:
+ * las notas de la GUÍA son de la administración, el recetario sigue siendo de
+ * la familia. Lo demás se rechaza aquí con `not_allowed`, además del respaldo
+ * RLS. `edit` exige `envelope.baseRevision` igual a la revisión vigente; en
+ * caso contrario el ACK es `conflict` con resolución humana.
  */
 export const wikiPageCommandHandler: CommandHandler = async (client, membership, envelope) => {
-  if (!WIKI_WRITER_ROLES.has(membership.role)) {
-    throw new CommandRejectedError("not_allowed", "Este rol no puede escribir en la wiki");
-  }
   const parsed = wikiPageCommandPayloadSchema.safeParse(envelope.payload);
   if (!parsed.success) {
     throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
   }
   const payload = parsed.data;
   const householdId = envelope.householdId;
+
+  // `create` comprueba el permiso dentro (necesita resolver antes el apartado,
+  // que puede venir por slug); `edit` y `set_state` parten de la nota.
+  if (payload.action !== "create") {
+    const kind = await pageSpaceKind(client, householdId, payload.pageId);
+    if (kind === null) {
+      throw new CommandRejectedError("page_not_found", "La página no existe o no es visible");
+    }
+    requireSpaceWriter(membership.role, kind);
+  }
 
   switch (payload.action) {
     case "create":

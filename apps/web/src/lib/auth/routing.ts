@@ -43,8 +43,10 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
  * cualquier ruta anidada, que es el comportamiento correcto: una ruta nueva no
  * hereda el permiso de su padre por el hecho de colgar de él.
  *
- * · `employment/acuerdo` — pactar condiciones es escribir el acuerdo, y eso es
- *   solo de quien administra (`agreement.write`).
+ * · `employment/acuerdo` — pactar condiciones es escribir el contrato, y eso es
+ *   solo de quien administra (`agreement.write`). El segmento de la ruta sigue
+ *   llamándose `acuerdo`: el renombrado es de cara a la persona, no de
+ *   arquitectura, y cambiar la URL rompería los enlaces ya repartidos.
  * · `employment/condiciones` — leer lo pactado. `agreement.read` lo tienen
  *   también la familia no administradora; para ella la RLS no devuelve ninguna
  *   versión y la página enseña su estado vacío, que es la verdad.
@@ -110,4 +112,16 @@ export function guardForPath(pathname: string): HouseholdRouteGuard | null {
 
 export function householdPath(householdId: string, moduleName: HouseholdModule): string {
   return `/h/${encodeURIComponent(householdId)}/${moduleName}`;
+}
+
+/**
+ * El hogar que se está mirando es SIEMPRE el de la URL, nunca el primero de la
+ * persona. Quien pertenece a dos casas cambia de casa cambiando de dirección, y
+ * el nombre que anuncian la cabecera y la pestaña tiene que seguirla.
+ */
+export function pickHousehold<Household extends { id: string }>(
+  households: readonly Household[] | undefined,
+  householdId: string
+): Household | null {
+  return households?.find((candidate) => candidate.id === householdId) ?? null;
 }

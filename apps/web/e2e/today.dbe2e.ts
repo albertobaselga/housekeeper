@@ -47,10 +47,12 @@ test.beforeAll(async () => {
 
       INSERT INTO app.routines (
         id, household_id, title, details, audience, frequency, interval_count,
-        next_due_on, created_by_membership_id
+        next_due_on, created_by_membership_id,
+        pattern, anchor_on, repeat_every
       ) VALUES (
         '${ROUTINE_HOY}', '${HOUSEHOLD}', 'Riego de la terraza E2E-HOY', 'Solo las jardineras',
-        'employee', 'weekly', 1, '${TODAY}', '${E2E_SEED.memberships.admin}'
+        'employee', 'weekly', 1, '${TODAY}', '${E2E_SEED.memberships.admin}',
+        'every_n_days', '${TODAY}', 7
       ) ON CONFLICT DO NOTHING;
 
       COMMIT;
@@ -73,9 +75,11 @@ test('Alberto ve la jornada sembrada en «Necesita tu decisión» y llega a reso
     .filter({ hasText: 'Recogida del tinte E2E-HOY' });
   await expect(decisionRow).toContainText('Jornada extra solicitada');
 
-  // 1 click: del item de Hoy al ancla de la jornada en Acuerdos y pagos.
+  // 1 click: del item de Hoy al ancla de la jornada en Contrato.
   await decisionRow.getByRole('link', { name: 'Revisar' }).click();
-  await expect(page).toHaveURL(new RegExp(`/h/${HOUSEHOLD}/employment#extra-${EXTRA_HOY}$`));
+  await expect(page).toHaveURL(
+    new RegExp(`/h/${HOUSEHOLD}/employment\\?empleada=${E2E_SEED.agreement}#extra-${EXTRA_HOY}$`)
+  );
 
   const extraRow = page.locator(`#extra-${EXTRA_HOY}`);
   await expect(extraRow).toContainText('Recogida del tinte E2E-HOY');

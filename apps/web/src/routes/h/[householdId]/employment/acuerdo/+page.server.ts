@@ -1,13 +1,17 @@
 import { error, fail } from '@sveltejs/kit';
 
 import type {
+  AgreementScheduleInputV1,
   AgreementTermsInputV1,
   ExtraWorkTypeInputV1,
-  RecurringSupplementInputV1
+  RecurringSupplementInputV1,
+  ScheduleDayInputV1,
+  WeekdayV1
 } from '@casa-clara/contracts';
 import { agreementCreateInputSchema, agreementTermsInputSchema } from '@casa-clara/contracts/schemas';
 
 import { parseEuroInput } from '$lib/employment/commands';
+import { PAYER_CHOICES } from '$lib/employment/payer';
 import {
   createAgreement,
   loadAgreementAdmin,
@@ -98,21 +102,92 @@ function readSupplements(form: FormData): RecurringSupplementInputV1[] | { messa
         message: `El importe de «${text(form, `supplement.${index}.name`) || code}» no es válido.`
       };
     }
+    // Sin valor por defecto a propósito: quien pacta un complemento tiene que
+    // decir explícitamente si es dinero para ella o gasto de la casa. Un
+    // defecto silencioso aquí es una transferencia inflada o mermada, y como la
+    // fila es inmutable el error solo se corrige apilando otra versión. Por eso
+    // cualquier valor que no sea uno de los dos es un ERROR y no un `false`: si
+    // el formulario y este lector vuelven a dejar de entenderse, se verá.
+    const payer = text(form, `supplement.${index}.addsToPay`);
+    if (payer !== PAYER_CHOICES.addsToPay && payer !== PAYER_CHOICES.paidByHousehold) {
+      return {
+        message: `Di quién cobra «${text(form, `supplement.${index}.name`) || code}»: si suma a su transferencia o lo paga la casa aparte.`
+      };
+    }
     supplements.push({
       code,
       name: text(form, `supplement.${index}.name`),
       amountCents,
       periodicity: 'monthly',
-      // Sin valor por defecto a propósito: quien pacta un complemento tiene que
-      // decir explícitamente si es dinero para ella o gasto de la casa. Un
-      // defecto silencioso aquí es una transferencia inflada o mermada.
-      addsToPay: form.get(`supplement.${index}.addsToPay`) === 'suma',
+      addsToPay: payer === PAYER_CHOICES.addsToPay,
       startsOn: optionalDate(form, `supplement.${index}.startsOn`),
       endsOn: optionalDate(form, `supplement.${index}.endsOn`),
       active: form.get(`supplement.${index}.active`) === 'on'
     });
   }
   return supplements;
+}
+
+/**
+ * El horario del formulario.
+ *
+ * La casilla `schedule.declared` es la que decide si este contrato declara
+ * horario o no. Sin marcar, se devuelve `null` y no se escribe ninguna fila:
+ * ese null es el «si aplica» del encargo, y por eso es una decisión explícita
+ * de quien administra y no el efecto colateral de dejar dos campos vacíos.
+ *
+ * Los siete días llegan siempre en el formulario —es la única forma de que un
+ * `<select>` por día funcione sin JavaScript— y aquí se DESCARTAN los que
+ * trabajan la jornada tipo sin cambiar nada. Lo que se guarda es solo lo que se
+ * desvía, que es lo que dice la tabla.
+ */
+function readSchedule(form: FormData): AgreementScheduleInputV1 | null | { message: string } {
+  if (form.get('schedule.declared') !== 'on') return null;
+
+  const startsAt = text(form, 'schedule.startsAt');
+  const endsAt = text(form, 'schedule.endsAt');
+  if (startsAt === '' || endsAt === '') {
+    return { message: 'El horario necesita hora de entrada y hora de salida, o desmarca la casilla.' };
+  }
+  const breakRaw = text(form, 'schedule.longBreakMinutes');
+  const longBreakMinutes = breakRaw === '' ? 0 : Number.parseInt(breakRaw, 10);
+  if (!Number.isInteger(longBreakMinutes)) {
+    return { message: 'Los minutos de descanso tienen que ser un número entero.' };
+  }
+
+  const days: ScheduleDayInputV1[] = [];
+  for (let weekday = 1 as WeekdayV1; weekday <= 7; weekday = (weekday + 1) as WeekdayV1) {
+    const mode = text(form, `schedule.day.${weekday}.mode`);
+    const note = text(form, `schedule.day.${weekday}.note`);
+    if (mode === 'libra') {
+      days.push({ weekday, works: false, startsAt: null, endsAt: null, longBreakMinutes: null, note });
+      continue;
+    }
+    const dayEnds = text(form, `schedule.day.${weekday}.endsAt`);
+    const dayStarts = text(form, `schedule.day.${weekday}.startsAt`);
+    const dayBreakRaw = text(form, `schedule.day.${weekday}.longBreakMinutes`);
+    const dayBreak = dayBreakRaw === '' ? null : Number.parseInt(dayBreakRaw, 10);
+    if (dayBreak !== null && !Number.isInteger(dayBreak)) {
+      return { message: 'Los minutos de descanso de un día tienen que ser un número entero.' };
+    }
+    // Un día que no cambia nada y no explica nada no se guarda: la tabla lo
+    // rechazaría, y con razón (sería una fila que repite la jornada tipo).
+    const changes =
+      (dayStarts !== '' && dayStarts !== startsAt) ||
+      (dayEnds !== '' && dayEnds !== endsAt) ||
+      (dayBreak !== null && dayBreak !== longBreakMinutes);
+    if (!changes && note === '') continue;
+    days.push({
+      weekday,
+      works: true,
+      startsAt: dayStarts === '' || dayStarts === startsAt ? null : dayStarts,
+      endsAt: dayEnds === '' || dayEnds === endsAt ? null : dayEnds,
+      longBreakMinutes: dayBreak === null || dayBreak === longBreakMinutes ? null : dayBreak,
+      note
+    });
+  }
+
+  return { startsAt, endsAt, longBreakMinutes, note: text(form, 'schedule.note'), days };
 }
 
 function readTerms(form: FormData): AgreementTermsInputV1 | { message: string } {
@@ -122,6 +197,8 @@ function readTerms(form: FormData): AgreementTermsInputV1 | { message: string } 
   if ('message' in types) return types;
   const supplements = readSupplements(form);
   if ('message' in supplements) return supplements;
+  const schedule = readSchedule(form);
+  if (schedule !== null && 'message' in schedule) return schedule;
 
   const candidate = {
     effectiveFrom: text(form, 'effectiveFrom'),
@@ -130,7 +207,8 @@ function readTerms(form: FormData): AgreementTermsInputV1 | { message: string } 
     annualVacationDays: integer(form, 'annualVacationDays'),
     reason: text(form, 'reason'),
     extraWorkTypes: types,
-    supplements
+    supplements,
+    schedule
   };
   const parsed = agreementTermsInputSchema.safeParse(candidate);
   if (!parsed.success) {

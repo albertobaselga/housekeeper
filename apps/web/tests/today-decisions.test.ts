@@ -16,6 +16,9 @@ import { createCommandEnvelope, createOutboxRecord } from '../src/lib/offline/sc
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
+// El acuerdo del que cuelgan los hechos: el enlace de cada decisión tiene que
+// decir de quién es el expediente al que lleva.
+const AGREEMENT = '12000000-0000-4000-8000-000000000001';
 
 function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFacts {
   return {
@@ -26,6 +29,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
     extras: [
       {
         id: 'e-requested',
+        agreementId: AGREEMENT,
         workedOn: '2026-08-01',
         durationMinutes: 90,
         note: 'Plancha del sábado',
@@ -34,6 +38,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
       },
       {
         id: 'e-resolver',
+        agreementId: AGREEMENT,
         workedOn: '2026-08-02',
         durationMinutes: 480,
         note: '',
@@ -42,6 +47,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
       },
       {
         id: 'e-accepted',
+        agreementId: AGREEMENT,
         workedOn: '2026-08-03',
         durationMinutes: 60,
         note: 'Canguro',
@@ -50,11 +56,18 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
       }
     ],
     pendingExpenses: [
-      { id: 'g-1', incurredOn: '2026-08-04', description: 'Farmacia', amountCents: '2175' }
+      {
+        id: 'g-1',
+        agreementId: AGREEMENT,
+        incurredOn: '2026-08-04',
+        description: 'Farmacia',
+        amountCents: '2175'
+      }
     ],
     settlements: [
       {
         id: 's-pendiente',
+        agreementId: AGREEMENT,
         periodStart: '2026-07-01',
         dueOn: '2026-07-31',
         status: 'closed',
@@ -64,6 +77,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
       },
       {
         id: 's-pagada',
+        agreementId: AGREEMENT,
         periodStart: '2026-06-01',
         dueOn: '2026-06-30',
         status: 'closed',
@@ -116,7 +130,9 @@ describe('buildTodayDecisions por rol', () => {
     ]);
 
     const requested = items[0]!;
-    expect(requested.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment#extra-e-requested`);
+    expect(requested.href).toBe(
+      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#extra-e-requested`
+    );
     // Ola D-5: la jornada solicitada se acepta desde Hoy sin perder el enlace.
     expect(requested.inline).toEqual({ kind: 'accept_extra', id: 'e-requested' });
     // Lo que no se resuelve en un gesto sigue siendo solo enlace.
@@ -127,7 +143,9 @@ describe('buildTodayDecisions por rol', () => {
     expect(requested.detail).toContain('Plancha del sábado');
 
     const gasto = items[2]!;
-    expect(gasto.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment#gasto-g-1`);
+    expect(gasto.href).toBe(
+      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#gasto-g-1`
+    );
     expect(gasto.detail).toContain('21,75');
 
     // Los huecos se agregan en un único item con la semana del primero.
@@ -139,7 +157,7 @@ describe('buildTodayDecisions por rol', () => {
     const settlement = items[4]!;
     expect(settlement.title).toContain('julio');
     expect(settlement.detail).toContain('1.383,30');
-    expect(settlement.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment`);
+    expect(settlement.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}`);
   });
 
   it('un único hueco sin confirmar se describe con su comida y fecha', () => {
@@ -227,7 +245,7 @@ describe('triaje genérico del outbox', () => {
   });
 
   it('traduce los códigos de error propios y los laborales, y calla ante los desconocidos', () => {
-    expect(describeError('unsupported_aggregate')).toBe('Casa Clara no reconoce este tipo de cambio');
+    expect(describeError('unsupported_aggregate')).toBe('La aplicación no reconoce este tipo de cambio');
     expect(describeError('wiki_revision_conflict')).toBe('Otra persona guardó la nota antes que tú');
     expect(describeError('week_already_reported')).toBe('La semana ya fue enviada');
     expect(describeError('codigo_inventado')).toBeNull();

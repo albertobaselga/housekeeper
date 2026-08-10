@@ -117,13 +117,13 @@ comando y job de [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
 | Comando | Qué cubre | Necesita Postgres | Job |
 |---|---|---|---|
 | `pnpm lint` / `pnpm typecheck` / `pnpm build` | Análisis estático de todos los workspaces | no | `static-analysis` |
-| `pnpm --filter @casa-clara/web verify:bundle` | Presupuesto del JS inicial de Hoy y fuga de fixtures a cliente | no | `static-analysis` |
+| `pnpm --filter @casa-clara/web verify:bundle` | Presupuesto del JS inicial de Hoy, módulos desterrados del arranque y fuga de fixtures a cliente ([por qué](docs/architecture/delivery-quality-contract.md#presupuesto-de-arranque-de-hoy)) | no | `static-analysis` |
 | `pnpm test:unit` | Unidades y dominio de todos los workspaces | no | `unit` |
 | `pnpm test:legacy` | Batería `node:test` del prototipo conservado | no | `unit` |
 | `scripts/ci/validate-compose.sh` | Contratos de los modelos Compose | no | `compose` |
 | `pnpm db:migrate` → `test:db` → `test:rls` → `test:import` → `db:migrate` | Migraciones desde cero, invariantes de esquema, matriz negativa de RLS, importador del manual e idempotencia del runner | **sí** | `database` |
 | `pnpm --filter @casa-clara/server test` | Transacción autorizada, idempotencia y sync bajo RLS | **sí** | `integration` |
-| `pnpm --filter @casa-clara/web test` | 15 suites de integración de los cargadores de servidor bajo RLS | **sí** | `integration` |
+| `pnpm --filter @casa-clara/web test` | 16 suites de integración de los cargadores de servidor bajo RLS | **sí** | `integration` |
 | `pnpm --filter @casa-clara/worker exec vitest run` | Retención y cola del worker con un login `NOBYPASSRLS` | **sí** | `integration` |
 | `pnpm test:e2e` | 8 specs `*.e2e.ts`: PWA, offline e IndexedDB en modo fixture | no | `e2e-fixture` |
 | `pnpm test:a11y` | axe sobre acceso, Hoy, Emergencias y la hoja «Más» | no | `e2e-fixture` |
