@@ -2,6 +2,7 @@ import type { Pool } from 'pg';
 
 import { vacationNewsSince, type VacationEventInput } from '@casa-clara/domain';
 import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { unreadable } from './data-source.server';
 
 import {
   buildVacationPersonView,
@@ -239,10 +240,10 @@ export async function loadVacationOverview(
       }
     );
   } catch (cause) {
-    if (!(cause instanceof AuthorizationError)) {
-      log.error('vacation overview unavailable', { code: errorCode(cause) });
-    }
-    return null;
+    // La regla del §R2: con base configurada, una avería NO puede parecerse a
+    // un hogar sin vacaciones. Sale como 503 honesto; solo el «no te toca»
+    // sigue devolviendo null.
+    return unreadable(log, 'vacation overview', cause);
   }
 }
 
@@ -251,6 +252,11 @@ export async function loadVacationOverview(
  * base no acepta membresía. `seenThrough` es el sello más reciente que la
  * pantalla llegó a enseñar; la base lo acota para que nadie pueda silenciar por
  * adelantado lo que le apunten mañana.
+ *
+ * A diferencia del cargador, un fallo aquí NO tumba nada: devuelve null y el
+ * aviso sigue en Hoy la próxima vez. Es la dirección segura —volver a contarlo
+ * es molesto; darlo por contado sin haberlo guardado lo pierde para siempre— y
+ * además esto es una llamada de fondo, no una pantalla.
  */
 export async function markVacationsSeen(
   user: { id: string },

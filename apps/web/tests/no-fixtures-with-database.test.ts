@@ -102,6 +102,7 @@ const CASES: LoadCase[] = [
   { module: '../src/routes/h/[householdId]/recipes/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/routines/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/employment/+page.server.ts' },
+  { module: '../src/routes/h/[householdId]/employment/vacaciones/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/wiki/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/wiki/[slug]/+page.server.ts', params: { slug: 'lavadora-programa-corto' } },
   { module: '../src/routes/h/[householdId]/search/+page.server.ts', search: '?q=lavadora' },
