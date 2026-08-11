@@ -1,6 +1,5 @@
 import sharp from "sharp";
 import { createWorker } from "tesseract.js";
-import webPush from "web-push";
 
 // El almacén de objetos vive en un módulo propio (object-store.ts) para que el
 // drenaje de la cola desde la web pueda usarlo sin arrastrar `sharp` ni
@@ -10,6 +9,14 @@ import webPush from "web-push";
 // Aquí se re-exportaba también `mail.ts`, el envío por SMTP con su política de
 // entorno sintético. Se retiró entero con la migración 0029: no hay canal de
 // correo y la aplicación no encola ya ningún trabajo que lo necesitara.
+//
+// Y aquí vivía `sendWebPush`, un envoltorio de `web-push` que no usaba ningún
+// manejador: código muerto esperando a que alguien construyera el canal. Ya está
+// construido, y vive en `push.ts` por la misma razón que el almacén vive en el
+// suyo — el drenaje serverless no puede arrastrar binarios nativos—. De paso
+// perdió dos defectos que tenía de nacimiento: `setVapidDetails` es estado
+// global mutable del módulo, y `urgency: "high"` es justo lo contrario de lo que
+// merece cualquier cosa que pase en esta casa.
 export { objectStore, putPrivateObject, type ObjectStoreConfig } from "./object-store.js";
 
 export function createWhatsAppLink(phone: string, message: string): string {
@@ -44,16 +51,4 @@ export async function normalizeImage(image: Uint8Array): Promise<Uint8Array> {
     .resize({ width: 2_048, height: 2_048, fit: "inside", withoutEnlargement: true })
     .webp({ quality: 82 })
     .toBuffer();
-}
-
-export async function sendWebPush(input: {
-  vapid: { subject: string; publicKey: string; privateKey: string };
-  subscription: webPush.PushSubscription;
-  payload: Readonly<Record<string, string>>;
-}): Promise<void> {
-  webPush.setVapidDetails(input.vapid.subject, input.vapid.publicKey, input.vapid.privateKey);
-  await webPush.sendNotification(input.subscription, JSON.stringify(input.payload), {
-    TTL: 300,
-    urgency: "high",
-  });
 }

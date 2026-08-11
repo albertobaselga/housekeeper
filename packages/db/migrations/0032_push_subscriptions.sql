@@ -236,9 +236,13 @@ GRANT EXECUTE ON FUNCTION app.push_run_at(timestamptz) TO casa_clara_app, casa_c
 --          que sus jefes no le han pagado, sobre algo que no está en su mano.
 --        · Nadie recibe nada mientras tenga vacaciones apuntadas.
 --
--- Devuelve el mes y el vencimiento porque el texto se compone en el envío y
--- fuera de la cola: NUNCA importes ni nombres. Lo que va en el payload de un
--- trabajo acaba copiado a `app.audit_events`, que es inmutable y no se poda.
+-- Devuelve el mes, el vencimiento y el acuerdo porque el texto y el enlace se
+-- componen en el envío y fuera de la cola. Lo que NO devuelve, ni por asomo, es
+-- un importe o un nombre: eso se dibuja en la pantalla de bloqueo, sin sesión y
+-- sin desbloquear el teléfono, delante de quien pase. Y lo que va en el payload
+-- de un trabajo acaba copiado a `app.audit_events`, que es inmutable y no se
+-- poda. El acuerdo es lo que permite que el enlace caiga en la persona correcta
+-- cuando en la casa trabaja más de una.
 CREATE FUNCTION app_private.push_notice_targets(
   notice_household uuid,
   notice_settlement uuid,
@@ -249,6 +253,7 @@ RETURNS TABLE (
   endpoint text,
   p256dh text,
   auth text,
+  agreement_id uuid,
   period_start date,
   due_on date
 )
@@ -270,6 +275,7 @@ BEGIN
          device.endpoint,
          device.p256dh,
          device.auth,
+         settlement.agreement_id,
          settlement.period_start,
          settlement.due_on
     FROM app.settlements AS settlement

@@ -37,6 +37,14 @@ import {
   createMaintenanceQueries,
   createPruneDiscoveryHandler,
 } from "./maintenance.js";
+import {
+  PUSH_NOTICE_JOB,
+  createPushNoticeHandler,
+  createPushQueries,
+  createWebPushSender,
+  loadVapidConfig,
+  type VapidConfig,
+} from "./push.js";
 import type { JobHandler } from "./queue.js";
 
 /** Lo que este módulo necesita del logger con redacción de `@casa-clara/server`. */
@@ -52,6 +60,14 @@ export interface JobRuntimeDeps {
   log: JobLogger;
   /** `errorCode` de `@casa-clara/server`: código estable y sin datos personales. */
   errorCode: (cause: unknown) => string;
+  /**
+   * Entorno del que salen las claves VAPID. Se pasa —y no se lee de
+   * `process.env` aquí dentro— porque en Vercel las variables llegan por
+   * `$env/dynamic/private` y porque así las pruebas no dependen del entorno de
+   * quien las ejecute. Sin claves, el canal de avisos sencillamente no existe:
+   * ver `createJobHandlers`.
+   */
+  environment?: Partial<Record<string, string>>;
 }
 
 /**
@@ -88,12 +104,23 @@ export function withJobLogging(
 }
 
 /**
- * Los cuatro tipos de trabajo, ya envueltos en el logger con redacción.
+ * Los tipos de trabajo, ya envueltos en el logger con redacción.
  *
- * Eran siete. La migración 0029 retiró tres de golpe y por la misma razón:
- * `notification.settlement_due` y `notification.routine_due` solo sabían mandar
- * correo, y `time_report.autoconfirm` confirmaba solo un parte semanal que ya no
- * existe. Lo que quedara encolado de los tres pasó a `dead` en esa migración.
+ * Eran siete, luego cuatro. La migración 0029 retiró tres de golpe y por la
+ * misma razón: `notification.settlement_due` y `notification.routine_due` solo
+ * sabían mandar correo, y `time_report.autoconfirm` confirmaba solo un parte
+ * semanal que ya no existe. Lo que quedara encolado de los tres pasó a `dead` en
+ * esa migración.
+ *
+ * El quinto, `notification.push`, es el canal que sustituye a aquellos dos —y
+ * **solo a uno de ellos**: la cuenta del mes por pagar vuelve, hacia quien
+ * administra; el recordatorio de rutinas no vuelve, y las razones están escritas
+ * en `docs/notificaciones.md` §6 y en la cabecera de `push.ts`—. Se registra
+ * **únicamente si hay claves VAPID**: sin ellas no hay canal, y un manejador que
+ * no puede mandar nada dejaría cada aviso muriéndose en la cola con cinco
+ * reintentos. Sin manejador, el trabajo pasa a `dead` en el primer intento con
+ * «tipo de trabajo no soportado» escrito en `last_error`, que es lo que de
+ * verdad ocurre.
  *
  * El objeto se crea con prototipo nulo a propósito: `job_type` viene de una
  * fila de la base y un valor como `constructor` no puede resolver a nada.
@@ -104,9 +131,25 @@ export function createJobHandlers(deps: JobRuntimeDeps): Record<string, JobHandl
   // recurrencias en ics.ts; persistencia y registro SOLO vía funciones definer
   // (0009/0015), sin lectura ni escritura directa sobre app.ics_*.
   const icsQueries = createIcsQueries(deps.pool);
+  const vapid: VapidConfig | null = loadVapidConfig(deps.environment ?? {});
+  const pushQueries = createPushQueries(deps.pool);
 
   const handlers: Record<string, JobHandler> = Object.create(null) as Record<string, JobHandler>;
-  handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler(deps.uploadDocument);
+  handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler({
+    upload: deps.uploadDocument,
+    // El aviso se encola SOLO si el canal existe. Si no hay claves, el recibo se
+    // genera igual y nadie se entera por el móvil: exactamente lo que pasaba
+    // hasta hoy, y nada vive solo detrás del push.
+    announceReceipt: vapid ? pushQueries.announceReceipt : undefined,
+  });
+  if (vapid) {
+    handlers[PUSH_NOTICE_JOB] = createPushNoticeHandler({
+      resolveTargets: pushQueries.resolveTargets,
+      recordDelivery: pushQueries.recordDelivery,
+      rescheduleSettlementDue: pushQueries.rescheduleSettlementDue,
+      send: createWebPushSender(vapid),
+    });
+  }
   handlers[PRUNE_DISCOVERY_JOB] = createPruneDiscoveryHandler({
     prune: maintenanceQueries.pruneDiscoveryData,
     enqueue: maintenanceQueries.enqueueJob,

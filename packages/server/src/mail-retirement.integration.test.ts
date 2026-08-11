@@ -22,12 +22,20 @@ import type { AuthenticatedPrincipal } from "./database.js";
  * han ido —no hay canal de correo, y el parte semanal se retiró entero— y lo
  * que queda por vigilar es que no vuelvan por descuido:
  *
- *   · Cerrar la cuenta del mes no puede volver a encolar `notification.*`. Un
+ *   · Cerrar la cuenta del mes no puede volver a encolar los tipos retirados. Un
  *     trabajo que nadie sabe ejecutar se reintenta, muere y ensucia el log; y
  *     el de la liquidación además se re-encolaba a sí mismo cada tres días.
  *   · Las dos funciones SECURITY DEFINER de la 0006 no pueden reaparecer: la
  *     que auto-confirmaba partes y la que sacaba direcciones de correo de la
  *     base hacia el remitente SMTP.
+ *
+ * Lo que SÍ vuelve, por el canal que existe (migración 0032), es el aviso de la
+ * cuenta del mes por pagar hacia quien administra. Vuelve con las dos cosas que
+ * le faltaban y que aquí se comprueban: un payload REFERENCIAL —sin
+ * destinatarios, sin importes, sin nombres, porque el payload de un trabajo
+ * acaba copiado a `app.audit_events` para siempre— y un `run_at` dentro de la
+ * ventana de silencio. El que no vuelve es el de rutinas, y esa asimetría es la
+ * decisión, no un descuido.
  */
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -108,7 +116,7 @@ describe.runIf(Boolean(adminUrl))("avisos por correo y parte semanal retirados (
     await adminPool?.end();
   });
 
-  it("cerrar la cuenta de mayo encola el recibo y NINGÚN aviso", async () => {
+  it("cerrar la cuenta de mayo encola el recibo y el aviso a quien administra, y nada de lo retirado", async () => {
     const opened = await run(
       ADMIN,
       envelope("settlement", {
@@ -126,13 +134,18 @@ describe.runIf(Boolean(adminUrl))("avisos por correo y parte semanal retirados (
     expect(closed).toMatchObject({ status: "accepted", resourceId: settlementId });
 
     // El recibo sí: es un documento, no un aviso, y la empleada lo necesita.
-    const receipts = await adminPool.query<{ total: number }>(
-      `select count(*)::int as total from app_private.job_queue
+    // Ahora lleva además el identificador de la liquidación, que es lo que le
+    // permite encolar el aviso de «tu recibo ya está» cuando el PDF exista de
+    // verdad — y solo entonces.
+    const receipts = await adminPool.query<{ total: number; settlement_id: string | null }>(
+      `select count(*)::int as total, min(payload ->> 'settlementId') as settlement_id
+         from app_private.job_queue
         where household_id = $1 and job_type = 'document.render_receipt'
           and payload -> 'receipt' ->> 'period' = '2025-05'`,
       [ROBLE_HOUSEHOLD],
     );
     expect(receipts.rows[0]?.total).toBe(1);
+    expect(receipts.rows[0]?.settlement_id).toBe(settlementId);
 
     const notices = await adminPool.query<{ job_type: string }>(
       `select distinct job_type from app_private.job_queue
@@ -143,6 +156,41 @@ describe.runIf(Boolean(adminUrl))("avisos por correo y parte semanal retirados (
       [ROBLE_HOUSEHOLD],
     );
     expect(notices.rows).toEqual([]);
+
+    // El aviso que sí vuelve: uno solo, referencial y en hora.
+    const push = await adminPool.query<{
+      payload: Record<string, unknown>;
+      local_time: string;
+      weekday: number;
+      early: boolean;
+    }>(
+      `select payload,
+              to_char(run_at at time zone 'Europe/Madrid', 'HH24:MI') as local_time,
+              extract(isodow from run_at at time zone 'Europe/Madrid')::int as weekday,
+              run_at < ($2::date)::timestamptz as early
+         from app_private.job_queue
+        where household_id = $1 and job_type = 'notification.push'
+          and payload ->> 'settlementId' = $3`,
+      [ROBLE_HOUSEHOLD, DUE_ON, settlementId],
+    );
+    expect(push.rows).toHaveLength(1);
+    const queued = push.rows[0];
+
+    // Payload referencial: el tópico y el identificador, y NADA más. Ni la
+    // audiencia (se resuelve al enviar, para que retirar el acceso apague los
+    // avisos en el acto) ni el importe (el payload va a un registro inmutable
+    // que no se poda).
+    expect(Object.keys(queued?.payload ?? {}).sort()).toEqual(["settlementId", "topic"]);
+    expect(queued?.payload).toMatchObject({ topic: "settlement.due", settlementId });
+
+    // Y en hora: dentro de la ventana 09:00-21:30, nunca en domingo, y antes del
+    // vencimiento (para eso son los tres días de antelación). El defecto que
+    // esto vigila es real y estaba en la cola: `::date::timestamptz` resolvía la
+    // medianoche en la zona de la SESIÓN, o sea las 02:00 en Madrid.
+    expect(queued?.local_time >= "09:00").toBe(true);
+    expect(queued?.local_time <= "21:30").toBe(true);
+    expect(queued?.weekday).not.toBe(7);
+    expect(queued?.early).toBe(true);
   });
 
   it("las dos funciones definer de la 0006 ya no existen para el worker", async () => {
