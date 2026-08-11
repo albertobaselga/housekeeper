@@ -745,11 +745,19 @@ thead th { border-top: 0; }
 
   <h3 id="fa-hoy">Hoy: el día en una pantalla</h3>
   <p>
-    <span class="ui">Hoy</span> abre con lo importante: el bloque
-    <strong>«Necesita tu decisión»</strong> (jornadas extra por aceptar o compensar,
-    gastos por aprobar, comidas del menú sin confirmar, cuentas del mes pendientes de
-    pago, rutinas que vencen), el menú del día, las rutinas que vencen hoy y la agenda
-    <strong>«Hoy en el calendario»</strong>.
+    <span class="ui">Hoy</span> abre con lo importante: el bloque de decisiones
+    (jornadas extra por aceptar o compensar, gastos por aprobar, comidas del menú sin
+    confirmar, cuentas del mes pendientes de pago), el menú del día, las rutinas de
+    <strong>«Lo que toca hoy»</strong> y la agenda <strong>«Hoy en el
+    calendario»</strong>. El título de la página es el estado del día en una línea:
+    «Lun, 10 ago · 3 por hacer», o «Lun, 10 ago · Todo hecho ✓» cuando no queda nada.
+  </p>
+  <p>
+    El primer bloque también cambia de nombre según lo que traiga:
+    <span class="ui">Necesita tu decisión</span> si hay algo que decidir,
+    <span class="ui">Una novedad para ti</span> o <span class="ui">Novedades para
+    ti</span> si solo hay que enterarse —unas vacaciones recién apuntadas, por
+    ejemplo—, y <span class="ui">Novedades y decisiones</span> si vienen las dos cosas.
   </p>
   <figure class="captura">
     <div class="ventana">
@@ -766,22 +774,85 @@ thead th { border-top: 0; }
   </figure>
   <ul>
     <li><strong>Sin salir de Hoy:</strong> una jornada extra solicitada se acepta con <span class="toques">1 toque</span> en <span class="ui">Aceptar</span> —la fila pasa a «Aceptada ✓»— y una comida se confirma con <span class="toques">1 toque</span> en <span class="ui">Confirmar</span>. El botón <span class="ui">Revisar</span> de al lado sigue llevando a la pantalla completa cuando quieras ver el detalle.</li>
-    <li>Marcar una rutina del día: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span>; la fila queda tachada con el chip «Hecha ✓ · próxima el …».</li>
+    <li>Marcar una rutina del día: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span>; la fila queda tachada con el chip «Hecha ✓ · próxima el mar, 18 ago».</li>
     <li>Ver el menú completo: <span class="toques">1 toque</span> en <span class="ui">Ver la semana →</span>.</li>
   </ul>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · menú, rutinas y agenda</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Roble</span></div>
       <img src="capturas/familia-hoy-agenda.png" loading="lazy" width="2560" height="1600"
-           alt="Parte baja de la pantalla Hoy: la tarjeta Hoy comemos con dos comidas sin confirmar, la columna Vencen hoy con rutinas y sus botones Marcar hecha, y abajo la tarjeta Agenda · Hoy en el calendario con tres eventos del día.">
+           alt="Parte baja de la pantalla Hoy: la tarjeta Hoy comemos con dos comidas sin confirmar, la tarjeta «Lo que toca hoy» con las rutinas del día y sus botones Marcar hecha, y abajo la tarjeta Agenda · Hoy en el calendario con tres eventos del día.">
     </div>
     <figcaption>
       Más abajo, el día completo: <span class="ui">Hoy comemos</span>,
-      <span class="ui">Vencen hoy</span> y <span class="ui">Hoy en el calendario</span>,
-      con los eventos de los calendarios que la familia haya enlazado. Si hoy no hay
-      ningún evento, ese bloque sencillamente no aparece.
+      <span class="ui">Lo que toca hoy</span> y <span class="ui">Hoy en el
+      calendario</span>, con los eventos de los calendarios que la familia haya
+      enlazado. Si hoy no hay ningún evento, ese bloque sencillamente no aparece.
     </figcaption>
   </figure>
+  <p>
+    Dentro de <span class="ui">Lo que toca hoy</span>, lo que se quedó atrás va primero
+    y con su propio encabezado, <span class="ui">Se quedó pendiente</span>, para que no
+    se confunda con lo de hoy. Y cuando el día viene cargado, la lista enseña lo
+    primero y pliega el resto en <span class="ui">Ver las 6 restantes</span>: la
+    pantalla no se hace interminable por un martes de mucho.
+  </p>
+
+  <h4>Al final: lo que ya está hecho, y cómo deshacerlo</h4>
+  <p>
+    Debajo de todo hay un bloque plegado que dice cuántas cosas se han marcado hoy —
+    <span class="ui">4 hechas hoy</span>— y que se abre solo cuando acabas de marcar
+    algo, para que veas dónde ha ido a parar. Cada fila lleva su chip
+    («Hecha ✓ · próxima el mar, 18 ago») y, si tocaba otro día, lo dice: «Tocaba ayer»,
+    «Tocaba el jueves».
+  </p>
+  <div class="tarjeta principio">
+    <h4>Sí hay botón de deshacer</h4>
+    <p>
+      Junto a cada cosa marcada está <span class="ui">Deshacer</span>. Devuelve la
+      rutina a como estaba y <strong>no pide motivo</strong>: es un error de dedo, no
+      una corrección contable. Puede deshacerlo quien la marcó, y también quien
+      administra la casa.
+    </p>
+  </div>
+  <p>
+    <strong>El detalle de una tarea</strong> se abre pulsando su título, y solo si la
+    rutina tiene detalles escritos. Si no los tiene, el título es texto normal: no
+    finge que se puede pulsar para luego no hacer nada. Es la misma regla en las tres
+    listas de Hoy.
+  </p>
+
+  <h4>Esta semana: lo que viene detrás</h4>
+  <p>
+    Debajo de las rutinas del día está <span class="ui">Esta semana</span>, con lo que
+    toca en los <strong>seis días siguientes</strong>, agrupado por día:
+    <span class="ui">Mañana</span>, <span class="ui">El jueves</span>… Sirve para
+    prever —comprar lo que hace falta, cuadrar quién está en casa—, no para trabajar
+    desde ahí: <strong>no tiene ningún botón</strong>. Nada se marca antes de tiempo.
+  </p>
+  <p>
+    Lo que se repite casi a diario aparece una sola vez arriba, con su ritmo al lado
+    («todos los días», «cada semana»), en vez de repetirse seis veces y tapar lo que sí
+    es de un día concreto.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Roble</span></div>
+      <img src="capturas/familia-hoy-esta-semana.png" loading="lazy" width="2560" height="1600"
+           alt="Parte baja de Hoy en el ordenador: el bloque «Esta semana» con lo que se repite a diario arriba y luego los días agrupados bajo Mañana, El jueves y El viernes; debajo, el bloque plegado «4 hechas hoy» y, al final de la pantalla, el enlace Emergencias.">
+    </div>
+    <figcaption>
+      <span class="ui">Esta semana</span> se lee, no se toca. Al fondo, el bloque
+      plegado de lo ya hecho y el enlace a <span class="ui">Emergencias</span>.
+    </figcaption>
+  </figure>
+  <p>
+    El acceso a <span class="ui">Emergencias</span> es la última fila de la pantalla,
+    no una banda en la cabecera. Estaba arriba y se bajó: en un móvil ocupaba 42 píxeles
+    fijos de la primera pantalla, todos los días, para algo que se usa una vez cada
+    mucho y que además está en la hoja <span class="ui">Más</span> y en la barra
+    lateral.
+  </p>
 
   <h3 id="fa-menu">Menú semanal, con las alergias a la vista</h3>
   <p>
@@ -900,28 +971,85 @@ thead th { border-top: 0; }
     «Opcional. Si no las tiene, no hace falta abrir esto.»
   </p>
 
-  <h3 id="fa-rutinas">Rutinas: cada cosa con su próxima fecha</h3>
+  <h3 id="fa-rutinas">Rutinas: cada cosa con su ritmo</h3>
   <p>
-    Las rutinas son tareas que se repiten (por días, semanas, meses o trimestres)
-    y cada una dice <strong>quién la hace</strong>: la familia, la empleada o toda
-    la casa. Sin porcentajes ni históricos de rendimiento: solo qué toca y cuándo.
+    Las rutinas son las tareas que se repiten en la casa, y cada una dice
+    <strong>quién la hace</strong>: la familia, la empleada o toda la casa. Sin
+    porcentajes ni históricos de cumplimiento: solo qué toca y cuándo. La propia
+    pantalla lo dice cuando está vacía: «no se puntúa a nadie».
+  </p>
+  <p>
+    La lista viene <strong>agrupada por la clase de ritmo</strong>, no por quién la
+    hace ni por fecha, y cada grupo lleva su cuenta: «Todos los días · 3», «Cada cierto
+    tiempo · 5». Debajo de cada rutina, una línea que se lee de corrido: «Empleada · los
+    lunes y los jueves · la próxima, el jueves 13 de agosto». Si se pasó de fecha, lo
+    dice igual de claro: «vencía el 8 de agosto».
   </p>
   <figure class="captura">
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Roble</span></div>
       <img src="capturas/familia-rutinas.png" loading="lazy" width="2560" height="1600"
-           alt="Rutinas de la casa: cambiar sábanas y toallas (Empleada · cada semana), regar las plantas de la terraza (Toda la casa · cada 2 días), rutina diaria de referencia, ventilación de la mañana, revisión del botiquín (Familia · cada mes) y confirmar la compra personal de alimentos (Toda la casa · cada 2 semanas), cada una con Marcar hecha y Editar.">
+           alt="Rutinas de la casa agrupadas por ritmo: bajo «Todos los días» la ventilación de la mañana y la rutina diaria de referencia; bajo «Días fijos de la semana» cambiar sábanas y toallas (Empleada); bajo «Cada cierto tiempo» regar las plantas y la revisión del botiquín. Cada fila lleva Marcar hecha, Editar y un desplegable «Cómo se hace».">
     </div>
     <figcaption>
-      Cada rutina se lee de corrido: «Empleada · cada semana · próxima: sáb, 8 ago»,
-      «Toda la casa · cada 2 semanas · próxima: lun, 10 ago».
+      Agrupadas por ritmo, con su cuenta en cada grupo. El desplegable
+      <span class="ui">Cómo se hace</span> guarda las instrucciones de la tarea, y solo
+      aparece si alguien las escribió.
     </figcaption>
   </figure>
   <ul>
-    <li>Marcar una rutina: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span> (desde Hoy o desde Rutinas). La próxima fecha se reprograma sola y la fila muestra «Hecha ✓ · próxima el …».</li>
-    <li>Crear una rutina: <span class="ui">Título</span>, <span class="ui">Detalles</span>, <span class="ui">¿Quién la hace?</span> (Toda la casa · Familia · Empleada), la frase <span class="ui">Se repite</span> «cada <em>2</em> semanas» y <span class="ui">Próxima fecha</span> → <span class="ui">Crear rutina</span>.</li>
+    <li>Marcar una rutina: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span> (desde Hoy o desde Rutinas). La próxima fecha se calcula sola y la fila muestra «Hecha ✓ · próxima el 18 de agosto». Si te equivocaste, <span class="ui">Deshacer</span>.</li>
     <li>Cambiar una existente: <span class="ui">Editar</span> → <span class="ui">Guardar rutina</span>.</li>
   </ul>
+
+  <h4>Una sola pregunta: «¿Cuándo toca?»</h4>
+  <p>
+    Al crear o editar una rutina se piden el <span class="ui">Título</span>, los
+    <span class="ui">Detalles</span> (lo que luego se lee en
+    <span class="ui">Cómo se hace</span>) y <span class="ui">¿Quién la hace?</span>
+    (Toda la casa · Familia · Empleada). Y después una sola pregunta,
+    <strong>«¿Cuándo toca?»</strong>, con cinco respuestas. Se elige una y
+    <strong>solo entonces</strong> aparece lo que esa respuesta necesita: nada de
+    rellenar seis campos para descubrir que cuatro no hacían falta.
+  </p>
+  <ol class="pasos">
+    <li><strong><span class="ui">Todos los días</span></strong> — no pregunta nada más.</li>
+    <li><strong><span class="ui">Días fijos de la semana</span></strong> — siete botones, <span class="ui">L M X J V S D</span>: se marcan los que toquen.</li>
+    <li><strong><span class="ui">Cada cierto tiempo</span></strong> — la frase «cada <em>2</em> semanas» (días, semanas o meses) y <span class="ui">¿Cuándo toca la próxima vez?</span> para poner el primer día.</li>
+    <li><strong><span class="ui">Por temporada</span></strong> — primavera, verano, otoño, invierno: «te avisará el primer día de cada temporada que marques». Para lo que se hace al cambiar el tiempo: los toldos, la caldera, la ropa de cama.</li>
+    <li><strong><span class="ui">Todavía no lo sabemos</span></strong> — para apuntar algo sin decidir aún cada cuánto. «Quedará apuntada en esta página. No aparecerá en Hoy hasta que le pongáis día.»</li>
+  </ol>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Roble</span></div>
+      <img src="capturas/familia-rutinas-cadencia.png" loading="lazy" width="2560" height="1600"
+           alt="Formulario de una rutina con la pregunta «¿Cuándo toca?» y sus cinco opciones: Todos los días, Días fijos de la semana, Cada cierto tiempo, Por temporada y Todavía no lo sabemos. Está elegida «Cada cierto tiempo», que ha revelado la frase «cada 2 semanas» y el campo ¿Cuándo toca la próxima vez?; debajo, la frase de vuelta «Toca cada 2 semanas. La próxima, el lunes 17 de agosto.»">
+    </div>
+    <figcaption>
+      Debajo del todo, la aplicación te devuelve en una frase lo que acabas de elegir, y
+      la reescribe mientras tocas. Si no es la frase que querías, es que no era esa la
+      opción.
+    </figcaption>
+  </figure>
+  <div class="tarjeta">
+    <h4>Lo que no se sabe todavía también se apunta</h4>
+    <p>
+      Una rutina puede nacer sin fecha. Se queda en su propio grupo,
+      <span class="ui">Todavía no lo sabemos</span>, y en vez de
+      <span class="ui">Editar</span> su botón dice <span class="ui">Ponerle día</span>.
+      No aparece en <span class="ui">Hoy</span> ni molesta a nadie hasta que alguien
+      decida cada cuánto toca. Es mejor eso que perder la idea porque en ese momento no
+      sabías si era cada mes o cada dos.
+    </p>
+  </div>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Roble</span></div>
+      <img src="capturas/familia-rutinas-sin-dia.png" loading="lazy" width="2560" height="1600"
+           alt="Grupo «Todavía no lo sabemos» de la lista de rutinas, con dos tareas apuntadas sin fecha —«sin día todavía» en su línea de apoyo— y el botón Ponerle día en vez de Editar.">
+    </div>
+    <figcaption>El grupo de las que esperan fecha. Su botón lo dice: <span class="ui">Ponerle día</span>.</figcaption>
+  </figure>
 
   <h3 id="fa-guia">Guía de la casa: las instrucciones escritas</h3>
   <p>
