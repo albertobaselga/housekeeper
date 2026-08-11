@@ -588,9 +588,6 @@
 @layer pages {
   .hero-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(18rem, .85fr); gap: 1rem; }
   .today-side { display: grid; align-content: start; gap: 1rem; }
-  .progress-ring { display: grid; width: 3.4rem; height: 3.4rem; place-items: center; border-radius: 50%; background: conic-gradient(var(--primary) var(--progress), var(--primary-soft) 0); }
-  .progress-ring::before { grid-area: 1 / 1; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--surface); content: ''; }
-  .progress-ring i { z-index: 1; grid-area: 1 / 1; color: var(--primary); font-size: .7rem; font-style: normal; font-weight: 800; }
   .task-list { display: grid; margin-top: 1rem; }
   .task-row { display: grid; grid-template-columns: 1.45rem 3rem minmax(0, 1fr); align-items: center; gap: .7rem; min-height: 4rem; border-top: 1px solid var(--line); padding: .55rem .1rem; text-align: left; }
   .task-row:first-child { border-top: 0; }
@@ -806,12 +803,11 @@
   .search-results h3 { margin-top: .8rem; font-size: .8rem; }
   .search-results mark { border-radius: .25rem; background: var(--warning-soft); color: inherit; padding: 0 .1rem; }
 
-  .routine-progress { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 1.5fr) auto; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-  .routine-progress progress { width: 100%; height: .55rem; overflow: hidden; border: 0; border-radius: 999px; background: var(--primary-soft); }
-  .routine-progress progress::-webkit-progress-bar { background: var(--primary-soft); }
-  .routine-progress progress::-webkit-progress-value { background: var(--primary); }
-  .routine-progress progress::-moz-progress-bar { background: var(--primary); }
-  .routine-progress > strong { color: var(--primary); }
+  /* `.routine-progress` y `.progress-ring` vivían aquí y ya no: eran la barra
+     con su porcentaje de la maqueta de Rutinas y el anillo relleno en
+     proporción de la maqueta de Hoy. El AC-26 revisado no deja indicadores de
+     cumplimiento «en ninguna vista», y una maqueta es una vista. En su sitio
+     va la CUENTA, que ya tiene estilo propio (`.status-chip`). */
   .routine-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
   .routine-group h2 { margin-bottom: .7rem; }
   .routine-group button { display: flex; width: 100%; align-items: center; gap: .65rem; border-top: 1px solid var(--line); padding: .75rem 0; text-align: left; }
@@ -949,8 +945,6 @@
     .recipe-visual { min-height: 5.5rem; }
     .search-form { grid-template-columns: auto minmax(0, 1fr); }
     .search-form .button { grid-column: 1 / -1; }
-    .routine-progress { grid-template-columns: minmax(0, 1fr) auto; }
-    .routine-progress progress { grid-column: 1 / -1; grid-row: 2; }
     .emergency-callout { align-items: stretch; flex-direction: column; gap: .8rem; }
     .emergency-callout > a { text-align: center; }
     .contact-card { grid-template-columns: 2.7rem minmax(0, 1fr); }

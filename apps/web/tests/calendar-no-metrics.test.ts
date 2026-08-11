@@ -22,17 +22,30 @@ import {
  * cuela en una tarde y sale de la aplicación en un año, así que se vigila el
  * código, no la buena intención.
  *
- * Tres cierres, cada uno por donde ha entrado esto en otros productos:
+ * Cuatro cierres, cada uno por donde ha entrado esto en otros productos:
  *   1. el vocabulario (nadie escribe `donePercent` sin querer);
  *   2. la FORMA de lo que se devuelve (un campo nuevo rompe la prueba);
  *   3. el COLOR (nada del calendario se pinta con el rojo del peligro ni con el
- *      verde del acierto: un mapa de calor es una nota disfrazada).
+ *      verde del acierto: un mapa de calor es una nota disfrazada);
+ *   4. la GEOMETRÍA, y en TODAS las pantallas que enseñan rutinas, incluidas
+ *      las maquetas. «En ninguna vista» se escribió sin excepciones y la
+ *      maqueta es una vista: es la que ven las suites sin base de datos y
+ *      quien entra a mirar la aplicación antes de tener datos. Una barra o un
+ *      anillo rellenos en proporción a lo hecho son el mismo porcentaje sin
+ *      escribir el signo.
  */
 
 const SOURCES = [
   'src/lib/calendar/view.ts',
   'src/lib/server/calendar.server.ts',
   'src/routes/h/[householdId]/calendar/+page.svelte'
+] as const;
+
+/** Las tres pantallas que enseñan rutinas, en sus dos modos (con datos y sin). */
+const ROUTINE_VIEWS = [
+  'src/routes/h/[householdId]/calendar/+page.svelte',
+  'src/routes/h/[householdId]/routines/+page.svelte',
+  'src/routes/h/[householdId]/today/+page.svelte'
 ] as const;
 
 /**
@@ -60,6 +73,31 @@ describe('el calendario no puede puntuar a nadie (AC-26 revisado)', () => {
       const offending = source.split('\n').filter((line) => FORBIDDEN.test(line));
       expect(offending, `${relative} habla de cumplimiento en el código`).toEqual([]);
     }
+  });
+
+  it('ninguna vista de rutinas dibuja un porcentaje, ni con signo ni con geometría', async () => {
+    for (const relative of ROUTINE_VIEWS) {
+      const source = code(await readFile(new URL(`../${relative}`, import.meta.url), 'utf8'));
+      // El signo: calculado (`* 100`) o pegado a una interpolación (`}%`).
+      expect(source, `${relative} calcula un porcentaje`).not.toMatch(/\*\s*100\b/);
+      expect(source, `${relative} imprime un signo de porcentaje`).not.toMatch(/\}%/);
+      // La geometría: `<progress>`/`<meter>` y el anillo de relleno proporcional.
+      expect(source, `${relative} pinta una barra de progreso`).not.toMatch(/<(progress|meter)\b/);
+      expect(source, `${relative} pinta un anillo de progreso`).not.toContain('progress-ring');
+      expect(source, `${relative} rellena una forma en proporción`).not.toContain('conic-gradient');
+    }
+  });
+
+  it('la hoja global tampoco conserva el estilo de esos indicadores', async () => {
+    // Si el CSS sobrevive, el siguiente que necesite «algo de progreso» lo
+    // reutiliza sin pensar y el criterio vuelve a caerse por la puerta de atrás.
+    const css = code(await readFile(new URL('../src/app.css', import.meta.url), 'utf8'));
+    // Se enseñan las LÍNEAS que sobran, no la hoja entera: el fallo de este
+    // cierre tiene que caber en la pantalla de quien lo rompa.
+    const offending = css
+      .split('\n')
+      .filter((line) => line.includes('.progress-ring') || line.includes('.routine-progress'));
+    expect(offending, 'app.css conserva el estilo de un indicador de cumplimiento').toEqual([]);
   });
 
   it('la página no colorea el pasado por rendimiento', async () => {

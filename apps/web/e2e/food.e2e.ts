@@ -40,8 +40,12 @@ test('admin en modo fixture: las rutinas conservan el toggle demo y nada más', 
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/routines`);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Rutinas');
-  // El modo fixture mantiene su barra de progreso local de demostración.
-  await expect(page.locator('.routine-progress')).toBeVisible();
+  // El modo fixture dice CUÁNTAS quedan y no cuánto se cumple: la barra con su
+  // porcentaje se retiró porque el AC-26 revisado no admite indicadores de
+  // cumplimiento en ninguna vista, y la maqueta es la vista que más se enseña.
+  await expect(page.locator('p.status-chip')).toHaveText(/^\d+ de \d+ hechas hoy$/);
+  await expect(page.locator('progress')).toHaveCount(0);
+  await expect(page.locator('.page-wrap')).not.toContainText('%');
   await expect(page.locator('.routine-columns')).toBeVisible();
   for (const label of ['Marcar hecha', 'Crear rutina', 'Guardar rutina', 'Editar']) {
     await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0);

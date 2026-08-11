@@ -374,8 +374,15 @@
       </section>
     {/if}
   {:else if data.routines}
-    <PageHeader eyebrow="Orden cotidiano" title="Rutinas" description="Pasos pequeños y compartidos, con progreso local aunque falte la red." />
-    <section class="routine-progress card"><div><p class="eyebrow">Progreso de hoy</p><h2>{done} de {total} tareas</h2></div><progress max={total} value={done}>{done} de {total}</progress><strong>{Math.round(done / total * 100)}%</strong></section>
+    <PageHeader eyebrow="Orden cotidiano" title="Rutinas" description="Pasos pequeños y compartidos, que se marcan aunque falte la red." />
+    <!-- Aquí había una barra de progreso con su porcentaje. Se retiró: el AC-26
+         revisado prohíbe cualquier indicador de cumplimiento «en ninguna
+         vista», y la maqueta ES una vista —de hecho es la que ven las suites
+         sin base de datos y quien entra a mirar la aplicación—. Queda la
+         CUENTA, el mismo trato que recibe Hoy con datos reales (`countChip`):
+         decir cuántas quedan ayuda a organizarse; decir qué porcentaje se
+         cumple es puntuar a quien las hace. -->
+    <p class="status-chip" role="status">{done} de {total} hechas hoy</p>
     <div class="routine-columns">
       {#each groups as group}
         <section class="card routine-group"><h2>{group.title}</h2>

@@ -355,8 +355,11 @@
     <section class="hero-grid" aria-label="Resumen del día">
       <article class="card task-card">
         <div class="section-heading">
+          <!-- El anillo que iba aquí se rellenaba en proporción a lo hecho:
+               un porcentaje dibujado. Fuera por el AC-26 revisado, que no
+               admite indicadores de cumplimiento en NINGUNA vista, tampoco en
+               la maqueta. La cuenta se dice con palabras, en el titular. -->
           <div><p class="eyebrow">Rutina de hoy</p><h2>{completeCount} de {tasks.length} completadas</h2></div>
-          <span class="progress-ring" style={`--progress: ${(completeCount / tasks.length) * 360}deg`} aria-hidden="true"><i>{completeCount}/{tasks.length}</i></span>
         </div>
         <div class="task-list">
           {#each tasks as task}
