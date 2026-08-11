@@ -2,9 +2,10 @@ import { createHash } from 'node:crypto';
 
 import { error } from '@sveltejs/kit';
 import ical from 'ical-generator';
-import { occurrencesBetween } from '@casa-clara/domain';
+import { nextOccurrenceOnOrAfter, occurrencesBetween } from '@casa-clara/domain';
 
 import { getDatabasePool } from '$lib/server/db.server';
+import { routineRrule } from '$lib/server/ics-rrule.server';
 import {
   routineScheduleFrom,
   type RoutineScheduleRow
@@ -12,7 +13,12 @@ import {
 import type { RequestHandler } from './$types';
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{20,128}$/;
-/** Ventana publicada: un año por delante, que es lo que mira un calendario. */
+/**
+ * Ventana de las ocurrencias SUELTAS: un año por delante, que es lo que mira un
+ * calendario. Las cadencias que se dicen con RRULE no tienen ventana —la serie
+ * es infinita y la expande el cliente—, de modo que esto solo gobierna el
+ * repuesto de `month_day >= 29`.
+ */
 const HORIZON_DAYS = 365;
 /** Tope por rutina, para que una diaria no llene el feed ella sola. */
 const MAX_EVENTS_PER_ROUTINE = 60;
@@ -49,9 +55,28 @@ function addDaysISO(isoDate: string, days: number): string {
  * que solo promete ser cota inferior, y un calendario que arrancara en ella
  * podría repetir lo ya hecho o empezar tarde.
  *
- * Sigue emitiendo ocurrencias explícitas y no RRULE: la emisión fiel con RRULE
- * es trabajo aparte (§5.4, T8), y hasta que llegue vale más un calendario que
- * dice la verdad con muchas líneas que uno vacío.
+ * DESDE T8 LA CADENCIA SE PUBLICA COMO REGLA (§5.4). Un VEVENT con su `RRULE`
+ * en vez de cientos sueltos: el suscriptor ve «esto se repite cada semana» y su
+ * calendario no se queda seco al pasar el horizonte. La traducción vive en
+ * `ics-rrule.server.ts` y es de todo o nada: cuando la RRULE no reproduciría
+ * exactamente lo que genera el motor —`month_day >= 29`, donde la RFC salta los
+ * meses cortos y nosotros recortamos— se vuelve a las ocurrencias explícitas,
+ * que son feas pero ciertas.
+ *
+ * Dos decisiones del VEVENT repetido que conviene tener a la vista:
+ *
+ * · `DTSTART` es la PRIMERA ocurrencia de la regla contada desde el ancla, no
+ *   la primera a partir de hoy. La RFC deja indefinido el conjunto generado por
+ *   un `DTSTART` que no case con la regla, así que tiene que ser una ocurrencia
+ *   de verdad; y tomando la del ancla el VEVENT sale idéntico en cada refresco,
+ *   mientras que uno que empezara «hoy» cambiaría de `DTSTART` cada día sin
+ *   subir `SEQUENCE`, que es justo la forma de que un cliente suscrito se quede
+ *   con datos viejos. El precio, asumido, es que el pasado de la rutina también
+ *   queda publicado; para una serie repetida no cuesta nada y §E2 ya dice que
+ *   el pasado se ve.
+ *
+ * · Una rutina cuya cadencia ya terminó (`ends_on` pasado) no publica nada, ni
+ *   siquiera su serie muerta.
  */
 export const GET: RequestHandler = async ({ params }) => {
   if (!TOKEN_PATTERN.test(params.token)) error(404, 'Ese calendario ya no existe');
@@ -87,6 +112,32 @@ export const GET: RequestHandler = async ({ params }) => {
     // filtra, pero el lector no se fía: `null` aquí significa lo mismo.
     const schedule = routineScheduleFrom(row);
     if (schedule === null) continue;
+    // Una cadencia agotada no publica ni su historia: sin ocurrencias por
+    // delante no hay nada a lo que suscribirse.
+    if (nextOccurrenceOnOrAfter(schedule, today) === null) continue;
+
+    const summary = row.title ?? 'Rutina';
+    const description = row.details || undefined;
+
+    const rrule = routineRrule(schedule);
+    const seriesStart = rrule === null ? null : nextOccurrenceOnOrAfter(schedule, schedule.anchorOn);
+    if (rrule !== null && seriesStart !== null) {
+      calendar.createEvent({
+        id: `${row.routine_id}@casaclara`,
+        start: new Date(`${seriesStart}T00:00:00.000Z`),
+        allDay: true,
+        summary,
+        description,
+        // La RRULE va como texto y no como objeto de opciones a propósito:
+        // ical-generator escribe `UNTIL` en forma de DATE-TIME UTC, y la RFC
+        // 5545 §3.3.10 exige que sea del mismo tipo que `DTSTART`, que aquí es
+        // una DATE. Escribirla entera es la única manera de que `ends_on` se
+        // publique sin ambigüedad de zona horaria.
+        repeating: rrule
+      });
+      continue;
+    }
+
     for (const dueOn of occurrencesBetween(schedule, today, horizon, {
       limit: MAX_EVENTS_PER_ROUTINE
     })) {
@@ -94,8 +145,8 @@ export const GET: RequestHandler = async ({ params }) => {
         id: `${row.routine_id}-${dueOn}@casaclara`,
         start: new Date(`${dueOn}T00:00:00.000Z`),
         allDay: true,
-        summary: row.title ?? 'Rutina',
-        description: row.details || undefined
+        summary,
+        description
       });
     }
   }
