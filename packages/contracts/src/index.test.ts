@@ -17,6 +17,7 @@ import {
   extraWorkCommandPayloadSchema,
   extraWorkTypeInputSchema,
   recurringSupplementInputSchema,
+  retiredRoutineUpsertPayloadSchema,
   routineUpsertPayloadSchema,
   scheduleDayInputSchema,
   vacationCommandPayloadSchema,
@@ -430,7 +431,7 @@ describe("alta de rutina: las dos formas conviven (§3.4)", () => {
   });
 
   it("ni la próxima fecha ni la política de atrasadas se pueden dictar desde fuera", () => {
-    // `next_due_on` es caché derivada de la regla (§2.7) y `overdue_policy` se
+    // `next_due_hint` es caché derivada de la regla (§2.7) y `overdue_policy` se
     // DERIVA del patrón en el servidor (§2.5). Que el contrato no tenga dónde
     // ponerlas es lo que garantiza que nadie las decida por su cuenta.
     const parsed = routineUpsertPayloadSchema.parse({
@@ -445,21 +446,23 @@ describe("alta de rutina: las dos formas conviven (§3.4)", () => {
     expect(parsed).not.toHaveProperty("overduePolicy");
   });
 
-  it("sigue aceptando la forma anterior al despliegue, para no perder la cola sin conexión", () => {
-    // Caso 21 de §9: un envelope encolado en IndexedDB antes de la 0023 llega
-    // después y NO se puede rechazar; retirar esta rama es trabajo de T10, un
-    // despliegue más tarde.
-    expect(
-      routineUpsertPayloadSchema.parse({
-        ...identity,
-        frequency: "quarterly",
-        intervalCount: 2,
-        nextDueOn: "2026-08-10",
-      }),
-    ).toEqual({ ...identity, frequency: "quarterly", intervalCount: 2, nextDueOn: "2026-08-10" });
+  it("ya no acepta la forma anterior al despliegue, pero la sabe reconocer", () => {
+    // La contrapartida del caso 21 de §9, un despliegue después (T10, migración
+    // 0033). Durante la ventana de la 0023 esta carga se aceptaba y se traducía;
+    // ahora no entra. Lo que NO se pierde es la capacidad de identificarla: el
+    // comando la reconoce con este esquema para poder rechazarla por su nombre
+    // en vez de con un «falta pattern» que no explicaría nada.
+    const antigua = {
+      ...identity,
+      frequency: "quarterly",
+      intervalCount: 2,
+      nextDueOn: "2026-08-10",
+    };
+    expect(routineUpsertPayloadSchema.safeParse(antigua).success).toBe(false);
+    expect(retiredRoutineUpsertPayloadSchema.safeParse(antigua).success).toBe(true);
 
-    // Un cliente de la transición que mande las dos formas entra por la rica:
-    // el orden de la unión no es casual.
+    // Un cliente que mande las dos formas sigue entrando por la rica, y los
+    // campos retirados se caen: nunca llegan a la base.
     expect(
       routineUpsertPayloadSchema.parse({
         ...identity,
@@ -473,11 +476,11 @@ describe("alta de rutina: las dos formas conviven (§3.4)", () => {
     ).toEqual({ ...identity, pattern: "every_n_days", anchorOn: "2026-08-10", repeatEvery: 1 });
   });
 
-  it("una carga sin ninguna de las dos formas dice cuál falta", () => {
+  it("una carga sin cadencia rica ni forma antigua no se confunde con la retirada", () => {
     const failed = routineUpsertPayloadSchema.safeParse(identity);
     expect(failed.success).toBe(false);
-    expect(failed.success === false && failed.error.issues[0]?.message).toMatch(
-      /pattern|frequency/,
-    );
+    // Y tampoco es la forma vieja: el comando solo debe dar
+    // `routine_cadence_format_retired` cuando de verdad lo sea.
+    expect(retiredRoutineUpsertPayloadSchema.safeParse(identity).success).toBe(false);
   });
 });

@@ -142,26 +142,28 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, free_text
 
 -- Las columnas de patrón (0023) van explícitas porque `routines_pattern_shape`
 -- no admite una fila con fecha y sin cadencia: `pattern IS NULL` significa «se
--- hace, falta decidir cuándo» y obliga a `next_due_on IS NULL`. Las heredadas
--- (`frequency`, `interval_count`) siguen aquí a propósito: son NOT NULL hasta
--- que la 0024 las retire, y esa retirada y esta línea van en la MISMA tarea.
--- Ni una aserción de este fichero cambia: las columnas nuevas no abren nada.
-INSERT INTO app.routines (id, household_id, title, audience, frequency, interval_count, next_due_on,
+-- hace, falta decidir cuándo» y obliga a `next_due_hint IS NULL`. Las heredadas
+-- (`frequency`, `interval_count`) YA NO ESTÁN: las retiró la 0033, que renombró
+-- además `next_due_on` a `next_due_hint`. Ni una aserción de este fichero
+-- cambia por ello, y ése es justo el punto — la audiencia se decide con
+-- `audience` y el hogar con `household_id`; la cadencia nunca abrió ni cerró
+-- nada, ni cuando había dos vocabularios ni ahora que hay uno.
+INSERT INTO app.routines (id, household_id, title, audience, next_due_hint,
   pattern, anchor_on, repeat_every, weekdays, month_day, overdue_policy, created_by_membership_id) VALUES
   ('aa500000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-   'Revisión de seguros (familia)', 'family', 'monthly', 1, '2026-09-01',
+   'Revisión de seguros (familia)', 'family', '2026-09-01',
    'day_of_month', '2026-09-01', 1, NULL, 1, 'carry',
    '11000000-0000-4000-8000-000000000001'),
   ('aa500000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
-   'Plancha semanal (empleada)', 'employee', 'weekly', 1, '2026-08-17',
+   'Plancha semanal (empleada)', 'employee', '2026-08-17',
    'days_of_week', '2026-08-17', 1, ARRAY[1]::smallint[], NULL, 'skip',
    '11000000-0000-4000-8000-000000000001'),
   ('aa500000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
-   'Riego de plantas (todos)', 'all', 'daily', 1, '2026-08-08',
+   'Riego de plantas (todos)', 'all', '2026-08-08',
    'every_n_days', '2026-08-08', 1, NULL, NULL, 'skip',
    '11000000-0000-4000-8000-000000000001'),
   ('ab500000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
-   'Rutina del olivo', 'all', 'weekly', 1, '2026-08-17',
+   'Rutina del olivo', 'all', '2026-08-17',
    'days_of_week', '2026-08-17', 1, ARRAY[1]::smallint[], NULL, 'skip',
    '21000000-0000-4000-8000-000000000001');
 

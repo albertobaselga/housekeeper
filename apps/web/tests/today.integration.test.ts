@@ -122,13 +122,13 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, free_text
   ('${SLOT_HOY}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', '${TODAY}', 'comida', 'Guiso de verduras IT', 'Apartar sin sal', '${ADMIN_MEMBERSHIP}'),
   ('${SLOT_FUERA_VENTANA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', '${addDays(TODAY, 5)}', 'cena', 'Sopa IT', '', '${ADMIN_MEMBERSHIP}');
 
-INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+INSERT INTO app.routines (id, household_id, title, details, audience, next_due_hint, created_by_membership_id,
   pattern, anchor_on, repeat_every, weekdays, overdue_policy) VALUES
-  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7, NULL, 'carry'),
-  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', 'monthly', 1, '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${addDays(TODAY, -1)}', 30, NULL, 'carry'),
-  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7, NULL, 'carry'),
-  ('${ROUTINE_DIARIA}', '${FIXTURE_HOUSEHOLD}', 'Ventilación (IT)', '', 'employee', 'daily', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 1, NULL, 'skip'),
-  ('${ROUTINE_UN_DIA}', '${FIXTURE_HOUSEHOLD}', 'Colada de sábanas (IT)', '', 'employee', 'weekly', 1, '${EN_DOS_DIAS}', '${ADMIN_MEMBERSHIP}', 'days_of_week', '${EN_DOS_DIAS}', 1, ARRAY[${EN_DOS_DIAS_ISODOW}]::smallint[], 'skip');
+  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7, NULL, 'carry'),
+  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${addDays(TODAY, -1)}', 30, NULL, 'carry'),
+  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7, NULL, 'carry'),
+  ('${ROUTINE_DIARIA}', '${FIXTURE_HOUSEHOLD}', 'Ventilación (IT)', '', 'employee', '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 1, NULL, 'skip'),
+  ('${ROUTINE_UN_DIA}', '${FIXTURE_HOUSEHOLD}', 'Colada de sábanas (IT)', '', 'employee', '${EN_DOS_DIAS}', '${ADMIN_MEMBERSHIP}', 'days_of_week', '${EN_DOS_DIAS}', 1, ARRAY[${EN_DOS_DIAS_ISODOW}]::smallint[], 'skip');
 
 COMMIT;
 `;

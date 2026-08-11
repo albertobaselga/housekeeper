@@ -108,23 +108,57 @@ BEGIN
     RAISE EXCEPTION 'app.routines lacks the expected recurrence columns: %', missing;
   END IF;
 
-  -- `next_due_on` dejó de ser estado y pasó a ser caché: sin cadencia
-  -- confirmada no hay fecha, así que la columna TIENE que admitir NULL.
+  -- `next_due_on` dejó de ser estado y pasó a ser caché con la 0023, y con la
+  -- 0033 dejó también de llamarse como si fuera estado: es `next_due_hint`.
+  -- Sin cadencia confirmada no hay fecha, así que admite NULL.
   IF (SELECT is_nullable FROM information_schema.columns
-       WHERE table_schema = 'app' AND table_name = 'routines' AND column_name = 'next_due_on') <> 'YES' THEN
-    RAISE EXCEPTION 'app.routines.next_due_on must be nullable after 0023';
+       WHERE table_schema = 'app' AND table_name = 'routines' AND column_name = 'next_due_hint') <> 'YES' THEN
+    RAISE EXCEPTION 'app.routines.next_due_hint must exist and be nullable after 0033';
   END IF;
 
-  -- Expandir, no contraer: lo heredado sigue en pie hasta la 0024. Si esto
-  -- falla es que alguien adelantó la contracción y un envelope encolado sin
-  -- conexión antes del despliegue se perderá.
-  IF NOT EXISTS (
+  -- Y ya está contraído: la 0033 retiró el vocabulario viejo. Que la columna
+  -- ANTIGUA no exista se comprueba aparte del nombre nuevo, porque un renombrado
+  -- a medias —las dos a la vez— dejaría dos verdades para la misma cosa.
+  IF EXISTS (
     SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'app' AND table_name = 'routines'
-       AND column_name IN ('frequency', 'interval_count')
-     GROUP BY table_name HAVING count(*) = 2
+       AND column_name IN ('frequency', 'interval_count', 'next_due_on')
   ) THEN
-    RAISE EXCEPTION 'frequency/interval_count must survive 0023; the contract is 0024 work';
+    RAISE EXCEPTION 'frequency/interval_count/next_due_on must be gone after 0033';
+  END IF;
+
+  -- El ENUM que solo sostenía `frequency`, y la definer que avanzaba la fecha
+  -- con un CASE sobre él. La sustituyó `app.set_routine_due_hint`, que no
+  -- calcula: recibe la fecha del motor puro y refresca la caché.
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typname = 'routine_frequency') THEN
+    RAISE EXCEPTION 'app.routine_frequency must be gone after 0033';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc AS p
+     JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'app' AND p.proname = 'advance_routine_after_completion'
+  ) THEN
+    RAISE EXCEPTION 'app.advance_routine_after_completion must be gone after 0033';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc AS p
+     JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'app' AND p.proname = 'set_routine_due_hint'
+  ) THEN
+    RAISE EXCEPTION 'app.set_routine_due_hint must survive 0033';
+  END IF;
+
+  -- Y ni un cuerpo de función se quedó citando el nombre viejo. Es el fallo que
+  -- un RENAME no puede evitar por sí solo: los cuerpos se guardan como texto y
+  -- no se comprueban al renombrar, así que la base quedaría «bien» y la primera
+  -- llamada en caliente moriría.
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc AS p
+     JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+    WHERE n.nspname IN ('app', 'app_private')
+      AND (p.prosrc LIKE '%next_due_on%' OR p.prosrc LIKE '%interval_count%')
+  ) THEN
+    RAISE EXCEPTION 'a function body still names a column retired by 0033';
   END IF;
 
   IF NOT EXISTS (
@@ -143,6 +177,7 @@ BEGIN
     FROM pg_catalog.pg_proc
    WHERE oid = 'app_private.ics_feed_events(text)'::regprocedure;
   IF ics_result IS NULL OR ics_result LIKE '%frequency%' OR ics_result LIKE '%interval_count%'
+     OR ics_result LIKE '%next_due_on%' OR ics_result NOT LIKE '%next_due_hint%'
      OR ics_result NOT LIKE '%pattern%' OR ics_result NOT LIKE '%weekdays%' THEN
     RAISE EXCEPTION 'app_private.ics_feed_events still returns the pre-0023 recurrence: %', ics_result;
   END IF;

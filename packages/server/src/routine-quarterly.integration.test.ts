@@ -9,7 +9,9 @@ import {
   type CommandEnvelopeV1,
 } from "@casa-clara/contracts";
 
-import { advanceDueDate, rhythmCommandHandlers } from "./commands/rhythm.js";
+import { nextOccurrenceOnOrAfter, type RoutineRule } from "@casa-clara/domain";
+
+import { rhythmCommandHandlers } from "./commands/rhythm.js";
 import { processSyncBatch } from "./sync.js";
 import type { AuthenticatedPrincipal } from "./database.js";
 
@@ -73,21 +75,23 @@ describe.runIf(Boolean(adminUrl))("AC-25 literal: rutina quarterly con audiencia
     await adminPool?.end();
   });
 
-  it("quarterly + family: el avance recorta 30/11 → 28/02 y no se encola ningún aviso", async () => {
-    // El caso literal del criterio: frecuencia trimestral Y audiencia familiar
-    // en la MISMA rutina (la revisión adversarial señaló que hasta ahora solo
-    // existían por separado). El vencimiento 30/11 fuerza además el recorte de
-    // fin de mes al avanzar el trimestre: 2026-11-30 + 3 meses → 28/02/2027
-    // (2027 no es bisiesto).
+  it("trimestral + family: la ocurrencia de febrero se recorta a 28 y no se encola ningún aviso", async () => {
+    // El caso literal del criterio: cadencia trimestral Y audiencia familiar en
+    // la MISMA rutina (la revisión adversarial señaló que hasta ahora solo
+    // existían por separado). «Trimestral» ya no es una palabra del vocabulario
+    // sino lo que de verdad significa: el día 30 de cada tres meses. El
+    // vencimiento 30/11 fuerza además el borde de fin de mes: la ocurrencia
+    // siguiente cae en febrero de 2027, que no tiene 30 ni es bisiesto.
     const created = await run(
       ADMIN,
       envelope({
         action: "upsert",
         title: "Revisión trimestral de la caldera",
         audience: "family",
-        frequency: "quarterly",
-        intervalCount: 1,
-        nextDueOn: "2026-11-30",
+        pattern: "day_of_month",
+        anchorOn: "2026-11-30",
+        repeatEvery: 3,
+        monthDay: 30,
       }),
     );
     expect(created).toMatchObject({ status: "accepted" });
@@ -99,12 +103,11 @@ describe.runIf(Boolean(adminUrl))("AC-25 literal: rutina quarterly con audiencia
     );
     expect(completed).toMatchObject({ status: "accepted", resourceId: routineId });
 
-    // Clamp de fin de mes aplicado por la recurrencia trimestral.
-    const advanced = await adminPool.query<{ next_due_on: string }>(
-      "select next_due_on::text as next_due_on from app.routines where id = $1",
+    const advanced = await adminPool.query<{ next_due_hint: string }>(
+      "select next_due_hint::text as next_due_hint from app.routines where id = $1",
       [routineId],
     );
-    expect(advanced.rows).toEqual([{ next_due_on: "2027-02-28" }]);
+    expect(advanced.rows).toEqual([{ next_due_hint: "2027-02-28" }]);
 
     // El aviso `notification.routine_due` se retiró con la migración 0029: solo
     // sabía mandar correo y arrastraba las direcciones de la audiencia dentro
@@ -122,11 +125,33 @@ describe.runIf(Boolean(adminUrl))("AC-25 literal: rutina quarterly con audiencia
     expect(jobs.rows[0]?.total).toBe(0);
   });
 
-  it("el clamp trimestral es el de calendario también en año bisiesto: 30/11/2027 → 29/02/2028", () => {
-    // La misma función pura que usa el comando: 2028 sí es bisiesto.
-    expect(advanceDueDate("2027-11-30", "quarterly", 1)).toBe("2028-02-29");
-    expect(advanceDueDate("2026-11-30", "quarterly", 1)).toBe("2027-02-28");
-    // Con intervalCount 2 (semestral por trimestres) no hay recorte: 30/05.
-    expect(advanceDueDate("2026-11-30", "quarterly", 2)).toBe("2027-05-30");
+  it("el recorte de febrero es del calendario, y NO se queda pegado al mes siguiente", () => {
+    // La misma función pura que usa el comando. Antes esto se comprobaba con
+    // `advanceDueDate`, que retiró la 0033 junto con el resto del vocabulario
+    // viejo; la aritmética que queda es una sola y vive en @casa-clara/domain.
+    const trimestral: RoutineRule = {
+      pattern: "day_of_month",
+      anchorOn: "2026-11-30",
+      repeatEvery: 3,
+      monthDay: 30,
+      endsOn: null,
+    };
+    expect(nextOccurrenceOnOrAfter(trimestral, "2026-12-01")).toBe("2027-02-28");
+    // 2028 sí es bisiesto, y febrero llega hasta el 29.
+    expect(nextOccurrenceOnOrAfter({ ...trimestral, anchorOn: "2027-11-30" }, "2027-12-01")).toBe(
+      "2028-02-29",
+    );
+
+    // Y aquí está la diferencia que justificaba la ola entera. El avance viejo
+    // guardaba el 28 como nuevo estado, así que la rutina se quedaba en el 28
+    // PARA SIEMPRE: una revisión pactada «el día 30» se corría sola a final de
+    // mes en cuanto pasaba una vez por febrero. La regla no se recorta —solo se
+    // recorta la ocurrencia que no cabe—, así que en mayo vuelve el día 30.
+    expect(nextOccurrenceOnOrAfter(trimestral, "2027-03-01")).toBe("2027-05-30");
+
+    // Cada seis meses (semestral) no toca febrero y no hay recorte ninguno.
+    expect(nextOccurrenceOnOrAfter({ ...trimestral, repeatEvery: 6 }, "2026-12-01")).toBe(
+      "2027-05-30",
+    );
   });
 });

@@ -163,16 +163,16 @@ test('siembra: una rutina diaria, una estacional y una privada de la familia', a
   await withAdminDb(async (admin) => {
     await admin.query(
       `insert into app.routines (id, household_id, title, details, audience,
-                                 frequency, interval_count, next_due_on, created_by_membership_id,
+                                 next_due_hint, created_by_membership_id,
                                  pattern, anchor_on, repeat_every, months, month_day, overdue_policy)
        values
          ($1, $4, 'Limpieza de baños (E2E)', 'Sin lejía en el mármol', 'all',
-          'daily', 1, $5::date, $8, 'every_n_days', $6::date, 1, null, null, 'skip'),
+          $5::date, $8, 'every_n_days', $6::date, 1, null, null, 'skip'),
          ($2, $4, 'Cambio de armarios (E2E)', '', 'all',
-          'quarterly', 2, $5::date, $8, 'months_of_year', $7::date, null,
+          $5::date, $8, 'months_of_year', $7::date, null,
           array[6,12]::smallint[], 1, 'carry'),
          ($3, $4, '${PRIVATE_TITLE}', '${PRIVATE_DETAILS}', 'family',
-          'daily', 1, $5::date, $8, 'every_n_days', $6::date, 1, null, null, 'skip')`,
+          $5::date, $8, 'every_n_days', $6::date, 1, null, null, 'skip')`,
       [
         DAILY_ROUTINE,
         SEASONAL_ROUTINE,

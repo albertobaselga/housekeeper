@@ -72,6 +72,12 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   routine_not_found: 'La rutina ya no existe',
   already_completed: 'Ya estaba marcada como hecha',
   routine_has_no_schedule: 'Esa rutina todavía no tiene día',
+  // Lo pone el servidor ante un alta guardada sin conexión con el formato de
+  // cadencia anterior a la 0023, que la 0033 retiró. Se explica en vez de
+  // traducirse a ciegas: el formato viejo no sabe decir «cada 15 días» ni «en
+  // junio y en diciembre», así que adivinarlo guardaría otra cosa.
+  routine_cadence_format_retired:
+    'Esa rutina se guardó con el formato anterior: vuelve a darla de alta con la aplicación al día',
   completion_not_found: 'Esa rutina ya no estaba marcada como hecha',
   feed_not_found: 'El calendario externo ya no existe',
   source_not_found: 'El origen ya no existe',

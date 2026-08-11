@@ -54,12 +54,11 @@ Gírala hacia la derecha hasta el tope y avisa a la familia.',
       UPDATE app.wiki_pages SET current_revision_id = '${REVISION}' WHERE id = '${PAGE_PINNED}';
 
       INSERT INTO app.routines (
-        id, household_id, title, details, audience, frequency, interval_count,
-        next_due_on, created_by_membership_id,
+        id, household_id, title, details, audience, next_due_hint, created_by_membership_id,
         pattern, anchor_on, repeat_every
       ) VALUES (
         '${ROUTINE_OFF}', '${HOUSEHOLD}', 'Cerrar el gas por la noche E2E-OFF', 'Llave de la cocina',
-        'all', 'daily', 1, '${TODAY}', '${E2E_SEED.memberships.admin}',
+        'all', '${TODAY}', '${E2E_SEED.memberships.admin}',
         'every_n_days', '${TODAY}', 1
       ) ON CONFLICT DO NOTHING;
 

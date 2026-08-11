@@ -40,7 +40,7 @@ DATABASE_URL='postgresql://casa_admin@127.0.0.1:54329/casaclara_docs' \
 |---|---|---|
 | Guía de la casa | 7 apartados en el orden del manual; 52 notas (44 publicadas y 8 sin publicar por conservar «Pendiente de completar por la familia»); fijadas: Principios generales, inicio y cierre de jornada, y el índice de pendientes | idempotente por hash de contenido |
 | Índice «Pendientes de completar» | nota sin publicar y fijada, con enlace a cada nota con huecos y a los pendientes que viven en la app (contactos, comensales, recetas, acuerdos) | se regenera con el corpus |
-| Rutinas | 2 diarias de la empleada (rutina diaria, ventilación), 1 semanal familiar (concretar plan semanal), 1 quincenal de toda la casa (compra personal, semanal cada 2), 1 mensual familiar (plan periódico); cada una con «Ver ficha: …» | upsert por id determinista; `next_due_on` solo se fija al crear |
+| Rutinas | 2 diarias de la empleada (rutina diaria, ventilación), 1 semanal familiar (concretar plan semanal), 1 quincenal de toda la casa (compra personal, semanal cada 2), 1 mensual familiar (plan periódico); cada una con «Ver ficha: …» | upsert por id determinista; `next_due_hint` solo se fija al crear |
 | Contactos | «Emergencias Comunidad de Madrid» (112), tipo emergencia, destacado (aparece en Emergencias y en el paquete offline). Las demás filas del Anexo G son placeholders y NO se siembran | upsert por id determinista |
 | Menú | plantilla «Semana tipo del manual (pendiente)» con 14 huecos de texto libre (comida y cena × 7 días) sobre el primer grupo de comensales vivo; aplicable sobre una semana vacía | upsert por id determinista |
 | Recetario | **0 recetas**: el Anexo D llegó íntegramente «Pendiente de completar por la familia» | — |

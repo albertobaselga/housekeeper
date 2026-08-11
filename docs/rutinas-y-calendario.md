@@ -328,8 +328,14 @@ ocurrencia, simplemente no se pinta. Único rechazo nuevo: `pattern IS NULL`.
 
 Producción está viva. **Expandir y contraer, en dos migraciones separadas por un
 despliegue.** Los ficheros son `0023_routine_recurrence.sql` y
-`0024_routine_recurrence_contract.sql` (0019 no existe; la numeración salta de 0018 a
+`0033_routine_recurrence_contract.sql` (0019 no existe; la numeración salta de 0018 a
 0020 y eso no importa: el runner ordena por nombre de fichero).
+
+> La contracción se planificó como «0024» y se aplicó como **0033**. No es un
+> descuido: entre una y otra entraron nueve migraciones de otras olas, y eso es
+> precisamente lo que T10 pedía —que la contracción no se adelantara ni se
+> mezclara—. El número real es el que dice cuánto despliegue hubo en medio.
+> Donde este documento diga «0024», léase 0033.
 
 ### 3.1 Migración 0023 (expandir) — orden obligatorio
 
@@ -424,7 +430,7 @@ un ciclo: `z.union([legacyRoutineUpsertPayloadSchema, routineUpsertV2PayloadSche
 traduciendo la vieja con la misma tabla de §3.2. **No es opcional**: sin ello, una
 rutina creada offline se rechaza al reconectar.
 
-### 3.5 Migración 0024 (contraer), tras el despliegue
+### 3.5 Migración 0033 (contraer), tras el despliegue — **HECHA**
 
 `DROP FUNCTION app.advance_routine_after_completion(uuid, date)`;
 `ALTER TABLE app.routines DROP COLUMN frequency, DROP COLUMN interval_count`;
@@ -432,7 +438,24 @@ rutina creada offline se rechaza al reconectar.
 TO next_due_hint` (para que el nombre deje de mentir). Retirar la rama legacy del
 esquema Zod. **Ojo al territorio**: `packages/db/tests/020_rls_matrix.sql:143` inserta
 rutinas con `frequency, interval_count, next_due_on` explícitos y hay que actualizarlo
-en la misma tarea que la 0024, no antes.
+en la misma tarea que la 0033, no antes.
+
+**Dos cosas que este plan no había previsto y que la contracción obligó a resolver:**
+
+1. **El RENAME no alcanza los cuerpos de función.** Índices y CHECK sí siguen a la
+   columna (son dependencias registradas), pero el cuerpo de una función SQL o plpgsql
+   se guarda como TEXTO y PostgreSQL no lo revisa ni avisa. `app.set_routine_due_hint`
+   y `app_private.ics_feed_events` citan la columna por su nombre, así que **hay que
+   recrearlas en la misma migración**, con REVOKE y GRANT reemitidos (lección de la
+   0011). Sin ese paso la migración pasa en verde, el esquema queda impecable y las dos
+   revientan en la primera llamada en caliente.
+2. **Qué pasa con un envelope antiguo que llegue tarde.** Ya no se traduce: la tabla de
+   §3.2 no sabe expresar «cada 15 días» ni «en junio y en diciembre», así que aplicarla
+   a ciegas escribiría una cadencia que nadie pidió. Pero tampoco se deja morir en un
+   `invalid_payload` genérico. El contrato conserva la forma vieja **como reconocedor**
+   (`retiredRoutineUpsertPayloadSchema`) y el comando la rechaza por su nombre con
+   `routine_cadence_format_retired` y su frase. Rechazado y no transitorio: ningún
+   reintento va a arreglarlo, y el texto sigue en el outbox para volver a darlo de alta.
 
 ### 3.6 Prueba de la migración
 
@@ -1007,13 +1030,27 @@ la build** que el generador de T1 no cae en el chunk compartido de arranque.
 siembra. **No inventa cadencias.** Es la última tarea funcional y la que se puede
 ejecutar contra producción con menos riesgo, porque es idempotente por construcción.
 
-### T10 · Migración 0024 (contraer) — **después del despliegue de T1-T9**
-**Territorio:** `packages/db/migrations/0024_routine_recurrence_contract.sql`,
+### T10 · Migración 0033 (contraer) — **después del despliegue de T1-T9** · HECHA
+**Territorio:** `packages/db/migrations/0033_routine_recurrence_contract.sql`,
 `packages/db/tests/020_rls_matrix.sql` (línea 143: el `INSERT` con `frequency`),
 `packages/contracts/src/schemas.ts` (retirar la rama legacy),
 `packages/server/src/commands/rhythm.ts` (retirar la traducción).
 **Entrega:** §3.5. **No se mezcla con ninguna otra tarea ni se adelanta**: separarla del
 despliegue anterior es la única garantía de que un envelope offline antiguo no se pierde.
+
+El territorio real fue más ancho que el previsto, porque la retirada dejó al
+descubierto lo que se había quedado a media asta:
+
+- **El feed ICS** (`apps/web/src/routes/api/v1/ics/[token]/+server.ts`, territorio de
+  T8) llevaba desde la 0023 devolviendo un **calendario vacío**, callando: leía
+  `frequency` de una función que había dejado de publicarla y descartaba todas las
+  filas. Ninguna prueba lo cubría. Se reescribe con el motor puro y estrena su
+  regresión por la ruta; **la emisión con RRULE (§5.4) sigue pendiente de T8**.
+- **El documento de traspaso** (`handover.server.ts`) escribía «frecuencia: Semanal
+  (cada 2)» leyendo la sombra que miente. Ahora dice la cadencia con `cadenceClause`.
+- **La tercera copia de la aritmética** (`nextRoutineDue` y `addMonthsClamped` en
+  `apps/web/src/lib/food/dates.ts`), que §2.8 daba por retirada y seguía viva sin
+  llamantes. Con ella se va el recorte permanente del día 31.
 
 **Grafo de dependencias**
 

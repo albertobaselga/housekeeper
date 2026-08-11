@@ -5,20 +5,18 @@ import type { PoolClient } from "pg";
 import type { UUID } from "@casa-clara/contracts";
 import {
   icsFeedCommandPayloadSchema,
+  retiredRoutineUpsertPayloadSchema,
   routineCompletePayloadSchema,
   routineUncompletePayloadSchema,
   routineUpsertPayloadSchema,
   type RoutineUpsertPayload,
-  type RoutineUpsertV2Payload,
 } from "@casa-clara/contracts/schemas";
 import {
-  nextOccurrenceOnOrAfter,
   overduePolicyFor,
   pendingFor,
   PENDING_LOOKBACK_DAYS,
   type RoutineOverduePolicy,
   type RoutinePattern,
-  type RoutineRule,
   type RoutineSchedule,
 } from "@casa-clara/domain";
 
@@ -29,7 +27,6 @@ import { addDays } from "./shared.js";
 export const ICS_SYNC_JOB = "ics.sync_source";
 
 type RoutineAudience = "family" | "employee" | "all";
-type RoutineFrequency = "daily" | "weekly" | "monthly" | "quarterly";
 
 /**
  * El día del hogar. Una ocurrencia es un DÍA de calendario, no un instante: si
@@ -51,77 +48,24 @@ async function householdToday(client: PoolClient): Promise<string> {
   return today;
 }
 
-/** ISO 1=lunes … 7=domingo, la convención de `extract(isodow …)`, sin zona. */
-function isoWeekdayOf(isoDate: string): number {
-  const weekday = new Date(`${isoDate}T00:00:00Z`).getUTCDay();
-  return weekday === 0 ? 7 : weekday;
-}
-
-/**
- * Traducción de la forma ANTIGUA a la regla de la 0023 (§3.2), el único sitio
- * donde vive esa tabla:
+/*
+ * Aquí vivían `legacyRoutineRule` —la tabla que traducía
+ * `frequency`/`intervalCount`/`nextDueOn` a la regla de la 0023— y
+ * `advanceDueDate`, el último vestigio del avance de fecha a la manera vieja.
  *
- *   daily,     k  →  every_n_days,  repeat_every = k
- *   weekly,    k  →  days_of_week,  repeat_every = k,   weekdays = [isodow]
- *   monthly,   k  →  day_of_month,  repeat_every = k,   month_day = day
- *   quarterly, k  →  day_of_month,  repeat_every = 3·k, month_day = day
+ * Las retira la 0033 (§3.5). La traducción existió durante exactamente un
+ * despliegue, para que un envelope encolado sin conexión antes de la 0023
+ * aterrizara donde habría aterrizado de haberse enviado a tiempo. Pasado ese
+ * plazo deja de ser una red y pasa a ser un riesgo: la tabla no sabe expresar
+ * «cada 15 días» ni «en junio y en diciembre», así que seguir aplicándola
+ * escribiría una cadencia que nadie pidió. Una carga con la forma antigua que
+ * llegue ahora se RECHAZA por su nombre (`routine_cadence_format_retired`),
+ * que es lo honesto: no se guarda, y se dice por qué.
  *
- * `anchorOn = nextDueOn` no es una elección estética: hace que la fecha que la
- * rutina tenía pendiente sea, por construcción, una ocurrencia de la regla
- * nueva. Es la misma tabla que aplicó la migración a las filas ya escritas, de
- * modo que un envelope encolado sin conexión antes del despliegue aterriza
- * exactamente donde habría aterrizado de haberse enviado a tiempo.
+ * `advanceDueDate` solo seguía viva porque el feed ICS la importaba. El feed
+ * genera ahora sus ocurrencias con el motor puro de `@casa-clara/domain`, que
+ * es la única aritmética de recurrencia que queda en pie en todo el árbol.
  */
-function legacyRoutineRule(
-  frequency: RoutineFrequency,
-  intervalCount: number,
-  nextDueOn: string,
-): RoutineRule {
-  switch (frequency) {
-    case "daily":
-      return { pattern: "every_n_days", anchorOn: nextDueOn, repeatEvery: intervalCount };
-    case "weekly":
-      return {
-        pattern: "days_of_week",
-        anchorOn: nextDueOn,
-        repeatEvery: intervalCount,
-        weekdays: [isoWeekdayOf(nextDueOn)],
-      };
-    case "monthly":
-      return {
-        pattern: "day_of_month",
-        anchorOn: nextDueOn,
-        repeatEvery: intervalCount,
-        monthDay: Number(nextDueOn.slice(8, 10)),
-      };
-    case "quarterly":
-      return {
-        pattern: "day_of_month",
-        anchorOn: nextDueOn,
-        repeatEvery: 3 * intervalCount,
-        monthDay: Number(nextDueOn.slice(8, 10)),
-      };
-  }
-}
-
-/**
- * Próxima ocurrencia a partir de la actual según la frecuencia heredada.
- *
- * @deprecated Vestigio. Ya NO calcula nada: traduce a la regla de la 0023 y
- * pregunta al generador de `@casa-clara/domain`, que es la única aritmética de
- * recurrencia que queda en pie. Sobrevive solo porque
- * `apps/web/src/routes/api/v1/ics/[token]/+server.ts` todavía la importa para
- * proyectar ocurrencias sueltas; **T8 la borra** al emitir RRULE de verdad
- * (§5.4). Ningún comando de este fichero la llama.
- */
-export function advanceDueDate(
-  isoDate: string,
-  frequency: RoutineFrequency,
-  intervalCount: number,
-): string {
-  const rule = legacyRoutineRule(frequency, intervalCount, isoDate);
-  return nextOccurrenceOnOrAfter(rule, addDays(isoDate, 1)) ?? isoDate;
-}
 
 /*
  * Aquí vivía `enqueueRoutineDue`: el aviso `notification.routine_due` que
@@ -194,43 +138,18 @@ function scheduleColumns(schedule: RoutineSchedule): RoutineScheduleColumns {
   };
 }
 
-/**
- * Valor para `frequency` e `interval_count`, que siguen siendo NOT NULL hasta
- * que la 0024 las borre (§3.5). No son estado: son sombra. Se eligen para que
- * un lector heredado que todavía no se haya reescrito —la página de Rutinas
- * hasta T5, el feed ICS hasta T8— enseñe algo parecido en vez de un absurdo,
- * pero NADIE debe volver a decidir nada con ellas: la verdad son las columnas
- * de patrón. Cuando la cadencia rica no cabe en el vocabulario viejo («cada 15
- * días», «en junio y en diciembre») la sombra miente a conciencia, porque el
- * vocabulario viejo no puede decirlo y esa es precisamente la razón de la ola.
+/*
+ * Aquí vivía `legacyShadowColumns`, que elegía el valor de `frequency` e
+ * `interval_count` en cada escritura. No eran estado: eran SOMBRA, escrita por
+ * si un lector heredado las miraba, y mentían a conciencia en cuanto la
+ * cadencia rica no cabía en el vocabulario viejo («cada 15 días» se guardaba
+ * como `daily × 12`). La 0033 borra las dos columnas, así que ya no hay nada
+ * que ensombrecer: la verdad son las columnas de patrón, y ahora es lo único
+ * que se escribe.
  */
-function legacyShadowColumns(schedule: RoutineSchedule): {
-  frequency: RoutineFrequency;
-  intervalCount: number;
-} {
-  if (schedule === null) return { frequency: "daily", intervalCount: 1 };
-  switch (schedule.pattern) {
-    case "every_n_days":
-      return schedule.repeatEvery % 7 === 0 && schedule.repeatEvery / 7 <= 12
-        ? { frequency: "weekly", intervalCount: schedule.repeatEvery / 7 }
-        : { frequency: "daily", intervalCount: Math.min(schedule.repeatEvery, 12) };
-    case "days_of_week":
-      return { frequency: "weekly", intervalCount: schedule.repeatEvery };
-    case "day_of_month":
-      return schedule.repeatEvery > 12 && schedule.repeatEvery % 3 === 0
-        ? { frequency: "quarterly", intervalCount: schedule.repeatEvery / 3 }
-        : { frequency: "monthly", intervalCount: Math.min(schedule.repeatEvery, 12) };
-    case "months_of_year": {
-      const monthsApart = 12 / schedule.months.length;
-      return Number.isInteger(monthsApart)
-        ? { frequency: "monthly", intervalCount: monthsApart }
-        : { frequency: "monthly", intervalCount: 1 };
-    }
-  }
-}
 
-/** Carga rica → regla del generador. */
-function scheduleFromPayload(payload: RoutineUpsertV2Payload): RoutineSchedule {
+/** Carga rica → regla del generador. Ya no hay otra forma que traducir. */
+function scheduleFromPayload(payload: RoutineUpsertPayload): RoutineSchedule {
   switch (payload.pattern) {
     case null:
       return null;
@@ -277,24 +196,17 @@ interface RoutineUpsertRequest {
 }
 
 /**
- * Las dos formas del contrato colapsan aquí en una sola (§3.4). A partir de
- * esta línea el comando no sabe —ni tiene por qué saber— si el envelope venía
- * de un dispositivo con la app nueva o de uno que quedó encolado antes del
- * despliegue.
+ * Ya solo entra una forma (§3.5): la cadencia rica. La unión del contrato
+ * desapareció con la 0033 y con ella el punto en que las dos colapsaban.
  */
 function routineUpsertRequest(payload: RoutineUpsertPayload): RoutineUpsertRequest {
-  const identity = {
+  return {
     routineId: payload.routineId as UUID | undefined,
     title: payload.title,
     details: payload.details ?? "",
     audience: payload.audience,
+    schedule: scheduleFromPayload(payload),
   };
-  return "pattern" in payload
-    ? { ...identity, schedule: scheduleFromPayload(payload) }
-    : {
-        ...identity,
-        schedule: legacyRoutineRule(payload.frequency, payload.intervalCount, payload.nextDueOn),
-      };
 }
 
 /**
@@ -320,11 +232,11 @@ async function completedDueOns(
 }
 
 /**
- * La caché `next_due_on` (§2.7): cota INFERIOR de la próxima ocurrencia
+ * La caché `next_due_hint` (§2.7): cota INFERIOR de la próxima ocurrencia
  * pendiente. `pendingFor` ya la devuelve calculada —la atrasada más antigua si
  * la hay, si no la de hoy, si no la siguiente—, así que aquí no se recalcula
  * nada. `null` significa «no queda nada pendiente» y saca la rutina de los
- * prefiltros `next_due_on <= hoy`, que es exactamente lo que se quiere.
+ * prefiltros `next_due_hint <= hoy`, que es exactamente lo que se quiere.
  */
 function nextDueHintFor(
   schedule: RoutineSchedule,
@@ -345,7 +257,6 @@ async function upsertRoutine(
 
   const request = routineUpsertRequest(payload);
   const columns = scheduleColumns(request.schedule);
-  const shadow = legacyShadowColumns(request.schedule);
   // La política de atrasadas se DERIVA del patrón (§2.5) y en un único sitio:
   // `overduePolicyFor` vive en el módulo puro. Aquí no se pregunta ni se
   // acepta del cliente, porque en fase 1 no hay control que la ofrezca y la
@@ -358,9 +269,9 @@ async function upsertRoutine(
   const completed = request.routineId
     ? await completedDueOns(client, householdId, request.routineId, today)
     : new Set<string>();
-  const nextDueOn = nextDueHintFor(request.schedule, overduePolicy, completed, today);
+  const nextDueHint = nextDueHintFor(request.schedule, overduePolicy, completed, today);
 
-  // Los mismos once valores para el UPDATE y el INSERT, pero con distinto
+  // Los mismos nueve valores para el UPDATE y el INSERT, pero con distinto
   // desplazamiento: en el UPDATE empiezan en $6 y en el INSERT en $5. Los casts
   // van pegados a la posición, no al valor, así que si tocas la lista tienes
   // que recontar AMBAS sentencias.
@@ -373,9 +284,7 @@ async function upsertRoutine(
     columns.months,
     columns.endsOn,
     overduePolicy,
-    nextDueOn,
-    shadow.frequency,
-    shadow.intervalCount,
+    nextDueHint,
   ];
 
   if (request.routineId) {
@@ -385,8 +294,7 @@ async function upsertRoutine(
               pattern = $6::app.routine_pattern, anchor_on = $7::date, repeat_every = $8,
               weekdays = $9::smallint[], month_day = $10::smallint, months = $11::smallint[],
               ends_on = $12::date, overdue_policy = $13::app.routine_overdue_policy,
-              next_due_on = $14::date,
-              frequency = $15::app.routine_frequency, interval_count = $16
+              next_due_hint = $14::date
         where household_id = $1 and id = $2 and archived_at is null
         returning id`,
       [
@@ -411,12 +319,11 @@ async function upsertRoutine(
     `insert into app.routines
        (household_id, title, details, audience,
         pattern, anchor_on, repeat_every, weekdays, month_day, months, ends_on,
-        overdue_policy, next_due_on, frequency, interval_count,
+        overdue_policy, next_due_hint,
         created_by_membership_id)
      values ($1, $2, $3, $4::app.routine_audience,
              $5::app.routine_pattern, $6::date, $7, $8::smallint[], $9::smallint, $10::smallint[],
-             $11::date, $12::app.routine_overdue_policy, $13::date,
-             $14::app.routine_frequency, $15, $16)
+             $11::date, $12::app.routine_overdue_policy, $13::date, $14)
      returning id`,
     [householdId, request.title, request.details, request.audience, ...scheduleValues, membership.id],
   );
@@ -444,7 +351,7 @@ interface RoutineScheduleRow {
   months: number[] | null;
   ends_on: string | null;
   overdue_policy: RoutineOverduePolicy;
-  next_due_on: string | null;
+  next_due_hint: string | null;
   archived: boolean;
 }
 
@@ -452,7 +359,7 @@ const ROUTINE_SCHEDULE_SELECT = `select id, title, audience::text as audience,
             pattern::text as pattern, anchor_on::text as anchor_on, repeat_every,
             weekdays::int[] as weekdays, month_day::int as month_day, months::int[] as months,
             ends_on::text as ends_on, overdue_policy::text as overdue_policy,
-            next_due_on::text as next_due_on,
+            next_due_hint::text as next_due_hint,
             archived_at is not null as archived
        from app.routines
       where household_id = $1 and id = $2`;
@@ -479,7 +386,7 @@ async function loadRoutineSchedule(
 }
 
 /**
- * Refresca la caché `next_due_on` desde la regla y TODAS las finalizaciones
+ * Refresca la caché `next_due_hint` desde la regla y TODAS las finalizaciones
  * vivas. Es el mismo cálculo tras marcar y tras deshacer, y por eso vive en un
  * solo sitio: si las dos rutas calcularan la fecha por su cuenta, deshacer
  * podría dejar la casa mirando un día distinto del que tenía.
@@ -498,11 +405,11 @@ async function refreshDueHint(
 ): Promise<string | null> {
   const today = await householdToday(client);
   const completed = await completedDueOns(client, householdId, routine.id as UUID, today);
-  const nextDueOn = nextDueHintFor(schedule, routine.overdue_policy, completed, today);
-  if (nextDueOn !== null && nextDueOn !== routine.next_due_on) {
-    await client.query("select app.set_routine_due_hint($1, $2::date)", [routine.id, nextDueOn]);
+  const nextDueHint = nextDueHintFor(schedule, routine.overdue_policy, completed, today);
+  if (nextDueHint !== null && nextDueHint !== routine.next_due_hint) {
+    await client.query("select app.set_routine_due_hint($1, $2::date)", [routine.id, nextDueHint]);
   }
-  return nextDueOn;
+  return nextDueHint;
 }
 
 /** Fila de patrón ya leída → regla del generador. */
@@ -716,13 +623,11 @@ async function uncompleteRoutine(
  * `routine`: alta/edición (solo familia) y finalización por ocurrencia (según
  * audiencia, que hace cumplir la RLS).
  *
- * El alta acepta LAS DOS formas del contrato (§3.4): la cadencia rica de la
- * 0023 y la de antes del despliegue, que se traduce. No es cortesía —un
- * dispositivo con la app vieja puede tener envelopes en su cola desde antes, y
- * rechazarlos perdería el trabajo de quien lo hizo sin conexión—. La rama vieja
- * se retira en T10, un despliegue después.
+ * El alta acepta UNA sola forma del contrato: la cadencia rica de la 0023. La
+ * de antes del despliegue se aceptaba y se traducía durante la ventana de esa
+ * migración; la 0033 la retira (§3.5).
  *
- * Completar ya no avanza nada: refresca la caché `next_due_on` recalculada
+ * Completar ya no avanza nada: refresca la caché `next_due_hint` recalculada
  * desde la regla con `pendingFor`, y encola el aviso de la siguiente si cambió.
  * Deshacer (E5.1) hace el mismo cálculo sin la finalización anulada, de modo
  * que la rutina recupera la fecha que tenía en vez de estrenar una.
@@ -732,6 +637,20 @@ export const routineCommandHandler: CommandHandler = async (client, membership, 
   if (action === "upsert") {
     const parsed = routineUpsertPayloadSchema.safeParse(envelope.payload);
     if (!parsed.success) {
+      // Un envelope con la forma ANTIGUA que llegue tarde no se traduce ni se
+      // deja morir en un «falta pattern» que no explicaría nada. Se reconoce y
+      // se rechaza por su nombre: es lo único honesto que queda por hacer con
+      // él. Rechazado —y no `transient` ni `internal`— a propósito: el cliente
+      // debe dejar de reintentarlo y enseñárselo a quien lo escribió, porque
+      // ningún reintento va a arreglarlo. El texto de la rutina y su fecha
+      // siguen en el dispositivo, en el registro parado del outbox, así que
+      // volver a darla de alta con la app al día es copiar dos campos.
+      if (retiredRoutineUpsertPayloadSchema.safeParse(envelope.payload).success) {
+        throw new CommandRejectedError(
+          "routine_cadence_format_retired",
+          "Esa rutina se guardó con el formato de cadencia anterior, que la casa ya no admite: vuelve a darla de alta",
+        );
+      }
       throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
     }
     return upsertRoutine(client, membership, envelope.householdId, parsed.data);

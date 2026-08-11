@@ -271,7 +271,7 @@ export function groupByCadence<T extends { readonly schedule: RoutineSchedule }>
  * próxima vez?» y enseñar el ancla original (que puede ser de hace años) sería
  * mentir. Reanclar en la próxima ocurrencia NO cambia la cadencia: esa fecha
  * es, por construcción, una ocurrencia de la misma regla —el mismo argumento
- * con el que la migración 0023 ancla en `next_due_on` sin mover ninguna fecha—.
+ * con el que la migración 0023 ancla en la próxima fecha sin mover ninguna—.
  */
 export function formFromSchedule(
   schedule: RoutineSchedule,

@@ -62,12 +62,12 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     return ack.resourceId as string;
   }
 
-  async function nextDueOn(routineId: string): Promise<string | null> {
-    const row = await adminPool.query<{ next_due_on: string | null }>(
-      "select next_due_on::text as next_due_on from app.routines where id = $1",
+  async function nextDueHint(routineId: string): Promise<string | null> {
+    const row = await adminPool.query<{ next_due_hint: string | null }>(
+      "select next_due_hint::text as next_due_hint from app.routines where id = $1",
       [routineId],
     );
-    return row.rows[0]?.next_due_on ?? null;
+    return row.rows[0]?.next_due_hint ?? null;
   }
 
   interface RoutineRow {
@@ -79,9 +79,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     months: number[] | null;
     ends_on: string | null;
     overdue_policy: string;
-    next_due_on: string | null;
-    frequency: string;
-    interval_count: number;
+    next_due_hint: string | null;
   }
 
   async function routineRow(routineId: string): Promise<RoutineRow> {
@@ -89,8 +87,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       `select pattern::text as pattern, anchor_on::text as anchor_on, repeat_every,
               weekdays::int[] as weekdays, month_day::int as month_day, months::int[] as months,
               ends_on::text as ends_on, overdue_policy::text as overdue_policy,
-              next_due_on::text as next_due_on,
-              frequency::text as frequency, interval_count
+              next_due_hint::text as next_due_hint
          from app.routines where id = $1`,
       [routineId],
     );
@@ -169,35 +166,60 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     await adminPool?.end();
   });
 
-  it("completar la ocurrencia vigente avanza next_due_on según cada frecuencia", async () => {
+  it("completar la ocurrencia vigente refresca next_due_hint en cada patrón", async () => {
+    // Las mismas cuatro cadencias que antes se decían con el vocabulario de
+    // cuatro palabras, dichas ahora con la regla que las expresa de verdad.
     const cases = [
-      { frequency: "daily", intervalCount: 3, nextDueOn: "2027-06-01", expected: "2027-06-04" },
-      { frequency: "weekly", intervalCount: 2, nextDueOn: "2027-06-07", expected: "2027-06-21" },
-      // Recorte de calendario: 31/01 + 1 mes cae en el último día de febrero.
-      { frequency: "monthly", intervalCount: 1, nextDueOn: "2027-01-31", expected: "2027-02-28" },
-      { frequency: "quarterly", intervalCount: 2, nextDueOn: "2027-03-15", expected: "2027-09-15" },
+      {
+        label: "cada 3 días",
+        rule: { pattern: "every_n_days", anchorOn: "2027-06-01", repeatEvery: 3 },
+        dueOn: "2027-06-01",
+        expected: "2027-06-04",
+      },
+      {
+        label: "cada 2 semanas, los lunes",
+        rule: {
+          pattern: "days_of_week",
+          anchorOn: "2027-06-07",
+          repeatEvery: 2,
+          weekdays: [1],
+        },
+        dueOn: "2027-06-07",
+        expected: "2027-06-21",
+      },
+      {
+        // El día 31 sigue siendo el día 31: febrero solo recorta SU ocurrencia.
+        label: "el día 31 de cada mes",
+        rule: { pattern: "day_of_month", anchorOn: "2027-01-31", repeatEvery: 1, monthDay: 31 },
+        dueOn: "2027-01-31",
+        expected: "2027-02-28",
+      },
+      {
+        label: "el día 15 cada 6 meses",
+        rule: { pattern: "day_of_month", anchorOn: "2027-03-15", repeatEvery: 6, monthDay: 15 },
+        dueOn: "2027-03-15",
+        expected: "2027-09-15",
+      },
     ] as const;
 
     for (const testCase of cases) {
       const routineId = await upsertRoutine({
-        title: `Rutina ${testCase.frequency}`,
+        title: `Rutina ${testCase.label}`,
         audience: "all",
-        frequency: testCase.frequency,
-        intervalCount: testCase.intervalCount,
-        nextDueOn: testCase.nextDueOn,
+        ...testCase.rule,
       });
 
       const completed = await run(
         ADMIN,
-        envelope("routine", { action: "complete", routineId, dueOn: testCase.nextDueOn }),
+        envelope("routine", { action: "complete", routineId, dueOn: testCase.dueOn }),
       );
       expect(completed).toMatchObject({ status: "accepted", resourceId: routineId });
-      expect(await nextDueOn(routineId)).toBe(testCase.expected);
+      expect(await nextDueHint(routineId), testCase.label).toBe(testCase.expected);
 
       // Y ni un aviso encolado: crear y completar movían antes dos trabajos de
       // correo por rutina (0029 los retiró). La fecha se sigue viendo en Hoy y
       // en el calendario, que es de donde salía el trabajo de verdad.
-      expect(await routineDueJobs(routineId), testCase.frequency).toHaveLength(0);
+      expect(await routineDueJobs(routineId), testCase.label).toHaveLength(0);
     }
   });
 
@@ -205,9 +227,10 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     const routineId = await upsertRoutine({
       title: "Rutina duplicable",
       audience: "all",
-      frequency: "weekly",
-      intervalCount: 1,
-      nextDueOn: "2027-07-05",
+      pattern: "days_of_week",
+      anchorOn: "2027-07-05",
+      repeatEvery: 1,
+      weekdays: [1],
     });
     const first = await run(ADMIN, envelope("routine", { action: "complete", routineId, dueOn: "2027-07-05" }));
     expect(first).toMatchObject({ status: "accepted" });
@@ -220,9 +243,10 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     const routineId = await upsertRoutine({
       title: "Plancha semanal",
       audience: "employee",
-      frequency: "weekly",
-      intervalCount: 1,
-      nextDueOn: "2027-08-02",
+      pattern: "days_of_week",
+      anchorOn: "2027-08-02",
+      repeatEvery: 1,
+      weekdays: [1],
     });
 
     const completed = await run(
@@ -245,7 +269,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     // completa no tenga escritura sobre app.routines (audiencia empleada): es
     // el mismo motivo estrecho por el que existía la definer de la 0009, ahora
     // reducido a un UPDATE de una columna.
-    expect(await nextDueOn(routineId)).toBe("2027-08-09");
+    expect(await nextDueHint(routineId)).toBe("2027-08-09");
     expect(await routineDueJobs(routineId)).toHaveLength(0);
   });
 
@@ -253,9 +277,9 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     const employeeRoutine = await upsertRoutine({
       title: "Rutina solo empleada",
       audience: "employee",
-      frequency: "daily",
-      intervalCount: 1,
-      nextDueOn: "2027-09-01",
+      pattern: "every_n_days",
+      anchorOn: "2027-09-01",
+      repeatEvery: 1,
     });
     const denied = await run(
       HELPER,
@@ -266,9 +290,9 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     const sharedRoutine = await upsertRoutine({
       title: "Rutina de todos",
       audience: "all",
-      frequency: "daily",
-      intervalCount: 1,
-      nextDueOn: "2027-09-02",
+      pattern: "every_n_days",
+      anchorOn: "2027-09-02",
+      repeatEvery: 1,
     });
     const completed = await run(
       HELPER,
@@ -286,9 +310,10 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     const routineId = await upsertRoutine({
       title: "Mantenimiento caldera",
       audience: "family",
-      frequency: "monthly",
-      intervalCount: 1,
-      nextDueOn: "2027-10-01",
+      pattern: "day_of_month",
+      anchorOn: "2027-10-01",
+      repeatEvery: 1,
+      monthDay: 1,
     });
 
     const completed = await run(
@@ -336,7 +361,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       ends_on: null,
       // Sub-semanal ⇒ `skip`, derivada del patrón sin preguntar (§2.5).
       overdue_policy: "skip",
-      next_due_on: "2027-06-07",
+      next_due_hint: "2027-06-07",
     });
 
     // Completar el lunes deja el jueves pendiente EN LA MISMA SEMANA (caso 1):
@@ -346,7 +371,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       envelope("routine", { action: "complete", routineId, dueOn: "2027-06-07" }),
     );
     expect(completed).toMatchObject({ status: "accepted" });
-    expect(await nextDueOn(routineId)).toBe("2027-06-10");
+    expect(await nextDueHint(routineId)).toBe("2027-06-10");
   });
 
   it("la política de atrasadas se DERIVA del patrón y no se pregunta (§2.5)", async () => {
@@ -407,10 +432,10 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       month_day: null,
       months: null,
       ends_on: null,
-      next_due_on: null,
+      next_due_hint: null,
     });
     // Sin fecha no hay aviso que encolar: no aparece en Hoy y tampoco en el
-    // correo. Los prefiltros `next_due_on <= hoy` la excluyen solos.
+    // correo. Los prefiltros `next_due_hint <= hoy` la excluyen solos.
     expect(await routineDueJobs(routineId)).toHaveLength(0);
 
     const rejected = await run(
@@ -424,7 +449,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
   it("una rutina que ya terminó se guarda sin próxima fecha (caso 9)", async () => {
     // `ends_on` es la forma de decir «dejad de pedirme esto»: la rutina existe,
     // se puede consultar, y su caché queda en NULL para que ningún prefiltro
-    // `next_due_on <= hoy` la traiga de vuelta.
+    // `next_due_hint <= hoy` la traiga de vuelta.
     const today = await householdToday();
     const routineId = await upsertRoutine({
       title: "Riego del huerto de verano",
@@ -438,51 +463,64 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     expect(await routineRow(routineId)).toMatchObject({
       pattern: "every_n_days",
       ends_on: shiftDays(today, -30),
-      next_due_on: null,
+      next_due_hint: null,
     });
     expect(await routineDueJobs(routineId)).toHaveLength(0);
   });
 
-  it("un envelope de la app anterior se traduce en vez de perderse (caso 21)", async () => {
-    // No es cortesía: puede llevar días en el IndexedDB de un móvil. La tabla
-    // de traducción es la misma de §3.2 que aplicó la migración a las filas ya
-    // escritas, así que el alta aterriza donde habría aterrizado a tiempo.
-    const cases = [
-      {
-        legacy: { frequency: "daily", intervalCount: 3, nextDueOn: "2027-06-01" },
-        expected: { pattern: "every_n_days", repeat_every: 3, weekdays: null, month_day: null },
-      },
-      {
-        legacy: { frequency: "weekly", intervalCount: 2, nextDueOn: "2027-06-07" },
-        expected: { pattern: "days_of_week", repeat_every: 2, weekdays: [1], month_day: null },
-      },
-      {
-        legacy: { frequency: "monthly", intervalCount: 1, nextDueOn: "2027-01-31" },
-        expected: { pattern: "day_of_month", repeat_every: 1, weekdays: null, month_day: 31 },
-      },
-      {
-        // quarterly × 12 son 36 meses: el límite de la CHECK no es capricho.
-        legacy: { frequency: "quarterly", intervalCount: 12, nextDueOn: "2027-03-15" },
-        expected: { pattern: "day_of_month", repeat_every: 36, weekdays: null, month_day: 15 },
-      },
+  it("un envelope de la app anterior se RECHAZA por su nombre, no se adivina", async () => {
+    // La contrapartida del caso 21, un despliegue después (T10, migración
+    // 0033). Durante la ventana de la 0023 estas cargas se traducían con la
+    // tabla de §3.2 para no perder lo que alguien hubiera dado de alta sin
+    // conexión; pasado ese plazo ninguna cola las guarda ya, y seguir
+    // traduciendo sería peor que rechazar: la tabla no sabe expresar «cada 15
+    // días» ni «en junio y en diciembre», así que aplicarla escribiría una
+    // cadencia que nadie pidió.
+    //
+    // Lo que sí se conserva es la HONESTIDAD del rechazo. No es un
+    // `invalid_payload` genérico quejándose de que falta `pattern`: es un
+    // código propio con su frase, para que quien lo escribió sepa qué pasó y
+    // pueda volver a darla de alta. El texto y la fecha siguen en su outbox.
+    const legacyPayloads = [
+      { frequency: "daily", intervalCount: 3, nextDueOn: "2027-06-01" },
+      { frequency: "weekly", intervalCount: 2, nextDueOn: "2027-06-07" },
+      { frequency: "monthly", intervalCount: 1, nextDueOn: "2027-01-31" },
+      { frequency: "quarterly", intervalCount: 12, nextDueOn: "2027-03-15" },
     ] as const;
 
-    for (const testCase of cases) {
-      const routineId = await upsertRoutine({
-        title: `Heredada ${testCase.legacy.frequency} ${testCase.legacy.intervalCount}`,
-        audience: "all",
-        ...testCase.legacy,
-      });
-      const row = await routineRow(routineId);
-      expect(row, testCase.legacy.frequency).toMatchObject({
-        ...testCase.expected,
-        // `anchor_on = next_due_on`: la fecha que la rutina traía pendiente es,
-        // por construcción, una ocurrencia de la regla nueva. Ninguna rutina
-        // pierde su próxima fecha al traducirse.
-        anchor_on: testCase.legacy.nextDueOn,
-        next_due_on: testCase.legacy.nextDueOn,
+    for (const legacy of legacyPayloads) {
+      const ack = await run(
+        ADMIN,
+        envelope("routine", {
+          action: "upsert",
+          title: `Heredada ${legacy.frequency} ${legacy.intervalCount}`,
+          audience: "all",
+          ...legacy,
+        }),
+      );
+      expect(ack, legacy.frequency).toMatchObject({
+        status: "rejected",
+        errorCode: "routine_cadence_format_retired",
       });
     }
+
+    // Y no se coló ninguna: rechazar significa no escribir.
+    const written = await adminPool.query<{ total: number }>(
+      `select count(*)::int as total from app.routines
+        where household_id = $1 and title like 'Heredada %'`,
+      [ROBLE_HOUSEHOLD],
+    );
+    expect(written.rows[0]?.total).toBe(0);
+  });
+
+  it("una carga sin cadencia ninguna sigue siendo invalid_payload, no el código de la retirada", async () => {
+    // El código nuevo solo debe salir cuando la carga es DE VERDAD la antigua.
+    // Si cubriera cualquier alta mal formada, dejaría de informar de nada.
+    const ack = await run(
+      ADMIN,
+      envelope("routine", { action: "upsert", title: "Sin cadencia ninguna", audience: "all" }),
+    );
+    expect(ack).toMatchObject({ status: "rejected", errorCode: "invalid_payload" });
   });
 
   it("con `skip`, diez días sin hacer no dejan diez deudas: la de hoy sustituye a la de ayer", async () => {
@@ -500,7 +538,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     const row = await routineRow(routineId);
     expect(row.overdue_policy).toBe("skip");
     // La caché apunta a HOY, nunca a una fecha de hace diez días.
-    expect(row.next_due_on).toBe(today);
+    expect(row.next_due_hint).toBe(today);
   });
 
   it("con `carry` se arrastra UNA sola atrasada, la más antigua, y avanza de una en una", async () => {
@@ -518,7 +556,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
 
     expect(await routineRow(routineId)).toMatchObject({
       overdue_policy: "carry",
-      next_due_on: anchor,
+      next_due_hint: anchor,
     });
 
     // Marcar la más antigua descubre la siguiente, no salta a hoy ni borra las
@@ -526,7 +564,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     for (const [index, dueOn] of [anchor, shiftDays(anchor, 7), shiftDays(anchor, 14)].entries()) {
       const ack = await run(ADMIN, envelope("routine", { action: "complete", routineId, dueOn }));
       expect(ack, dueOn).toMatchObject({ status: "accepted" });
-      expect(await nextDueOn(routineId), `tras marcar ${dueOn}`).toBe(
+      expect(await nextDueHint(routineId), `tras marcar ${dueOn}`).toBe(
         shiftDays(anchor, 7 * (index + 1)),
       );
     }
@@ -546,18 +584,18 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       anchorOn: shiftDays(today, -10),
       repeatEvery: 1,
     });
-    expect(await nextDueOn(routineId)).toBe(today);
+    expect(await nextDueHint(routineId)).toBe(today);
 
     const late = shiftDays(today, -5);
     const ack = await run(ADMIN, envelope("routine", { action: "complete", routineId, dueOn: late }));
     expect(ack).toMatchObject({ status: "accepted" });
     expect(await completionsOf(routineId)).toEqual([late]);
     // La ocurrencia de hoy sigue pendiente: marcar una perdida no la consume.
-    expect(await nextDueOn(routineId)).toBe(today);
+    expect(await nextDueHint(routineId)).toBe(today);
 
     const done = await run(ADMIN, envelope("routine", { action: "complete", routineId, dueOn: today }));
     expect(done).toMatchObject({ status: "accepted" });
-    expect(await nextDueOn(routineId)).toBe(shiftDays(today, 1));
+    expect(await nextDueHint(routineId)).toBe(shiftDays(today, 1));
   });
 
   it("una rutina anclada el 31 deja de degradarse a 28 para siempre (caso 4)", async () => {
@@ -572,7 +610,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       repeatEvery: 1,
       monthDay: 31,
     });
-    expect(await nextDueOn(routineId)).toBe("2027-01-31");
+    expect(await nextDueHint(routineId)).toBe("2027-01-31");
 
     for (const [dueOn, expected] of [
       ["2027-01-31", "2027-02-28"],
@@ -583,7 +621,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
         envelope("routine", { action: "complete", routineId, dueOn: dueOn as string }),
       );
       expect(ack, dueOn).toMatchObject({ status: "accepted" });
-      expect(await nextDueOn(routineId), `tras marcar ${dueOn}`).toBe(expected);
+      expect(await nextDueHint(routineId), `tras marcar ${dueOn}`).toBe(expected);
     }
   });
 
@@ -618,7 +656,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       month_day: null,
       weekdays: [1],
       overdue_policy: "skip",
-      next_due_on: "2027-06-07",
+      next_due_hint: "2027-06-07",
     });
 
     // Las finalizaciones son hechos: siguen ahí aunque sus `due_on` ya no sean
@@ -647,7 +685,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     expect(ack).toMatchObject({ status: "accepted", resourceId: routineId });
     expect(await completionsOf(routineId)).toEqual([wednesday]);
     // Y la caché no se mueve por una finalización huérfana.
-    expect(await nextDueOn(routineId)).toBe("2027-06-07");
+    expect(await nextDueHint(routineId)).toBe("2027-06-07");
   });
 
   it("deshacer devuelve la fecha que tenía, no calcula una nueva (E5.1)", async () => {
@@ -664,14 +702,14 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       anchorOn: anchor,
       repeatEvery: 7,
     });
-    expect(await nextDueOn(routineId)).toBe(anchor);
+    expect(await nextDueHint(routineId)).toBe(anchor);
 
     const marked = await run(
       EMPLOYEE,
       envelope("routine", { action: "complete", routineId, dueOn: anchor }),
     );
     expect(marked).toMatchObject({ status: "accepted" });
-    expect(await nextDueOn(routineId)).toBe(shiftDays(anchor, 7));
+    expect(await nextDueHint(routineId)).toBe(shiftDays(anchor, 7));
 
     const undone = await run(
       EMPLOYEE,
@@ -679,7 +717,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     );
     expect(undone).toMatchObject({ status: "accepted", resourceId: routineId });
     // Exactamente la fecha que tenía antes de marcar.
-    expect(await nextDueOn(routineId)).toBe(anchor);
+    expect(await nextDueHint(routineId)).toBe(anchor);
   });
 
   it("un completado anulado se anota como anulado, con su autoría, y no se borra", async () => {
@@ -729,14 +767,14 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-10-04" }),
     );
     expect(refused).toMatchObject({ status: "rejected", errorCode: "not_allowed" });
-    expect(await nextDueOn(routineId)).toBe("2027-10-11");
+    expect(await nextDueHint(routineId)).toBe("2027-10-11");
 
     const allowed = await run(
       ADMIN,
       envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-10-04" }),
     );
     expect(allowed).toMatchObject({ status: "accepted" });
-    expect(await nextDueOn(routineId)).toBe("2027-10-04");
+    expect(await nextDueHint(routineId)).toBe("2027-10-04");
   });
 
   it("tras deshacer se puede volver a marcar de verdad la misma ocurrencia", async () => {
@@ -758,7 +796,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       envelope("routine", { action: "complete", routineId, dueOn: "2027-11-01" }),
     );
     expect(again).toMatchObject({ status: "accepted" });
-    expect(await nextDueOn(routineId)).toBe("2027-11-08");
+    expect(await nextDueHint(routineId)).toBe("2027-11-08");
     // Sigue habiendo UNA fila por ocurrencia; la anulada revivió a nombre de
     // quien la hizo de verdad.
     const rows = await adminPool.query<{ voided: boolean }>(

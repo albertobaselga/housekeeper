@@ -4,8 +4,8 @@
 --
 --   1. Que la CHECK de forma deje pasar un estado imposible. El peor de todos no
 --      es un número fuera de rango: es una rutina SIN cadencia confirmada que
---      conserve `next_due_on`, porque esa fila pasaría el prefiltro
---      «next_due_on <= hoy» y aparecería en Hoy como trabajo que nadie ha
+--      conserve `next_due_hint`, porque esa fila pasaría el prefiltro
+--      «next_due_hint <= hoy» y aparecería en Hoy como trabajo que nadie ha
 --      decidido cuándo se hace.
 --   2. Que las columnas nuevas abran una rendija en el aislamiento por hogar o
 --      en el modelo de audiencia. Enmienda del propietario E3: la interna ve sus
@@ -50,45 +50,45 @@ INSERT INTO app.household_memberships (id, household_id, user_id, role, starts_a
    statement_timestamp() - interval '400 days', statement_timestamp() - interval '30 days');
 
 INSERT INTO app.routines (
-  id, household_id, title, details, audience, frequency, interval_count, next_due_on,
+  id, household_id, title, details, audience, next_due_hint,
   pattern, anchor_on, repeat_every, weekdays, month_day, months, overdue_policy, ends_on,
   created_by_membership_id
 ) VALUES
   -- Estacional de la familia: «al empezar el verano y al empezar el invierno».
   ('ea100000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
    'Cambio de ropa de temporada', 'Armarios de toda la casa.', 'family',
-   'quarterly', 2, '2026-12-01',
+   '2026-12-01',
    'months_of_year', '2026-06-01', NULL, NULL, 1, ARRAY[6, 12]::smallint[], 'carry', NULL,
    '11000000-0000-4000-8000-000000000001'),
   -- «Los lunes y los jueves», que es justo lo que el modelo viejo no sabía decir.
   ('ea100000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
    'Cocina a fondo', 'Campana, horno y frigorífico.', 'employee',
-   'weekly', 1, '2026-08-13',
+   '2026-08-13',
    'days_of_week', '2026-08-10', 1, ARRAY[1, 4]::smallint[], NULL, NULL, 'skip', NULL,
    '11000000-0000-4000-8000-000000000001'),
   -- Diaria de toda la casa: sub-semanal, luego `skip`.
   ('ea100000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
    'Ventilación de la mañana', 'Ventilar solo de forma segura.', 'all',
-   'daily', 1, '2026-08-10',
+   '2026-08-10',
    'every_n_days', '2026-08-10', 1, NULL, NULL, NULL, 'skip', NULL,
    '11000000-0000-4000-8000-000000000001'),
   -- «El último día del mes» dicho como lo que es, en vez de un 31 que el avance
   -- viejo degradaba a 28 para siempre en cuanto pasaba por febrero.
   ('ea100000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000001',
    'Lectura de contadores', 'Agua y luz.', 'all',
-   'monthly', 1, '2026-08-31',
+   '2026-08-31',
    'day_of_month', '2026-08-31', 1, NULL, -1, NULL, 'carry', NULL,
    '11000000-0000-4000-8000-000000000001'),
   -- SIN CADENCIA: el estado que esta ola existe para poder expresar.
   ('ea100000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000001',
    'Limpieza a fondo del garaje', 'Falta acordar cada cuánto.', 'employee',
-   'monthly', 1, NULL,
+   NULL,
    NULL, NULL, NULL, NULL, NULL, NULL, 'carry', NULL,
    '11000000-0000-4000-8000-000000000001'),
   -- Del otro hogar, para que las asercciones cruzadas tengan una fila que filtrar.
   ('eb100000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
    'Rutina estacional del olivo', 'Del otro hogar.', 'all',
-   'quarterly', 1, '2026-09-01',
+   '2026-09-01',
    'months_of_year', '2026-09-01', NULL, NULL, 1, ARRAY[3, 9]::smallint[], 'carry', NULL,
    '21000000-0000-4000-8000-000000000001');
 
@@ -127,7 +127,7 @@ BEGIN
     SELECT * FROM (VALUES
       -- El estado imposible que de verdad importa: sin cadencia pero con fecha.
       -- Esa fila pasaría el prefiltro de Hoy y saldría como trabajo pendiente.
-      ('sin cadencia con next_due_on',
+      ('sin cadencia con next_due_hint',
        NULL::text, NULL::date, NULL::integer, NULL::smallint[], NULL::smallint, NULL::smallint[], NULL::date, '2026-08-10'::date),
       ('sin cadencia con ancla',
        NULL, '2026-08-10', NULL, NULL, NULL, NULL, NULL, NULL),
@@ -188,18 +188,18 @@ BEGIN
        'months_of_year', '2026-08-10', NULL, NULL, 1, NULL, NULL, NULL),
       ('la serie termina antes de empezar',
        'every_n_days', '2026-08-10', 1, NULL, NULL, NULL, '2026-08-09', NULL)
-    ) AS cases(label, pattern, anchor_on, repeat_every, weekdays, month_day, months, ends_on, next_due_on)
+    ) AS cases(label, pattern, anchor_on, repeat_every, weekdays, month_day, months, ends_on, next_due_hint)
   LOOP
     BEGIN
       INSERT INTO app.routines (
-        id, household_id, title, audience, frequency, interval_count,
-        pattern, anchor_on, repeat_every, weekdays, month_day, months, ends_on, next_due_on,
+        id, household_id, title, audience,
+        pattern, anchor_on, repeat_every, weekdays, month_day, months, ends_on, next_due_hint,
         created_by_membership_id
       ) VALUES (
         'ea900000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-        'Intento imposible', 'all', 'daily', 1,
+        'Intento imposible', 'all',
         attempt.pattern::app.routine_pattern, attempt.anchor_on, attempt.repeat_every,
-        attempt.weekdays, attempt.month_day, attempt.months, attempt.ends_on, attempt.next_due_on,
+        attempt.weekdays, attempt.month_day, attempt.months, attempt.ends_on, attempt.next_due_hint,
         '11000000-0000-4000-8000-000000000001'
       );
       RAISE EXCEPTION 'la CHECK de forma aceptó un estado imposible: %', attempt.label;
@@ -225,16 +225,16 @@ DECLARE
   accepted integer;
 BEGIN
   INSERT INTO app.routines (
-    id, household_id, title, audience, frequency, interval_count, next_due_on,
+    id, household_id, title, audience, next_due_hint,
     pattern, anchor_on, repeat_every, weekdays, month_day, ends_on, created_by_membership_id
   ) VALUES
     ('ea900000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
-     'Trimestral heredada al límite', 'all', 'quarterly', 12, '2026-08-31',
+     'Trimestral heredada al límite', 'all', '2026-08-31',
      'day_of_month', '2026-08-31', 36, NULL, 31, NULL, '11000000-0000-4000-8000-000000000001'),
     -- Una serie que empieza y acaba el mismo día: `ends_on = anchor_on` es el
     -- borde exacto de routines_ends_after_anchor, y tiene que caber.
     ('ea900000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000001',
-     'Serie de un solo día', 'all', 'weekly', 1, '2026-08-10',
+     'Serie de un solo día', 'all', '2026-08-10',
      'days_of_week', '2026-08-10', 2, ARRAY[1,3,5]::smallint[], NULL, '2026-08-10',
      '11000000-0000-4000-8000-000000000001');
 
@@ -340,11 +340,11 @@ BEGIN
 
   BEGIN
     INSERT INTO app.routines (
-      household_id, title, audience, frequency, interval_count, next_due_on,
+      household_id, title, audience, next_due_hint,
       pattern, anchor_on, repeat_every, created_by_membership_id
     ) VALUES (
       '10000000-0000-4000-8000-000000000001', 'Alta por la interna', 'employee',
-      'daily', 1, '2026-08-10', 'every_n_days', '2026-08-10', 1,
+      '2026-08-10', 'every_n_days', '2026-08-10', 1,
       '11000000-0000-4000-8000-000000000003'
     );
     RAISE EXCEPTION 'la interna dio de alta una rutina';
@@ -469,15 +469,15 @@ DECLARE
 BEGIN
   SELECT * INTO refreshed FROM app.routines WHERE id = 'ea100000-0000-4000-8000-000000000002';
   SELECT * INTO untouched FROM app.routines WHERE id = 'ea100000-0000-4000-8000-000000000003';
-  IF refreshed.next_due_on <> '2026-08-13' THEN
-    RAISE EXCEPTION 'la caché quedó en % en vez del jueves 13', refreshed.next_due_on;
+  IF refreshed.next_due_hint <> '2026-08-13' THEN
+    RAISE EXCEPTION 'la caché quedó en % en vez del jueves 13', refreshed.next_due_hint;
   END IF;
   -- Una columna, una fila: la regla no se toca al refrescar la caché, que es
   -- justo lo que hacía mal el avance de la 0009.
   IF refreshed.anchor_on <> '2026-08-10'
      OR refreshed.weekdays <> ARRAY[1, 4]::smallint[]
      OR refreshed.overdue_policy <> 'skip'
-     OR untouched.next_due_on <> '2026-08-10' THEN
+     OR untouched.next_due_hint <> '2026-08-10' THEN
     RAISE EXCEPTION 'la definer tocó más de lo suyo';
   END IF;
 END
@@ -516,7 +516,7 @@ SET LOCAL row_security = off;
 
 DO $assert_hint_ignored_before_anchor$
 BEGIN
-  IF (SELECT next_due_on FROM app.routines WHERE id = 'ea100000-0000-4000-8000-000000000002')
+  IF (SELECT next_due_hint FROM app.routines WHERE id = 'ea100000-0000-4000-8000-000000000002')
        <> '2026-08-13' THEN
     RAISE EXCEPTION 'una pista anterior al ancla movió la caché';
   END IF;

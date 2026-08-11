@@ -120,10 +120,10 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, recipe_pa
 INSERT INTO app.shopping_items (household_id, custom_name, section, week_starts_on, created_by_membership_id)
 VALUES ('${FIXTURE_HOUSEHOLD}', 'Papel de cocina', 'hogar', '${WEEK}', '${ADMIN_MEMBERSHIP}');
 
-INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
+INSERT INTO app.routines (id, household_id, title, details, audience, next_due_hint, created_by_membership_id,
   pattern, anchor_on, repeat_every) VALUES
-  ('${ROUTINE_PLANTAS}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas', '', 'all', 'weekly', 1, '2026-08-10', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-10', 7),
-  ('${ROUTINE_MENU}', '${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', 'weekly', 1, '2026-08-09', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-09', 7);
+  ('${ROUTINE_PLANTAS}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas', '', 'all', '2026-08-10', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-10', 7),
+  ('${ROUTINE_MENU}', '${FIXTURE_HOUSEHOLD}', 'Planificar el menú', '', 'family', '2026-08-09', '${ADMIN_MEMBERSHIP}', 'every_n_days', '2026-08-09', 7);
 
 INSERT INTO app.routine_completions (household_id, routine_id, due_on, completed_by_membership_id)
 VALUES ('${FIXTURE_HOUSEHOLD}', '${ROUTINE_PLANTAS}', '2026-08-10', '${ADMIN_MEMBERSHIP}');
@@ -414,10 +414,9 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
       await client.query(
         // `overdue_policy = 'skip'` es lo que DERIVA el comando para un ritmo
         // sub-semanal (§2.5): una rutina de días fijos no acumula pendientes.
-        `insert into app.routines (id, household_id, title, details, audience, frequency,
-                                   interval_count, next_due_on, created_by_membership_id,
+        `insert into app.routines (id, household_id, title, details, audience, next_due_hint, created_by_membership_id,
                                    pattern, anchor_on, repeat_every, weekdays, overdue_policy)
-         values ($1, $2, 'Cocina a fondo', '', 'all', 'weekly', 1, '2026-08-10', $3,
+         values ($1, $2, 'Cocina a fondo', '', 'all', '2026-08-10', $3,
                  'days_of_week', '2026-08-10', 1, ARRAY[1]::smallint[], 'skip')`,
         [routineId, FIXTURE_HOUSEHOLD, membership.id]
       );
@@ -443,9 +442,8 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
     const routineId = '48000000-0000-4000-8000-000000000003';
     await withAuthorizedTransaction(appPool, { userId: ADMIN_USER.id }, FIXTURE_HOUSEHOLD, async (client, membership) => {
       await client.query(
-        `insert into app.routines (id, household_id, title, details, audience, frequency,
-                                   interval_count, next_due_on, created_by_membership_id, pattern)
-         values ($1, $2, 'Limpieza a fondo del salón', '', 'employee', 'weekly', 1, null, $3, null)`,
+        `insert into app.routines (id, household_id, title, details, audience, next_due_hint, created_by_membership_id, pattern)
+         values ($1, $2, 'Limpieza a fondo del salón', '', 'employee', null, $3, null)`,
         [routineId, FIXTURE_HOUSEHOLD, membership.id]
       );
     });

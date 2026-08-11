@@ -138,9 +138,9 @@ export interface RoutinePending {
   /** Las próximas ocurrencias > hoy sin completar, para el chip optimista. */
   readonly upcoming: readonly string[];
   /**
-   * Valor de la caché `app.routines.next_due_on`: cota INFERIOR de la próxima
+   * Valor de la caché `app.routines.next_due_hint`: cota INFERIOR de la próxima
    * ocurrencia pendiente. Si se queda anticuada solo puede quedarse atrás, de
-   * modo que el prefiltro SQL `next_due_on <= hoy` selecciona de más y este
+   * modo que el prefiltro SQL `next_due_hint <= hoy` selecciona de más y este
    * módulo descarta después. Nunca puede ocultar una rutina.
    */
   readonly nextDueHint: string | null;

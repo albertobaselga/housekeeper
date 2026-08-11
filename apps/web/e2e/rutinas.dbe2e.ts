@@ -47,7 +47,7 @@ test('el caso real de la casa: «limpieza a fondo de la cocina los lunes y los j
 test('«Todavía no lo sabemos» se apunta aquí y no aparece en Hoy', async ({ page }) => {
   // §2.3: el desbloqueo de la ola. Una veintena de tareas del manual dicen
   // «pendiente de completar por la familia» y hasta ahora no cabían en el
-  // sistema porque frequency y next_due_on eran NOT NULL.
+  // sistema porque frequency y next_due_on eran NOT NULL (las retiró la 0033).
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/routines`);
 
@@ -68,7 +68,7 @@ test('«Todavía no lo sabemos» se apunta aquí y no aparece en Hoy', async ({ 
   await expect(fila.getByRole('button', { name: 'Marcar hecha' })).toHaveCount(0);
   await expect(fila.getByRole('link', { name: 'Ponerle día' })).toBeVisible();
 
-  // Y jamás en Hoy: el prefiltro `next_due_on <= hoy` excluye NULL.
+  // Y jamás en Hoy: el prefiltro `next_due_hint <= hoy` excluye NULL.
   await page.goto(`/h/${HOUSEHOLD}/today`);
   await expect(page.getByText('Limpieza a fondo del garaje (E2E)')).toHaveCount(0);
 });
