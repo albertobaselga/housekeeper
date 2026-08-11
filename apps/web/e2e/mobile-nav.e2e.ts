@@ -62,27 +62,41 @@ test('para la empleada interna Rutinas es un slot principal (1 tap)', async ({ p
   await expect(page).toHaveURL(`/h/${HOUSEHOLD}/routines`);
 });
 
-test('la píldora de sync es visible en móvil y no tapa la navegación', async ({ page }) => {
+test('en móvil no se pinta cabecera ni píldora cuando todo está guardado', async ({ page }) => {
   await loginAs(page, 'employee');
-  const pill = page.locator('.sync-pill');
-  await expect(pill).toBeVisible();
-  const box = await pill.boundingBox();
+  // El topbar se va entero por debajo de 52rem: sus 64 px eran el nombre del
+  // hogar en el que ya se sabe que se está, un icono de búsqueda que ahora vive
+  // en «Más» y un punto verde que decía «todo bien».
+  await expect(page.locator('header.topbar')).toBeHidden();
+  await expect(page.locator('.sync-pill')).toBeHidden();
+  // Y con ello el primer píxel del documento es ya contenido: el h1.
+  const heading = page.getByRole('heading', { level: 1 });
+  const box = await heading.boundingBox();
   expect(box).not.toBeNull();
-  // Vive en el topbar: no invade la bottom-nav ni el contenido inferior.
-  expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThan(80);
+  expect(box?.y ?? 999).toBeLessThan(40);
 });
 
-test('la búsqueda abre como overlay desde el icono y navega con la consulta', async ({ page }) => {
+test('la búsqueda vive en la hoja «Más» y lleva a su propia ruta', async ({ page }) => {
   await loginAs(page, 'admin');
-  await page.getByRole('button', { name: 'Buscar en toda la casa' }).click();
-  const overlay = page.getByRole('dialog', { name: 'Buscar en toda la casa' });
-  await expect(overlay).toBeVisible();
-  const input = overlay.getByRole('searchbox', { name: 'Texto a buscar' });
-  await expect(input).toBeFocused();
-  await input.fill('lavadora');
-  await input.press('Enter');
-  await expect(page).toHaveURL(`/h/${HOUSEHOLD}/search?q=lavadora`);
-  await expect(page.getByRole('dialog', { name: 'Buscar en toda la casa' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Más' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Más opciones' });
+  await sheet.getByRole('link', { name: 'Buscar en toda la casa' }).click();
+  await expect(page).toHaveURL(`/h/${HOUSEHOLD}/search`);
+  await expect(page.getByRole('searchbox')).toBeVisible();
+});
+
+test('la hoja «Más» no tapa la barra: la pestaña activa sigue viéndose', async ({ page }) => {
+  await loginAs(page, 'employee');
+  await page.getByRole('button', { name: 'Más' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Más opciones' });
+  await expect(sheet).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Navegación móvil' });
+  const navBox = await nav.boundingBox();
+  const sheetBox = await sheet.boundingBox();
+  expect(navBox).not.toBeNull();
+  expect(sheetBox).not.toBeNull();
+  // La hoja se posa POR ENCIMA de la barra, no sobre ella.
+  expect((sheetBox?.y ?? 0) + (sheetBox?.height ?? 0)).toBeLessThanOrEqual((navBox?.y ?? 0) + 1);
 });
 
 test('⌘K abre el overlay de búsqueda y Escape lo cierra', async ({ page }) => {

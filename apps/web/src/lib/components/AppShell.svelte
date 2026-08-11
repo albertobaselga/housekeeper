@@ -41,7 +41,13 @@
   // trabaja la casa (registra jornadas o no gestiona pagos) lleva Rutinas al
   // frente; la familia prioriza Menú, Contrato y Agenda. Recetas deja de ser
   // destino de primer nivel: vive dentro de Menú y sigue accesible por URL.
-  const handsOnOrder = ['today', 'routines', 'menu', 'employment', 'wiki', 'calendar', 'contacts'];
+  //
+  // La Guía entra en los CUATRO PRIMEROS de quien trabaja la casa y Contrato
+  // baja a la hoja. La Guía es lo que se consulta de pie —cómo va la lavadora,
+  // a qué hora recogen a los niños— y estaba escondida detrás de «Más», que es
+  // justo donde ella menos puede navegar; Contrato se mira una vez al mes y
+  // ocupaba un sitio principal de la barra.
+  const handsOnOrder = ['today', 'routines', 'menu', 'wiki', 'employment', 'calendar', 'contacts'];
   const familyOrder = ['today', 'menu', 'employment', 'calendar', 'wiki', 'routines', 'contacts'];
   const order = has('work.register.self') || !has('settlement.read') ? handsOnOrder : familyOrder;
 
@@ -56,7 +62,13 @@
   // «Tu contraseña» solo cuando hay identidad real detrás: en la demo por
   // fixtures no existe contraseña alguna y el enlace sería una promesa vacía.
   const accountEntry = { module: 'account', label: 'Tu contraseña', short: 'Contraseña', capability: 'emergency.read' } as NavEntry;
+  // La búsqueda se re-aloja aquí al irse el topbar en móvil: fila propia con su
+  // ruta, no un overlay que en un teléfono explicaba «Enter busca… Escape
+  // cierra» a alguien que no tiene teclado. El overlay ⌘K sigue existiendo
+  // donde hay teclado físico.
+  const searchEntry = { module: 'search', label: 'Buscar en toda la casa', short: 'Buscar', capability: 'search.use' } as NavEntry;
   const sheetNavigation: NavEntry[] = [
+    ...(has('search.use') ? [searchEntry] : []),
     ...mobileOrder.slice(4),
     ...(hasPasswordAuth() ? [accountEntry] : []),
     ...(has('access.manage')
@@ -93,6 +105,24 @@
   });
 
   const sheetActive = $derived(sheetNavigation.some((item) => isActive(item.module)));
+
+  /*
+   * La píldora de sync SOLO se pinta cuando hay algo pendiente. Hasta ahora era
+   * un punto verde de 24×44 px que decía «todo bien»: el píxel menos
+   * informativo de la aplicación, y ocupaba sitio fijo en la cabecera de todas
+   * las pantallas. Cuando de verdad hay algo que contar, lo cuenta la banda que
+   * ya existía para el modo sin conexión.
+   *
+   * `syncing` queda fuera a propósito: es el viaje de ida de un guardado
+   * optimista, dura milisegundos y ya tiene su acuse en la propia fila
+   * (ActionStatus). Una banda que parpadea en cada gesto es ruido.
+   */
+  const bannerVisible = $derived(
+    $syncStatus.phase === 'offline' ||
+      $syncStatus.phase === 'conflict' ||
+      $syncStatus.phase === 'error' ||
+      $syncStatus.phase === 'pending'
+  );
 
   // Cerrar hoja y overlay al navegar (backstop además del cierre en el click).
   $effect(() => {
@@ -190,8 +220,8 @@
   </div>
 {/if}
 
-{#if $syncStatus.phase === 'offline' || $syncStatus.phase === 'conflict' || $syncStatus.phase === 'error'}
-  <div class="status-banner" class:danger={$syncStatus.phase !== 'offline'} role="status">
+{#if bannerVisible}
+  <div class="status-banner" class:danger={$syncStatus.phase === 'conflict' || $syncStatus.phase === 'error'} role="status">
     <strong>{$syncStatus.label}</strong>
     <span>{$syncStatus.detail}</span>
   </div>
@@ -206,7 +236,7 @@
   </p>
 {/if}
 
-<div class="app-shell" class:with-banner={$syncStatus.phase === 'offline' || $syncStatus.phase === 'conflict' || $syncStatus.phase === 'error'}>
+<div class="app-shell" class:with-banner={bannerVisible}>
   <aside class="sidebar" aria-label="Navegación principal">
     <a class="brand" href={pathFor('today')} aria-label={`${context.household.name}, ir a Hoy`}>
       <span class="brand-mark" aria-hidden="true">⌂</span>
@@ -374,6 +404,8 @@
         autocomplete="off"
       />
       <button type="submit" class="button primary small-button">Buscar</button>
+      <!-- El overlay gana su ✕: sin teclado no hay Escape que valga. -->
+      <button type="button" class="search-overlay-close" onclick={() => (searchOpen = false)} aria-label="Cerrar la búsqueda">✕</button>
     </form>
     <p>Enter busca en la guía, contactos y más · Escape cierra</p>
   </div>
