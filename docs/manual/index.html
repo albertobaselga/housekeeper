@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Manual de Casa Clara</title>
+<title>Manual de la aplicación de la casa</title>
 <style>
 /* ── Tokens: paleta real de la aplicación (apps/web/src/app.css) ─────────── */
 :root {
@@ -310,25 +310,31 @@ thead th { border-top: 0; }
 <aside class="indice">
   <details open>
     <summary>
-      <span>Manual de Casa Clara</span>
+      <span>Manual de la aplicación de la casa</span>
     </summary>
-    <a class="marca" href="#inicio" aria-label="Manual de Casa Clara, ir al inicio">
+    <a class="marca" href="#inicio" aria-label="Manual de la aplicación de la casa, ir al inicio">
       <span class="marca-icono" aria-hidden="true">⌂</span>
-      <div><strong>Casa Clara</strong><small>Manual de la casa</small></div>
+      <div><strong>Manual de la casa</strong><small>Cómo se usa la aplicación</small></div>
     </a>
     <nav aria-label="Índice del manual">
-      <a href="#inicio">Qué es Casa Clara</a>
+      <a href="#inicio">Qué es esta aplicación</a>
       <a href="#primeros-pasos">Primeros pasos</a>
       <a class="sub" href="#pp-entrar">Entrar</a>
-      <a class="sub" href="#pp-contrasena">Tu contraseña</a>
+      <a class="sub" href="#pp-cuenta">Tu cuenta y tu contraseña</a>
+      <a class="sub" href="#pp-avisos">Los avisos en el móvil</a>
+      <a class="sub" href="#pp-hogar">Qué es un hogar</a>
+      <a class="sub" href="#pp-moverse">Moverse por la app</a>
+      <a class="sub" href="#pp-buscar">Buscar en toda la casa</a>
       <a href="#familia-admin">Familia · administración</a>
       <a class="sub" href="#fa-hoy">Hoy y decisiones</a>
       <a class="sub" href="#fa-menu">Menú y semanas plantilla</a>
       <a class="sub" href="#fa-compra">Lista de la compra</a>
       <a class="sub" href="#fa-rutinas">Rutinas</a>
       <a class="sub" href="#fa-guia">Guía de la casa</a>
+      <a class="sub" href="#fa-libro">Leerla entera, como un libro</a>
       <a class="sub" href="#fa-manual">El manual de la casa, dentro</a>
-      <a class="sub" href="#fa-pagos">Contrato</a>
+      <a class="sub" href="#fa-personal">Personal de la casa</a>
+      <a class="sub" href="#fa-contrato">Contrato</a>
       <a class="sub" href="#fa-acuerdo">Condiciones del contrato</a>
       <a class="sub" href="#fa-vacaciones">Vacaciones</a>
       <a class="sub" href="#fa-conceptos">Conceptos a mano</a>
@@ -338,6 +344,7 @@ thead th { border-top: 0; }
       <a href="#familia-miembro">Familia · miembro</a>
       <a href="#interna">Interna / empleada</a>
       <a href="#apoyo-visor">Apoyo y acceso puntual</a>
+      <a class="sub" href="#quien-ve-que">Quién ve qué</a>
       <a href="#como-funciona">Cómo funciona</a>
       <a href="#faq">Preguntas frecuentes</a>
     </nav>
@@ -349,15 +356,30 @@ thead th { border-top: 0; }
 <!-- ═══════════════════════════ PORTADA ═══════════════════════════ -->
 <section id="inicio">
   <p class="eyebrow">Manual de usuario</p>
-  <h1>Casa Clara, la app de la casa</h1>
+  <h1>La aplicación de la casa</h1>
   <p>
-    Casa Clara reúne en un solo sitio el día a día del hogar: <strong>lo de hoy</strong>,
+    Esta aplicación reúne en un solo sitio el día a día del hogar: <strong>lo de hoy</strong>,
     el <strong>menú semanal</strong> con su lista de la compra, las <strong>rutinas</strong>,
     la <strong>Guía de la casa</strong> (las instrucciones escritas del hogar), el
     <strong>calendario</strong>, los <strong>contactos</strong> y <strong>Contrato</strong>:
     el contrato y sus condiciones, la nómina, los gastos y las vacaciones de la empleada
     de hogar, con las cuentas de cada mes trazables línea a línea.
   </p>
+  <div class="tarjeta">
+    <h4>Aquí la aplicación se llama como vuestra casa</h4>
+    <p>
+      No hay nombre de marca por medio. Antes de entrar, la aplicación se presenta con
+      su nombre genérico: <span class="ui">Aplicación para la gestión del personal
+      doméstico</span>. En cuanto entras manda el <strong>nombre de vuestro hogar</strong>,
+      y la pestaña del navegador pasa a decir «Hoy · <em>vuestra casa</em>».
+    </p>
+    <p>
+      Una misma instalación puede servir a varias casas, y por eso quien todavía no ha
+      entrado no ve el nombre de ninguna. En las capturas de este manual el hogar de
+      demostración se llama <strong>Casa Roble</strong>: donde leas eso, en vuestra
+      pantalla pondrá el nombre de vuestra casa.
+    </p>
+  </div>
   <div class="tarjeta principio">
     <h3>El principio de la casa</h3>
     <p>
@@ -397,9 +419,9 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Entrar · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Aplicación para la gestión del personal doméstico</span></div>
       <img src="capturas/login.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla de acceso de Casa Clara con el título «Entra en tu casa», el texto «Escribe tu nombre de usuario y tu contraseña. Si no la recuerdas, pídesela a quien administra la casa: te pondrá una nueva en un momento», los campos Tu nombre de usuario (con «ana» escrito) y Tu contraseña, y el botón Entrar.">
+           alt="Pantalla de acceso con el título «Entra en tu casa», el texto «Escribe tu nombre de usuario y tu contraseña. Si no la recuerdas, pídesela a quien administra la casa: te pondrá una nueva en un momento», los campos Tu nombre de usuario (con «ana» escrito) y Tu contraseña, y el botón Entrar.">
     </div>
     <figcaption>
       La pantalla de acceso: dos campos y un botón. La propia pantalla dice qué hacer
@@ -437,7 +459,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Tu contraseña · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Tu acceso · Casa Roble</span></div>
       <img src="capturas/familia-contrasena.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla Tu contraseña en el ordenador, con la entrada «Tu contraseña» resaltada al final de la barra lateral y la tarjeta Cambiar tu contraseña con los tres campos y el botón Cambiar mi contraseña.">
     </div>
@@ -478,7 +500,7 @@ thead th { border-top: 0; }
 
   <h3>Qué es un hogar</h3>
   <p>
-    Todo en Casa Clara vive dentro de un <strong>hogar</strong>: su menú, sus rutinas,
+    Todo en esta aplicación vive dentro de un <strong>hogar</strong>: su menú, sus rutinas,
     su Guía, sus pagos. Solo ves los hogares a los que te han dado acceso, y cada
     hogar solo ve lo suyo. Quien administra el hogar decide quién entra, con qué
     papel y hasta cuándo. La contraseña solo dice <strong>quién eres</strong>; lo que
@@ -558,7 +580,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Roble</span></div>
       <img src="capturas/familia-hoy.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla Hoy de Alberto con el bloque Necesita tu decisión y cinco asuntos: dos jornadas extra hechas a falta de decidir la compensación, una jornada extra solicitada con los botones Aceptar y Revisar, un gasto pendiente de aprobar y diez comidas del menú sin confirmar.">
     </div>
@@ -598,7 +620,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Casa Roble</span></div>
       <img src="capturas/familia-menu.png" loading="lazy" width="2560" height="1600"
            alt="Menú del jueves para el grupo Casa: junto al nombre de Leo, el chip Leche y derivados (lactosa); la comida es Garbanzos con espinacas y la cena Arroz con leche, con el aviso Este plato lleva algo que no todos pueden tomar: Leche y derivados (lactosa) (Leo).">
     </div>
@@ -713,7 +735,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Roble</span></div>
       <img src="capturas/familia-rutinas.png" loading="lazy" width="2560" height="1600"
            alt="Rutinas de la casa: cambiar sábanas y toallas (Empleada · cada semana), regar las plantas de la terraza (Toda la casa · cada 2 días), rutina diaria de referencia, ventilación de la mañana, revisión del botiquín (Familia · cada mes) y confirmar la compra personal de alimentos (Toda la casa · cada 2 semanas), cada una con Marcar hecha y Editar.">
     </div>
@@ -1066,7 +1088,7 @@ thead th { border-top: 0; }
       min a la semana y la jornada contratada dice 40 h: sobran 30 min.»</em>
     </p>
     <p>
-      <strong>No te impide guardar.</strong> Casa Clara no sabe cuál de las dos
+      <strong>No te impide guardar.</strong> La aplicación no sabe cuál de las dos
       condiciones está mal —eso lo sabéis vosotros— y prefiere que lo veas a decidir
       por su cuenta. Lo que no hace es callárselo: el aviso también aparece en la
       pantalla de la empleada.
@@ -1130,9 +1152,9 @@ thead th { border-top: 0; }
   <div class="tarjeta">
     <h4>Si se pasan los días, se ve; no se rechaza</h4>
     <p>
-      Cuando lo apuntado supera el derecho del año, Casa Clara <strong>no bloquea el
+      Cuando lo apuntado supera el derecho del año, la aplicación <strong>no bloquea el
       registro</strong>: enseña el saldo en negativo con un aviso —«Se han apuntado más
-      días de los que reconoce el contrato. Casa Clara no lo corrige sola: lo enseña
+      días de los que reconoce el contrato. La aplicación no lo corrige sola: lo enseña
       para que lo habléis y decidáis qué hacer»—. Un día de más puede estar pactado de
       palabra; el programa no es quién para negarlo.
     </p>
@@ -1168,7 +1190,7 @@ thead th { border-top: 0; }
   <div class="tarjeta">
     <h4>Una cuenta cerrada no se reescribe</h4>
     <p>
-      Si el mes que eliges ya está <strong>cerrado</strong>, Casa Clara no rechaza el
+      Si el mes que eliges ya está <strong>cerrado</strong>, la aplicación no rechaza el
       apunte ni rehace aquella cuenta: <strong>lo imputa al primer mes abierto
       siguiente</strong> y la fila lo dice con todas las letras —«Se pidió para marzo de
       2026, pero esa cuenta ya estaba cerrada: se imputa a abril de 2026»—. El recibo de
@@ -1202,7 +1224,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Calendario · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Calendario · Casa Roble</span></div>
       <img src="capturas/familia-calendario.png" loading="lazy" width="2560" height="1600"
            alt="Calendario de agosto de 2026 con la agenda por días: Hoy sábado 8 de agosto con Reunión de equipo (Trabajo de Marta), Recogida de Leo en el cole y Natación de Leo, y debajo Próximamente domingo 9 de agosto.">
     </div>
@@ -1329,7 +1351,7 @@ thead th { border-top: 0; }
   </div>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contactos · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contactos · Casa Roble</span></div>
       <img src="capturas/familia-contactos.png" loading="lazy" width="2560" height="1600"
            alt="Directorio de contactos agrupado por tipo: Emergencias Comunidad de Madrid en Emergencias, Centro Pediátrico Olmo en Salud, Carmen 2.º B en Casa y vecinos y Javier · Fontanería en Servicios y averías, con botones Llamar, Editar y Archivar en cada tarjeta.">
     </div>
@@ -1337,7 +1359,7 @@ thead th { border-top: 0; }
   </figure>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Emergencias · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Emergencias · Casa Roble</span></div>
       <img src="capturas/familia-emergencias.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla de Emergencias con la nota «Contactos del hogar · disponibles sin conexión», la franja roja Emergencia vital 112 con el botón Llamar al 112, y el bloque A quién llamar con los contactos destacados del hogar y sus teléfonos.">
     </div>
@@ -1764,8 +1786,8 @@ thead th { border-top: 0; }
     <li><strong>Cada hogar, lo suyo.</strong> La separación entre hogares está garantizada en la propia base de datos, no solo en la pantalla.</li>
     <li><strong>Cada papel, lo justo.</strong> Los importes, por ejemplo, solo los ven la administración y la propia empleada; y la lista «Personal» de la compra, solo la persona interna y quien administra. No es que se oculten botones: es que la base de datos no devuelve esos datos a quien no le corresponden.</li>
     <li><strong>Y dentro del contrato, solo lo pactado.</strong> Del catálogo de condiciones, a la empleada le llega únicamente lo que su contrato le permite y tiene tarifa. Una tarifa desactivada no está escondida en su móvil: no llega a él.</li>
-    <li><strong>Tu contraseña es tuya.</strong> Nadie de la casa puede verla, tampoco quien administra: lo único que puede hacer es <em>ponerte otra</em>, y al hacerlo se cierran todas tus sesiones. Casa Clara no envía correos a nadie en ningún momento.</li>
-    <li><strong>Calendarios enlazados, no copiados.</strong> Casa Clara lee los calendarios que la familia enlaza y guarda solo los eventos de una ventana corta alrededor de hoy. Dejar de mostrar un calendario borra sus eventos de la casa, y quitarlo del todo se los lleva con él.</li>
+    <li><strong>Tu contraseña es tuya.</strong> Nadie de la casa puede verla, tampoco quien administra: lo único que puede hacer es <em>ponerte otra</em>, y al hacerlo se cierran todas tus sesiones. La aplicación no envía correos a nadie en ningún momento.</li>
+    <li><strong>Calendarios enlazados, no copiados.</strong> La aplicación lee los calendarios que la familia enlaza y guarda solo los eventos de una ventana corta alrededor de hoy. Dejar de mostrar un calendario borra sus eventos de la casa, y quitarlo del todo se los lleva con él.</li>
     <li><strong>Demostraciones siempre sintéticas.</strong> Los entornos de prueba avisan («Entorno sintético: no introduzcas datos reales») y no admiten datos de personas reales.</li>
   </ul>
 </section>
@@ -1791,7 +1813,7 @@ thead th { border-top: 0; }
     <dd>
       <p>
         No hay «he olvidado mi contraseña» por correo, y no es un olvido de la app:
-        Casa Clara no manda correos a nadie. Pídesela a quien administra la casa: entra
+        la aplicación no manda correos a nadie. Pídesela a quien administra la casa: entra
         en <span class="ui">Ajustes del hogar</span> → tu tarjeta →
         <span class="ui">Poner una contraseña nueva</span> y te la dice
         <strong>en persona</strong>. Cámbiala tú desde <span class="ui">Tu
@@ -1860,7 +1882,7 @@ thead th { border-top: 0; }
     <dd>
       <p>
         No: es que ese concepto no está pactado en tu contrato, o está pactado sin
-        tarifa. Casa Clara solo enseña lo que te aplica y tiene precio, para que nadie
+        tarifa. La aplicación solo enseña lo que te aplica y tiene precio, para que nadie
         cuente con un cobro que no existe. Si crees que debería estar, es una
         conversación con la familia: se añade desde
         <span class="ui">Administrar el contrato</span> y nace como versión nueva.
@@ -1969,7 +1991,7 @@ thead th { border-top: 0; }
   </dl>
 
   <p class="pie">
-    Manual de Casa Clara · elaborado sobre el comportamiento real de la aplicación,
+    Manual de la aplicación de la casa · elaborado sobre el comportamiento real de la aplicación,
     con capturas de un hogar de demostración con datos exclusivamente sintéticos.
   </p>
 </section>
