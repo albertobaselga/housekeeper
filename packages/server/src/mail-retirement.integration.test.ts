@@ -187,8 +187,9 @@ describe.runIf(Boolean(adminUrl))("avisos por correo y parte semanal retirados (
     // vencimiento (para eso son los tres días de antelación). El defecto que
     // esto vigila es real y estaba en la cola: `::date::timestamptz` resolvía la
     // medianoche en la zona de la SESIÓN, o sea las 02:00 en Madrid.
-    expect(queued?.local_time >= "09:00").toBe(true);
-    expect(queued?.local_time <= "21:30").toBe(true);
+    expect(queued).toBeDefined();
+    expect(queued!.local_time >= "09:00").toBe(true);
+    expect(queued!.local_time <= "21:30").toBe(true);
     expect(queued?.weekday).not.toBe(7);
     expect(queued?.early).toBe(true);
   });
