@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Manual de Casa Clara</title>
+<title>Manual de la aplicación de la casa</title>
 <style>
 /* ── Tokens: paleta real de la aplicación (apps/web/src/app.css) ─────────── */
 :root {
@@ -310,25 +310,31 @@ thead th { border-top: 0; }
 <aside class="indice">
   <details open>
     <summary>
-      <span>Manual de Casa Clara</span>
+      <span>Manual de la aplicación de la casa</span>
     </summary>
-    <a class="marca" href="#inicio" aria-label="Manual de Casa Clara, ir al inicio">
+    <a class="marca" href="#inicio" aria-label="Manual de la aplicación de la casa, ir al inicio">
       <span class="marca-icono" aria-hidden="true">⌂</span>
-      <div><strong>Casa Clara</strong><small>Manual de la casa</small></div>
+      <div><strong>Manual de la casa</strong><small>Cómo se usa la aplicación</small></div>
     </a>
     <nav aria-label="Índice del manual">
-      <a href="#inicio">Qué es Casa Clara</a>
+      <a href="#inicio">Qué es esta aplicación</a>
       <a href="#primeros-pasos">Primeros pasos</a>
       <a class="sub" href="#pp-entrar">Entrar</a>
-      <a class="sub" href="#pp-contrasena">Tu contraseña</a>
+      <a class="sub" href="#pp-cuenta">Tu cuenta y tu contraseña</a>
+      <a class="sub" href="#pp-avisos">Los avisos en el móvil</a>
+      <a class="sub" href="#pp-hogar">Qué es un hogar</a>
+      <a class="sub" href="#pp-moverse">Moverse por la app</a>
+      <a class="sub" href="#pp-buscar">Buscar en toda la casa</a>
       <a href="#familia-admin">Familia · administración</a>
       <a class="sub" href="#fa-hoy">Hoy y decisiones</a>
       <a class="sub" href="#fa-menu">Menú y semanas plantilla</a>
       <a class="sub" href="#fa-compra">Lista de la compra</a>
       <a class="sub" href="#fa-rutinas">Rutinas</a>
       <a class="sub" href="#fa-guia">Guía de la casa</a>
+      <a class="sub" href="#fa-libro">Leerla entera, como un libro</a>
       <a class="sub" href="#fa-manual">El manual de la casa, dentro</a>
-      <a class="sub" href="#fa-pagos">Contrato</a>
+      <a class="sub" href="#fa-personal">Personal de la casa</a>
+      <a class="sub" href="#fa-contrato">Contrato</a>
       <a class="sub" href="#fa-acuerdo">Condiciones del contrato</a>
       <a class="sub" href="#fa-vacaciones">Vacaciones</a>
       <a class="sub" href="#fa-conceptos">Conceptos a mano</a>
@@ -338,6 +344,7 @@ thead th { border-top: 0; }
       <a href="#familia-miembro">Familia · miembro</a>
       <a href="#interna">Interna / empleada</a>
       <a href="#apoyo-visor">Apoyo y acceso puntual</a>
+      <a class="sub" href="#quien-ve-que">Quién ve qué</a>
       <a href="#como-funciona">Cómo funciona</a>
       <a href="#faq">Preguntas frecuentes</a>
     </nav>
@@ -349,15 +356,30 @@ thead th { border-top: 0; }
 <!-- ═══════════════════════════ PORTADA ═══════════════════════════ -->
 <section id="inicio">
   <p class="eyebrow">Manual de usuario</p>
-  <h1>Casa Clara, la app de la casa</h1>
+  <h1>La aplicación de la casa</h1>
   <p>
-    Casa Clara reúne en un solo sitio el día a día del hogar: <strong>lo de hoy</strong>,
+    Esta aplicación reúne en un solo sitio el día a día del hogar: <strong>lo de hoy</strong>,
     el <strong>menú semanal</strong> con su lista de la compra, las <strong>rutinas</strong>,
     la <strong>Guía de la casa</strong> (las instrucciones escritas del hogar), el
     <strong>calendario</strong>, los <strong>contactos</strong> y <strong>Contrato</strong>:
     el contrato y sus condiciones, la nómina, los gastos y las vacaciones de la empleada
     de hogar, con las cuentas de cada mes trazables línea a línea.
   </p>
+  <div class="tarjeta">
+    <h4>Aquí la aplicación se llama como vuestra casa</h4>
+    <p>
+      No hay nombre de marca por medio. Antes de entrar, la aplicación se presenta con
+      su nombre genérico: <span class="ui">Aplicación para la gestión del personal
+      doméstico</span>. En cuanto entras manda el <strong>nombre de vuestro hogar</strong>,
+      y la pestaña del navegador pasa a decir «Hoy · <em>vuestra casa</em>».
+    </p>
+    <p>
+      Una misma instalación puede servir a varias casas, y por eso quien todavía no ha
+      entrado no ve el nombre de ninguna. En las capturas de este manual el hogar de
+      demostración se llama <strong>Casa Roble</strong>: donde leas eso, en vuestra
+      pantalla pondrá el nombre de vuestra casa.
+    </p>
+  </div>
   <div class="tarjeta principio">
     <h3>El principio de la casa</h3>
     <p>
@@ -397,9 +419,9 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Entrar · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Aplicación para la gestión del personal doméstico</span></div>
       <img src="capturas/login.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla de acceso de Casa Clara con el título «Entra en tu casa», el texto «Escribe tu nombre de usuario y tu contraseña. Si no la recuerdas, pídesela a quien administra la casa: te pondrá una nueva en un momento», los campos Tu nombre de usuario (con «ana» escrito) y Tu contraseña, y el botón Entrar.">
+           alt="Pantalla de acceso con el título «Entra en tu casa», el texto «Escribe tu nombre de usuario y tu contraseña. Si no la recuerdas, pídesela a quien administra la casa: te pondrá una nueva en un momento», los campos Tu nombre de usuario (con «ana» escrito) y Tu contraseña, y el botón Entrar.">
     </div>
     <figcaption>
       La pantalla de acceso: dos campos y un botón. La propia pantalla dice qué hacer
@@ -427,23 +449,29 @@ thead th { border-top: 0; }
     </figure>
   </div>
 
-  <h3 id="pp-contrasena">Tu contraseña: cambiarla y recuperarla</h3>
+  <h3 id="pp-cuenta">Tu cuenta: la contraseña y los avisos</h3>
   <p>
-    Cualquiera —familia, interna, apoyo o acceso puntual— tiene su propia pantalla
-    <span class="ui">Tu contraseña</span>: en el ordenador, abajo en la barra lateral;
-    en el móvil, dentro de <span class="ui">Más</span>. Se escribe la de ahora, la
-    nueva dos veces (<strong>mínimo 10 caracteres</strong>) y
-    <span class="ui">Cambiar mi contraseña</span>.
+    Cualquiera —familia, interna, apoyo o acceso puntual— tiene su propia sección
+    <span class="ui">Tu cuenta</span>: en el ordenador, abajo en la barra lateral; en el
+    móvil, dentro de <span class="ui">Más</span>. Dentro caben dos cosas, y el título de
+    la pantalla lo dice: <strong>«Tu contraseña y tus avisos»</strong>. Las dos son
+    tuyas y de nadie más.
+  </p>
+  <p>
+    Para cambiar la contraseña se escribe la de ahora, la nueva dos veces
+    (<strong>mínimo 10 caracteres</strong>) y <span class="ui">Cambiar mi
+    contraseña</span>.
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Tu contraseña · Casa Clara</span></div>
-      <img src="capturas/familia-contrasena.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla Tu contraseña en el ordenador, con la entrada «Tu contraseña» resaltada al final de la barra lateral y la tarjeta Cambiar tu contraseña con los tres campos y el botón Cambiar mi contraseña.">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Tu acceso · Casa Roble</span></div>
+      <img src="capturas/familia-cuenta.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla «Tu contraseña y tus avisos» en el ordenador, con la entrada Tu cuenta resaltada al final de la barra lateral, la tarjeta Cambiar tu contraseña con sus tres campos y el botón Cambiar mi contraseña, y debajo el bloque Tus avisos en este teléfono.">
     </div>
     <figcaption>
-      <span class="ui">Tu contraseña</span> vive al final de la barra lateral, encima de
-      <span class="ui">Ajustes del hogar</span>.
+      <span class="ui">Tu cuenta</span> vive al final de la barra lateral, encima de
+      <span class="ui">Ajustes del hogar</span>. La misma pantalla para los cinco
+      papeles.
     </figcaption>
   </figure>
   <div class="fila">
@@ -463,22 +491,124 @@ thead th { border-top: 0; }
         <strong>Si la olvidas</strong>, no hay autoservicio ni correo de recuperación.
         Se la pides a quien administra la casa y te pone una nueva en un minuto
         (<a href="#fa-reponer">cómo se hace</a>). Te la dirá en persona; cámbiala tú
-        desde <span class="ui">Tu contraseña</span> en cuanto entres.
+        desde <span class="ui">Tu cuenta</span> en cuanto entres.
       </p>
     </div>
     <figure class="captura movil">
       <div class="ventana">
-        <div class="ventana-barra"><i></i><i></i><i></i><span>Tu contraseña · móvil</span></div>
-        <img src="capturas/interna-contrasena-movil.png" loading="lazy" width="780" height="1688"
-             alt="Pantalla Tu contraseña en el móvil de Ana: el texto «Solo tú la conoces. Nadie de la casa puede verla; quien administra el hogar únicamente puede ponerte una nueva si la pierdes», los campos Tu contraseña de ahora, Contraseña nueva (mínimo 10 caracteres) y Repite la contraseña nueva, y el botón Cambiar mi contraseña.">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Tu acceso · móvil</span></div>
+        <img src="capturas/interna-cuenta-movil.png" loading="lazy" width="780" height="1688"
+             alt="«Tu contraseña y tus avisos» en el móvil de Ana: los campos Tu contraseña de ahora, Contraseña nueva (mínimo 10 caracteres) y Repite la contraseña nueva con el botón Cambiar mi contraseña, y debajo el bloque Tus avisos en este teléfono con su interruptor.">
       </div>
-      <figcaption><span class="ui">Tu contraseña</span> en el móvil: la misma pantalla para los cinco papeles.</figcaption>
+      <figcaption>
+        La misma sección en el móvil, con las dos cosas una debajo de la otra: la
+        contraseña y los avisos.
+      </figcaption>
     </figure>
   </div>
 
-  <h3>Qué es un hogar</h3>
+  <h4>La primera vez: «Esta contraseña no es tuya todavía»</h4>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        Cuando alguien entra por primera vez con la contraseña que le dictaron en
+        persona, la aplicación <strong>no le deja ir a ninguna otra pantalla</strong>
+        hasta que ponga una suya. No es una recomendación que se pueda posponer: se
+        abre <span class="ui">Tu cuenta</span> y ahí se queda.
+      </p>
+      <p>
+        La pantalla lo explica sin rodeos: <em>«Entraste con la contraseña provisional
+        que te dieron en mano, y la conoce quien te la dictó. Elige una tuya aquí abajo:
+        hasta entonces esta es la única pantalla de la casa que se abre.»</em>
+      </p>
+      <p>
+        Es un minuto, y a partir de ese minuto la contraseña ya no la sabe nadie más.
+        Mientras tanto, quien administra ve en <a href="#fa-personal">Personal de la
+        casa</a> que esa persona sigue con la provisional.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Tu acceso · móvil</span></div>
+        <img src="capturas/familia-cuenta-provisional.png" loading="lazy" width="780" height="1688"
+             alt="Móvil de una cuenta recién dada de alta: la tarjeta «Esta contraseña no es tuya todavía» con el texto sobre la contraseña provisional que conoce quien la dictó, y debajo los campos para elegir una propia. No hay navegación a ninguna otra sección.">
+      </div>
+      <figcaption>Hasta que la cambie, esta es la única pantalla que se abre.</figcaption>
+    </figure>
+  </div>
+
+  <h3 id="pp-avisos">Los avisos en el móvil</h3>
   <p>
-    Todo en Casa Clara vive dentro de un <strong>hogar</strong>: su menú, sus rutinas,
+    En la misma sección <span class="ui">Tu cuenta</span>, debajo de la contraseña, está
+    <span class="ui">Tus avisos en este teléfono</span>. Sirve para que el teléfono
+    suene cuando pasa algo tuyo aunque no tengas la aplicación abierta. Es
+    <strong>un interruptor</strong>: <span class="ui">Avisarme en este teléfono</span>
+    lo enciende y <span class="ui">Apagar los avisos en este teléfono</span> lo apaga.
+  </p>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        <strong>Es por teléfono, no por persona.</strong> Si tienes el móvil y una
+        tableta, cada uno se enciende por su cuenta, y debajo del interruptor sale la
+        lista de los aparatos donde lo tienes puesto, con la fecha del último aviso que
+        recibió cada uno.
+      </p>
+      <p><strong>Solo hay dos avisos</strong>, y los dos son de dinero:</p>
+      <ul>
+        <li>A la empleada, cuando su recibo del mes está listo: <em>«El recibo de junio ya está»</em>, para que pueda mirarlo y confirmar el cobro.</li>
+        <li>A quien administra, cuando una cuenta del mes se queda sin pagar: <em>«La cuenta de junio está sin pagar. Vence el 5 de julio. El importe se ve al abrir.»</em></li>
+      </ul>
+      <p>
+        Fíjate en que <strong>el importe no viaja en el aviso</strong>: en la pantalla de
+        bloqueo de un móvil que igual está encima de la mesa de la cocina no tiene por
+        qué leerse cuánto cobra nadie.
+      </p>
+      <p>
+        Si los dejas apagados no te pierdes nada: la aplicación funciona exactamente
+        igual y todo se ve al entrar.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Tu acceso · móvil</span></div>
+        <img src="capturas/interna-avisos-movil.png" loading="lazy" width="780" height="1688"
+             alt="Bloque «Tus avisos en este teléfono» en el móvil de Ana: el texto de qué se avisa, el botón Avisarme en este teléfono, la lista de dispositivos con la fecha del último aviso, y abajo el apartado «Lo que nunca te vamos a mandar».">
+      </div>
+      <figcaption>El interruptor, los aparatos donde está encendido y la lista de lo que no se manda nunca.</figcaption>
+    </figure>
+  </div>
+  <div class="tarjeta principio">
+    <h4>Lo que nunca te vamos a mandar</h4>
+    <p>
+      Debajo del interruptor hay una lista escrita de lo que la aplicación
+      <strong>no</strong> manda: recordatorios de tareas o de rutinas, cuentas de lo que
+      llevas hecho o dejas por hacer, avisos porque no hayas entrado o no hayas
+      confirmado algo. Nada por la noche, ni los domingos, ni mientras estés de
+      vacaciones. Y lo dice tal cual: <em>«Esto no es una opción que alguien pueda
+      cambiar: la aplicación no sabe hacerlo.»</em>
+    </p>
+    <p>
+      <strong>Y al revés: nadie de la casa puede ver si tienes los avisos
+      encendidos</strong>, ni encendértelos. Tampoco quien administra el hogar. Tú
+      tampoco ves los suyos. No es una opción de privacidad que haya que buscar: la
+      base de datos solo te devuelve tus propios aparatos.
+    </p>
+  </div>
+  <div class="tarjeta aviso">
+    <p>
+      <strong>Si el interruptor no aparece o no funciona</strong>, la propia pantalla
+      dice por qué, sin códigos de error: que este navegador no sabe mandar avisos; que
+      en iPhone y iPad hay que añadir antes la aplicación a la pantalla de inicio
+      (Compartir → «Añadir a pantalla de inicio») y entrar desde ese icono; que el
+      teléfono los tiene bloqueados y se desbloquean desde sus ajustes; o que esta
+      instalación no manda avisos al móvil en absoluto. En los cuatro casos añade lo
+      mismo: la aplicación funciona igual sin ellos.
+    </p>
+  </div>
+
+  <h3 id="pp-hogar">Qué es un hogar</h3>
+  <p>
+    Todo en esta aplicación vive dentro de un <strong>hogar</strong>: su menú, sus rutinas,
     su Guía, sus pagos. Solo ves los hogares a los que te han dado acceso, y cada
     hogar solo ve lo suyo. Quien administra el hogar decide quién entra, con qué
     papel y hasta cuándo. La contraseña solo dice <strong>quién eres</strong>; lo que
@@ -486,52 +616,117 @@ thead th { border-top: 0; }
     pantalla.
   </p>
 
-  <h3>Moverse por la app</h3>
+  <h3 id="pp-moverse">Moverse por la app</h3>
   <p>
     En pantalla grande, la navegación va en la <strong>barra lateral izquierda</strong>.
-    En el móvil se convierte en una barra inferior con los cuatro destinos más usados
-    y un botón <span class="ui">Más</span> que despliega el resto. El orden se adapta
-    a tu papel: quien trabaja la casa —y también quien la administra— ve
-    <span class="ui">Rutinas</span> al frente
-    (<span class="ui">Hoy</span> · <span class="ui">Rutinas</span> ·
-    <span class="ui">Menú</span> · <span class="ui">Contrato</span>); el miembro de la familia,
-    que no lleva las tareas, ve antes <span class="ui">Menú</span>,
-    <span class="ui">Contrato</span> y <span class="ui">Agenda</span>.
+    En el móvil no hay barra lateral ni cabecera: la navegación es una
+    <strong>barra inferior con cuatro destinos</strong> y un botón
+    <span class="ui">Más</span> que despliega el resto. Se quitaron a propósito, porque
+    en una pantalla de móvil ocupaban casi la mitad del alto en decirte dónde estabas
+    antes de enseñarte un dato.
   </p>
+  <p>
+    El orden se adapta a tu papel. Quien trabaja la casa —y también quien la
+    administra— lleva delante lo que se toca cada día:
+    <span class="ui">Hoy</span> · <span class="ui">Rutinas</span> ·
+    <span class="ui">Menú</span> · <span class="ui">Guía</span>. El miembro de la
+    familia, que no lleva las tareas, ve antes <span class="ui">Hoy</span> ·
+    <span class="ui">Menú</span> · <span class="ui">Contrato</span> ·
+    <span class="ui">Agenda</span>.
+  </p>
+  <div class="tarjeta">
+    <h4>En la barra caben cuatro nombres, y por eso son cortos</h4>
+    <p>
+      Debajo de cada icono cabe una palabra: <span class="ui">Calendario</span> se
+      escribe <span class="ui">Agenda</span>, <span class="ui">Guía de la casa</span> se
+      queda en <span class="ui">Guía</span> y <span class="ui">Emergencias</span>, cuando
+      llega a la barra, es <span class="ui">Ayuda</span>. Dentro de la hoja
+      <span class="ui">Más</span>, donde hay sitio, cada sección recupera su nombre
+      completo.
+    </p>
+  </div>
   <div class="fila">
     <div class="texto">
       <p>
-        <strong>Emergencias siempre a mano.</strong> El acceso a
-        <span class="ui">Emergencias</span> está fijo en tres sitios: abajo en la barra
-        lateral, al final de la hoja <span class="ui">Más</span> del móvil y como botón
-        <span class="ui">+ Emergencias</span> en la cabecera de <span class="ui">Hoy</span>.
-        Esa pantalla queda guardada en el dispositivo y <strong>abre incluso sin
-        cobertura</strong>.
+        <strong>Lo que no cabe arriba está en <span class="ui">Más</span>.</strong> La
+        hoja se abre desde el botón <span class="ui">⋯ Más</span> de la derecha y lleva,
+        por este orden: <span class="ui">Buscar en toda la casa</span>, las secciones que
+        no entraron en la barra, <span class="ui">Emergencias</span> —con su nota
+        «Disponible sin conexión»—, <span class="ui">Tu cuenta</span>,
+        <span class="ui">Ajustes del hogar</span> si administras, y
+        <span class="ui">Salir</span>. Las dos que no faltan nunca, tenga uno el papel
+        que tenga, son <span class="ui">Tu cuenta</span> y <span class="ui">Salir</span>.
       </p>
       <p>
-        Arriba está el buscador <span class="ui">Buscar en toda la casa…</span>
-        (atajo <kbd>⌘ K</kbd> en el ordenador): encuentra notas de la Guía,
-        contactos y más.
+        <strong>Emergencias siempre a mano.</strong> Está abajo en la barra lateral, en
+        la hoja <span class="ui">Más</span> del móvil y como enlace al final de
+        <span class="ui">Hoy</span>. Esa pantalla queda guardada en el dispositivo y
+        <strong>abre incluso sin cobertura</strong>.
       </p>
       <p>
-        Al final de la barra lateral (y de la hoja <span class="ui">Más</span>) está
-        <span class="ui">Tu contraseña</span>, que tienen los cinco papeles, y justo
-        debajo tu nombre con <span class="ui">Salir</span>.
-      </p>
-      <p>
-        El punto verde de la esquina superior indica el estado de guardado:
-        <span class="chip exito">Todo guardado</span> cuando no hay nada pendiente,
-        y en ámbar <span class="chip alerta">N cambios pendientes</span> cuando hay
-        cambios esperando conexión. Tócalo para ver el detalle.
+        <strong>Cuando hay algo que contar sobre el guardado</strong>, aparece una banda
+        arriba: <span class="chip alerta">Sin conexión</span>,
+        <span class="chip alerta">3 cambios pendientes</span>,
+        <span class="chip alerta">Necesita tu decisión · 2</span>. Cuando no hay nada
+        pendiente esa banda no aparece: un aviso fijo diciendo «todo bien» no informa
+        de nada y ocupa sitio en todas las pantallas.
       </p>
     </div>
     <figure class="captura movil">
       <div class="ventana">
         <div class="ventana-barra"><i></i><i></i><i></i><span>Hoja «Más» en el móvil</span></div>
         <img src="capturas/interna-mas-movil.png" loading="lazy" width="780" height="1688"
-             alt="Hoja Más opciones abierta sobre la pantalla Hoy en el móvil de Ana, con Guía de la casa, Calendario, Contactos, Emergencias (disponible sin conexión) y Salir.">
+             alt="Hoja «Más opciones» abierta sobre la pantalla Hoy en el móvil de Ana: Buscar en toda la casa, Contrato, Calendario, Contactos, Emergencias con la nota «Disponible sin conexión», Tu cuenta y, al final, Salir con el nombre de Ana debajo.">
       </div>
-      <figcaption>La hoja <span class="ui">Más</span> del móvil: el resto de secciones, Emergencias y <span class="ui">Salir</span>.</figcaption>
+      <figcaption>
+        La hoja <span class="ui">Más</span> de Ana. <span class="ui">Contrato</span> vive
+        aquí, no en la barra: se consulta unas cuantas veces al mes, no cinco veces al
+        día.
+      </figcaption>
+    </figure>
+  </div>
+
+  <h3 id="pp-buscar">Buscar en toda la casa</h3>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        Una sola búsqueda para las tres cosas que uno busca de verdad: <strong>la Guía
+        de la casa, las recetas y los contactos</strong>. La propia caja lo sugiere:
+        <span class="ui">Prueba «lavadora» o «pediatra»</span>. Los resultados salen
+        agrupados y con las palabras que buscabas resaltadas, y los contactos traen su
+        botón <span class="ui">Llamar</span> ahí mismo.
+      </p>
+      <p>
+        <strong>Dónde está.</strong> En el móvil es la primera fila de la hoja
+        <span class="ui">Más</span>. En el ordenador, además, hay una caja arriba y el
+        atajo <kbd>⌘ K</kbd>, que abre una ventanita de búsqueda desde cualquier
+        pantalla («Enter busca en la guía, contactos y más · Escape cierra»). El atajo
+        solo se anuncia donde suele haber teclado: en un móvil sería ruido.
+      </p>
+      <p>
+        <strong>Sin cobertura sigue buscando</strong>, pero solo en lo que llevas
+        guardado en el teléfono, y lo avisa arriba con una banda: «Sin conexión ·
+        Resultados guardados en este dispositivo». Nada de resultados a medias
+        haciéndose pasar por completos.
+      </p>
+      <p>
+        Y cuando alguien busca algo que no está, <strong>la búsqueda queda apuntada</strong>:
+        la pantalla lo dice («hemos apuntado esta búsqueda para que alguien escriba la
+        respuesta en la guía») y esa lista aparece luego en el mantenimiento de la Guía.
+        Es la mejor pista que hay de qué falta por escribir.
+      </p>
+      <p>
+        El acceso puntual no tiene buscador: su acceso es de consultar el día, no de
+        rebuscar en la casa.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Buscar · Casa Roble</span></div>
+        <img src="capturas/interna-buscar-movil.png" loading="lazy" width="780" height="1688"
+             alt="Pantalla «Buscar en toda la casa» en el móvil de Ana con la consulta escrita en la caja, el recuento de resultados y las coincidencias agrupadas en Guía de la casa y Contactos, con las palabras buscadas resaltadas y un botón Llamar junto al contacto.">
+      </div>
+      <figcaption>La búsqueda en el móvil: una caja para la guía, las recetas y los contactos.</figcaption>
     </figure>
   </div>
 </section>
@@ -550,15 +745,23 @@ thead th { border-top: 0; }
 
   <h3 id="fa-hoy">Hoy: el día en una pantalla</h3>
   <p>
-    <span class="ui">Hoy</span> abre con lo importante: el bloque
-    <strong>«Necesita tu decisión»</strong> (jornadas extra por aceptar o compensar,
-    gastos por aprobar, comidas del menú sin confirmar, cuentas del mes pendientes de
-    pago, rutinas que vencen), el menú del día, las rutinas que vencen hoy y la agenda
-    <strong>«Hoy en el calendario»</strong>.
+    <span class="ui">Hoy</span> abre con lo importante: el bloque de decisiones
+    (jornadas extra por aceptar o compensar, gastos por aprobar, comidas del menú sin
+    confirmar, cuentas del mes pendientes de pago), el menú del día, las rutinas de
+    <strong>«Lo que toca hoy»</strong> y la agenda <strong>«Hoy en el
+    calendario»</strong>. El título de la página es el estado del día en una línea:
+    «Lun, 10 ago · 3 por hacer», o «Lun, 10 ago · Todo hecho ✓» cuando no queda nada.
+  </p>
+  <p>
+    El primer bloque también cambia de nombre según lo que traiga:
+    <span class="ui">Necesita tu decisión</span> si hay algo que decidir,
+    <span class="ui">Una novedad para ti</span> o <span class="ui">Novedades para
+    ti</span> si solo hay que enterarse —unas vacaciones recién apuntadas, por
+    ejemplo—, y <span class="ui">Novedades y decisiones</span> si vienen las dos cosas.
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Roble</span></div>
       <img src="capturas/familia-hoy.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla Hoy de Alberto con el bloque Necesita tu decisión y cinco asuntos: dos jornadas extra hechas a falta de decidir la compensación, una jornada extra solicitada con los botones Aceptar y Revisar, un gasto pendiente de aprobar y diez comidas del menú sin confirmar.">
     </div>
@@ -571,22 +774,85 @@ thead th { border-top: 0; }
   </figure>
   <ul>
     <li><strong>Sin salir de Hoy:</strong> una jornada extra solicitada se acepta con <span class="toques">1 toque</span> en <span class="ui">Aceptar</span> —la fila pasa a «Aceptada ✓»— y una comida se confirma con <span class="toques">1 toque</span> en <span class="ui">Confirmar</span>. El botón <span class="ui">Revisar</span> de al lado sigue llevando a la pantalla completa cuando quieras ver el detalle.</li>
-    <li>Marcar una rutina del día: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span>; la fila queda tachada con el chip «Hecha ✓ · próxima el …».</li>
+    <li>Marcar una rutina del día: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span>; la fila queda tachada con el chip «Hecha ✓ · próxima el mar, 18 ago».</li>
     <li>Ver el menú completo: <span class="toques">1 toque</span> en <span class="ui">Ver la semana →</span>.</li>
   </ul>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · menú, rutinas y agenda</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Roble</span></div>
       <img src="capturas/familia-hoy-agenda.png" loading="lazy" width="2560" height="1600"
-           alt="Parte baja de la pantalla Hoy: la tarjeta Hoy comemos con dos comidas sin confirmar, la columna Vencen hoy con rutinas y sus botones Marcar hecha, y abajo la tarjeta Agenda · Hoy en el calendario con tres eventos del día.">
+           alt="Parte baja de la pantalla Hoy: la tarjeta Hoy comemos con dos comidas sin confirmar, la tarjeta «Lo que toca hoy» con las rutinas del día y sus botones Marcar hecha, y abajo la tarjeta Agenda · Hoy en el calendario con tres eventos del día.">
     </div>
     <figcaption>
       Más abajo, el día completo: <span class="ui">Hoy comemos</span>,
-      <span class="ui">Vencen hoy</span> y <span class="ui">Hoy en el calendario</span>,
-      con los eventos de los calendarios que la familia haya enlazado. Si hoy no hay
-      ningún evento, ese bloque sencillamente no aparece.
+      <span class="ui">Lo que toca hoy</span> y <span class="ui">Hoy en el
+      calendario</span>, con los eventos de los calendarios que la familia haya
+      enlazado. Si hoy no hay ningún evento, ese bloque sencillamente no aparece.
     </figcaption>
   </figure>
+  <p>
+    Dentro de <span class="ui">Lo que toca hoy</span>, lo que se quedó atrás va primero
+    y con su propio encabezado, <span class="ui">Se quedó pendiente</span>, para que no
+    se confunda con lo de hoy. Y cuando el día viene cargado, la lista enseña lo
+    primero y pliega el resto en <span class="ui">Ver las 6 restantes</span>: la
+    pantalla no se hace interminable por un martes de mucho.
+  </p>
+
+  <h4>Al final: lo que ya está hecho, y cómo deshacerlo</h4>
+  <p>
+    Debajo de todo hay un bloque plegado que dice cuántas cosas se han marcado hoy —
+    <span class="ui">4 hechas hoy</span>— y que se abre solo cuando acabas de marcar
+    algo, para que veas dónde ha ido a parar. Cada fila lleva su chip
+    («Hecha ✓ · próxima el mar, 18 ago») y, si tocaba otro día, lo dice: «Tocaba ayer»,
+    «Tocaba el jueves».
+  </p>
+  <div class="tarjeta principio">
+    <h4>Sí hay botón de deshacer</h4>
+    <p>
+      Junto a cada cosa marcada está <span class="ui">Deshacer</span>. Devuelve la
+      rutina a como estaba y <strong>no pide motivo</strong>: es un error de dedo, no
+      una corrección contable. Puede deshacerlo quien la marcó, y también quien
+      administra la casa.
+    </p>
+  </div>
+  <p>
+    <strong>El detalle de una tarea</strong> se abre pulsando su título, y solo si la
+    rutina tiene detalles escritos. Si no los tiene, el título es texto normal: no
+    finge que se puede pulsar para luego no hacer nada. Es la misma regla en las tres
+    listas de Hoy.
+  </p>
+
+  <h4>Esta semana: lo que viene detrás</h4>
+  <p>
+    Debajo de las rutinas del día está <span class="ui">Esta semana</span>, con lo que
+    toca en los <strong>seis días siguientes</strong>, agrupado por día:
+    <span class="ui">Mañana</span>, <span class="ui">El jueves</span>… Sirve para
+    prever —comprar lo que hace falta, cuadrar quién está en casa—, no para trabajar
+    desde ahí: <strong>no tiene ningún botón</strong>. Nada se marca antes de tiempo.
+  </p>
+  <p>
+    Lo que se repite casi a diario aparece una sola vez arriba, con su ritmo al lado
+    («todos los días», «cada semana»), en vez de repetirse seis veces y tapar lo que sí
+    es de un día concreto.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · Casa Roble</span></div>
+      <img src="capturas/familia-hoy-esta-semana.png" loading="lazy" width="2560" height="1600"
+           alt="Parte baja de Hoy en el ordenador: el bloque «Esta semana» con lo que se repite a diario arriba y luego los días agrupados bajo Mañana, El jueves y El viernes; debajo, el bloque plegado «4 hechas hoy» y, al final de la pantalla, el enlace Emergencias.">
+    </div>
+    <figcaption>
+      <span class="ui">Esta semana</span> se lee, no se toca. Al fondo, el bloque
+      plegado de lo ya hecho y el enlace a <span class="ui">Emergencias</span>.
+    </figcaption>
+  </figure>
+  <p>
+    El acceso a <span class="ui">Emergencias</span> es la última fila de la pantalla,
+    no una banda en la cabecera. Estaba arriba y se bajó: en un móvil ocupaba 42 píxeles
+    fijos de la primera pantalla, todos los días, para algo que se usa una vez cada
+    mucho y que además está en la hoja <span class="ui">Más</span> y en la barra
+    lateral.
+  </p>
 
   <h3 id="fa-menu">Menú semanal, con las alergias a la vista</h3>
   <p>
@@ -598,7 +864,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Casa Roble</span></div>
       <img src="capturas/familia-menu.png" loading="lazy" width="2560" height="1600"
            alt="Menú del jueves para el grupo Casa: junto al nombre de Leo, el chip Leche y derivados (lactosa); la comida es Garbanzos con espinacas y la cena Arroz con leche, con el aviso Este plato lleva algo que no todos pueden tomar: Leche y derivados (lactosa) (Leo).">
     </div>
@@ -626,7 +892,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Nueva receta desde el hueco</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Casa Roble</span></div>
       <img src="capturas/familia-menu-nueva-receta.png" loading="lazy" width="2560" height="1600"
            alt="Editor del hueco del desayuno con la pestaña Nueva receta activa: campos Nombre de la receta nueva (Tortitas de avena y plátano) e Ingredientes o nota inicial, la nota «La receta se crea en el recetario (con su página wiki) y se asigna a este hueco, todo de una vez» y los botones Guardar y Cancelar.">
     </div>
@@ -641,7 +907,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Semanas plantilla</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Casa Roble</span></div>
       <img src="capturas/familia-menu-plantillas.png" loading="lazy" width="2560" height="1600"
            alt="Tarjeta Semanas plantilla con el campo Guardar esta semana como plantilla, el botón Guardar semana como plantilla, el selector Usar una plantilla, la fecha Sobre el lunes, la nota de que la semana debe estar vacía, el botón Usar plantilla y la plantilla guardada «Semana tipo del manual (pendiente)» con su botón Borrar.">
     </div>
@@ -662,7 +928,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Lista de la compra</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · Casa Roble</span></div>
       <img src="capturas/familia-compra.png" loading="lazy" width="2560" height="1600"
            alt="Lista de la compra de la semana del 3 al 9 de agosto agrupada por secciones: pollo entero 1,5 kg (2 paquetes de 1 kg) del menú, arroz redondo 0,13 kg (1 paquete de 500 g) del menú, detergente y papel de cocina añadidos a mano, leche entera 2,5 l (3 paquetes de 1 l) con el desglose 0,5 l del menú + 2 l añadido, y debajo la sección Personal.">
     </div>
@@ -705,30 +971,95 @@ thead th { border-top: 0; }
     «Opcional. Si no las tiene, no hace falta abrir esto.»
   </p>
 
-  <h3 id="fa-rutinas">Rutinas: cada cosa con su próxima fecha</h3>
+  <h3 id="fa-rutinas">Rutinas: cada cosa con su ritmo</h3>
   <p>
-    Las rutinas son tareas que se repiten (por días, semanas, meses o trimestres)
-    y cada una dice <strong>quién la hace</strong>: la familia, la empleada o toda
-    la casa. Sin porcentajes ni históricos de rendimiento: solo qué toca y cuándo.
+    Las rutinas son las tareas que se repiten en la casa, y cada una dice
+    <strong>quién la hace</strong>: la familia, la empleada o toda la casa. Sin
+    porcentajes ni históricos de cumplimiento: solo qué toca y cuándo. La propia
+    pantalla lo dice cuando está vacía: «no se puntúa a nadie».
+  </p>
+  <p>
+    La lista viene <strong>agrupada por la clase de ritmo</strong>, no por quién la
+    hace ni por fecha, y cada grupo lleva su cuenta: «Todos los días · 3», «Cada cierto
+    tiempo · 5». Debajo de cada rutina, una línea que se lee de corrido: «Empleada · los
+    lunes y los jueves · la próxima, el jueves 13 de agosto». Si se pasó de fecha, lo
+    dice igual de claro: «vencía el 8 de agosto».
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Roble</span></div>
       <img src="capturas/familia-rutinas.png" loading="lazy" width="2560" height="1600"
-           alt="Rutinas de la casa: cambiar sábanas y toallas (Empleada · cada semana), regar las plantas de la terraza (Toda la casa · cada 2 días), rutina diaria de referencia, ventilación de la mañana, revisión del botiquín (Familia · cada mes) y confirmar la compra personal de alimentos (Toda la casa · cada 2 semanas), cada una con Marcar hecha y Editar.">
+           alt="Rutinas de la casa agrupadas por ritmo: bajo «Todos los días» la ventilación de la mañana y la rutina diaria de referencia; bajo «Días fijos de la semana» cambiar sábanas y toallas (Empleada); bajo «Cada cierto tiempo» regar las plantas y la revisión del botiquín. Cada fila lleva Marcar hecha, Editar y un desplegable «Cómo se hace».">
     </div>
     <figcaption>
-      Cada rutina se lee de corrido: «Empleada · cada semana · próxima: sáb, 8 ago»,
-      «Toda la casa · cada 2 semanas · próxima: lun, 10 ago».
+      Agrupadas por ritmo, con su cuenta en cada grupo. El desplegable
+      <span class="ui">Cómo se hace</span> guarda las instrucciones de la tarea, y solo
+      aparece si alguien las escribió.
     </figcaption>
   </figure>
   <ul>
-    <li>Marcar una rutina: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span> (desde Hoy o desde Rutinas). La próxima fecha se reprograma sola y la fila muestra «Hecha ✓ · próxima el …».</li>
-    <li>Crear una rutina: <span class="ui">Título</span>, <span class="ui">Detalles</span>, <span class="ui">¿Quién la hace?</span> (Toda la casa · Familia · Empleada), la frase <span class="ui">Se repite</span> «cada <em>2</em> semanas» y <span class="ui">Próxima fecha</span> → <span class="ui">Crear rutina</span>.</li>
+    <li>Marcar una rutina: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span> (desde Hoy o desde Rutinas). La próxima fecha se calcula sola y la fila muestra «Hecha ✓ · próxima el 18 de agosto». Si te equivocaste, <span class="ui">Deshacer</span>.</li>
     <li>Cambiar una existente: <span class="ui">Editar</span> → <span class="ui">Guardar rutina</span>.</li>
   </ul>
 
+  <h4>Una sola pregunta: «¿Cuándo toca?»</h4>
+  <p>
+    Al crear o editar una rutina se piden el <span class="ui">Título</span>, los
+    <span class="ui">Detalles</span> (lo que luego se lee en
+    <span class="ui">Cómo se hace</span>) y <span class="ui">¿Quién la hace?</span>
+    (Toda la casa · Familia · Empleada). Y después una sola pregunta,
+    <strong>«¿Cuándo toca?»</strong>, con cinco respuestas. Se elige una y
+    <strong>solo entonces</strong> aparece lo que esa respuesta necesita: nada de
+    rellenar seis campos para descubrir que cuatro no hacían falta.
+  </p>
+  <ol class="pasos">
+    <li><strong><span class="ui">Todos los días</span></strong> — no pregunta nada más.</li>
+    <li><strong><span class="ui">Días fijos de la semana</span></strong> — siete botones, <span class="ui">L M X J V S D</span>: se marcan los que toquen.</li>
+    <li><strong><span class="ui">Cada cierto tiempo</span></strong> — la frase «cada <em>2</em> semanas» (días, semanas o meses) y <span class="ui">¿Cuándo toca la próxima vez?</span> para poner el primer día.</li>
+    <li><strong><span class="ui">Por temporada</span></strong> — primavera, verano, otoño, invierno: «te avisará el primer día de cada temporada que marques». Para lo que se hace al cambiar el tiempo: los toldos, la caldera, la ropa de cama.</li>
+    <li><strong><span class="ui">Todavía no lo sabemos</span></strong> — para apuntar algo sin decidir aún cada cuánto. «Quedará apuntada en esta página. No aparecerá en Hoy hasta que le pongáis día.»</li>
+  </ol>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Roble</span></div>
+      <img src="capturas/familia-rutinas-cadencia.png" loading="lazy" width="2560" height="1600"
+           alt="Formulario de una rutina con la pregunta «¿Cuándo toca?» y sus cinco opciones: Todos los días, Días fijos de la semana, Cada cierto tiempo, Por temporada y Todavía no lo sabemos. Está elegida «Cada cierto tiempo», que ha revelado la frase «cada 2 semanas» y el campo ¿Cuándo toca la próxima vez?; debajo, la frase de vuelta «Toca cada 2 semanas. La próxima, el lunes 17 de agosto.»">
+    </div>
+    <figcaption>
+      Debajo del todo, la aplicación te devuelve en una frase lo que acabas de elegir, y
+      la reescribe mientras tocas. Si no es la frase que querías, es que no era esa la
+      opción.
+    </figcaption>
+  </figure>
+  <div class="tarjeta">
+    <h4>Lo que no se sabe todavía también se apunta</h4>
+    <p>
+      Una rutina puede nacer sin fecha. Se queda en su propio grupo,
+      <span class="ui">Todavía no lo sabemos</span>, y en vez de
+      <span class="ui">Editar</span> su botón dice <span class="ui">Ponerle día</span>.
+      No aparece en <span class="ui">Hoy</span> ni molesta a nadie hasta que alguien
+      decida cada cuánto toca. Es mejor eso que perder la idea porque en ese momento no
+      sabías si era cada mes o cada dos.
+    </p>
+  </div>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutinas · Casa Roble</span></div>
+      <img src="capturas/familia-rutinas-sin-dia.png" loading="lazy" width="2560" height="1600"
+           alt="Grupo «Todavía no lo sabemos» de la lista de rutinas, con dos tareas apuntadas sin fecha —«sin día todavía» en su línea de apoyo— y el botón Ponerle día en vez de Editar.">
+    </div>
+    <figcaption>El grupo de las que esperan fecha. Su botón lo dice: <span class="ui">Ponerle día</span>.</figcaption>
+  </figure>
+
   <h3 id="fa-guia">Guía de la casa: las instrucciones escritas</h3>
+  <div class="tarjeta aviso">
+    <p>
+      <strong>La Guía la escribe quien administra la casa, y nadie más.</strong> El
+      miembro de la familia, la persona interna, el apoyo y el acceso puntual la
+      <strong>leen</strong>: no tienen botón de escribir ni de publicar, ni ven los
+      borradores. Es la memoria de la casa, y conviene que tenga una voz sola.
+    </p>
+  </div>
   <p>
     La <span class="ui">Guía de la casa</span> es la memoria del hogar: cómo va la
     lavadora, qué hacer si se va la luz, cómo se dobla la ropa, el recetario. Se
@@ -738,7 +1069,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía de la casa</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía de la casa · Casa Roble</span></div>
       <img src="capturas/familia-guia.png" loading="lazy" width="2560" height="1600"
            alt="Portada de la Guía de la casa: buscador «¿Qué necesitas saber? p. ej. lavadora, caldera…», el botón Escribir una instrucción y el bloque Destacadas con cinco notas: Lavadora · programa corto, Principios generales, Guía rápida: inicio de jornada, Guía rápida: cierre de jornada y Pendientes de completar.">
     </div>
@@ -754,7 +1085,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía · apartados</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía de la casa · Casa Roble</span></div>
       <img src="capturas/familia-guia-apartados.png" loading="lazy" width="2560" height="1600"
            alt="Bloque Apartados de la Guía con las tarjetas Equipamiento (1 nota), La casa y sus zonas (8 notas) y Limpieza (6 notas), listando sus notas con la fecha y los chips Destacada y Guardada sin publicar.">
     </div>
@@ -772,7 +1103,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía · editor</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Lavadora · programa corto · Casa Roble</span></div>
       <img src="capturas/familia-guia-editor.png" loading="lazy" width="2560" height="1600"
            alt="Editor de la nota Lavadora · programa corto: campo Título, el editor visual «El texto» con la negrita Mixto 40° y una lista de viñetas, el desplegable Opciones avanzadas y el botón Guardar cambios.">
     </div>
@@ -793,9 +1124,11 @@ thead th { border-top: 0; }
   </div>
   <p>
     <strong>Quién ve los borradores.</strong> Una nota
-    <span class="chip alerta">Guardada sin publicar</span> la ven las personas que
-    pueden escribir en la Guía —la familia y la persona interna—; el apoyo del hogar
-    y el acceso puntual solo ven lo publicado.
+    <span class="chip alerta">Guardada sin publicar</span> solo la ve quien administra
+    la casa, que es quien puede escribirla. Para el resto del hogar esa nota
+    sencillamente <strong>no existe</strong> todavía: no aparece en la lista, ni en el
+    buscador, ni al abrir su enlace. Hasta que se publica no es una instrucción de la
+    casa, es un papel a medias.
   </p>
   <details class="tarjeta">
     <summary style="cursor:pointer; font-weight:750; color: var(--ink);">Cosas de administración de la Guía</summary>
@@ -810,6 +1143,78 @@ thead th { border-top: 0; }
     </ul>
   </details>
 
+  <h3 id="fa-libro">Leerla entera, como un libro</h3>
+  <p>
+    La Guía se consulta cuando hace falta —se busca «lavadora» y se lee esa nota—, pero
+    conviene <strong>habérsela leído entera al menos una vez</strong>. Quien llega nuevo
+    a una casa no sabe qué preguntar; para eso está la tarjeta
+    <span class="ui">Leerla entera, como un libro</span>, al final de la portada de la
+    Guía.
+  </p>
+  <p>
+    Debajo del título dice por dónde vas —«Llevas 18 de 52 notas. Sigues por «Cómo va la
+    caldera».»— y un botón: <span class="ui">Empezar a leer</span>,
+    <span class="ui">Seguir leyendo</span> o <span class="ui">Releerla</span> si ya te
+    la leíste entera.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía de la casa · Casa Roble</span></div>
+      <img src="capturas/familia-guia-libro.png" loading="lazy" width="2560" height="1600"
+           alt="Tarjeta «Leerla entera, como un libro» al final de la portada de la Guía: la barra de progreso de la lectura, la línea «Llevas 18 de 52 notas» con la nota por la que se va, el botón Seguir leyendo y el enlace «Ver quién se la ha leído».">
+    </div>
+    <figcaption>
+      La tarjeta va debajo de las notas, no encima: quien viene a resolver algo concreto
+      no debería tropezarse antes con una invitación a leérselo todo.
+    </figcaption>
+  </figure>
+  <p>
+    Al pulsar se abre <strong>la Guía como un libro</strong>: una nota por pantalla, con
+    la barra de avance arriba y la cuenta —«Nota 19 de 52 · has leído 18»— y, abajo,
+    <span class="ui">← Anterior</span> y <span class="ui">Siguiente →</span> (o las
+    flechas del teclado). En la última nota el botón cambia y dice <span class="ui">He
+    terminado la guía</span>.
+  </p>
+  <p>
+    Una nota <strong>se marca leída al llegar al final y pasar de página</strong>, no
+    por abrirla ni por pasarla de largo. La propia página lo avisa antes: «Al pasar de
+    página se marcará como leída». Y si el texto cambia después, la nota vuelve a la
+    lista con su explicación: <span class="ui">La leíste, pero el texto ha cambiado
+    desde entonces</span>. Solo cuando cambian las palabras: corregir una coma o poner
+    algo en negrita no obliga a releer nada.
+  </p>
+
+  <h4>Cómo va la lectura</h4>
+  <p>
+    Desde la tarjeta del libro se llega a <span class="ui">Cómo va la lectura</span>,
+    que tiene cuatro bloques: <span class="ui">Tu lectura</span> con la barra de avance
+    y el reparto por apartados, <span class="ui">Te faltan estas</span> con los enlaces
+    directos a lo que no has leído, <span class="ui">Han cambiado desde que las
+    leíste</span> y —solo para quien administra— <span class="ui">Quién se ha leído la
+    guía</span>.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Avance de la guía · Casa Roble</span></div>
+      <img src="capturas/familia-guia-progreso.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla «Cómo va la lectura» de Alberto: el bloque «Han cambiado desde que las leíste» con dos notas, y debajo «Quién se ha leído la guía» con una fila por persona de la casa y su chip, Guía leída o «Le faltan 12».">
+    </div>
+    <figcaption>
+      Quién lleva qué. Sirve para saber si la persona que acaba de llegar ya sabe cómo
+      va la caldera, no para pedirle cuentas a nadie.
+    </figcaption>
+  </figure>
+  <div class="tarjeta principio">
+    <h4>Lo único que se guarda es cuántas notas lleva cada quien</h4>
+    <p>
+      La pantalla lo dice con todas las letras: <em>«Esto es TODO lo que la aplicación
+      guarda: cuántas notas lleva cada persona en cada apartado. No hay horas, ni
+      fechas, ni qué nota abrió cada día; la base de datos no tiene dónde
+      apuntarlo.»</em> No es una promesa de intención: es que ese dato no existe en
+      ninguna parte, y por tanto nadie puede mirarlo.
+    </p>
+  </div>
+
   <h3 id="fa-manual">El manual de convivencia de la casa, ya dentro</h3>
   <p>
     La Guía de Casa Roble no está vacía: se ha volcado en ella el
@@ -821,7 +1226,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía · una nota del manual</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Rutina diaria de referencia · Casa Roble</span></div>
       <img src="capturas/familia-guia-nota.png" loading="lazy" width="2560" height="1600"
            alt="Nota «Rutina diaria de referencia» del apartado La casa y sus zonas, con una tabla de dos columnas (Momento y Comprobación práctica) y cinco filas: Inicio, Después de cada uso, Antes de una comida, Después de una comida y Cierre.">
     </div>
@@ -838,7 +1243,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía · Pendientes de completar</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Pendientes de completar · Casa Roble</span></div>
       <img src="capturas/familia-guia-pendientes.png" loading="lazy" width="2560" height="1600"
            alt="Nota Pendientes de completar, marcada como Guardada sin publicar y Destacada, con el botón Publicar. Lista «Notas con huecos» con siete enlaces y el número de campos de cada uno, y una segunda lista «Pendientes que viven en la app, no en la Guía».">
     </div>
@@ -858,7 +1263,82 @@ thead th { border-top: 0; }
     y la jornada en <span class="ui">Contrato</span>.
   </p>
 
-  <h3 id="fa-pagos">Contrato: lo pactado, la nómina y los gastos</h3>
+  <h3 id="fa-personal">Personal de la casa: quién trabaja aquí</h3>
+  <p>
+    <span class="ui">Personal de la casa</span> es el expediente de las personas que
+    trabajan en el hogar: quién está ahora, quién estuvo antes y con qué contrato en
+    cada momento. Solo entra quien administra —lleva nombres, fechas y sueldos, la
+    misma llave que <span class="ui">Ajustes del hogar</span>— y se llega desde
+    <span class="ui">Ver el personal</span>, en Ajustes.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Personal · Casa Roble</span></div>
+      <img src="capturas/familia-personal.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla Personal de la casa: el bloque «Quien trabaja en la casa» con dos fichas —empleada interna y apoyo del hogar— cada una con su chip de estado, la fecha desde la que está en la casa y sus versiones de contrato con salario, jornada y vacaciones; debajo, el bloque «Quien trabajó antes».">
+    </div>
+    <figcaption>
+      Cada estado se dice en una frase, no con un color: «Trabaja en la casa», «Tiene
+      acceso, sin contrato en vigor», «Trabajó aquí».
+    </figcaption>
+  </figure>
+  <p>
+    Debajo de cada persona van sus contratos —el vigente y los anteriores— con las
+    versiones de cada uno y su chip: <span class="chip exito">En vigor</span>,
+    <span class="chip alerta">Entra más adelante</span>,
+    <span class="chip alerta">Histórica</span>. Y una línea que lo resume: «1.500,00 €
+    al mes · 40 h a la semana · 30 días de vacaciones al año».
+  </p>
+  <p>
+    Aquí <strong>solo se lee</strong>. Las condiciones se pactan y se cambian en
+    <a href="#fa-acuerdo">Condiciones del contrato</a>; las fechas límite del acceso,
+    quitar un acceso y reponer contraseñas están en
+    <a href="#fa-ajustes">Ajustes del hogar</a>. La propia pantalla lo recuerda al
+    final, para que nadie busque aquí un botón que vive en otro sitio.
+  </p>
+
+  <h4>Dar de alta a alguien: la cuenta y su contraseña, en un paso</h4>
+  <p>
+    Arriba está <span class="ui">Entra alguien nuevo en la casa</span>. Se rellena una
+    vez y sale de ahí con acceso y, si quieres, con el contrato ya registrado.
+  </p>
+  <ol class="pasos">
+    <li><span class="ui">Nombre visible</span>: cómo se la llamará en toda la casa.</li>
+    <li><span class="ui">Nombre de usuario (con esto entra)</span>: lo que teclea para entrar.</li>
+    <li><span class="ui">Correo</span>: solo identifica la cuenta. La pantalla lo dice para que nadie se preocupe: <strong>«a nadie se le escribe nunca»</strong>. Si esa persona no tiene correo, vale algo como <span class="ui">nombre@casa.local</span>.</li>
+    <li><span class="ui">Qué es en la casa</span>: <span class="ui">Empleada interna</span> o <span class="ui">Apoyo del hogar</span>.</li>
+    <li><span class="ui">Registrar ahora su contrato</span>, marcada de serie: debajo aparecen la fecha de inicio, el salario mensual, la jornada semanal, los días de vacaciones al año y el motivo. Si la desmarcas se crea solo el acceso y las condiciones se pactan cuando toque.</li>
+    <li><span class="ui">Crear la cuenta</span>.</li>
+  </ol>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Personal · Casa Roble</span></div>
+      <img src="capturas/familia-personal-alta.png" loading="lazy" width="2560" height="1600"
+           alt="Formulario «Entra alguien nuevo en la casa» con los campos Nombre visible, Nombre de usuario, Correo y Qué es en la casa, la casilla marcada Registrar ahora su contrato con las condiciones iniciales, y encima el recuadro de entrega: «Ya puede entrar», con el usuario y la contraseña provisional en letra grande y el aviso de que no vuelve a mostrarse.">
+    </div>
+    <figcaption>
+      La contraseña sale en pantalla, grande y en letra de máquina, porque hay que
+      dictarla en voz alta. Aparece una vez y no vuelve.
+    </figcaption>
+  </figure>
+  <div class="tarjeta principio">
+    <h4>Esa contraseña se dicta en persona y no se vuelve a ver</h4>
+    <p>
+      Al crear la cuenta, la pantalla entrega los dos datos:
+      <span class="ui">Usuario</span> y <span class="ui">Contraseña</span>. Y avisa:
+      <em>«Esta contraseña no vuelve a mostrarse y no se guarda en ninguna parte.»</em>
+      Si la pierdes antes de dársela, no pasa nada grave: se le pone otra desde
+      <a href="#fa-reponer">Ajustes del hogar</a>.
+    </p>
+    <p>
+      Al entrar, esa persona <strong>no puede ir a ninguna pantalla</strong> hasta
+      cambiarla por una suya (<a href="#pp-cuenta">cómo es eso</a>). Mientras no lo
+      haga, su ficha en <span class="ui">Personal</span> lo dice: «Sigue con la
+      contraseña provisional que se le entregó en mano».
+    </p>
+  </div>
+
+  <h3 id="fa-contrato">Contrato: lo pactado, la nómina y los gastos</h3>
   <p>
     <span class="ui">Contrato</span> reúne todo lo económico de la relación laboral con
     la empleada: el contrato y sus versiones, las jornadas extra,
@@ -872,8 +1352,8 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · vista de administración</span></div>
-      <img src="capturas/familia-pagos.png" loading="lazy" width="2560" height="1600"
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
+      <img src="capturas/familia-contrato.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla Contrato de Alberto: cabecera con el campo Vencimiento y el botón Empezar la cuenta de agosto 2026, tira de resumen con Total previsto 1.430 euros, tarjeta Pendientes de acordar o compensar con botones Decidir compensación y Aceptar, y a la derecha los saldos Tiempo y compensación con el descanso compensatorio como crédito permanente sin caducidad y el anticipo pendiente de 200 de 400 euros.">
     </div>
     <figcaption>
@@ -882,6 +1362,37 @@ thead th { border-top: 0; }
       queda por devolver.
     </figcaption>
   </figure>
+  <div class="fila">
+    <div class="texto">
+      <h4>Si trabaja más de una persona en la casa</h4>
+      <p>
+        Cuando hay <strong>varios contratos</strong>, arriba aparece una tira de nombres
+        para elegir de quién es el expediente que estás mirando. Se toca uno y toda la
+        pantalla —las decisiones, la cuenta del mes, las versiones, las vacaciones— pasa
+        a ser la suya. Los epígrafes lo dicen para que no haya dudas:
+        <span class="ui">Contrato de Ana</span>, <span class="ui">Contrato de
+        Rocío</span>. Con una sola persona esa tira no aparece: no hay nada que elegir.
+      </p>
+      <p>
+        Los contratos ya terminados siguen ahí, marcados <span class="ui">(acuerdo
+        terminado)</span>: el historial de quien trabajó antes no se va de la casa
+        cuando se va la persona.
+      </p>
+      <p>
+        <strong>La empleada nunca ve esa tira.</strong> A su móvil no llega más contrato
+        que el suyo, así que no hay nada entre lo que elegir ni nada que se le pueda
+        colar de otra compañera.
+      </p>
+    </div>
+  </div>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
+      <img src="capturas/familia-contrato-empleadas.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla Contrato con dos empleadas: bajo la cabecera, una tira de nombres para elegir de quién es el expediente, con el primero marcado como activo, y debajo la pantalla entera referida a esa persona.">
+    </div>
+    <figcaption>Una tira de nombres arriba, y la pantalla entera cambia de persona.</figcaption>
+  </figure>
   <ol class="pasos">
     <li><strong>Jornada extra solicitada:</strong> <span class="ui">Aceptar</span> deja constancia del contrato previo. Cuando ya está trabajada, <span class="ui">Decidir compensación</span>: eliges <span class="ui">Pagarla</span> o <span class="ui">Darle descanso</span>, escribes el <span class="ui">Motivo</span> y pulsas <span class="ui">Confirmar la decisión</span>. La tarifa se congela con la versión del contrato vigente el día que se trabajó.</li>
     <li><strong>Gastos:</strong> cada gasto adelantado por la empleada se abre con <span class="ui">Revisar</span> y se decide con <span class="ui">Aprobar</span> o <span class="ui">Rechazar</span>, con su motivo. Los aprobados entran como reembolso en la cuenta del mes. Si traen foto, <span class="ui">Ver el justificante</span> la abre: en el propio gasto pendiente —para poder mirarla <em>antes</em> de decidir— y también después, en la línea de la cuenta del mes.</li>
@@ -889,8 +1400,8 @@ thead th { border-top: 0; }
   </ol>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · lo que va sumando el mes</span></div>
-      <img src="capturas/familia-pagos-cuenta.png" loading="lazy" width="2560" height="1600"
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
+      <img src="capturas/familia-contrato-cuenta.png" loading="lazy" width="2560" height="1600"
            alt="Tarjeta «Lo que va sumando agosto 2026» con el chip Sin cerrar, las líneas Salario acordado 2026-08 (1.500 euros), Complemento de antigüedad (+30 euros) y Anticipo · cuota mensual (−100 euros), el Total previsto del mes de 1.430 euros y la nota «Además, la casa paga aparte: Seguro médico privado (45,00 €). No entra en la transferencia»; debajo empieza la tarjeta de vacaciones.">
     </div>
     <figcaption>
@@ -913,8 +1424,8 @@ thead th { border-top: 0; }
   </div>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · versiones del contrato</span></div>
-      <img src="capturas/familia-pagos-versiones.png" loading="lazy" width="2560" height="1600"
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
+      <img src="capturas/familia-contrato-versiones.png" loading="lazy" width="2560" height="1600"
            alt="Tarjeta «Versiones y cambios de salario» con la v1 (desde el 3 feb 2025, 1.400 euros, Histórica) y la v2 (desde el 1 abr 2025, 1.500 euros, Vigente, +100 euros), cada una resumiendo sus días de vacaciones, sus tarifas de trabajo extra y sus complementos; encima, el botón Administrar el contrato.">
     </div>
     <figcaption>
@@ -925,8 +1436,8 @@ thead th { border-top: 0; }
   </figure>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · historial</span></div>
-      <img src="capturas/familia-pagos-historial.png" loading="lazy" width="2560" height="1600"
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
+      <img src="capturas/familia-contrato-historial.png" loading="lazy" width="2560" height="1600"
            alt="Historial con pagos y confirmación: la cuenta de marzo 2025 con el chip Pagada y cobro confirmado, desglosada en salario base, domingo trabajado, dos horas extra, descanso compensado, cuota del anticipo, dos reembolsos y el pago por transferencia.">
     </div>
     <figcaption>
@@ -956,7 +1467,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Condiciones del contrato</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Condiciones del contrato · Casa Roble</span></div>
       <img src="capturas/familia-acuerdo.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla Condiciones del contrato con el contrato de Ana desde el 3 feb 2025 marcado como Activo: la v2 vigente de 1.500 euros resumiendo su catálogo (Hora extraordinaria desactivado · no lo ve, Festivo o descanso trabajado 80 euros por jornada, Jornada extra 50 euros por jornada, Noche de guardia 50 euros cada vez, Acompañamiento a médico sin tarifa · no la ve, Complemento de antigüedad 30 euros al mes que suma al pago, Seguro médico privado 45 euros al mes que paga la casa, Plus de transporte retirado), la v1 histórica de 1.400 euros, el botón Cambiar las condiciones y la tarjeta Nuevo contrato.">
     </div>
@@ -992,7 +1503,7 @@ thead th { border-top: 0; }
   </ul>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Versión nueva · trabajo extra</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Condiciones del contrato · Casa Roble</span></div>
       <img src="capturas/familia-acuerdo-version.png" loading="lazy" width="2560" height="1600"
            alt="Formulario Versión nueva con el bloque Trabajo extra y el aviso «Lo que esté desactivado o sin tarifa no lo verá la empleada, ni en sus condiciones ni al registrar trabajo»: la fila overtime (Hora extraordinaria, Por hora, 14,00) con la casilla Se lo permito sin marcar, y las filas worked_rest_day (80,00 por jornada, 1440 minutos), jornada_extra (50,00 por jornada, 600 minutos), noche_de_guardia (Importe fijo, 50,00) y sin_tarifa (Acompañamiento a médico, Importe fijo, sin tarifa), todas marcadas.">
     </div>
@@ -1030,7 +1541,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Versión nueva · complementos</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Condiciones del contrato · Casa Roble</span></div>
       <img src="capturas/familia-acuerdo-complementos.png" loading="lazy" width="2560" height="1600"
            alt="Bloque Complementos del formulario Versión nueva con el aviso «Lo paga la casa consta en sus condiciones pero NO entra en la transferencia del mes»: antiguedad (30,00, Suma a su transferencia, Vigente marcado), seguro_medico (45,00, Lo paga la casa, Vigente marcado) y plus_transporte (20,00, Suma a su transferencia, Vigente sin marcar), los botones Añadir complemento y Guardar como versión nueva.">
     </div>
@@ -1057,6 +1568,18 @@ thead th { border-top: 0; }
     <li><span class="ui">Horario distinto</span> — se rellena <strong>solo lo que cambia</strong>. Para terminar antes un día basta con su hora de <span class="ui">Sale</span>: no hay que repetir la entrada ni el descanso.</li>
     <li><span class="ui">Libra</span> — ese día no se trabaja.</li>
   </ul>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Condiciones del contrato · Casa Roble</span></div>
+      <img src="capturas/familia-acuerdo-horario.png" loading="lazy" width="2560" height="1600"
+           alt="Bloque Horario del formulario de versión: la casilla «Este contrato declara horario» marcada, la jornada tipo con Entra a las 8:00, Sale a las 16:30 y 90 minutos de descanso al mediodía, y debajo los siete días con su elección —de lunes a viernes «Como la jornada de arriba», el sábado «Horario distinto» con solo la hora de salida rellena y el domingo «Libra»—.">
+    </div>
+    <figcaption>
+      Un día por fila y una sola pregunta por día. Lo normal —«como la jornada de
+      arriba»— es lo que ya viene puesto, así que solo se toca lo que se sale de la
+      norma.
+    </figcaption>
+  </figure>
   <div class="tarjeta principio">
     <h4>Si el horario no cuadra con la jornada, la app lo canta</h4>
     <p>
@@ -1066,7 +1589,7 @@ thead th { border-top: 0; }
       min a la semana y la jornada contratada dice 40 h: sobran 30 min.»</em>
     </p>
     <p>
-      <strong>No te impide guardar.</strong> Casa Clara no sabe cuál de las dos
+      <strong>No te impide guardar.</strong> La aplicación no sabe cuál de las dos
       condiciones está mal —eso lo sabéis vosotros— y prefiere que lo veas a decidir
       por su cuenta. Lo que no hace es callárselo: el aviso también aparece en la
       pantalla de la empleada.
@@ -1099,12 +1622,14 @@ thead th { border-top: 0; }
     El <strong>derecho anual</strong> —cuántos días naturales de vacaciones al año—
     forma parte de las condiciones del contrato, igual que el salario: se pone al dar
     de alta el contrato y cambiarlo exige una versión nueva. Los <strong>días
-    disfrutados</strong> los apunta la familia en <span class="ui">Contrato</span>, en la
-    tarjeta <span class="ui">Días disfrutados y días que quedan</span>.
+    disfrutados</strong> los apunta <strong>quien administra la casa</strong> en
+    <span class="ui">Contrato</span>, en la tarjeta <span class="ui">Días disfrutados y
+    días que quedan</span>. Ni el miembro de la familia ni la propia empleada tienen ese
+    formulario: hablarlo es una conversación, apuntarlo es una firma.
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · vacaciones</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
       <img src="capturas/familia-vacaciones.png" loading="lazy" width="2560" height="1600"
            alt="Tarjeta Vacaciones 2026 «Días disfrutados y días que quedan» con el chip verde «22 de 30 días disfrutados · quedan 8», un periodo del 1 al 4 oct 2026 anulado con el motivo «Al final no se cogieron: las fechas eran otras · no cuenta en el saldo», el del 1 al 15 jul 2026 (Quincena de julio, 15 días) y el del 1 al 7 mar 2026 (Semana Santa en el pueblo, 7 días) con su botón Anular, y el formulario Apuntar vacaciones con Primer día, Último día y Nota.">
     </div>
@@ -1130,11 +1655,61 @@ thead th { border-top: 0; }
   <div class="tarjeta">
     <h4>Si se pasan los días, se ve; no se rechaza</h4>
     <p>
-      Cuando lo apuntado supera el derecho del año, Casa Clara <strong>no bloquea el
-      registro</strong>: enseña el saldo en negativo con un aviso —«Se han apuntado más
-      días de los que reconoce el contrato. Casa Clara no lo corrige sola: lo enseña
-      para que lo habléis y decidáis qué hacer»—. Un día de más puede estar pactado de
-      palabra; el programa no es quién para negarlo.
+      Cuando lo apuntado supera el derecho del año, la aplicación <strong>no bloquea el
+      registro</strong>: enseña el saldo en negativo con un aviso —se han apuntado más
+      días de los que reconoce el contrato, y lo enseña para que lo habléis y decidáis
+      qué hacer—. Un día de más puede estar pactado de palabra; el programa no es quién
+      para negarlo.
+    </p>
+  </div>
+
+  <h4>Todos los años, no solo este: <span class="ui">Ver todos los años</span></h4>
+  <p>
+    La tarjeta de <span class="ui">Contrato</span> enseña el año en curso, que es lo
+    que se necesita casi siempre. Debajo, el enlace <span class="ui">Ver todos los
+    años</span> abre el histórico completo: una tarjeta por persona con
+    <strong>todos los años que cubre su contrato</strong>, del más reciente al más
+    antiguo.
+  </p>
+  <p>
+    Cada año lleva su frase en llano —«De los 30 días que le tocan en 2025, ha
+    disfrutado 22. Le quedan 8.»— y los periodos debajo, cada uno con su etiqueta:
+    <span class="chip exito">Ya disfrutadas</span>,
+    <span class="chip exito">En curso</span>,
+    <span class="chip alerta">Aún por llegar</span> o
+    <span class="chip alerta">Anuladas</span>.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Vacaciones · Casa Roble</span></div>
+      <img src="capturas/familia-vacaciones-historico.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla Vacaciones con el histórico de una empleada año a año: 2026 con su frase de saldo y tres periodos, uno de ellos tachado con el motivo de la anulación y un guion en vez de los días; debajo, 2025 con su nota de prorrateo porque el contrato empezó a mitad de año, y un año sin nada apuntado.">
+    </div>
+    <figcaption>
+      Año a año, del más reciente al más antiguo. Los años en blanco también salen: «ese
+      año no se apuntó ni un día» es información, y saltárselos dejaría agujeros que
+      parecen datos perdidos.
+    </figcaption>
+  </figure>
+  <ul>
+    <li><strong>Lo anulado se lee como anulado:</strong> las fechas van tachadas, los días se sustituyen por un guion —para que no parezca que suman— y el detalle dice qué pasó: «Eran 4 días. Anuladas: al final no se cogieron, las fechas eran otras».</li>
+    <li><strong>El prorrateo, explicado en su año:</strong> «El contrato cubre 214 días de 2025, así que de los 30 días del año le tocan 18.»</li>
+    <li><strong>Un periodo a caballo de dos años</strong> aparece en los dos, con la parte que cae en cada uno: «3 días de estas caen en 2026».</li>
+  </ul>
+  <p>
+    Con varias personas trabajando en la casa, cada una tiene aquí su tarjeta
+    (<span class="ui">Vacaciones de Ana</span>). Esta pantalla es
+    <strong>solo de lectura</strong>: apuntar y anular se hace desde
+    <span class="ui">Contrato</span>.
+  </p>
+  <div class="tarjeta">
+    <h4>Qué ve el miembro de la familia</h4>
+    <p>
+      También entra aquí, y ve <strong>los días apuntados</strong> —lo que pasó en la
+      casa— pero no el derecho anual, porque eso es parte de lo pactado. En vez de
+      pintarle un cero o un guion, la pantalla se lo dice: <em>«Los días de vacaciones
+      que le corresponden al año son parte de lo pactado, y eso solo lo ven quien
+      administra el hogar y la propia persona. Aquí constan los días apuntados.»</em>
     </p>
   </div>
 
@@ -1144,7 +1719,7 @@ thead th { border-top: 0; }
     gratificación que se decide en una conversación, un descuento hablado, la parte
     proporcional de algo, un anticipo que se devolvió en efectivo. Para eso está la
     tarjeta <span class="ui">Importes sueltos imputados al mes que toque</span>, en
-    <span class="ui">Pagos</span>. Se apunta el importe <strong>con su motivo</strong> y
+    <span class="ui">Contrato</span>. Se apunta el importe <strong>con su motivo</strong> y
     <strong>eligiendo en qué mes cuenta</strong>.
   </p>
   <ol class="pasos">
@@ -1168,7 +1743,7 @@ thead th { border-top: 0; }
   <div class="tarjeta">
     <h4>Una cuenta cerrada no se reescribe</h4>
     <p>
-      Si el mes que eliges ya está <strong>cerrado</strong>, Casa Clara no rechaza el
+      Si el mes que eliges ya está <strong>cerrado</strong>, la aplicación no rechaza el
       apunte ni rehace aquella cuenta: <strong>lo imputa al primer mes abierto
       siguiente</strong> y la fila lo dice con todas las letras —«Se pidió para marzo de
       2026, pero esa cuenta ya estaba cerrada: se imputa a abril de 2026»—. El recibo de
@@ -1195,25 +1770,44 @@ thead th { border-top: 0; }
 
   <h3 id="fa-calendario">Calendario: enlazar los calendarios de verdad</h3>
   <p>
-    <span class="ui">Calendario</span> muestra <strong>los próximos 30 días</strong>
-    del hogar con los eventos de los calendarios que la familia haya enlazado: el del
-    cole, el del trabajo, el de las actividades. No es una agenda que haya que
-    rellenar a mano: se lee de los calendarios que ya usáis.
+    <span class="ui">Calendario</span> reúne los eventos de los calendarios que la
+    familia haya enlazado: el del cole, el del trabajo, el de las actividades. No es una
+    agenda que haya que rellenar a mano: se lee de los calendarios que ya usáis.
+  </p>
+  <p>
+    Arriba se elige <strong>cuánto quieres ver de una vez</strong>:
+    <span class="ui">Semana</span>, <span class="ui">Mes</span> o
+    <span class="ui">Año</span>, con flechas para ir adelante y atrás. La semana es para
+    organizarse; el mes, para ver el puente que viene; el año, para saber si esas
+    vacaciones caen en el peor momento posible.
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Calendario · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Calendario · Casa Roble</span></div>
       <img src="capturas/familia-calendario.png" loading="lazy" width="2560" height="1600"
-           alt="Calendario de agosto de 2026 con la agenda por días: Hoy sábado 8 de agosto con Reunión de equipo (Trabajo de Marta), Recogida de Leo en el cole y Natación de Leo, y debajo Próximamente domingo 9 de agosto.">
+           alt="Calendario en vista de semana con el selector Semana / Mes / Año visible arriba: los eventos agrupados por día, cada uno diciendo de qué calendario viene —Reunión de equipo (Trabajo de Marta), Recogida de Leo en el cole, Natación de Leo—.">
     </div>
     <figcaption>La agenda, agrupada por día, diciendo siempre de qué calendario viene cada evento.</figcaption>
   </figure>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Calendario · Casa Roble</span></div>
+      <img src="capturas/familia-calendario-vistas.png" loading="lazy" width="2560" height="1600"
+           alt="El mismo calendario con Mes elegido en el selector: la vista mensual completa con los eventos repartidos por los días y las flechas para pasar al mes anterior y al siguiente.">
+    </div>
+    <figcaption>
+      El mismo calendario en vista de mes. Cada alcance se pide al servidor cuando lo
+      eliges, para no cargar un año entero en un móvil que igual solo quería ver el
+      jueves.
+    </figcaption>
+  </figure>
   <p>
-    <strong>Enlazar uno</strong> es cosa de la administración y son dos campos:
+    <strong>Enlazar uno</strong> es cosa de la administración —y también del miembro de
+    la familia— y son dos campos:
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Calendario · enlazar</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Calendario · Casa Roble</span></div>
       <img src="capturas/familia-calendario-alta.png" loading="lazy" width="2560" height="1600"
            alt="Formulario Enlazar un calendario con los campos ¿De quién es este calendario? (marcador Cole de los niños, trabajo de Marta…) y Enlace del calendario (https://…), la explicación de dónde sacar el enlace iCal y el botón Enlazar el calendario.">
     </div>
@@ -1245,7 +1839,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Ajustes del hogar</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Ajustes · Casa Roble</span></div>
       <img src="capturas/familia-ajustes.png" loading="lazy" width="2560" height="1600"
            alt="Ajustes del hogar bajo el título «¿Hasta cuándo puede entrar cada persona?»: Alberto (administrador familiar, Activo, Tu acceso), Marta, Ana y Lucía con chip Activo, y para cada una el campo Fecha límite del acceso con los botones Poner fecha límite, Quitar el acceso y Poner una contraseña nueva.">
     </div>
@@ -1260,12 +1854,12 @@ thead th { border-top: 0; }
     Es la única red de recuperación que hay, y está aquí: en la tarjeta de esa persona,
     <span class="ui">Poner una contraseña nueva</span>. Solo puede hacerlo quien
     administra el hogar, y <strong>no puede reponer la suya propia</strong> (para eso
-    está <span class="ui">Tu contraseña</span>) ni la de alguien a quien ya se le
+    está <span class="ui">Tu cuenta</span>) ni la de alguien a quien ya se le
     retiró el acceso.
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Ajustes · reponer una contraseña</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Ajustes · Casa Roble</span></div>
       <img src="capturas/familia-ajustes-contrasena.png" loading="lazy" width="2560" height="1600"
            alt="Formulario de reposición dentro de Ajustes del hogar: el aviso «Vas a poner una contraseña nueva a Marta. Díctasela en persona y pídele que la cambie desde Tu contraseña en cuanto entre. Al hacerlo, Marta saldrá de todos los dispositivos donde tuviera la sesión abierta y tendrá que entrar con la contraseña nueva. Escribe REPONER para confirmar», los campos Contraseña nueva (mínimo 10 caracteres), Repite la contraseña nueva y Confirmación, y el botón Poner la contraseña nueva.">
     </div>
@@ -1278,7 +1872,7 @@ thead th { border-top: 0; }
     <li>Pulsa <span class="ui">Poner una contraseña nueva</span> en la tarjeta de esa persona.</li>
     <li>Escribe la contraseña nueva dos veces (mínimo 10 caracteres) y la palabra <strong>REPONER</strong> en <span class="ui">Confirmación</span>.</li>
     <li><span class="ui">Poner la contraseña nueva</span>. <strong>Todas sus sesiones se cierran</strong>: si tenía la app abierta en el móvil, se le pedirá entrar de nuevo. Es exactamente lo que se quiere al reponer una contraseña.</li>
-    <li>Díctasela <strong>en persona</strong> y pídele que la cambie desde <span class="ui">Tu contraseña</span> en cuanto entre. Nada de WhatsApp, correo ni una nota en la nevera.</li>
+    <li>Díctasela <strong>en persona</strong> y pídele que la cambie desde <span class="ui">Tu cuenta</span> en cuanto entre. Nada de WhatsApp, correo ni una nota en la nevera.</li>
   </ol>
   <div class="tarjeta principio">
     <h4>Dos personas que administren, siempre</h4>
@@ -1290,6 +1884,14 @@ thead th { border-top: 0; }
       de la casa. Se reponen la contraseña mutuamente en un minuto.
     </p>
   </div>
+  <h4>Desde aquí se llega al personal</h4>
+  <p>
+    Más abajo, la tarjeta <span class="ui">Quién trabaja en la casa</span> lleva a
+    <a href="#fa-personal">Personal de la casa</a> con el botón <span class="ui">Ver el
+    personal</span>. Es el único camino: <span class="ui">Personal</span> no sale en
+    ninguna barra de navegación, porque no es una pantalla del día a día.
+  </p>
+
   <h4>Traspaso operativo de la casa</h4>
   <p>
     Si la casa cambia de manos, llega una sustitución o alguien se va de vacaciones,
@@ -1329,7 +1931,7 @@ thead th { border-top: 0; }
   </div>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contactos · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contactos · Casa Roble</span></div>
       <img src="capturas/familia-contactos.png" loading="lazy" width="2560" height="1600"
            alt="Directorio de contactos agrupado por tipo: Emergencias Comunidad de Madrid en Emergencias, Centro Pediátrico Olmo en Salud, Carmen 2.º B en Casa y vecinos y Javier · Fontanería en Servicios y averías, con botones Llamar, Editar y Archivar en cada tarjeta.">
     </div>
@@ -1337,7 +1939,7 @@ thead th { border-top: 0; }
   </figure>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Emergencias · Casa Clara</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Emergencias · Casa Roble</span></div>
       <img src="capturas/familia-emergencias.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla de Emergencias con la nota «Contactos del hogar · disponibles sin conexión», la franja roja Emergencia vital 112 con el botón Llamar al 112, y el bloque A quién llamar con los contactos destacados del hogar y sus teléfonos.">
     </div>
@@ -1354,26 +1956,33 @@ thead th { border-top: 0; }
   <p>
     Un miembro de la familia (por ejemplo, la pareja de quien administra) maneja el
     día a día exactamente igual: organiza el <strong>menú</strong> y confirma comidas,
-    lleva la <strong>compra</strong>, marca y consulta <strong>rutinas</strong>, escribe
-    y publica en la <strong>Guía de la casa</strong>, gestiona <strong>contactos</strong>
-    y usa el calendario y el buscador.
+    lleva la <strong>compra</strong>, marca y consulta <strong>rutinas</strong>,
+    gestiona <strong>contactos</strong>, <strong>enlaza calendarios</strong> y usa el
+    buscador y la Guía de la casa.
+  </p>
+  <p>
+    Su barra es la única que va en otro orden, porque no lleva las tareas de la casa:
+    <span class="ui">Hoy</span> · <span class="ui">Menú</span> ·
+    <span class="ui">Contrato</span> · <span class="ui">Agenda</span>, con la Guía y
+    las Rutinas dentro de <span class="ui">Más</span>.
   </p>
   <p>Lo que queda reservado a la administración:</p>
   <ul>
-    <li>No ve <span class="ui">Ajustes del hogar</span>: no pone fechas límite, no quita accesos y no repone la contraseña de nadie.</li>
+    <li>No ve <span class="ui">Ajustes del hogar</span>: no pone fechas límite, no quita accesos y no repone la contraseña de nadie. Tampoco entra en <span class="ui">Personal de la casa</span> ni da de alta a nadie.</li>
     <li>No ve la lista <span class="ui">Personal</span> de la compra: esa es de la persona interna y de quien administra.</li>
-    <li>No enlaza calendarios (los ve, pero no los gestiona).</li>
+    <li><strong>Lee la Guía de la casa, pero no la escribe:</strong> no tiene <span class="ui">Escribir una instrucción</span> ni <span class="ui">Editar</span>, y las notas guardadas sin publicar no le aparecen.</li>
     <li>En <span class="ui">Contrato</span> puede revisar las jornadas extra y los gastos pendientes, pero <strong>sin ningún importe</strong> y sin botones de decisión: no acepta jornadas, no aprueba gastos, no cierra el mes ni registra pagos.</li>
-    <li>No entra en <span class="ui">Condiciones del contrato</span> ni ve el saldo de vacaciones: eso es de la administración y de la propia empleada.</li>
+    <li>No entra en <span class="ui">Condiciones del contrato</span>: los términos de lo pactado son de la administración y de la propia empleada.</li>
+    <li>De las <strong>vacaciones</strong> sí ve los días apuntados —afectan a la organización de la casa— pero no cuántos le corresponden al año, y no puede apuntar ni anular ninguno.</li>
   </ul>
   <p>
-    Sí tiene, como todo el mundo, su pantalla <span class="ui">Tu contraseña</span>
-    para cambiar la suya.
+    Sí tiene, como todo el mundo, su sección <span class="ui">Tu cuenta</span> con su
+    contraseña y sus avisos.
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · vista de miembro</span></div>
-      <img src="capturas/miembro-pagos.png" loading="lazy" width="2560" height="1600"
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
+      <img src="capturas/miembro-contrato.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla Contrato vista por Marta: las jornadas extra pendientes y el gasto pendiente se listan sin botones de decisión, y una tarjeta titulada Importes reservados explica que los importes y las cuentas de cada mes solo los ven quien administra el hogar y la empleada.">
     </div>
     <figcaption>
@@ -1391,12 +2000,12 @@ thead th { border-top: 0; }
   <p class="eyebrow">Sección por papel</p>
   <h2>Interna / empleada de hogar <span class="chip interna">Interna</span></h2>
   <p>
-    Ana trabaja y vive en la casa, así que su Casa Clara está pensada para el móvil
+    Ana trabaja y vive en la casa, así que su pantalla está pensada para el móvil
     y para el mínimo de toques: su día en <span class="ui">Hoy</span>, el menú, la
     compra —con su lista <span class="ui">Personal</span>—, la Guía de la casa y
     <span class="ui">Contrato</span>, donde ve lo suyo completo, con los mismos importes
     que ve quien administra. Tiene además, como todo el mundo,
-    <span class="ui">Tu contraseña</span> dentro de <span class="ui">Más</span>.
+    <span class="ui">Tu cuenta</span> dentro de <span class="ui">Más</span>.
   </p>
 
   <div class="fila">
@@ -1404,21 +2013,76 @@ thead th { border-top: 0; }
       <h3>Su día en Hoy</h3>
       <p>
         Al abrir la app, <span class="ui">Hoy</span> le muestra <strong>sus</strong>
-        rutinas del día en «Necesita tu decisión» y el menú con lo que toca cocinar.
+        rutinas del día en <span class="ui">Lo que toca hoy</span> y el menú con lo que
+        toca cocinar. Su barra inferior es <span class="ui">Hoy</span> ·
+        <span class="ui">Rutinas</span> · <span class="ui">Menú</span> ·
+        <span class="ui">Guía</span>, con todo lo demás en <span class="ui">Más</span>.
       </p>
       <ul>
-        <li>Marcar una rutina: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span>. Queda tachada al instante con «Hecha ✓ · próxima el …», aunque no haya cobertura.</li>
+        <li>Marcar una rutina: <span class="toques">1 toque</span> en <span class="ui">Marcar hecha</span>. Queda tachada al instante con «Hecha ✓ · próxima el mar, 18 ago», aunque no haya cobertura.</li>
         <li>El menú del día indica con chips qué está <span class="chip exito">Confirmado</span> y qué sigue <span class="chip alerta">Sin confirmar</span>. La confirmación del menú la hace la familia; si algo aparece sin confirmar a la hora de cocinar, pregunta antes.</li>
-        <li>Emergencias: siempre a un toque con el botón <span class="ui">+ Emergencias</span>.</li>
+        <li>Emergencias: la última fila de la pantalla, siempre en el mismo sitio, y también dentro de <span class="ui">Más</span>.</li>
       </ul>
     </div>
     <figure class="captura movil">
       <div class="ventana">
         <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · móvil</span></div>
         <img src="capturas/interna-hoy-movil.png" loading="lazy" width="780" height="1688"
-             alt="Hoy en el móvil de Ana: saludo «Buenas tardes, Ana», botón + Emergencias y el bloque Necesita tu decisión con cinco rutinas del día (cambiar sábanas y toallas, regar las plantas, repaso del filtro del agua, rutina diaria de referencia y ventilación de la mañana), cada una con su botón Marcar hecha, y la barra inferior Hoy · Rutinas · Menú · Contrato · Más.">
+             alt="Hoy en el móvil de Ana: el título con la fecha y «3 por hacer», y la tarjeta «Lo que toca hoy» con sus rutinas del día —cambiar sábanas y toallas, regar las plantas, ventilación de la mañana— cada una con su botón Marcar hecha; abajo, la barra Hoy · Rutinas · Menú · Guía · Más.">
       </div>
       <figcaption>Hoy en el móvil de Ana: lo que le toca hoy, con un botón por tarea.</figcaption>
+    </figure>
+  </div>
+
+  <div class="fila">
+    <div class="texto">
+      <h3>Si marca algo por error</h3>
+      <p>
+        Se deshace. Al marcar una rutina, la fila queda con su chip «Hecha ✓ · próxima
+        el …» y al lado un <span class="ui">Deshacer</span> que la devuelve a como
+        estaba. <strong>No pide motivo</strong>: es un error de dedo, no una corrección
+        contable.
+      </p>
+      <p>
+        Al fondo de <span class="ui">Hoy</span>, el bloque plegado
+        <span class="ui">4 hechas hoy</span> guarda todo lo que ha marcado en el día,
+        con su <span class="ui">Deshacer</span> en cada línea. Se abre solo cuando acaba
+        de marcar algo, para que vea dónde ha ido.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · móvil</span></div>
+        <img src="capturas/interna-hoy-deshacer-movil.png" loading="lazy" width="780" height="1688"
+             alt="Hoy en el móvil de Ana justo después de marcar una rutina: la fila tachada con el chip «Hecha ✓ · próxima el mar, 18 ago» y, a su lado, el botón Deshacer.">
+      </div>
+      <figcaption>Marcada y con su <span class="ui">Deshacer</span> al lado, sin preguntar nada.</figcaption>
+    </figure>
+  </div>
+
+  <div class="fila">
+    <div class="texto">
+      <h3>Cómo se hace cada cosa</h3>
+      <p>
+        Si una rutina tiene instrucciones escritas, <strong>su título se pulsa</strong> y
+        se despliegan ahí mismo: cómo va ese programa de la lavadora, en qué orden se
+        cierra la casa. No hay que salir de <span class="ui">Hoy</span> ni buscar la nota
+        en la Guía.
+      </p>
+      <p>
+        Si no las tiene, el título es texto normal y no se pulsa. Es a propósito: un
+        título que parece un botón y no hace nada al tocarlo es peor que un título que
+        no lo parece. En <span class="ui">Rutinas</span> lo mismo se llama
+        <span class="ui">Cómo se hace</span>.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · móvil</span></div>
+        <img src="capturas/interna-hoy-detalle-movil.png" loading="lazy" width="780" height="1688"
+             alt="Hoy en el móvil de Ana con el título de una rutina pulsado: debajo se ha desplegado el texto con sus instrucciones, mientras las demás rutinas de la lista siguen plegadas.">
+      </div>
+      <figcaption>El detalle de la tarea, desplegado al pulsar su título.</figcaption>
     </figure>
   </div>
 
@@ -1450,11 +2114,46 @@ thead th { border-top: 0; }
     </div>
     <figure class="captura movil">
       <div class="ventana">
-        <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · jornadas extra</span></div>
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · móvil</span></div>
         <img src="capturas/interna-jornada-movil.png" loading="lazy" width="780" height="1688"
              alt="Jornadas extra en el móvil de Ana: las pendientes de acordar o compensar con el botón Marcar realizada, y debajo el formulario Registrar jornada extra con el desplegable Tipo (Festivo o descanso trabajado), la Fecha, la aclaración «jornada de 1 día, según lo pactado», la Nota (opcional) y su botón.">
       </div>
       <figcaption>Registrar una jornada extra desde el móvil: se elige el tipo pactado y la fecha.</figcaption>
+    </figure>
+  </div>
+
+  <div class="fila">
+    <div class="texto">
+      <h4>El justificante: dos maneras, porque el móvil no deja elegir</h4>
+      <p>
+        En <span class="ui">Justificante (opcional)</span> hay <strong>dos campos</strong>,
+        y no es un descuido:
+      </p>
+      <ul>
+        <li><span class="ui">Elegir un fichero o una foto guardada</span> — para la foto que ya tienes en el carrete o para un PDF que te han mandado.</li>
+        <li><span class="ui">Hacer la foto ahora</span> — abre directamente la cámara.</li>
+      </ul>
+      <p>
+        Con un solo campo siempre faltaría una de las dos vías: cuando un botón abre la
+        cámara, el teléfono deja de ofrecer la galería. Así que están los dos, cada uno
+        con su nombre.
+      </p>
+      <p>
+        <strong>El tope es 10 MB.</strong> Si la foto pesa mucho, el propio teléfono la
+        reduce antes de enviarla y te lo dice con los números: «la foto pesaba 7,4 MB y
+        se ha reducido a 2,1 MB para poder subirla. Se sigue leyendo bien». Es para que
+        no se te quede a medias con datos móviles. Y si aun así no cabe, el gasto se
+        registra igual, sin justificante, y la pantalla lo avisa: el gasto nunca se
+        pierde por culpa de una foto.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · móvil</span></div>
+        <img src="capturas/interna-gasto-foto-movil.png" loading="lazy" width="780" height="1688"
+             alt="Formulario de gasto en el móvil de Ana con el bloque «Justificante (opcional)» y sus dos campos: «Elegir un fichero o una foto guardada» y «Hacer la foto ahora», y debajo el aviso de que una foto pesada se reduce en el móvil antes de enviarla y el texto del ticket se sigue leyendo.">
+      </div>
+      <figcaption>Los dos campos del justificante: la foto que ya tienes y la que vas a hacer ahora.</figcaption>
     </figure>
   </div>
 
@@ -1468,7 +2167,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Mis condiciones · vista de la empleada</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Mis condiciones · Casa Roble</span></div>
       <img src="capturas/interna-condiciones.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla Mis condiciones de Ana: la tarjeta Lo básico, vigente desde el 1 abr 2025 con el chip Versión 2, con Salario al mes 1.500,00 euros, Jornada 40 h a la semana y Vacaciones 30 días naturales al año; debajo, Trabajo extra «Qué puedes hacer y a cuánto se paga» con Festivo o descanso trabajado 80,00 euros por jornada, Jornada extra 50,00 euros por jornada y Noche de guardia 50,00 euros cada vez. No aparece ninguna tarifa por hora.">
     </div>
@@ -1480,7 +2179,7 @@ thead th { border-top: 0; }
   </figure>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Mis condiciones · complementos</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Mis condiciones · Casa Roble</span></div>
       <img src="capturas/interna-condiciones-extra.png" loading="lazy" width="2560" height="1600"
            alt="Continuación de Mis condiciones: el bloque Trabajo extra con los tres conceptos que sí le aplican y, debajo, Complementos «Lo que se suma y lo que paga la casa» con Complemento de antigüedad 30,00 euros al mes («Se suma a tu transferencia») y Seguro médico privado 45,00 euros al mes («Lo paga la casa por su cuenta: consta como condición tuya, pero no viaja en la transferencia»).">
     </div>
@@ -1501,18 +2200,31 @@ thead th { border-top: 0; }
   </div>
 
   <h4>Tu jornada: el horario, en una frase</h4>
-  <p>
-    En la misma pantalla, la tarjeta <span class="ui">Tu jornada</span> dice el horario
-    pactado como lo diría una persona: <em>«De 8:00 a 16:30, con hora y media de
-    descanso al mediodía. Sábado hasta las 14:30. Domingo libre.»</em> Debajo, los siete
-    días uno a uno con sus horas y las que suma cada uno, por si quiere comprobarlo.
-  </p>
-  <p>
-    El horario es una condición del contrato como el salario: <strong>cambiarlo crea
-    una versión nueva</strong> y la anterior queda en el historial. Si las horas del
-    horario no cuadran con la jornada semanal que dice el contrato, la app lo escribe
-    en esa misma tarjeta en vez de callárselo, y le dice con quién hablarlo.
-  </p>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        En la misma pantalla, la tarjeta <span class="ui">Tu jornada</span> dice el
+        horario pactado como lo diría una persona: <em>«De 8:00 a 16:30, con hora y
+        media de descanso al mediodía. Sábado hasta las 14:30. Domingo libre.»</em>
+        Debajo, los siete días uno a uno con sus horas y las que suma cada uno, por si
+        quiere comprobarlo.
+      </p>
+      <p>
+        El horario es una condición del contrato como el salario: <strong>cambiarlo crea
+        una versión nueva</strong> y la anterior queda en el historial. Si las horas del
+        horario no cuadran con la jornada semanal que dice el contrato, la app lo
+        escribe en esa misma tarjeta en vez de callárselo, y le dice con quién hablarlo.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Mis condiciones · móvil</span></div>
+        <img src="capturas/interna-jornada-horario-movil.png" loading="lazy" width="780" height="1688"
+             alt="Tarjeta «Tu jornada» en el móvil de Ana: arriba el horario resumido en una frase con el día de libranza, y debajo los siete días uno a uno con su hora de entrada, su hora de salida y las horas que suma cada uno.">
+      </div>
+      <figcaption>El horario, primero en una frase y luego día a día para comprobarlo.</figcaption>
+    </figure>
+  </div>
   <div class="tarjeta principio">
     <h4>Si no hay horario pactado, no hay tarjeta</h4>
     <p>
@@ -1530,22 +2242,94 @@ thead th { border-top: 0; }
         En <span class="ui">Contrato</span>, la tarjeta
         <span class="ui">Días disfrutados y días que quedan</span> le enseña el saldo
         del año en curso y los periodos apuntados, con los anulados a la vista y su
-        motivo.
+        motivo. Y en <span class="ui">Ver todos los años</span> tiene su propia
+        sección, <span class="ui">Mis vacaciones</span>, con el historial completo año
+        a año.
       </p>
       <p>
-        Ana <strong>mira, pero no escribe</strong>: los días los apunta la familia. No
-        verá el formulario <span class="ui">Apuntar vacaciones</span> ni los botones
-        <span class="ui">Anular</span>. Si el saldo no le cuadra, es una conversación,
-        no un formulario.
+        Ana <strong>mira, pero no escribe</strong>: los días los apunta quien administra
+        la casa. No verá el formulario <span class="ui">Apuntar vacaciones</span> ni los
+        botones <span class="ui">Anular</span>. La propia pantalla se lo explica en
+        <span class="ui">Quién apunta estos días</span>: «aquí no hay ninguna solicitud
+        que mandar ni ninguna respuesta que esperar. Si algo no cuadra, díselo».
       </p>
     </div>
     <figure class="captura movil">
       <div class="ventana">
         <div class="ventana-barra"><i></i><i></i><i></i><span>Vacaciones · móvil</span></div>
         <img src="capturas/interna-vacaciones-movil.png" loading="lazy" width="780" height="1688"
-             alt="Tarjeta Vacaciones 2026 en el móvil de Ana con el chip «22 de 30 días disfrutados · quedan 8» y los tres periodos —uno anulado con su motivo, la quincena de julio de 15 días y la Semana Santa de 7 días— sin ningún botón de anular ni formulario para apuntar.">
+             alt="Sección «Mis vacaciones» en el móvil de Ana: el titular del año con los días que le tocan y los que ha disfrutado, los periodos debajo con sus etiquetas —uno anulado y tachado— y, al final, la tarjeta «Quién apunta estos días». No hay ningún botón de anular ni formulario para apuntar.">
       </div>
-      <figcaption>El mismo saldo que ve la familia, sin los botones de escritura.</figcaption>
+      <figcaption>Su historial, con las mismas cuentas que ve la familia y sin los botones de escritura.</figcaption>
+    </figure>
+  </div>
+
+  <div class="fila">
+    <div class="texto">
+      <h4>Se entera de sus vacaciones sin tener que preguntar</h4>
+      <p>
+        Cuando la familia apunta o anula unos días, Ana lo ve <strong>en Hoy y en sus
+        vacaciones</strong>, escrito en una línea: «Te han apuntado vacaciones: del 1 al
+        15 de agosto de 2026». Enterarse de que ya están puestas las fechas no debería
+        depender de que a alguien se le ocurra decírselo.
+      </p>
+      <p>
+        <strong>El aviso se da por visto al mirarlo</strong>, no al pulsar nada. No hay
+        botón <span class="ui">Entendido</span> ni una X que cerrar: un aviso que hay
+        que descartar a mano acaba descartándose sin leer. La próxima vez ya no está, y
+        lo apuntado sigue en la lista de siempre.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Vacaciones · móvil</span></div>
+        <img src="capturas/interna-vacaciones-aviso-movil.png" loading="lazy" width="780" height="1688"
+             alt="Sección Mis vacaciones en el móvil de Ana con el aviso de novedad en verde sobre el listado: «Te han apuntado vacaciones» con las fechas del periodo nuevo, y sin ningún botón para descartarlo.">
+      </div>
+      <figcaption>La novedad, arriba y sin nada que cerrar. Desaparece sola la próxima vez.</figcaption>
+    </figure>
+  </div>
+
+  <div class="fila">
+    <div class="texto">
+      <h3>La Guía, para leérsela entera</h3>
+      <p>
+        A quien acaba de llegar a una casa, la Guía no le sirve solo para consultar:
+        le sirve para saber <strong>qué hay que saber</strong>. Desde la portada,
+        <span class="ui">Empezar a leer</span> abre la Guía como un libro, una nota por
+        pantalla, con <span class="ui">← Anterior</span> y
+        <span class="ui">Siguiente →</span>.
+      </p>
+      <p>
+        Arriba va el avance: «Nota 19 de 52 · has leído 18». Cada nota se marca leída al
+        llegar al final y pasar de página, y si el texto cambia más adelante vuelve a
+        aparecer con su explicación. Se puede dejar a medias y seguir otro día: el botón
+        de la portada dice <span class="ui">Seguir leyendo</span> y recuerda por dónde
+        ibas.
+      </p>
+      <p>
+        En <span class="ui">Ver qué me falta</span> tiene su propia cuenta —
+        <span class="ui">Tu lectura</span> y <span class="ui">Te faltan estas</span>—,
+        con enlaces directos a lo que no ha leído. Lo único que se guarda es
+        <strong>cuántas notas lleva</strong>: ni horas, ni fechas, ni qué abrió cada
+        día.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Guía de la casa · móvil</span></div>
+        <img src="capturas/interna-guia-libro-movil.png" loading="lazy" width="780" height="1688"
+             alt="La Guía en modo libro en el móvil de Ana: la barra de avance y la línea «Nota 19 de 52 · has leído 18», el texto de la nota con su chip Leída, y abajo los botones ← Anterior y Siguiente →.">
+      </div>
+      <figcaption>La Guía como un libro: una nota por pantalla y el avance arriba.</figcaption>
+    </figure>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Avance de la guía · móvil</span></div>
+        <img src="capturas/interna-guia-progreso-movil.png" loading="lazy" width="780" height="1688"
+             alt="Pantalla «Cómo va la lectura» en el móvil de Ana: el bloque Tu lectura con la barra de avance, la cuenta de notas leídas y el reparto por apartados, y debajo «Te faltan estas» con los enlaces a las notas pendientes.">
+      </div>
+      <figcaption>Su propia cuenta: cuánto lleva y qué le falta, con enlace a cada nota.</figcaption>
     </figure>
   </div>
 
@@ -1576,7 +2360,7 @@ thead th { border-top: 0; }
     </div>
     <figure class="captura movil">
       <div class="ventana">
-        <div class="ventana-barra"><i></i><i></i><i></i><span>Menú del día · móvil</span></div>
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · móvil</span></div>
         <img src="capturas/interna-menu-movil.png" loading="lazy" width="780" height="1688"
              alt="Menú de la semana en el móvil de Ana con el sábado seleccionado, el grupo Casa con la alergia de Leo a la vista y la comida del día, Cocido de la abuela.">
       </div>
@@ -1584,7 +2368,7 @@ thead th { border-top: 0; }
     </figure>
     <figure class="captura movil">
       <div class="ventana">
-        <div class="ventana-barra"><i></i><i></i><i></i><span>Compra · la lista Personal</span></div>
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Menú · móvil</span></div>
         <img src="capturas/interna-compra-movil.png" loading="lazy" width="780" height="1688"
              alt="Sección Personal de la lista de la compra en el móvil de Ana, bajo el aviso «Solo lo ve la persona interna y quien administra la casa», con champú sin sulfatos, crema de manos e infusión de manzanilla; debajo el formulario Añadir otra cosa con la elección ¿A qué lista?: La compra de casa o La lista personal.">
       </div>
@@ -1635,7 +2419,7 @@ thead th { border-top: 0; }
   </p>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Sección no incluida en tu acceso</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Sección no incluida en tu acceso · Casa Roble</span></div>
       <img src="capturas/apoyo-sin-acceso.png" loading="lazy" width="2560" height="1600"
            alt="Pantalla con el título «Esta sección no está incluida en tu acceso», el texto «Esta parte la lleva la familia. No es ningún fallo: tu acceso simplemente no la incluye.» y el botón ← Volver a Hoy.">
     </div>
@@ -1645,15 +2429,47 @@ thead th { border-top: 0; }
     </figcaption>
   </figure>
 
+  <figure class="captura movil">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · móvil</span></div>
+      <img src="capturas/apoyo-hoy-movil.png" loading="lazy" width="780" height="1688"
+           alt="Hoy en el móvil de Lucía, el apoyo del hogar: la línea «Tu acceso incluye el menú, las rutinas, los contactos, la guía de la casa y las emergencias. El resto de la casa lo lleva la familia», las rutinas que le tocan con su botón Marcar hecha, y la barra inferior Hoy · Rutinas · Menú · Guía · Más.">
+    </div>
+    <figcaption>
+      El día de Lucía. Su barra es la misma que la de la interna, pero detrás hay menos
+      casa: ni Contrato ni Calendario aparecen en su hoja <span class="ui">Más</span>.
+    </figcaption>
+  </figure>
+
   <h3>Acceso puntual (visor)</h3>
-  <p>
-    El acceso <strong>puntual</strong> (un canguro una noche, como Diego) es de solo
-    consulta: <span class="ui">Hoy</span> como resumen del día —sin poder marcar
-    nada; la propia pantalla lo dice: «Tu acceso permite consultar el día, pero no
-    marcar rutinas»—, el <span class="ui">Calendario</span> (para saber a qué hora
-    hay que recoger a quién), los <span class="ui">Contactos</span> y
-    <span class="ui">Emergencias</span>. No ve el menú, ni las rutinas, ni la Guía.
-  </p>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        El acceso <strong>puntual</strong> (un canguro una noche, como Diego) es de solo
+        consulta: <span class="ui">Hoy</span> como resumen del día —sin poder marcar
+        nada; la propia pantalla lo dice: «Tu acceso permite consultar el día, pero no
+        marcar rutinas»—, el <span class="ui">Calendario</span> (para saber a qué hora
+        hay que recoger a quién), los <span class="ui">Contactos</span> y
+        <span class="ui">Emergencias</span>. No ve el menú, ni las rutinas, ni la Guía,
+        y tampoco tiene buscador.
+      </p>
+      <p>
+        Es el único papel al que <strong>Emergencias le cabe en la barra de abajo</strong>,
+        porque solo tiene cuatro secciones: <span class="ui">Hoy</span> ·
+        <span class="ui">Agenda</span> · <span class="ui">Contactos</span> ·
+        <span class="ui">Ayuda</span>. En su hoja <span class="ui">Más</span> no queda
+        nada más que <span class="ui">Tu cuenta</span> y <span class="ui">Salir</span>.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · móvil</span></div>
+        <img src="capturas/visor-hoy-movil.png" loading="lazy" width="780" height="1688"
+             alt="Hoy en el móvil de Diego, el acceso puntual: el resumen del día con la línea «Tu acceso permite consultar el día, pero no marcar rutinas» y sin ningún botón de marcar, y la barra inferior Hoy · Agenda · Contactos · Ayuda · Más.">
+      </div>
+      <figcaption>El acceso de una noche: mirar el día y poder llamar. Nada más.</figcaption>
+    </figure>
+  </div>
   <div class="tarjeta">
     <p>
       <strong>Ojo con esta pareja:</strong> el <strong>acceso puntual sí ve el
@@ -1667,6 +2483,7 @@ thead th { border-top: 0; }
     Ajustes: cuando pasa la fecha, la puerta se cierra sola.
   </p>
 
+  <h3 id="quien-ve-que">Quién ve qué</h3>
   <div class="tabla-scroll">
   <table>
     <caption class="eyebrow" style="text-align:left; caption-side: top; padding-bottom:.4rem;">Quién ve qué</caption>
@@ -1678,14 +2495,16 @@ thead th { border-top: 0; }
       <tr><td>Menú</td><td>Edita y confirma</td><td>Edita y confirma</td><td>Consulta</td><td>Consulta</td><td>—</td></tr>
       <tr><td>Lista de la compra</td><td>Añade y marca</td><td>Añade y marca</td><td>Añade y marca</td><td>Consulta</td><td>—</td></tr>
       <tr><td>Lista «Personal»</td><td>Sí</td><td>—</td><td>Sí (es la suya)</td><td>—</td><td>—</td></tr>
-      <tr><td>Guía de la casa</td><td>Escribe y publica</td><td>Escribe y publica</td><td>Escribe; ve lo no publicado</td><td>Lee lo publicado</td><td>—</td></tr>
+      <tr><td>Guía de la casa</td><td>Escribe y publica; ve lo no publicado</td><td>Lee lo publicado</td><td>Lee lo publicado</td><td>Lee lo publicado</td><td>—</td></tr>
+      <tr><td>Buscar</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>—</td></tr>
       <tr><td>Contrato</td><td>Decide todo</td><td>Jornadas y gastos, sin importes</td><td>Lo suyo, completo</td><td>—</td><td>—</td></tr>
       <tr><td>Condiciones del contrato</td><td>Crea y cambia (versión nueva)</td><td>—</td><td>Ve las suyas, sin lo que no le aplica</td><td>—</td><td>—</td></tr>
-      <tr><td>Vacaciones</td><td>Apunta, anula y ve el saldo</td><td>—</td><td>Ve su saldo y sus periodos</td><td>—</td><td>—</td></tr>
-      <tr><td>Calendario</td><td>Enlaza y ve</td><td>Ve</td><td>Ve</td><td>—</td><td>Ve</td></tr>
+      <tr><td>Vacaciones</td><td>Apunta, anula y ve el saldo</td><td>Ve los días apuntados, no el derecho</td><td>Ve su saldo y sus periodos</td><td>—</td><td>—</td></tr>
+      <tr><td>Calendario</td><td>Enlaza y ve</td><td>Enlaza y ve</td><td>Ve</td><td>—</td><td>Ve</td></tr>
       <tr><td>Contactos</td><td>Edita</td><td>Edita</td><td>Consulta</td><td>Consulta</td><td>Consulta</td></tr>
       <tr><td>Emergencias</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
-      <tr><td>Tu contraseña</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Tu cuenta</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Personal de la casa</td><td>Sí (y da de alta)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
       <tr><td>Ajustes del hogar</td><td>Sí (y repone contraseñas)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
     </tbody>
   </table>
@@ -1707,20 +2526,37 @@ thead th { border-top: 0; }
   </p>
   <ul>
     <li><strong>La nota de guardado</strong> te dice siempre la verdad, con el mismo lenguaje en toda la app: en verde <span class="chip exito">Guardado ✓</span> cuando el cambio está confirmado, en ámbar «Guardado en este dispositivo; se enviará al recuperar la conexión» cuando espera red, y en rojo «No se pudo guardar: …» si el servidor lo rechazó, con la causa.</li>
-    <li><strong>El punto de estado</strong> de la esquina resume lo global: «Todo guardado», «N cambios pendientes», «Sincronizando…», «Sin conexión» o «Necesita tu decisión». Sin conexión, un aviso recuerda que «el contenido crítico guardado sigue disponible».</li>
+    <li><strong>La banda de estado</strong> aparece arriba <strong>solo cuando hay algo que contar</strong>: «Sin conexión», «3 cambios pendientes» o «Necesita tu decisión · 2», cada una con su explicación de una línea. Cuando todo está enviado no aparece nada: un aviso permanente diciendo «todo bien» gasta sitio en todas las pantallas y no informa de nada.</li>
     <li><strong>Emergencias</strong> se guarda por adelantado en cada dispositivo: abre aunque nunca la hayas visitado y no haya cobertura.</li>
   </ul>
   <h4>Qué llevas encima cuando no hay red</h4>
-  <p>
-    El paquete que se guarda en tu dispositivo ya no es una maqueta: lleva
-    <strong>datos reales del hogar</strong>, los que hacen falta para seguir
-    funcionando una tarde sin cobertura. En la pantalla sin conexión encontrarás:
-  </p>
-  <ul>
-    <li><strong>Emergencias:</strong> el 112 y los contactos destacados del hogar.</li>
-    <li><strong>«El día de hoy»:</strong> <span class="ui">Qué se come</span> —el menú real de hoy, indicando lo que está «Sin confirmar»— y <span class="ui">Tareas que tocan hoy</span>, con las rutinas que vencen.</li>
-    <li><strong>«Instrucciones guardadas»:</strong> el texto completo de las notas destacadas de la Guía. Cómo va la caldera se lee igual sin datos.</li>
-  </ul>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        El paquete que se guarda en tu dispositivo ya no es una maqueta: lleva
+        <strong>datos reales del hogar</strong>, los que hacen falta para seguir
+        funcionando una tarde sin cobertura. En la pantalla sin conexión —«Lo esencial
+        sigue guardado en este dispositivo»— encontrarás:
+      </p>
+      <ul>
+        <li><strong>Emergencias:</strong> el 112 y los contactos destacados del hogar.</li>
+        <li><strong>«El día de hoy»:</strong> <span class="ui">Qué se come</span> —el menú real de hoy, indicando lo que está «Sin confirmar»— y <span class="ui">Tareas que tocan hoy</span>, con las rutinas que vencen.</li>
+        <li><strong>«Instrucciones guardadas»:</strong> el texto completo de las notas destacadas de la Guía. Cómo va la caldera se lee igual sin datos.</li>
+      </ul>
+      <p>
+        El buscador también sigue funcionando sobre ese paquete, avisando de que solo
+        está mirando lo guardado en el teléfono.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Sin conexión · móvil</span></div>
+        <img src="capturas/sin-conexion-movil.png" loading="lazy" width="780" height="1688"
+             alt="Pantalla sin conexión en el móvil: el título «Lo esencial sigue guardado en este dispositivo» y los tres bloques guardados —Emergencias con el 112 y los contactos destacados, «El día de hoy» con qué se come y las tareas que tocan, e «Instrucciones guardadas» con las notas destacadas de la Guía—.">
+      </div>
+      <figcaption>Sin cobertura no se ve una pantalla de error: se ve lo que sí hay.</figcaption>
+    </figure>
+  </div>
   <p>
     Y se puede <strong>escribir sin red</strong>: incluso la primerísima instrucción
     de una Guía vacía. La app avisa de que «se guardará en el apartado «General», que
@@ -1740,6 +2576,33 @@ thead th { border-top: 0; }
       «se sincronizará» de algo que en realidad fue rechazado.
     </p>
   </div>
+  <div class="tarjeta">
+    <h4>Y si es la casa la que no responde</h4>
+    <p>
+      Sin conexión es una cosa; que el servidor no pueda leer los datos del hogar es
+      otra. En ese caso aparece <strong>«No podemos leer los datos de la casa»</strong>,
+      y con ella una promesa que conviene entender: <em>«No te enseñamos datos de
+      ejemplo en su lugar: preferimos decirte que no los tenemos.»</em> Un menú
+      inventado o un saldo de mentira son peores que una pantalla vacía. Debajo, dos
+      botones: <span class="ui">Ir a Emergencias</span> —que sí funciona, porque va
+      guardada en el dispositivo— y <span class="ui">Volver a intentarlo</span>. Y si
+      es una urgencia, el 112.
+    </p>
+  </div>
+
+  <h3>Pensada para un móvil, y para el pulgar</h3>
+  <p>
+    Casi todo lo que se hace aquí se hace de pie, con una mano y con prisa: en la
+    cocina, en el súper, saliendo por la puerta. De ahí unas cuantas decisiones que se
+    notan aunque no se vean:
+  </p>
+  <ul>
+    <li><strong>Nada que apuntar tiene menos de 44 píxeles.</strong> Es la medida de un pulgar. Y en las listas de acción, la fila entera es el botón: no hay que acertarle a un enlace de tres letras.</li>
+    <li><strong>Una tipografía elegida por legible</strong>, no por bonita, con las cifras de anchura fija para que los importes y las horas queden en columna y se comparen de un vistazo. Va empaquetada con la aplicación: no se descarga de ningún sitio, así que se lee igual sin cobertura.</li>
+    <li><strong>Tres alturas de fila y nada más:</strong> la de las cosas que se tocan, la de los datos que solo se leen y una intermedia. Una lista con quince alturas distintas se lee como quince listas.</li>
+    <li><strong>Cuatro tamaños de letra por pantalla, como mucho.</strong> Si todo grita, nada se oye.</li>
+    <li><strong>En el móvil no hay cabecera ni barra lateral.</strong> Ocupaban el 41 % de la primera pantalla en decirte dónde estabas antes de enseñarte un dato. El nombre de la casa sobrevive donde tiene sentido: como línea de apoyo del título de <span class="ui">Hoy</span>.</li>
+  </ul>
 
   <h3>Lo de Contrato es un libro contable</h3>
   <p>
@@ -1764,8 +2627,10 @@ thead th { border-top: 0; }
     <li><strong>Cada hogar, lo suyo.</strong> La separación entre hogares está garantizada en la propia base de datos, no solo en la pantalla.</li>
     <li><strong>Cada papel, lo justo.</strong> Los importes, por ejemplo, solo los ven la administración y la propia empleada; y la lista «Personal» de la compra, solo la persona interna y quien administra. No es que se oculten botones: es que la base de datos no devuelve esos datos a quien no le corresponden.</li>
     <li><strong>Y dentro del contrato, solo lo pactado.</strong> Del catálogo de condiciones, a la empleada le llega únicamente lo que su contrato le permite y tiene tarifa. Una tarifa desactivada no está escondida en su móvil: no llega a él.</li>
-    <li><strong>Tu contraseña es tuya.</strong> Nadie de la casa puede verla, tampoco quien administra: lo único que puede hacer es <em>ponerte otra</em>, y al hacerlo se cierran todas tus sesiones. Casa Clara no envía correos a nadie en ningún momento.</li>
-    <li><strong>Calendarios enlazados, no copiados.</strong> Casa Clara lee los calendarios que la familia enlaza y guarda solo los eventos de una ventana corta alrededor de hoy. Dejar de mostrar un calendario borra sus eventos de la casa, y quitarlo del todo se los lleva con él.</li>
+    <li><strong>Tu contraseña es tuya.</strong> Nadie de la casa puede verla, tampoco quien administra: lo único que puede hacer es <em>ponerte otra</em>, y al hacerlo se cierran todas tus sesiones. La aplicación no envía correos a nadie en ningún momento.</li>
+    <li><strong>Calendarios enlazados, no copiados.</strong> La aplicación lee los calendarios que la familia enlaza y guarda solo los eventos de una ventana corta alrededor de hoy. Dejar de mostrar un calendario borra sus eventos de la casa, y quitarlo del todo se los lleva con él.</li>
+    <li><strong>La Guía la escribe una sola mano.</strong> Publicar una instrucción de la casa es cosa de quien administra; los borradores no existen para nadie más. Del progreso de lectura lo único que se guarda es cuántas notas lleva cada persona: ni horas, ni fechas, ni qué abrió cada día.</li>
+    <li><strong>Los avisos al móvil son tuyos.</strong> Nadie de la casa puede ver si los tienes encendidos, ni encendértelos. Y lo que se manda está escrito y es corto: dos avisos, los dos de la cuenta del mes, y sin el importe dentro.</li>
     <li><strong>Demostraciones siempre sintéticas.</strong> Los entornos de prueba avisan («Entorno sintético: no introduzcas datos reales») y no admiten datos de personas reales.</li>
   </ul>
 </section>
@@ -1780,10 +2645,99 @@ thead th { border-top: 0; }
     <dt>¿Y si marco una rutina por error?</dt>
     <dd>
       <p>
-        No hay botón de deshacer: al marcarla, la próxima fecha se reprograma según
-        su frecuencia. Si era importante hacerla hoy de verdad, avisa a la familia
-        para que ajuste la «próxima fecha» editando la rutina
-        (<span class="ui">Editar</span> → <span class="ui">Guardar rutina</span>).
+        Pulsa <span class="ui">Deshacer</span>, al lado del chip «Hecha ✓». La rutina
+        vuelve a como estaba y la próxima fecha también. <strong>No pide motivo</strong>:
+        es un error de dedo, no una corrección contable.
+      </p>
+      <p>
+        Si ya has salido de la pantalla, está al fondo de <span class="ui">Hoy</span>,
+        en el bloque plegado <span class="ui">N hechas hoy</span>: ahí sigue cada cosa
+        marcada, con su <span class="ui">Deshacer</span>. Puede deshacerlo quien la
+        marcó, y también quien administra la casa.
+      </p>
+    </dd>
+
+    <dt>¿Se puede saber lo que toca mañana, o pasado?</dt>
+    <dd>
+      <p>
+        Sí: en <span class="ui">Hoy</span>, debajo de las rutinas del día, está
+        <span class="ui">Esta semana</span> con los seis días siguientes agrupados por
+        día. Es para prever —comprar lo que hace falta, cuadrar quién está en casa—, no
+        para adelantar trabajo: <strong>ahí no hay ningún botón</strong>, a propósito.
+        Nada se marca antes de tiempo.
+      </p>
+    </dd>
+
+    <dt>Quiero apuntar una tarea pero todavía no sé cada cuánto toca.</dt>
+    <dd>
+      <p>
+        Apúntala igual y en <span class="ui">¿Cuándo toca?</span> elige
+        <span class="ui">Todavía no lo sabemos</span>. Se queda en la lista de Rutinas,
+        en su propio grupo, y <strong>no aparece en Hoy ni molesta a nadie</strong>
+        hasta que alguien decida el ritmo. Su botón dirá <span class="ui">Ponerle
+        día</span>. Es mejor eso que perder la idea.
+      </p>
+    </dd>
+
+    <dt>¿Me va a avisar el móvil de las tareas que me faltan?</dt>
+    <dd>
+      <p>
+        No, nunca. La aplicación solo manda <strong>dos avisos</strong>, los dos de la
+        cuenta del mes: a la empleada cuando su recibo está listo, y a quien administra
+        cuando una cuenta se queda sin pagar. Ni recordatorios de rutinas, ni cuentas de
+        lo que llevas hecho, ni nada por la noche o en domingo. La propia pantalla lo
+        dice: «esto no es una opción que alguien pueda cambiar».
+      </p>
+      <p>
+        Se encienden y se apagan en <span class="ui">Tu cuenta</span>, teléfono a
+        teléfono, y <strong>nadie de la casa puede ver si los tienes puestos</strong>.
+      </p>
+    </dd>
+
+    <dt>He entrado con la contraseña que me dieron y no me deja ir a ninguna parte.</dt>
+    <dd>
+      <p>
+        Es lo previsto. Esa contraseña la conoce quien te la dictó, así que hasta que
+        pongas una tuya solo se abre <span class="ui">Tu cuenta</span>. Escríbela ahí
+        (mínimo 10 caracteres) y ya tienes la casa entera.
+      </p>
+    </dd>
+
+    <dt>En casa trabaja más de una persona. ¿Cómo se llevan las dos?</dt>
+    <dd>
+      <p>
+        En <span class="ui">Contrato</span> aparece arriba una tira con los nombres:
+        tocas uno y toda la pantalla —decisiones, cuenta del mes, versiones,
+        vacaciones— pasa a ser la suya. Los epígrafes lo dicen («Contrato de Ana»). Cada
+        una, desde su móvil, sigue viendo <strong>solo lo suyo</strong>: a su
+        dispositivo no llega el contrato de nadie más.
+      </p>
+    </dd>
+
+    <dt>Entra alguien nuevo a trabajar. ¿Por dónde empiezo?</dt>
+    <dd>
+      <p>
+        <span class="ui">Ajustes del hogar</span> → <span class="ui">Ver el
+        personal</span> → <span class="ui">Entra alguien nuevo en la casa</span>. Con un
+        solo formulario se crea el acceso y, si dejas marcada la casilla
+        <span class="ui">Registrar ahora su contrato</span>, también sus condiciones
+        iniciales.
+      </p>
+      <p>
+        Al terminar, la pantalla te da <strong>el usuario y una contraseña</strong>:
+        díctaselos en persona. Esa contraseña <strong>no vuelve a mostrarse</strong>, y
+        cuando ella entre tendrá que cambiarla antes de poder hacer nada.
+      </p>
+    </dd>
+
+    <dt>¿Cómo sé si la persona nueva se ha leído las instrucciones de la casa?</dt>
+    <dd>
+      <p>
+        En la Guía, la tarjeta <span class="ui">Leerla entera, como un libro</span> →
+        <span class="ui">Ver quién se la ha leído</span>. Verás una línea por persona
+        con lo que le falta. Es para saber si ya sabe cómo va la caldera antes de que se
+        le estropee, no para pedirle cuentas: lo único que se guarda es cuántas notas
+        lleva, sin horas ni fechas.
       </p>
     </dd>
 
@@ -1791,11 +2745,11 @@ thead th { border-top: 0; }
     <dd>
       <p>
         No hay «he olvidado mi contraseña» por correo, y no es un olvido de la app:
-        Casa Clara no manda correos a nadie. Pídesela a quien administra la casa: entra
+        la aplicación no manda correos a nadie. Pídesela a quien administra la casa: entra
         en <span class="ui">Ajustes del hogar</span> → tu tarjeta →
         <span class="ui">Poner una contraseña nueva</span> y te la dice
         <strong>en persona</strong>. Cámbiala tú desde <span class="ui">Tu
-        contraseña</span> en cuanto entres.
+        cuenta</span> en cuanto entres.
       </p>
       <p>
         Por eso conviene que <strong>haya dos personas con papel de
@@ -1860,7 +2814,7 @@ thead th { border-top: 0; }
     <dd>
       <p>
         No: es que ese concepto no está pactado en tu contrato, o está pactado sin
-        tarifa. Casa Clara solo enseña lo que te aplica y tiene precio, para que nadie
+        tarifa. La aplicación solo enseña lo que te aplica y tiene precio, para que nadie
         cuente con un cobro que no existe. Si crees que debería estar, es una
         conversación con la familia: se añade desde
         <span class="ui">Administrar el contrato</span> y nace como versión nueva.
@@ -1921,9 +2875,10 @@ thead th { border-top: 0; }
       <p>
         Probablemente la guardaste con <span class="ui">Guardar sin publicar
         todavía</span>: llevará el chip <span class="chip alerta">Guardada sin
-        publicar</span>. Ábrela y pulsa <span class="ui">Publicar</span>. Las notas sin
-        publicar las ven quienes pueden escribir en la Guía (la familia y la persona
-        interna), pero nunca el apoyo del hogar ni un acceso puntual.
+        publicar</span>. Ábrela y pulsa <span class="ui">Publicar</span>. Una nota sin
+        publicar <strong>solo la ve quien administra la casa</strong>: para el resto del
+        hogar todavía no existe, ni en la lista ni en el buscador. Hasta que se publica
+        no es una instrucción de la casa, es un papel a medias.
       </p>
     </dd>
 
@@ -1969,7 +2924,7 @@ thead th { border-top: 0; }
   </dl>
 
   <p class="pie">
-    Manual de Casa Clara · elaborado sobre el comportamiento real de la aplicación,
+    Manual de la aplicación de la casa · elaborado sobre el comportamiento real de la aplicación,
     con capturas de un hogar de demostración con datos exclusivamente sintéticos.
   </p>
 </section>
