@@ -27,7 +27,7 @@ interface OverflowRoute {
 const ROUTES: readonly OverflowRoute[] = [
   { path: 'today', label: 'Hoy', as: 'admin' },
   // Contrato se mira con los dos roles: la familia ve las tarjetas de decisión y
-  // el historial de liquidaciones; la empleada, el parte semanal y su alta de
+  // el historial de liquidaciones; la empleada, su cuenta del mes y su alta de
   // gastos. Son maquetaciones distintas y ambas desbordaban.
   { path: 'employment', label: 'Contrato (familia)', as: 'admin' },
   { path: 'employment', label: 'Contrato (empleada)', as: 'employee' },

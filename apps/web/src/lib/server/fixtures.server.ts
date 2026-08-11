@@ -1,3 +1,4 @@
+import type { Role } from '$lib/auth/capabilities';
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
 
 import { demoOnly, fixturesAllowed } from './data-source.server';
@@ -26,57 +27,76 @@ const HOUSEHOLD: HouseholdSummary = {
   subtitle: 'Familia Roble · datos ficticios'
 };
 
+/** Cuenta sintética del selector: una sola membresía, la del hogar del roble. */
+function demoUser(
+  id: string,
+  membershipId: string,
+  name: string,
+  initials: string,
+  email: string,
+  role: Role
+): DemoUser {
+  return {
+    id,
+    name,
+    initials,
+    email,
+    memberships: [{ householdId: HOUSEHOLD.id, membershipId, role }],
+    // En la demo por fixtures no hay contraseña que cambiar: nadie entró con
+    // una provisional porque nadie entró con ninguna.
+    mustChangePassword: false,
+    // El resumen del hogar viaja CON la cuenta, y no es redundante con
+    // `getHousehold()`: el layout del hogar busca el nombre en
+    // `user.households` primero y solo cae a la maqueta cuando este despliegue
+    // no tiene base de datos. La batería e2e con Postgres es justamente el caso
+    // mixto —selector sintético SOBRE datos reales—, donde esa caída está
+    // cerrada; sin esto, cada pantalla del hogar respondía «Hogar no
+    // encontrado» con la membresía delante.
+    households: [{ ...HOUSEHOLD }]
+  };
+}
+
 const DEMO_USERS: DemoUser[] = [
-  {
-    id: 'fixture:roble:admin',
-    membershipId: '11000000-0000-4000-8000-000000000001',
-    name: 'Alberto',
-    initials: 'A',
-    email: 'alberto.admin@casaclara.demo',
-    role: 'family_admin',
-    householdIds: [HOUSEHOLD.id],
-    households: [HOUSEHOLD]
-  },
-  {
-    id: 'fixture:roble:family',
-    membershipId: '11000000-0000-4000-8000-000000000002',
-    name: 'Marta',
-    initials: 'M',
-    email: 'marta.familia@casaclara.demo',
-    role: 'family_member',
-    householdIds: [HOUSEHOLD.id],
-    households: [HOUSEHOLD]
-  },
-  {
-    id: 'fixture:roble:employee',
-    membershipId: '11000000-0000-4000-8000-000000000003',
-    name: 'Ana',
-    initials: 'AN',
-    email: 'ana.empleada@casaclara.demo',
-    role: 'employee_live_in',
-    householdIds: [HOUSEHOLD.id],
-    households: [HOUSEHOLD]
-  },
-  {
-    id: 'fixture:roble:helper',
-    membershipId: '11000000-0000-4000-8000-000000000004',
-    name: 'Lucía',
-    initials: 'L',
-    email: 'lucia.apoyo@casaclara.demo',
-    role: 'helper',
-    householdIds: [HOUSEHOLD.id],
-    households: [HOUSEHOLD]
-  },
-  {
-    id: 'fixture:roble:viewer',
-    membershipId: '11000000-0000-4000-8000-000000000005',
-    name: 'Diego',
-    initials: 'D',
-    email: 'diego.canguro@casaclara.demo',
-    role: 'viewer',
-    householdIds: [HOUSEHOLD.id],
-    households: [HOUSEHOLD]
-  }
+  demoUser(
+    'fixture:roble:admin',
+    '11000000-0000-4000-8000-000000000001',
+    'Alberto',
+    'A',
+    'alberto.admin@casaclara.demo',
+    'family_admin'
+  ),
+  demoUser(
+    'fixture:roble:family',
+    '11000000-0000-4000-8000-000000000002',
+    'Marta',
+    'M',
+    'marta.familia@casaclara.demo',
+    'family_member'
+  ),
+  demoUser(
+    'fixture:roble:employee',
+    '11000000-0000-4000-8000-000000000003',
+    'Ana',
+    'AN',
+    'ana.empleada@casaclara.demo',
+    'employee_live_in'
+  ),
+  demoUser(
+    'fixture:roble:helper',
+    '11000000-0000-4000-8000-000000000004',
+    'Lucía',
+    'L',
+    'lucia.apoyo@casaclara.demo',
+    'helper'
+  ),
+  demoUser(
+    'fixture:roble:viewer',
+    '11000000-0000-4000-8000-000000000005',
+    'Diego',
+    'D',
+    'diego.canguro@casaclara.demo',
+    'viewer'
+  )
 ];
 
 const CONTACTS = [
@@ -410,7 +430,13 @@ function buildEmergencyFixture() {
 function buildSettingsFixture() {
   return copy({
     household: HOUSEHOLD,
-    members: DEMO_USERS.map(({ id, name, initials, role }) => ({ id, name, initials, role })),
+    // El papel de la maqueta es el que cada cuenta juega EN ESTE hogar.
+    members: DEMO_USERS.map(({ id, name, initials, memberships }) => ({
+      id,
+      name,
+      initials,
+      role: memberships[0]!.role
+    })),
     preferences: { locale: 'Español (España)', timeZone: 'Europe/Madrid', weekStarts: 'Lunes' }
   });
 }

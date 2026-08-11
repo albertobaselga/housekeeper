@@ -141,8 +141,11 @@
     {#if overview.decisions.length > 0}
       <section class="card" aria-labelledby="decisions-title">
         <div class="section-heading">
-          <div><p class="eyebrow">Pendientes de ti</p><h2 id="decisions-title">Necesita tu decisión</h2></div>
-          <span class="status-chip warning">{overview.decisions.length} {overview.decisions.length === 1 ? 'asunto' : 'asuntos'}</span>
+          <!-- El título lo escribe el servidor (`decisionsTitleFor`): el bloque
+               lleva decisiones y también novedades, y llamar «decisión» a
+               enterarse de algo pediría una aprobación que aquí no se pide. -->
+          <div><p class="eyebrow">Pendientes de ti</p><h2 id="decisions-title">{overview.decisionsTitle}</h2></div>
+          <span class="status-chip warning">{overview.decisionsCount}</span>
         </div>
         <div class="ledger-list">
           {#each overview.decisions as item (item.key)}

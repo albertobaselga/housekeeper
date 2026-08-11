@@ -6,7 +6,7 @@ Staging valida la aplicación integrada sin convertirse en producción ni alojar
 
 1. Crear `infra/env/staging.env` desde el ejemplo, generar valores aleatorios y conservarlo fuera de Git. Incluye `SNAPSHOT_SIGNING_KEY_B64` (`openssl genpkey -algorithm ed25519 | base64 -w0`): sin ella los snapshots críticos no sobreviven reinicios ni réplicas.
 2. Usar un `RELEASE_TAG` inmutable asociado al commit, no `latest`.
-3. Confirmar que `ALLOW_SYNTHETIC_DATA_ONLY=true` y que todos los nombres/correos/adjuntos de seed son ficticios. El acceso es por usuario y contraseña; en staging las cuentas son sintéticas y se dan de alta con el guion del paso siguiente. No hay correo en el camino de acceso: Mailpit ya solo sirve a los avisos del worker.
+3. Confirmar que `ALLOW_SYNTHETIC_DATA_ONLY=true` y que todos los nombres/correos/adjuntos de seed son ficticios. El acceso es por usuario y contraseña; en staging las cuentas son sintéticas y se dan de alta con el guion del paso siguiente. No hay correo en ninguna parte: la migración 0029 retiró la salida SMTP y con ella el Mailpit de los entornos.
 4. Validar configuración antes de construir:
 
 ```bash
@@ -17,7 +17,7 @@ docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml con
 
 ```bash
 docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml \
-  up -d postgres minio mailpit clamav
+  up -d postgres minio clamav
 
 docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml \
   run --rm web pnpm db:migrate
@@ -37,7 +37,7 @@ docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml \
 
 El guion imprime las contraseñas generadas una sola vez. En staging pueden anotarse en el registro de la prueba; en producción no salen de la conversación en persona.
 
-Después, ejecutar smoke de los cinco roles, matriz RLS, una escritura offline, PDF, adjunto en cuarentena y modo avión. Mailpit debe contener únicamente identidades `.demo` o equivalentes sintéticas.
+Después, ejecutar smoke de los cinco roles, matriz RLS, una escritura offline, PDF, adjunto en cuarentena y modo avión.
 
 ## Retención de datos de descubrimiento
 

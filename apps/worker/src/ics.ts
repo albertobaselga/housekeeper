@@ -6,7 +6,6 @@ import type { Pool } from "pg";
 
 import { PermanentJobError, type JobHandler } from "./queue.js";
 
-export const ROUTINE_DUE_JOB = "notification.routine_due";
 export const ICS_SYNC_JOB = "ics.sync_source";
 export const ICS_SYNC_ALL_JOB = "ics.sync_all";
 
@@ -606,69 +605,15 @@ export function expandIcs(text: string, now: Date): IcsOccurrence[] {
   return occurrences;
 }
 
-export interface RoutineDueEmail {
-  to: string;
-  subject: string;
-  text: string;
-}
-
-export interface RoutineDueDeps {
-  sendEmail: (input: RoutineDueEmail) => Promise<void>;
-}
-
-interface RoutineDuePayload {
-  routineId: string;
-  title: string;
-  audience: "family" | "employee" | "all";
-  recipients: string[];
-}
-
-function parseRoutineDuePayload(payload: unknown): RoutineDuePayload {
-  const candidate = payload as Record<string, unknown> | null | undefined;
-  const routineId = candidate?.routineId;
-  const title = candidate?.title;
-  const audience = candidate?.audience;
-  const recipients = candidate?.recipients;
-  if (typeof routineId !== "string" || routineId.trim().length === 0) {
-    throw new PermanentJobError("El aviso de rutina requiere routineId");
-  }
-  if (typeof title !== "string" || title.trim().length === 0) {
-    throw new PermanentJobError("El aviso de rutina requiere title");
-  }
-  if (audience !== "family" && audience !== "employee" && audience !== "all") {
-    throw new PermanentJobError("El aviso de rutina requiere una audiencia válida");
-  }
-  if (
-    !Array.isArray(recipients) ||
-    recipients.some((value) => typeof value !== "string" || value.trim().length === 0)
-  ) {
-    throw new PermanentJobError("El aviso de rutina requiere recipients como lista de correos");
-  }
-  return { routineId, title, audience, recipients: recipients as string[] };
-}
-
-/**
- * Aviso `notification.routine_due`: los destinatarios ya vienen resueltos por
- * audiencia en el payload (la aplicación los congela al encolar, AC-25); el
- * worker no lee tablas de dominio y se limita a enviar el correo a cada uno.
+/*
+ * Aquí vivía `createRoutineDueHandler`, el manejador de
+ * `notification.routine_due`: recibía en el payload la lista de correos de la
+ * audiencia y mandaba a cada uno un aviso de rutina pendiente. Se retiró con la
+ * migración 0029 junto con el resto de la salida de correo; la aplicación ya no
+ * encola ese trabajo (packages/server/src/commands/rhythm.ts) y lo que quedara
+ * encolado pasó a `dead` en la migración. La rutina que vence se ve en Hoy y en
+ * el calendario, que es donde se mira.
  */
-export function createRoutineDueHandler(deps: RoutineDueDeps): JobHandler {
-  return async (job) => {
-    const payload = parseRoutineDuePayload(job.payload);
-    const subject = `Rutina pendiente — ${payload.title}`;
-    const text = [
-      "Hola:",
-      "",
-      `La rutina «${payload.title}» tiene una ocurrencia pendiente.`,
-      "Puedes marcarla como completada desde la aplicación.",
-      "",
-      "— Gestión del personal doméstico",
-    ].join("\n");
-    for (const to of [...new Set(payload.recipients)]) {
-      await deps.sendEmail({ to, subject, text });
-    }
-  };
-}
 
 // ─── Sincronización de fuentes ───────────────────────────────────────────────
 

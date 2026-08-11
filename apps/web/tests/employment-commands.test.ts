@@ -16,8 +16,7 @@ import {
   paymentRecordPayloadSchema,
   settlementClosePayloadSchema,
   settlementOpenPayloadSchema,
-  settlementReceiptConfirmPayloadSchema,
-  weeklyReportSubmitPayloadSchema
+  settlementReceiptConfirmPayloadSchema
 } from '@casa-clara/contracts/schemas';
 
 import {
@@ -34,7 +33,6 @@ import {
   resolveExpense,
   resolveExtra,
   submitExpense,
-  submitWeek,
   voidManualAdjustment
 } from '../src/lib/employment/commands';
 import { listOutbox } from '../src/lib/offline/idb';
@@ -48,22 +46,23 @@ const OPTIONS = {
 };
 
 describe('constructores de envelopes del expediente laboral', () => {
-  it('submitWeek produce un envelope time_entry válido', () => {
-    const envelope = submitWeek(
-      {
+  it('«time_entry» ya no es un agregado del contrato', () => {
+    // El parte semanal se retiró (0029). Que el contrato deje de admitir su
+    // agregado es lo que hace imposible fabricar el envelope por descuido: no
+    // hay constructor, y si alguien montara uno a mano el sobre no valida.
+    expect(() =>
+      commandEnvelopeSchema.parse({
+        apiVersion: 1,
+        operationId: OPTIONS.operationId,
         householdId: HOUSEHOLD,
-        agreementId: AGREEMENT,
-        weekStartsOn: '2026-08-03',
-        entries: [{ workedOn: '2026-08-03', startedAt: '09:00', endedAt: '17:00', regularMinutes: 480 }]
-      },
-      OPTIONS
-    );
-    expect(commandEnvelopeSchema.parse(envelope)).toBeTruthy();
-    expect(envelope.aggregateType).toBe('time_entry');
-    expect(envelope.aggregateId).toBeNull();
-    expect(envelope.operationId).toBe(OPTIONS.operationId);
-    expect(envelope.occurredAt).toBe(OPTIONS.occurredAt);
-    expect(weeklyReportSubmitPayloadSchema.parse(envelope.payload)).toBeTruthy();
+        schemaVersion: 1,
+        aggregateType: 'time_entry',
+        aggregateId: null,
+        baseRevision: null,
+        occurredAt: OPTIONS.occurredAt,
+        payload: { action: 'submit_week' }
+      })
+    ).toThrow();
   });
 
   it('registerExtra valida contra el payload congelado y omite la nota vacía', () => {

@@ -6,7 +6,8 @@
  * `apps/web/src/lib/server/job-runner.server.ts` y
  * `docs/runbooks/planificador-cola.md`). Se exporta el mínimo: cómo se reclama
  * un trabajo, cómo se construye el catálogo de manejadores, cómo se re-arman
- * las cadenas periódicas y los dos efectos externos que necesitan.
+ * las cadenas periódicas y el único efecto externo que necesitan (el almacén de
+ * objetos; el envío de correo se retiró con la migración 0029).
  *
  * Deliberadamente NO se exporta `integrations.ts`: importarlo arrastraría
  * `sharp` y `tesseract.js` al paquete serverless. Quien necesite OCR o
@@ -29,5 +30,4 @@ export {
 } from "./registry.js";
 export { ensureIcsSyncScheduled, ICS_SYNC_INTERVAL_HOURS } from "./ics.js";
 export { ensurePruneDiscoveryScheduled, PRUNE_INTERVAL_DAYS } from "./maintenance.js";
-export { sendEmail, type OutgoingEmail, type SmtpConfig } from "./mail.js";
 export { objectStore, putPrivateObject, type ObjectStoreConfig } from "./object-store.js";

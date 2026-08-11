@@ -6,8 +6,11 @@ import { describeErrorCode as describeFromOutbox } from '../src/lib/employment/o
 describe('diccionario compartido de códigos de error', () => {
   it('traduce códigos de todos los módulos, no solo empleo', () => {
     // Empleo (histórico)
-    expect(describeErrorCode('week_already_reported')).toBe('La semana ya fue enviada');
+    expect(describeErrorCode('settlement_not_open')).toBe('La cuenta del mes ya no está abierta');
     expect(describeErrorCode('not_allowed')).toBe('Tu rol no permite esta acción');
+    // El parte semanal se retiró (0029): su código murió con él y ya no se
+    // traduce. Un móvil que lo recibiera vería la frase llana genérica.
+    expect(describeErrorCode('week_already_reported')).toBeNull();
     // Genéricos del dispatcher, incluidos los que emite el propio /api/v1/sync
     // cuando rechaza sin llegar al comando.
     expect(describeErrorCode('unsupported_aggregate')).toBe('La aplicación no reconoce este tipo de cambio');

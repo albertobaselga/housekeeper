@@ -24,8 +24,10 @@ const ERROR_STATUS: Record<AttachmentError['code'], number> = {
 /**
  * Subida de un adjunto (foto de ticket, justificante, PDF). Acepta multipart
  * (`file`) o el cuerpo binario directo con content-type + x-attachment-name.
- * El fichero pasa validación de tipo/tamaño/firma, sha-256 y ClamAV antes de
- * llegar al bucket; un positivo devuelve 422 y NO deja rastro en el servidor.
+ * El fichero pasa validación de tamaño y de tipo REAL —la firma mágica de los
+ * bytes, no lo que declare el navegador— y sha-256 antes de llegar al bucket.
+ * Si el despliegue tiene antivirus, también lo pasa, y un positivo devuelve 422
+ * sin dejar rastro en el servidor.
  */
 export const POST: RequestHandler = async ({ locals, params, request, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para adjuntar ficheros');
@@ -35,7 +37,7 @@ export const POST: RequestHandler = async ({ locals, params, request, url }) => 
   const pool = getDatabasePool();
   const deps = createAttachmentDependencies();
   if (!pool || !deps) {
-    error(503, 'Los adjuntos requieren la base de datos, el almacén de objetos y el antivirus del hogar');
+    error(503, 'Los adjuntos requieren la base de datos y el almacén de documentos del hogar');
   }
 
   const declaredLength = Number(request.headers.get('content-length') ?? '0');

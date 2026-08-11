@@ -8,7 +8,6 @@ export * from "./commands/membership.js";
 export * from "./commands/payment.js";
 export * from "./commands/rhythm.js";
 export * from "./commands/settlement.js";
-export * from "./commands/time-entry.js";
 export * from "./commands/wiki.js";
 export * from "./database.js";
 export * from "./idempotency.js";

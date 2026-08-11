@@ -135,49 +135,47 @@ describe.runIf(Boolean(adminUrl))("expediente laboral y pago de abril sobre Post
   let closeEnvelope: CommandEnvelopeV1;
   let expectedTransferTotal: bigint;
 
-  it("la empleada envía su semana de abril y los duplicados o roles indebidos se rechazan", async () => {
-    const submit = () => ({
-      action: "submit_week",
-      agreementId: ROBLE_AGREEMENT,
-      weekStartsOn: "2025-04-07",
-      entries: [
-        { workedOn: "2025-04-07", startedAt: "09:00", endedAt: "17:00", regularMinutes: 480 },
-        { workedOn: "2025-04-09", regularMinutes: 480, note: "Miércoles con hora y media extra" },
-        { workedOn: "2025-04-11", regularMinutes: 480 },
-      ],
+  it("el parte semanal está retirado: el comando se rechaza y no deja fila ni trabajo encolado", async () => {
+    // Un móvil que llevara el envío de la semana sin sincronizar desde antes de
+    // la retirada sigue mandándolo. El lote NO puede caerse por eso: el envelope
+    // se rechaza solo —`time_entry` ya no es un agregado del contrato— y el
+    // resto del lote sigue su camino. El registro queda en el outbox para que
+    // quien lo mandó lo descarte a la vista, no desaparece en silencio.
+    const stale = {
+      apiVersion: API_VERSION,
+      operationId: randomUUID(),
+      householdId: ROBLE_HOUSEHOLD,
+      schemaVersion: 1,
+      aggregateType: "time_entry",
+      aggregateId: null,
+      baseRevision: null,
+      occurredAt: new Date().toISOString(),
+      payload: {
+        action: "submit_week",
+        agreementId: ROBLE_AGREEMENT,
+        weekStartsOn: "2025-04-07",
+        entries: [{ workedOn: "2025-04-07", regularMinutes: 480 }],
+      },
+    };
+    const result = await processSyncBatch(appPool, EMPLOYEE, [stale], employmentCommandHandlers);
+    expect(result.acknowledgements[0]).toMatchObject({
+      operationId: stale.operationId,
+      status: "rejected",
+      errorCode: "invalid_envelope",
     });
 
-    const accepted = await run(EMPLOYEE, envelope("time_entry", submit()));
-    expect(accepted).toMatchObject({ status: "accepted" });
-    const reportId = accepted.resourceId;
-    expect(reportId).toBeTruthy();
-
-    const report = await adminPool.query(
-      `select status, submitted_by_membership_id, week_ends_on::text as week_ends_on,
-              (select count(*)::int from app.time_entries where report_id = report.id) as entries
-         from app.weekly_time_reports as report where id = $1`,
-      [reportId],
+    const reports = await adminPool.query(
+      "select count(*)::int as total from app.weekly_time_reports where household_id = $1",
+      [ROBLE_HOUSEHOLD],
     );
-    expect(report.rows[0]).toEqual({
-      status: "submitted",
-      submitted_by_membership_id: ROBLE_EMPLOYEE_MEMBERSHIP,
-      week_ends_on: "2025-04-13",
-      entries: 3,
-    });
+    expect(reports.rows[0]?.total).toBe(1); // solo el de la fixture, que es histórico
 
-    const duplicated = await run(EMPLOYEE, envelope("time_entry", submit()));
-    expect(duplicated).toMatchObject({ status: "rejected", errorCode: "week_already_reported" });
-
-    const notMonday = await run(
-      EMPLOYEE,
-      envelope("time_entry", { ...submit(), weekStartsOn: "2025-04-08", entries: [{ workedOn: "2025-04-09", regularMinutes: 60 }] }),
+    const queued = await adminPool.query(
+      `select count(*)::int as total from app_private.job_queue
+        where household_id = $1 and job_type = 'time_report.autoconfirm'`,
+      [ROBLE_HOUSEHOLD],
     );
-    expect(notMonday).toMatchObject({ status: "rejected", errorCode: "invalid_payload" });
-
-    const adminTry = await run(ADMIN, envelope("time_entry", submit()));
-    expect(adminTry).toMatchObject({ status: "rejected", errorCode: "not_allowed" });
-    const helperTry = await run(HELPER, envelope("time_entry", submit()));
-    expect(helperTry).toMatchObject({ status: "rejected", errorCode: "not_allowed" });
+    expect(queued.rows[0]?.total).toBe(0);
   });
 
   it("registra horas extra y las resuelve en dinero con la tarifa v2 congelada", async () => {

@@ -246,11 +246,16 @@ describe.runIf(Boolean(adminUrl))('contactos del hogar desde Postgres bajo RLS',
     // Las notas de demostración no se mezclan con datos reales.
     expect(payload.emergency).toEqual([]);
 
-    // Sin pool (demo) la fixture sintética se conserva.
+    // Y sin lectura real —esta suite corre SIEMPRE con base configurada, que es
+    // el caso de producción— el paquete sale parcial: el 112 y nada más. Nunca
+    // los teléfonos de la maqueta, que es lo que arreglaba el §R2. La maqueta
+    // entera, en su propio despliegue sin base, la cubre `search-offline`.
     expect(await loadSnapshotContacts(ADMIN_USER, FIXTURE_HOUSEHOLD, null)).toBeNull();
-    const fixture = getCriticalSnapshotPayload(null);
-    expect(fixture.contacts.length).toBeGreaterThan(0);
-    expect(fixture.emergency.length).toBeGreaterThan(0);
+    const partial = getCriticalSnapshotPayload(null);
+    expect(partial.contacts).toEqual([
+      { id: 'emergency-112', name: 'Emergencias', phone: '112', kind: 'emergency' }
+    ]);
+    expect(partial.emergency).toEqual([]);
   });
 
   it('un usuario sin membresía en el hogar no ve el directorio', async () => {

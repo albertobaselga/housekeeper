@@ -89,3 +89,96 @@ ocho días de un año y cinco del siguiente, no trece del que empieza.
   simple y se dejó el cambio a la vista en el historial.
 - Sigue sin existir una interfaz de alta o edición completa del acuerdo: el
   único término editable desde la aplicación es el derecho de vacaciones.
+
+---
+
+## Enmienda (11 de agosto de 2026): que se entere, y que quede el historial
+
+La decisión original resolvió **dónde se guardan** las vacaciones y **quién las
+escribe**. Al usarlo con el hogar real aparecieron los dos huecos que quedaban,
+y el propietario los cerró con una frase literal: «las vacaciones las marca el
+admin hablando con la empleada, no implementes flujo de aprobación, pero sí que
+la empleada tiene que poder ver que se le han aplicado vacaciones (notificación)
+y poder verlas en su sección. También tiene que poder ver el histórico el admin,
+para cada empleado».
+
+### 1 · Que se entere: una marca de agua, no una tabla de avisos
+
+Migración **0028**: `app.vacation_notice_marks`, una fila por persona con un
+único dato, `seen_through` — «he visto todo lo que se había apuntado hasta este
+instante». «Lo nuevo» se responde comparando ese instante con `recorded_at` y
+`voided_at`, columnas que la 0020 ya guardaba.
+
+La alternativa era una tabla de avisos con una fila por notificación. Se
+descarta por tres razones acumuladas: (a) obliga a decidir qué significa que un
+periodo se apunte, se anule y se vuelva a apuntar —¿tres avisos, o uno que
+cambia de sentido?—; (b) crea un hecho nuevo que hay que mantener sincronizado
+con el expediente, y el día que se desincronice la aplicación mentirá sobre él;
+(c) la notificación al móvil que vendrá después necesita exactamente la misma
+pregunta, y con la marca de agua la responde leyendo el mismo hecho.
+
+La regla de qué es nuevo vive en el dominio (`vacationNewsSince`), no en la
+pantalla, para que el aviso de dentro de la aplicación y el push de mañana no
+acaben con dos definiciones distintas de «nuevo».
+
+Tres cosas que la marca **no** es, y que su forma impide que llegue a ser:
+
+- **No es una conformidad.** Que ella haya visto los días no significa que esté
+  de acuerdo con ellos. Ninguna pantalla puede insinuarlo, y por eso no hay
+  botón de «Entendido» ni nada que descartar a mano.
+- **No es un registro de actividad.** Guarda un instante, el último, y se pisa a
+  sí misma. No lleva disparador de auditoría —que copiaría cada actualización,
+  con actor y hora, a una tabla append-only— por la misma razón que el progreso
+  de lectura de la Guía (ADR de la 0026).
+- **No la ve nadie más.** Tampoco quien administra. Si la empleada ha abierto o
+  no la aplicación no es asunto de la casa.
+
+Se marca al MIRAR la sección, no al pulsar nada, y con el instante que la
+pantalla llegó a enseñar en vez de `now()`: unas vacaciones apuntadas mientras
+la página estaba abierta siguen siendo novedad la próxima vez. La base acota esa
+marca por arriba (nunca el futuro) y por abajo (nunca hacia atrás).
+
+### 2 · Dónde vive el aviso
+
+En **Hoy**, que es la primera pantalla, como una línea más del bloque
+«Pendientes de ti» que ya existía. No es un cartel permanente ni algo que haya
+que descartar en cada pantalla: se apaga solo cuando ella mira.
+
+El bloque ya no contiene solo decisiones, así que su título dejó de ser un
+literal de la plantilla y lo escribe el servidor (`decisionsTitleFor`). Titular
+«Necesita tu decisión» encima de «te han apuntado vacaciones» le pediría una
+aprobación que este hogar decidió no pedirle. Con novedades solas dice
+«Novedades para ti»; mezcladas, «Novedades y decisiones».
+
+El presupuesto de bytes de Hoy no sufre: el contenido del aviso es dato del
+servidor, y el cambio de título **ahorra** cinco bytes (119.916 → 119.911).
+
+### 3 · La sección y el historial son la misma pantalla
+
+`/h/<hogar>/employment/vacaciones`, ruta propia con su propio trozo de
+JavaScript. No son dos pantallas porque no son dos verdades: los periodos y los
+días de cada año son los mismos mire quien mire. Lo único que cambia es cuántas
+personas devuelve la RLS —a la empleada la suya, a quien administra todas— y la
+voz de las frases («te quedan» / «le quedan»).
+
+Enseña **todos los años** que cubre el contrato, incluidos los que no tienen
+nada apuntado, porque un año en blanco es información y saltárselo dejaría
+agujeros que parecen datos perdidos. Lo anulado sigue en la lista, marcado como
+anulado, sin sumar y con su motivo.
+
+Sin porcentajes, sin barras y sin una sola palabra que puntúe a nadie por
+descansar más o menos: es historia, no evaluación.
+
+### 4 · Lo que la familia no administradora ve, y lo que no
+
+La RLS le devuelve los periodos (`vacation_periods_read` incluye a
+`family_member`) pero **no** las versiones del contrato
+(`agreement_versions_read` no la incluye). Así que ve los días apuntados y no el
+derecho anual. La pantalla lo dice —«En 2026 constan 15 días»— en vez de
+calcular un derecho de cero, que no sería un vacío sino una cifra inventada.
+
+### 5 · Varias empleadas
+
+El historial las enseña **todas**, una tarjeta por contrato visible. Es la
+diferencia con la tarjeta del año en curso dentro de Contrato, que enseña una y
+se cambia con el selector.

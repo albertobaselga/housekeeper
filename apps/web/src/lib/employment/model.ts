@@ -295,17 +295,6 @@ export interface PendingExpenseRow {
   hasReceipt?: boolean;
 }
 
-export type WeeklyReportStatus = 'draft' | 'submitted' | 'confirmed' | 'disputed';
-
-export interface WeeklyReportRow {
-  id: string;
-  weekStartsOn: string;
-  weekEndsOn: string;
-  status: WeeklyReportStatus;
-  autoConfirmed: boolean;
-  disputeReason: string | null;
-}
-
 export interface CompensationBalanceRow {
   accountId: string;
   balanceType: string;
@@ -722,17 +711,6 @@ export interface PendingExpenseView {
   hasReceipt: boolean;
 }
 
-export interface WeeklyReportView {
-  id: string;
-  weekStartsOn: string;
-  weekEndsOn: string;
-  weekLabel: string;
-  status: WeeklyReportStatus;
-  autoConfirmed: boolean;
-  statusLabel: string;
-  disputeReason: string | null;
-}
-
 /**
  * Una persona empleada entre las que el hogar puede tener a la vez. Es lo que
  * se pinta en el selector de quien administra: nombre, si el acuerdo sigue vivo
@@ -778,8 +756,6 @@ export interface EmploymentOverview {
   settlements: SettlementView[];
   pendingExtras: PendingExtraWorkView[];
   pendingExpenses: PendingExpenseView[];
-  /** Partes semanales recientes (máx. 6 semanas), del más nuevo al más viejo. */
-  recentReports: WeeklyReportView[];
   /** Vacaciones del año natural en curso; null si no hay acuerdo visible. */
   vacations: VacationView | null;
   /**
@@ -1520,38 +1496,6 @@ export function buildPendingExpenseViews(
     employeeMembershipId: row.employeeMembershipId,
     hasReceipt: row.hasReceipt === true
   }));
-}
-
-/**
- * Estado visible del parte semanal. `draft` no llega nunca desde el servidor
- * (submit_week crea el parte ya enviado), pero el mapeo lo cubre por si acaso.
- */
-export function weeklyReportStatusLabel(status: WeeklyReportStatus, autoConfirmed: boolean): string {
-  switch (status) {
-    case 'submitted':
-      return 'Enviado · pendiente de confirmación';
-    case 'confirmed':
-      return autoConfirmed ? 'Auto-confirmado' : 'Confirmado';
-    case 'disputed':
-      return 'Con reparos de la familia';
-    default:
-      return 'Borrador';
-  }
-}
-
-export function buildWeeklyReportViews(rows: readonly WeeklyReportRow[]): WeeklyReportView[] {
-  return [...rows]
-    .sort((left, right) => right.weekStartsOn.localeCompare(left.weekStartsOn))
-    .map((row) => ({
-      id: row.id,
-      weekStartsOn: row.weekStartsOn,
-      weekEndsOn: row.weekEndsOn,
-      weekLabel: `Semana del ${dateLabel(row.weekStartsOn)}`,
-      status: row.status,
-      autoConfirmed: row.autoConfirmed,
-      statusLabel: weeklyReportStatusLabel(row.status, row.autoConfirmed),
-      disputeReason: row.disputeReason
-    }));
 }
 
 export function buildCompensationBalanceViews(

@@ -861,7 +861,7 @@ thead th { border-top: 0; }
   <h3 id="fa-pagos">Contrato: lo pactado, la nómina y los gastos</h3>
   <p>
     <span class="ui">Contrato</span> reúne todo lo económico de la relación laboral con
-    la empleada: el contrato y sus versiones, los días trabajados, las jornadas extra,
+    la empleada: el contrato y sus versiones, las jornadas extra,
     los gastos, las <strong>vacaciones</strong>, la <strong>cuenta de cada mes</strong>
     y los pagos. Arriba, la tira de resumen:
     <span class="ui">Mes en curso</span>, <span class="ui">Total salarial</span>,
@@ -883,9 +883,8 @@ thead th { border-top: 0; }
     </figcaption>
   </figure>
   <ol class="pasos">
-    <li><strong>Los días trabajados:</strong> cuando Ana envía su semana, tienes <strong>tres días</strong> para confirmarla o comentarla; si no dices nada, queda «Auto-confirmado».</li>
     <li><strong>Jornada extra solicitada:</strong> <span class="ui">Aceptar</span> deja constancia del contrato previo. Cuando ya está trabajada, <span class="ui">Decidir compensación</span>: eliges <span class="ui">Pagarla</span> o <span class="ui">Darle descanso</span>, escribes el <span class="ui">Motivo</span> y pulsas <span class="ui">Confirmar la decisión</span>. La tarifa se congela con la versión del contrato vigente el día que se trabajó.</li>
-    <li><strong>Gastos:</strong> cada gasto adelantado por la empleada se abre con <span class="ui">Revisar</span> y se decide con <span class="ui">Aprobar</span> o <span class="ui">Rechazar</span>, con su motivo. Los aprobados entran como reembolso en la cuenta del mes; si traían foto, la línea enlaza <span class="ui">Ver el justificante</span>.</li>
+    <li><strong>Gastos:</strong> cada gasto adelantado por la empleada se abre con <span class="ui">Revisar</span> y se decide con <span class="ui">Aprobar</span> o <span class="ui">Rechazar</span>, con su motivo. Los aprobados entran como reembolso en la cuenta del mes. Si traen foto, <span class="ui">Ver el justificante</span> la abre: en el propio gasto pendiente —para poder mirarla <em>antes</em> de decidir— y también después, en la línea de la cuenta del mes.</li>
     <li><strong>La cuenta del mes:</strong> <span class="ui">Empezar la cuenta de agosto 2026</span> (eliges antes el <span class="ui">Vencimiento</span>), después <span class="ui">Cerrar el mes</span> —«al cerrar el mes se calculan las líneas y los importes quedan fijados: ya no cambian aunque cambie el contrato»— y por último <span class="ui">Registrar pago</span> (<span class="ui">Transferencia</span>, <span class="ui">Efectivo</span>, <span class="ui">Bizum</span>, <span class="ui">Mixto</span> u <span class="ui">Otro</span>), con el atajo <span class="ui">Pagar todo</span>.</li>
   </ol>
   <figure class="captura">
@@ -1425,40 +1424,15 @@ thead th { border-top: 0; }
 
   <div class="fila">
     <div class="texto">
-      <h3>Sus días trabajados</h3>
-      <p>
-        En <span class="ui">Contrato</span> Ana ve su contrato, lo que va sumando el mes y
-        su historial completo. Cada semana envía sus días desde la tarjeta
-        <span class="ui">Días trabajados esta semana</span>:
-      </p>
-      <ol class="pasos">
-        <li>Una fila por día trabajado: <span class="ui">Día</span>, <span class="ui">Horas</span>, <span class="ui">Y minutos</span> y una <span class="ui">Nota (opcional)</span>. El tiempo se apunta como se dice en casa —«8 horas y 30 minutos»—, no en minutos totales.</li>
-        <li><span class="ui">Añadir día</span> para más filas; <span class="ui">Enviar mi semana</span> para mandarla.</li>
-        <li>Desde ese momento, «la familia tiene tres días para confirmarla o comentarla contigo». Si no dice nada, queda <span class="chip exito">Auto-confirmado</span>.</li>
-        <li>Una semana enviada no se puede reenviar: «Esta semana ya está enviada; no se puede reenviar.» El historial muestra su estado (Enviado, Confirmado, Auto-confirmado o Con reparos).</li>
-      </ol>
-    </div>
-    <figure class="captura movil">
-      <div class="ventana">
-        <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · días trabajados</span></div>
-        <img src="capturas/interna-parte-movil.png" loading="lazy" width="780" height="1688"
-             alt="Tarjeta Días trabajados esta semana en el móvil de Ana: campos Día, Horas, Y minutos y Nota (opcional), los botones Añadir día y Enviar mi semana, la nota de los tres días para confirmarla, y debajo la semana del 10 de marzo de 2025 ya Confirmada.">
-      </div>
-      <figcaption>Los días de la semana: horas y minutos, una fila por día y un botón para enviarla.</figcaption>
-    </figure>
-  </div>
-
-  <div class="fila">
-    <div class="texto">
       <h3>Jornadas extra, gastos y compensaciones</h3>
       <ul>
         <li><strong>Registrar una jornada extra:</strong> <span class="ui">Tipo</span>, <span class="ui">Fecha</span> y <span class="ui">Nota (opcional)</span> → <span class="ui">Registrar jornada extra</span>. Queda «Solicitada» a la espera de la familia. El desplegable <span class="ui">Tipo</span> <strong>solo ofrece lo que su contrato permite y tiene tarifa</strong>: si no hay horas sueltas pactadas, ahí no aparecen. Cuando el concepto se paga por jornada, la app dice cuánto dura esa jornada «según lo pactado» y no hay que teclear horas.</li>
         <li><strong>Cuando la haces:</strong> si la jornada ya estaba aceptada, márcala con <span class="ui">Marcar realizada</span>.</li>
-        <li><strong>Gastos adelantados:</strong> <span class="ui">Añadir gasto</span> con <span class="ui">Fecha</span>, <span class="ui">Importe (€)</span>, <span class="ui">Descripción</span> y <span class="ui">Foto del justificante (opcional)</span>. Aprobado, vuelve como reembolso en la cuenta del mes.</li>
+        <li><strong>Gastos adelantados:</strong> <span class="ui">Añadir gasto</span> con <span class="ui">Fecha</span>, <span class="ui">Importe (€)</span> y <span class="ui">Descripción</span>. En <span class="ui">Justificante (opcional)</span> hay dos maneras: <span class="ui">Elegir un fichero o una foto guardada</span>, o <span class="ui">Hacer la foto ahora</span>, que abre la cámara del móvil. Si la foto pesa mucho, el teléfono la reduce solo antes de enviarla y te lo dice; el ticket se sigue leyendo. Sin cobertura, haz la foto igual: se guarda en el móvil y se une al gasto en cuanto vuelva la conexión. Aprobado, vuelve como reembolso en la cuenta del mes.</li>
         <li><strong>Compensaciones de descanso:</strong> cuando una jornada se decide «con descanso», se apunta como crédito a tu favor. Ese crédito es <strong>permanente: nunca caduca</strong>; en Saldos aparece como «Crédito permanente · sin caducidad».</li>
         <li><strong>Conceptos apuntados a mano:</strong> gratificaciones, descuentos acordados o partes proporcionales que la familia imputa a un mes concreto. Los ves en la tarjeta <span class="ui">Importes sueltos imputados al mes que toque</span> y en la cuenta de su mes, con su motivo. Los que dicen «Consta, no se transfiere» son cosas que quedan por escrito sin mover el pago —por ejemplo, un anticipo que ya devolviste en mano—.</li>
         <li><strong>Cobros:</strong> cuando la familia paga la cuenta del mes, confirmas tú con <span class="ui">Confirmar cobro</span>. Tu confirmación queda registrada aparte del pago.</li>
-        <li><strong>Tu copia:</strong> <span class="ui">Descargar mi expediente (PDF + CSV)</span> te da un ZIP con las cuentas de cada mes, pagos, jornadas, semanas, gastos y saldos. Es tuyo y te lo llevas cuando quieras.</li>
+        <li><strong>Tu copia:</strong> <span class="ui">Descargar mi expediente (PDF + CSV)</span> te da un ZIP con las cuentas de cada mes —con <strong>todos</strong> sus conceptos, los que suman y los que restan—, pagos, jornadas, gastos y saldos. Es tuyo y te lo llevas cuando quieras.</li>
       </ul>
       <div class="tarjeta">
         <h4>La foto del tique, aunque no haya cobertura</h4>
@@ -1769,7 +1743,7 @@ thead th { border-top: 0; }
 
   <h3>Lo de Contrato es un libro contable</h3>
   <p>
-    Todo lo laboral —semanas, jornadas, gastos, cuentas del mes, pagos— se
+    Todo lo laboral —jornadas, gastos, cuentas del mes, pagos— se
     <strong>anota, no se borra</strong>. Las correcciones se registran como nuevas
     anotaciones, igual que en un libro de cuentas: por eso el historial siempre
     cuadra y cualquier línea de una cuenta puede rastrearse hasta el hecho y

@@ -19,6 +19,17 @@ const adminUrl = process.env.TEST_DATABASE_URL;
 
 /** Última migración anterior a la que corrige la hora de los avisos. */
 const STOP_AT = '0021_agreement_terms_catalogue.sql';
+/**
+ * Y hasta dónde llega esta prueba: la propia 0027.
+ *
+ * No sigue hasta la cabeza a propósito. La 0029 retiró los avisos por correo y
+ * el parte semanal, y de paso mandó a `dead` lo que quedara encolado de esos
+ * tres tipos —que son justo los que esta prueba siembra—. Aplicarla aquí
+ * mezclaría dos migraciones en una sola aserción y dejaría este fichero
+ * hablando de algo que no es lo suyo. Lo que hace la 0029 con esas filas se
+ * comprueba abajo, en su propio bloque.
+ */
+const STOP_AT_TIMEZONE = '0027_job_run_at_local_morning.sql';
 
 const HOUSEHOLD = '7b000000-0000-4000-8000-000000000001';
 
@@ -103,7 +114,9 @@ describe.runIf(Boolean(adminUrl))('0027 reprograma los avisos ya encolados de ma
     );
     expect(before.rows.map((row) => row.hora)).toEqual(['02:00', '01:00', '15:37', '02:00']);
 
-    await expect(applyMigrations(client)).resolves.toBeGreaterThan(0);
+    await expect(
+      applyMigrations(client, { until: STOP_AT_TIMEZONE })
+    ).resolves.toBeGreaterThan(0);
 
     const after = await client.query(
       `select id,
@@ -117,11 +130,22 @@ describe.runIf(Boolean(adminUrl))('0027 reprograma los avisos ya encolados de ma
     );
   }, 120_000);
 
-  it('un aviso ya completado no se toca: los jobs terminales son inmutables', async () => {
-    // Si el UPDATE de 0027 no filtrase por `status = 'queued'`, el trigger
-    // `job_queue_state_machine` (0004) abortaría la migración entera con 55000.
-    // La prueba lo fija: se completa uno a mano y se re-aplica la migración —que
-    // ya no hace nada— para dejar constancia de que la fila sigue intacta.
+  it('0029 mata lo encolado de los tipos retirados y no toca lo ya terminal', async () => {
+    // Sobre la cola que dejó la prueba anterior, con uno de los cuatro avisos
+    // completado a mano: es la comprobación de las DOS migraciones que tocan
+    // filas encoladas de tipos que ya no existen.
+    //
+    // Ninguna de las dos puede tocar un trabajo terminal. Si el UPDATE de 0027
+    // —o el de 0029— no filtrase por `status = 'queued'`, el trigger
+    // `job_queue_state_machine` (0004) abortaría la migración entera con 55000
+    // y el despliegue se caería a mitad.
+    //
+    // Y ninguna de las dos puede BORRAR: `app_private.enforce_job_transition`
+    // lo prohíbe porque la cola es rastro de auditoría. Así que la retirada
+    // deja los avisos en el único estado terminal que admite un trabajo que
+    // nadie va a ejecutar, `dead`, con su motivo escrito. Sin eso, la primera
+    // pasada del vaciador los reclamaría, fallaría por tipo desconocido y los
+    // gastaría a reintentos hasta morir igual, ensuciando el log por el camino.
     const completedAt = `${SUMMER_DAY}T00:00:00Z`;
     await client.query(
       `update app_private.job_queue
@@ -136,13 +160,25 @@ describe.runIf(Boolean(adminUrl))('0027 reprograma los avisos ya encolados de ma
       [JOBS[3].id]
     );
 
-    await expect(applyMigrations(client)).resolves.toBe(0);
+    await expect(applyMigrations(client)).resolves.toBeGreaterThan(0);
 
     const { rows } = await client.query(
-      `select to_char(run_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as run_at
-         from app_private.job_queue where id = $1`,
-      [JOBS[3].id]
+      `select id, status::text as status, last_error,
+              to_char(run_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as run_at
+         from app_private.job_queue where household_id = $1 order by id`,
+      [HOUSEHOLD]
     );
-    expect(rows).toEqual([{ run_at: completedAt }]);
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    for (const job of JOBS.slice(0, 3)) {
+      expect(byId.get(job.id).status, job.type).toBe('dead');
+      expect(byId.get(job.id).last_error, job.type).toContain('retirado en la migración 0029');
+    }
+    // El que ya estaba completado sigue intacto, hora incluida.
+    expect(byId.get(JOBS[3].id)).toMatchObject({
+      status: 'completed',
+      last_error: null,
+      run_at: completedAt
+    });
   }, 120_000);
 });

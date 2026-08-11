@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 
-import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
+import type { DemoUser, HouseholdMembership, HouseholdSummary } from '$lib/auth/types';
 import { createLogger } from '@casa-clara/server';
 import { isRole } from '@casa-clara/contracts/capabilities';
 
@@ -24,6 +24,11 @@ function initialsFor(name: string): string {
  * excluye membresías revocadas o caducadas, así que la revocación se aplica en
  * cada petición sin lógica adicional aquí.
  *
+ * Devuelve TODAS las membresías, cada una con su hogar y su papel. Ninguna es
+ * «la» membresía: quien necesite un rol tiene que pedirlo para un hogar
+ * concreto con `membershipIn(user, householdId)`. Esta función no elige por
+ * nadie, y por eso el tipo que devuelve ya no tiene dónde guardar una elección.
+ *
  * `null` significa «esta identidad no tiene hogar»: una respuesta con sentido.
  * Una avería de lectura ya NO se disfraza de eso —devolver null echaba a la
  * calle, con un redirect a /login, a quien sí había entrado— sino que sale como
@@ -35,9 +40,8 @@ export async function resolveAppUser(
   fallbackName: string,
   // Inyectable como en el resto de lecturas del servidor: la suite de
   // integración le pasa su propio pool sin tocar DATABASE_URL del proceso.
-  databasePool: Pool | null = getDatabasePool()
+  pool: Pool | null = getDatabasePool()
 ): Promise<DemoUser | null> {
-  const pool = databasePool;
   if (!pool) return null;
   const client = await pool.connect();
   try {
@@ -48,21 +52,25 @@ export async function resolveAppUser(
       household_id: string;
       role: string;
       display_name: string | null;
+      must_change_password: boolean | null;
     }>(
-      `select m.id, m.household_id, m.role::text as role, p.display_name
+      // La marca de contraseña provisional viaja en esta misma consulta, que ya
+      // toca el perfil: obligar a cambiarla no cuesta una petición más.
+      `select m.id, m.household_id, m.role::text as role, p.display_name, p.must_change_password
          from app.household_memberships m
          left join app.user_profiles p on p.user_id = m.user_id
         where m.user_id = $1
-        order by m.created_at`,
+        order by m.created_at, m.id`,
       [userId]
     );
-    const first = memberships.rows[0];
-    if (!first || !isRole(first.role)) {
-      await client.query('commit');
-      return null;
-    }
+
+    const live: HouseholdMembership[] = [];
     const households: HouseholdSummary[] = [];
     for (const row of memberships.rows) {
+      // Un rol que esta versión del código no conoce no se degrada al de al
+      // lado: esa membresía sencillamente no existe para la aplicación.
+      if (!isRole(row.role)) continue;
+      live.push({ householdId: row.household_id, membershipId: row.id, role: row.role });
       await client.query('select app.set_household_context($1, $2)', [row.household_id, row.id]);
       const summary = await client.query<{ display_name: string }>(
         'select display_name from app.households where id = $1',
@@ -77,15 +85,16 @@ export async function resolveAppUser(
       }
     }
     await client.query('commit');
-    const name = first.display_name?.trim() || fallbackName;
+    if (live.length === 0) return null;
+
+    const name = memberships.rows[0]?.display_name?.trim() || fallbackName;
     return {
       id: userId,
-      membershipId: first.id,
       name,
       initials: initialsFor(name) || '·',
       email,
-      role: first.role,
-      householdIds: [...new Set(memberships.rows.map((row) => row.household_id))],
+      memberships: live,
+      mustChangePassword: memberships.rows[0]?.must_change_password === true,
       households
     };
   } catch (cause) {

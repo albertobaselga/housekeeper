@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 
+import { belongsToHousehold } from '$lib/auth/membership';
 import { markGuideNoteRead } from '$lib/server/wiki.server';
 import type { RequestHandler } from './$types';
 
@@ -20,7 +21,7 @@ const MAX_PAGES = 200;
  */
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  if (!locals.user.householdIds.includes(params.householdId)) error(404, 'Hogar no encontrado');
+  if (!belongsToHousehold(locals.user, params.householdId)) error(404, 'Hogar no encontrado');
 
   let body: unknown;
   try {

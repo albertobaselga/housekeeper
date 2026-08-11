@@ -47,7 +47,7 @@ describe('uploadAttachment', () => {
     await expectCode(promise, 'attachment_too_large');
     await expect(
       uploadAttachment(HOUSEHOLD, makeFile(), fetchFn as unknown as typeof fetch)
-    ).rejects.toThrow(/tamaño máximo/);
+    ).rejects.toThrow(/pesa demasiado/);
   });
 
   it('415 → attachment_type_not_allowed', async () => {
@@ -58,16 +58,16 @@ describe('uploadAttachment', () => {
     );
   });
 
-  it('422 → attachment_infected (cuarentena del antivirus)', async () => {
+  it('422 → attachment_infected (el fichero no pasa la revisión)', async () => {
     const fetchFn = async () => jsonResponse(422, { message: 'quarantined' });
     const promise = uploadAttachment(HOUSEHOLD, makeFile(), fetchFn as unknown as typeof fetch);
     await expectCode(promise, 'attachment_infected');
     await expect(
       uploadAttachment(HOUSEHOLD, makeFile(), fetchFn as unknown as typeof fetch)
-    ).rejects.toThrow(/cuarentena/);
+    ).rejects.toThrow(/revisión de seguridad/);
   });
 
-  it('503 → attachments_unavailable (sin S3/ClamAV configurados)', async () => {
+  it('503 → attachments_unavailable (sin almacén configurado)', async () => {
     const fetchFn = async () => jsonResponse(503, { message: 'unavailable' });
     const promise = uploadAttachment(HOUSEHOLD, makeFile(), fetchFn as unknown as typeof fetch);
     await expectCode(promise, 'attachments_unavailable');

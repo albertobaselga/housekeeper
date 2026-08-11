@@ -5,7 +5,7 @@ Este baseline aplica a local y staging sintético. No constituye autorización p
 ## Fronteras y activos
 
 - **Críticos:** expediente laboral, saldos, liquidaciones, pagos, auditoría, información de menores, alergias, autorizaciones y adjuntos.
-- **Fronteras:** navegador/service worker, Caddy, web/API, worker, Postgres, Storage, correo sintético y escáner de archivos.
+- **Fronteras:** navegador/service worker, Caddy, web/API, worker, Postgres, Storage y —cuando existe— escáner de archivos. **Correo, ninguno**: la salida SMTP se retiró en la migración 0029 y con ella esa frontera entera.
 - **Amenazas prioritarias:** cruce de hogares, elevación de rol, sesión revocada aún válida, URL de objeto reutilizable, replay de outbox, edición retroactiva, archivo malicioso y filtrado de PII por logs.
 
 ## Controles obligatorios
@@ -14,7 +14,7 @@ Este baseline aplica a local y staging sintético. No constituye autorización p
 2. Las claves administrativas nunca llegan al navegador. Operaciones privilegiadas pasan por funciones/API con autorización explícita.
 3. Membresías caducadas y revocadas se comprueban en cada acceso; la revocación invalida sesiones activas.
 4. Libros, liquidaciones cerradas y auditoría son append-only. Las correcciones son nuevos asientos.
-5. Adjuntos entran en cuarentena, se validan por tipo/tamaño, se analizan con ClamAV y solo entonces se publican mediante URL corta y firmada.
+5. Los adjuntos se validan por tamaño y por su **firma real** (los bytes mágicos, no el tipo que declare el navegador), se guardan en un bucket privado con clave determinista y **nunca** se publican: se sirven proxeados por una ruta que comprueba sesión y pertenencia bajo RLS, con `nosniff` y `Content-Security-Policy: sandbox`. El análisis antivirus es **opcional y hoy no está activo** en el despliegue de producción; el riesgo asumido y cómo reactivarlo están en [adjuntos-sin-antivirus.md](adjuntos-sin-antivirus.md).
 6. Idempotency key por escritura offline, vinculada a hogar, actor y operación. Los conflictos de jornada requieren resolución humana.
 7. Caddy añade hardening de transporte; la aplicación emite una CSP con nonce/hash compatible con su renderizado.
 8. Logs con allowlist y redacción; nunca tokens, contraseñas, contenido, consultas, diagnósticos médicos o metadatos EXIF.

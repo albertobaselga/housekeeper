@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildTodayDecisions,
+  decisionsTitleFor,
   greetingFor,
   headerDateLabel,
   type TodayDecisionFacts
@@ -114,6 +115,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
         intervalCount: 1
       }
     ],
+    vacationNews: null,
     ...overrides
   };
 }
@@ -198,6 +200,56 @@ describe('buildTodayDecisions por rol', () => {
     expect(buildTodayDecisions(baseFacts({ role: 'helper' }))).toEqual([]);
     expect(buildTodayDecisions(baseFacts({ role: 'viewer' }))).toEqual([]);
   });
+
+  it('las vacaciones nuevas encabezan su bloque y llevan a su sección', () => {
+    const items = buildTodayDecisions(
+      baseFacts({
+        role: 'employee_live_in',
+        membershipId: EMPLOYEE_MEMBERSHIP,
+        vacationNews: {
+          count: 1,
+          headline: 'Te han apuntado vacaciones: del 1 al 15 ago 2026',
+          detail: null,
+          seenThrough: '2026-08-06T10:00:00Z'
+        }
+      })
+    );
+    expect(items[0]!.key).toBe('vacaciones-nuevas');
+    expect(items[0]!.kind).toBe('news');
+    expect(items[0]!.cta).toBe('Verlas');
+    expect(items[0]!.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment/vacaciones`);
+  });
+
+  it('a la familia no se le cuentan como suyas las vacaciones que acaba de apuntar', () => {
+    const news = {
+      count: 1,
+      headline: 'Te han apuntado vacaciones: del 1 al 15 ago 2026',
+      detail: null,
+      seenThrough: '2026-08-06T10:00:00Z'
+    };
+    for (const role of ['family_admin', 'family_member', 'helper', 'viewer'] as const) {
+      const items = buildTodayDecisions(baseFacts({ role, vacationNews: news }));
+      expect(items.some((item) => item.key === 'vacaciones-nuevas')).toBe(false);
+    }
+  });
+});
+
+describe('cómo se llama el bloque de Hoy', () => {
+  const decision = { key: 'd', title: '', detail: '', href: '', cta: '' };
+  const news = { ...decision, key: 'n', kind: 'news' as const };
+
+  it('solo decisiones: el título de siempre', () => {
+    expect(decisionsTitleFor([decision])).toBe('Necesita tu decisión');
+  });
+
+  it('solo novedades: no se le pide ninguna decisión que no existe', () => {
+    expect(decisionsTitleFor([news])).toBe('Una novedad para ti');
+    expect(decisionsTitleFor([news, { ...news, key: 'n2' }])).toBe('Novedades para ti');
+  });
+
+  it('mezcladas: se nombran las dos cosas', () => {
+    expect(decisionsTitleFor([news, decision])).toBe('Novedades y decisiones');
+  });
 });
 
 describe('cabecera del día', () => {
@@ -247,7 +299,7 @@ describe('triaje genérico del outbox', () => {
   it('traduce los códigos de error propios y los laborales, y calla ante los desconocidos', () => {
     expect(describeError('unsupported_aggregate')).toBe('La aplicación no reconoce este tipo de cambio');
     expect(describeError('wiki_revision_conflict')).toBe('Otra persona guardó la nota antes que tú');
-    expect(describeError('week_already_reported')).toBe('La semana ya fue enviada');
+    expect(describeError('settlement_not_open')).toBe('La cuenta del mes ya no está abierta');
     expect(describeError('codigo_inventado')).toBeNull();
     expect(describeError(undefined)).toBeNull();
   });

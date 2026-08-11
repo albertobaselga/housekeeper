@@ -205,12 +205,15 @@ describe.runIf(Boolean(adminUrl))('snapshot crítico con datos reales del hogar'
     expect(snapshot.payload.dietaryFlags).toEqual([]);
     expect(snapshot.signature.length).toBeGreaterThan(0);
 
-    // Sin pool (demo) la fixture sintética se conserva entera.
+    // Y sin lectura real —esta suite corre SIEMPRE con base configurada, que es
+    // el caso de producción— el paquete sale parcial: ni una nota, ni un menú,
+    // ni una rutina inventada viaja firmada al móvil. La maqueta entera, en su
+    // propio despliegue sin base, la cubre `search-offline`.
     expect(await loadSnapshotHousehold(ADMIN_USER, FIXTURE_HOUSEHOLD, null)).toBeNull();
-    const fixture = getCriticalSnapshotPayload(null, null);
-    expect(fixture.wikiPages.length).toBeGreaterThan(0);
-    expect(fixture.today.menu.length).toBeGreaterThan(0);
-    expect(fixture.today.routines.length).toBeGreaterThan(0);
+    const partial = getCriticalSnapshotPayload(null, null);
+    expect(partial.wikiPages).toEqual([]);
+    expect(partial.today.menu).toEqual([]);
+    expect(partial.today.routines).toEqual([]);
   });
 
   it('un usuario sin membresía en el hogar no recibe nada', async () => {

@@ -1,5 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 
+import { clearPasswordChangeRequirement } from '$lib/server/access.server';
 import { MIN_PASSWORD_LENGTH } from '$lib/server/auth-core';
 import { getAuth } from '$lib/server/auth.server';
 import type { Actions, PageServerLoad } from './$types';
@@ -10,13 +11,17 @@ export const load: PageServerLoad = ({ locals }) => {
     // Sin instalación real de identidad no hay contraseña que cambiar: la
     // página lo dice en lugar de ofrecer un formulario que no puede cumplir.
     passwordAuth: Boolean(getAuth()),
-    minPasswordLength: MIN_PASSWORD_LENGTH
+    minPasswordLength: MIN_PASSWORD_LENGTH,
+    // Entró con la provisional que le dieron en mano: hasta cambiarla, el hook
+    // del servidor la devuelve aquí desde cualquier otra pantalla del hogar, y
+    // la página tiene que explicar por qué en vez de dejarla dando vueltas.
+    mustChangePassword: locals.user.mustChangePassword
   };
 };
 
 export const actions: Actions = {
   /** Cambiar la contraseña propia. Cierra el resto de sesiones abiertas. */
-  changePassword: async ({ locals, request }) => {
+  changePassword: async ({ locals, params, request }) => {
     const auth = getAuth();
     if (!auth) error(404, 'Este entorno no gestiona contraseñas');
     if (!locals.user) error(401, 'Necesitas haber entrado');
@@ -47,6 +52,11 @@ export const actions: Actions = {
       return fail(400, {
         message: 'No hemos podido cambiarla. Comprueba que la contraseña de ahora es la correcta.'
       });
+    }
+    // Solo aquí, y solo después de que Better Auth la haya aceptado de verdad:
+    // este es el único punto del código que da por cumplida la obligación.
+    if (locals.user.mustChangePassword) {
+      await clearPasswordChangeRequirement({ id: locals.user.id }, params.householdId);
     }
     return { changed: true };
   }

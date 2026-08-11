@@ -1,7 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { getCriticalSnapshotPayload } from '../src/lib/server/fixtures.server';
 import { searchOffline } from '../src/lib/search/offline';
+
+/**
+ * Lo que se prueba aquí es el buscador sin conexión sobre el corpus de
+ * DEMOSTRACIÓN, y el corpus solo existe donde no hay hogar real: desde que la
+ * regla «con DATABASE_URL las maquetas no existen» vive en
+ * `data-source.server`, `getCriticalSnapshotPayload()` devuelve el paquete
+ * parcial (el 112 y nada más) en cuanto la máquina que ejecuta las pruebas
+ * tiene una base configurada. Esta batería no habla de eso, así que declara su
+ * entorno en vez de heredarlo: sin declararlo, el mismo código pasaba o fallaba
+ * según hubiera o no una variable en el shell de quien lanza la suite.
+ *
+ * Que la regla de verdad se cumple lo comprueba `no-fixtures-with-database`.
+ */
+vi.mock('$env/dynamic/private', () => ({ env: {} }));
 
 // Mismo contenido que el CriticalSnapshot real: wikiPages y contactos de la
 // fixture sintética que la web guarda en IndexedDB.

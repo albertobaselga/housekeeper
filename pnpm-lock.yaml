@@ -120,9 +120,6 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
-      nodemailer:
-        specifier: 9.0.4
-        version: 9.0.4
       pdf-lib:
         specifier: 1.17.1
         version: 1.17.1
@@ -142,9 +139,6 @@ importers:
       '@types/node':
         specifier: 24.3.1
         version: 24.3.1
-      '@types/nodemailer':
-        specifier: 8.0.1
-        version: 8.0.1
       '@types/pg':
         specifier: 8.20.4
         version: 8.20.4
@@ -1500,9 +1494,6 @@ packages:
 
   '@types/node@24.3.1':
     resolution: {integrity: sha512-3vXmQDXy+woz+gnrTvuvNrPzekOi+Ds0ReMxw0LzBiK3a+1k0kQn9f2NWk+lgD4rJehFUmYy2gMhJ2ZI+7YP9g==}
-
-  '@types/nodemailer@8.0.1':
-    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
 
   '@types/pg@8.20.4':
     resolution: {integrity: sha512-Jz7UDOlIiFJuacC0TlBoLyNtmwlA/wpIyPDd3tvUqlRM+HzkWy2xUgpFpaXtbfTAFF6sIGq5lsCDBdJnhky1Xg==}
@@ -3122,10 +3113,6 @@ packages:
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
-
-  nodemailer@9.0.4:
-    resolution: {integrity: sha512-LmJNRVRtfSCULxcZpy0Cpg4WWenlUZ9+zbmTO+S7v9wD6XreYLjXRFtDjtV/4F0HT5p1GyZfA0Ux/myxHb18CQ==}
-    engines: {node: '>=6.0.0'}
 
   nopt@8.1.0:
     resolution: {integrity: sha512-ieGu42u/Qsa4TFktmaKEwM6MQH0pOWnaB3htzh0JRtx84+Mebc0cbZYN5bC+6WTZ4+77xrL9Pn5m7CV6VIkV7A==}
@@ -5526,10 +5513,6 @@ snapshots:
     dependencies:
       undici-types: 7.10.0
 
-  '@types/nodemailer@8.0.1':
-    dependencies:
-      '@types/node': 24.3.1
-
   '@types/pg@8.20.4':
     dependencies:
       '@types/node': 24.3.1
@@ -7350,8 +7333,6 @@ snapshots:
       whatwg-url: 5.0.0
 
   node-gyp-build@4.8.4: {}
-
-  nodemailer@9.0.4: {}
 
   nopt@8.1.0:
     dependencies:

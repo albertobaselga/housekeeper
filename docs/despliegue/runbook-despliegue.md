@@ -10,9 +10,9 @@
 > | --- | --- | --- |
 > | Web (SvelteKit) | Vercel, región `fra1` | Ninguna ruta necesita estado en proceso ni larga duración |
 > | Base de datos | Supabase, región UE | Postgres gestionado con copias del proveedor |
-> | Adjuntos | Supabase Storage (endpoint S3) | El código ya habla S3 con `forcePathStyle` |
+> | Adjuntos | Supabase Storage (API REST, clave de servicio) | Sin claves que crear a mano; el bucket lo crea la app, privado |
 > | Cola de trabajos | Host aparte (§4.1–§4.5) **o** `pg_cron` llamando a la web (§4.6) | El demonio conserva `/health` y el sondeo de 1 s; el planificador en la base no cuesta nada ni añade proveedor |
-> | ClamAV | Host aparte | No cabe en serverless |
+> | ClamAV | **No desplegado** | No cabe en serverless y no hay host propio. Opcional: [adjuntos-sin-antivirus.md](../security/adjuntos-sin-antivirus.md) |
 >
 > **Bloqueo previo del ADR 0001**: revisión legal, política de retención y
 > residencia UE. Este runbook cubre la residencia; los otros dos no son
@@ -23,8 +23,9 @@
 ## 0. Antes de empezar
 
 - [ ] Repositorio **privado** en GitHub.
-- [ ] Dominio propio con SPF, DKIM y DMARC en el proveedor de correo elegido.
-      Sin ellos los enlaces mágicos van a spam y la app queda inutilizable.
+- [ ] Dominio propio. **Sin proveedor de correo**: la aplicación no manda
+      correo a nadie (migración 0029) y el acceso es por contraseña, así que no
+      hay SPF, DKIM ni DMARC que configurar para ella.
 - [ ] Un gestor de contraseñas donde guardar lo que se genere en §1.
 - [ ] `pnpm install` y el repo en verde: `pnpm lint`, `pnpm --filter web check`,
       `pnpm test:unit`, `pnpm --filter web verify:bundle`.
@@ -34,7 +35,7 @@ Secretos a generar (una vez, y guardar):
 ```bash
 openssl rand -base64 48                     # BETTER_AUTH_SECRET
 openssl genpkey -algorithm ed25519 | base64 -w0   # SNAPSHOT_SIGNING_KEY_B64
-openssl rand -hex 32                        # CLAMAV_TOKEN / CLAMAV_GATEWAY_TOKEN
+openssl rand -hex 32                        # CLAMAV_TOKEN / CLAMAV_GATEWAY_TOKEN (solo con antivirus)
 ```
 
 `SNAPSHOT_SIGNING_KEY_B64` **no es opcional en Vercel**: sin ella cada
@@ -111,11 +112,54 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
 
 ## 3. Almacenamiento de adjuntos en Supabase Storage
 
-El código usa el SDK de S3 con **exactamente tres operaciones** —`PutObject`,
-`GetObject` y `ListObjectsV2` (esta última solo en las copias)— y con
-`forcePathStyle: true` **cableado en el código**, que es justo lo que espera el
-endpoint S3 de Supabase. No hay URLs prefirmadas, ni multipart, ni ACLs, ni
-ciclo de vida: no hace falta adaptador ninguno.
+La web elige el almacén sola: **si hay clave de servicio de Supabase usa
+Supabase Storage por su API REST**; si no, usa S3 con las `S3_*`. Sin ninguno de
+los dos, adjuntar responde 503 con un mensaje veraz en vez de fingir que sube.
+
+### 3.1 Camino recomendado: Supabase Storage por su API REST
+
+**Un solo paso manual, y es copiar y pegar.** No hay que crear el bucket ni
+generar credenciales: la clave de servicio ya existe en cualquier proyecto de
+Supabase y el bucket lo crea la propia app, privado, en la primera subida.
+
+1. Panel de Supabase → **Project Settings → API Keys**.
+2. Copiar la clave **secreta**. Según la edad del proyecto aparece como
+   `service_role` (un JWT largo que empieza por `eyJ…`) o como
+   `sb_secret_…`. Las dos sirven. **No** es la `anon` / `publishable`.
+3. Vercel → *Project Settings → Environment Variables* → *Production*:
+
+   ```
+   SUPABASE_SERVICE_ROLE_KEY=<la clave secreta copiada>
+   ```
+
+4. Redesplegar y subir un justificante desde la app. Eso es todo.
+
+Opcionales, solo si hace falta salirse de lo previsto:
+
+```
+SUPABASE_URL=https://PROYECTO.supabase.co   # si no, se deduce de DATABASE_URL
+SUPABASE_STORAGE_BUCKET=casaclara           # por omisión, `casaclara`
+```
+
+> **Esa clave salta la RLS de Storage.** Va solo al servidor, jamás al
+> navegador, y el control de acceso real de los justificantes no lo hace el
+> bucket sino `app.storage_objects` + `app.documents` bajo RLS, igual que antes.
+
+**Verificación de que el bucket nació bien**: Supabase → Storage → el bucket
+`casaclara` debe aparecer con **Public: No**. Si por lo que sea se hubiera
+creado público, cambiarlo ahí mismo.
+
+**Acoplamiento que hay que recordar**: al crearlo, la app le pone al bucket el
+mismo límite de tamaño y la misma lista de tipos que aplica la tubería. Esos
+valores se fijan **una vez**, así que si algún día se admite un tipo nuevo de
+justificante hay que ampliarlo también en Storage → el bucket → *Edit bucket*.
+Si no, la subida fallará con un 503 honesto que no explicará por qué.
+
+### 3.2 Camino alternativo: compatibilidad S3
+
+Sigue soportado y es el que usa el worker (copias de seguridad) y Compose con
+MinIO. El SDK de S3 se carga **bajo demanda**, así que en el camino de 3.1 no se
+evalúa y no se paga en el arranque en frío de la función.
 
 1. Storage → **New bucket** → nombre `casaclara`, **Public bucket: NO**.
 2. Storage → *S3 access keys* → generar par de credenciales.
@@ -129,11 +173,14 @@ ciclo de vida: no hace falta adaptador ninguno.
    S3_SECRET_ACCESS_KEY=…
    ```
 
-**Política de acceso: los ficheros no son públicos NUNCA.**
+El worker necesita **siempre** las `S3_*`: `pnpm backup:full` usa
+`ListObjectsV2`, que no está en el camino REST.
+
+### 3.3 Política de acceso: los ficheros no son públicos NUNCA
 
 - El bucket es privado y no lleva ninguna política que permita lectura anónima.
-- Las credenciales S3 solo las tienen la web y el worker; no viajan al
-  navegador.
+- Las credenciales (clave de servicio o par S3) solo las tienen la web y el
+  worker; no viajan al navegador.
 - Los justificantes se sirven **proxeados** por
   `/api/v1/households/[id]/receipts/[expenseId]`, que exige sesión, comprueba
   la pertenencia al hogar y deja que RLS decida la fila. Sin fila, 404 —sin
@@ -141,8 +188,17 @@ ciclo de vida: no hace falta adaptador ninguno.
 - Esa ruta sirve el objeto **en flujo**, no materializado: una función de
   Vercel no puede devolver más de 4,5 MB de golpe y un justificante llega a
   10 MiB.
+- Sale con `X-Content-Type-Options: nosniff` y
+  `Content-Security-Policy: default-src 'none'; sandbox`, y con el `content-type`
+  **deducido de los bytes** del fichero, no del que declaró quien lo subió.
 - Si algún día se pasa a URLs firmadas, deben ser de vida corta y seguir
   emitiéndose solo tras la comprobación de RLS.
+
+**El límite práctico de SUBIDA en Vercel son 4,5 MB**, no los 10 MiB del
+servidor: la plataforma corta los cuerpos más grandes antes de que llegue nada
+al código. Por eso la app **reduce las fotos en el propio móvil** antes de
+enviarlas (`apps/web/src/lib/attachments/prepare.ts`). Un PDF grande no se puede
+reducir: si pasa de ese tamaño, la subida falla con un mensaje que lo dice.
 
 **Comprobado sobre el ZIP de traspaso** (el otro candidato a pasarse de 4,5 MB):
 con el corpus real del manual completo —59 ficheros Markdown, 47,6 KiB en
@@ -152,19 +208,29 @@ problema en el runtime de Node de Vercel.
 
 ---
 
-## 4. Ejecutar la cola de trabajos (y ClamAV)
+## 4. Ejecutar la cola de trabajos (y, si se quiere, ClamAV)
+
+> **El antivirus es OPCIONAL y hoy no está desplegado.** Sin `CLAMAV_HOST` los
+> adjuntos funcionan igual, solo que sin escanear, así que ya **no** es un
+> motivo para necesitar host propio. El riesgo asumido, lo que ocupa su lugar y
+> el procedimiento exacto para reactivarlo están en
+> [docs/security/adjuntos-sin-antivirus.md](../security/adjuntos-sin-antivirus.md).
+> Lo que sigue sobre ClamAV describe cómo montarlo **el día que haya un host
+> donde ejecutarlo**; el código no ha cambiado y lo único que hace falta para
+> encenderlo son las variables.
 
 Hay **dos maneras** de que los trabajos encolados se ejecuten de verdad, y son
 excluyentes solo en el sentido de que basta con una:
 
 - **Con host propio** (§4.1–§4.5): el worker se despliega **tal cual**, mismo
   bucle de sondeo, mismo `/health`, mismo `/metrics`, mismo apagado ordenado.
-  No se convierte en función ni se trocea. Es también el único sitio donde cabe
-  ClamAV, así que resuelve los adjuntos de paso.
+  No se convierte en función ni se trocea. Es también el único sitio donde
+  cabría ClamAV, si algún día se quiere escaneo.
 - **Sin host propio** (§4.6): el planificador vive en la propia base
   (`pg_cron` + `pg_net`) y llama cada pocos minutos a un endpoint de la web que
   vacía la cola con los mismos manejadores. Coste cero, ningún proveedor más.
-  Los adjuntos siguen necesitando un ClamAV en alguna parte.
+  **Los adjuntos ya no atan a esta decisión**: funcionan con Supabase Storage y
+  sin antivirus (§3.1).
 
 Los dos pueden convivir sin coordinarse: el reclamo usa
 `for update skip locked`.
@@ -177,8 +243,7 @@ fly secrets set -a casaclara-worker \
   DATABASE_URL='postgresql://casa_clara_worker_login:…@db.PROYECTO.supabase.co:6543/postgres' \
   S3_ENDPOINT='https://PROYECTO.supabase.co/storage/v1/s3' \
   S3_REGION='eu-central-1' S3_PRIVATE_BUCKET='casaclara' \
-  S3_ACCESS_KEY_ID='…' S3_SECRET_ACCESS_KEY='…' \
-  SMTP_HOST='…' SMTP_PORT='587' SMTP_FROM='Casa Clara <no-reply@casa.ejemplo.es>'
+  S3_ACCESS_KEY_ID='…' S3_SECRET_ACCESS_KEY='…'
 fly deploy --config infra/fly/worker.fly.toml
 
 fly launch --no-deploy --copy-config --config infra/fly/clamav.fly.toml
@@ -227,9 +292,10 @@ de la CA. **La verificación del certificado no se apaga nunca.**
 En Compose local nada de esto se define: clamd está en una red `internal: true`
 y el diálogo va en claro dentro de ella, como hasta ahora.
 
-### 4.4 Qué pasa si el antivirus está caído
+### 4.4 Qué pasa si el antivirus está configurado y está caído
 
-Que la subida **falla, y lo dice**:
+Que la subida **falla, y lo dice** (sin `CLAMAV_HOST` este apartado no aplica:
+no hay escaneo del que depender):
 
 - El escaneo va SIEMPRE antes de tocar el almacén, y un error del socket no se
   confunde nunca con «limpio». La ruta responde **503** con «el antivirus del
@@ -311,10 +377,20 @@ aviso de rutina de verdad.
    BETTER_AUTH_SECRET=…
    BETTER_AUTH_URL=https://casa.ejemplo.es
    SNAPSHOT_SIGNING_KEY_B64=…
-   S3_ENDPOINT= S3_REGION= S3_PRIVATE_BUCKET= S3_ACCESS_KEY_ID= S3_SECRET_ACCESS_KEY=
-   SMTP_HOST= SMTP_PORT=587 SMTP_FROM=
+   SUPABASE_SERVICE_ROLE_KEY=…     # adjuntos, §3.1 (o las S3_* de §3.2)
+   ```
+
+   **Opcionales**, solo si algún día hay antivirus (§4 y
+   `docs/security/adjuntos-sin-antivirus.md`):
+
+   ```
    CLAMAV_HOST= CLAMAV_PORT=3311 CLAMAV_TLS=true CLAMAV_TOKEN=
    ```
+
+   `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM` estaban aquí y **ya no van**: no hay
+   correo (0029). Si siguen puestas en el panel de un despliegue antiguo, se
+   borran: nadie las lee, y una variable sin lector solo sirve para hacer creer
+   que hay un canal que no existe.
 
    **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `CASA_CLARA_FIXTURE_LOGIN`: su
    ausencia es el estado seguro, y ahora está además impuesta. Definir
@@ -414,11 +490,8 @@ Una vez creado el hogar:
 ## 7. Humo posterior al despliegue
 
 - [ ] `GET https://casa.ejemplo.es/api/health` → `{"status":"ok",…}`
-- [ ] Enlace mágico a una bandeja real: llega, y el enlace apunta al dominio
-      definitivo (no a `localhost:3000`). **Un SMTP mal configurado no da error
-      visible**: el formulario responde siempre `{ sent: true }` para no
-      filtrar qué cuentas existen.
-- [ ] Login y las pantallas de Hoy, Guía, Calendario y Menú.
+- [ ] Login con nombre y contraseña, y las pantallas de Hoy, Guía, Calendario
+      y Menú. No hay correo en el camino de acceso ni en ningún otro sitio.
 - [ ] Subir un justificante y volver a verlo desde la cuenta del mes.
 - [ ] El banner de datos sintéticos **no** aparece, y el acceso demo con
       contraseña devuelve 403.
@@ -494,10 +567,9 @@ lo que hay que revisar es cómo se subió ese despliegue.
 `ALLOW_SYNTHETIC_DATA_ONLY` **no se define en producción**, y su ausencia es
 segura:
 
-- **Nada de producción depende de que esté puesta.** Sus cuatro consumidores
-  tratan «sin definir» como el comportamiento normal: el banner no se pinta, la
-  política de correo del worker deja pasar la entrada intacta, y las semillas
-  demo se niegan a ejecutarse.
+- **Nada de producción depende de que esté puesta.** Sus consumidores tratan
+  «sin definir» como el comportamiento normal: el banner no se pinta y las
+  semillas demo se niegan a ejecutarse.
 - **Apagarla no enciende ningún camino peligroso; enciende una guarda.** La
   única comprobación que se invierte es la del acceso demo con contraseña:
   `demoPasswordBlocked` devuelve **true** —bloqueado— precisamente cuando la
@@ -506,8 +578,9 @@ segura:
 - Los booleanos se comparan contra la cadena `'true'` exactamente: `TRUE`, `1`
   o `yes` cuentan como falso.
 
-**Hueco conocido que sigue abierto (W-7):** la guarda de destinatarios
-sintéticos solo cubre el correo del **worker**. El enlace mágico de la web no
-pasa por ella, así que un staging declarado sintético **sí** enviaría un enlace
-a una dirección real si alguien la escribe. No afecta a producción —donde la
-bandera no está puesta— pero contradice el control 9 en staging.
+**Hueco W-7, cerrado por retirada.** La guarda de destinatarios sintéticos solo
+cubría el correo del worker, y el enlace mágico de la web no pasaba por ella:
+un staging declarado sintético podía mandar un enlace a una dirección real. Ya
+no hay por dónde: ni enlace mágico (el acceso es por contraseña) ni salida de
+correo (0029). No queda nada que guardar, así que la guarda se fue con lo que
+guardaba.

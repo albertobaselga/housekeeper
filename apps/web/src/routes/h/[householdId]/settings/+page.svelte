@@ -98,6 +98,25 @@
   <PageHeader eyebrow="Administración" title="Ajustes del hogar" description="Miembros, acceso y preferencias generales de esta demo." />
 
   {#if access}
+    <!--
+      Personal no está en la barra de navegación: el AppShell vive dentro del
+      grafo inicial de Hoy y una entrada más no cabe en su presupuesto. Se
+      alcanza desde aquí, que es donde ya se viene a gestionar quién entra.
+    -->
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Personal</p>
+          <h2>Quién trabaja en la casa</h2>
+        </div>
+      </div>
+      <p>
+        Las personas que trabajan aquí y las que trabajaron antes, con sus contratos y el historial de
+        condiciones. También se dan de alta desde ahí.
+      </p>
+      <p><a class="button secondary" href={`/h/${context.household.id}/personal`}>Ver el personal</a></p>
+    </section>
+
     <section class="card" aria-labelledby="access-title">
       <div class="section-heading"><div><p class="eyebrow">Accesos del hogar</p><h2 id="access-title">¿Hasta cuándo puede entrar cada persona?</h2></div></div>
       <ActionStatus status={actionStatus} />

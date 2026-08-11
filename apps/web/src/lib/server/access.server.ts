@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -28,6 +28,73 @@ export interface MembershipIdentity {
   /** Identificador estable de Better Auth guardado en app.user_profiles. */
   userId: string;
   name: string;
+}
+
+/**
+ * Vuelve a marcar una contraseña como provisional. Se llama justo después de
+ * reponérsela a alguien desde Ajustes: la que entrega la administración es tan
+ * de usar y tirar como la del alta, y la persona tiene que cambiarla antes de
+ * poder ir a ninguna otra pantalla del hogar.
+ *
+ * La escritura la ampara `user_profiles_admin_update` (0030) y el disparador
+ * `user_profiles_password_flag_guard` exige que encenderla venga de un contexto
+ * `family_admin`. Devuelve false si no se pudo, y quien llama lo trata como un
+ * aviso, no como un fallo del cambio: la contraseña YA está repuesta cuando
+ * esto se ejecuta, y perder la marca no es motivo para decir que no se hizo.
+ */
+export async function requirePasswordChange(
+  user: { id: string },
+  householdId: string,
+  targetUserId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<boolean> {
+  if (!pool) return false;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      if (membership.role !== 'family_admin') return false;
+      const updated = await client.query(
+        `update app.user_profiles set must_change_password = true where user_id = $1`,
+        [targetUserId]
+      );
+      return (updated.rowCount ?? 0) === 1;
+    });
+  } catch (cause) {
+    if (!(cause instanceof AuthorizationError)) {
+      log.error('could not flag a provisional password', { code: errorCode(cause) });
+    }
+    return false;
+  }
+}
+
+/**
+ * Da por cumplida la obligación. Es el ÚNICO sitio del código que apaga la
+ * marca, y solo se llama cuando Better Auth ya ha aceptado el cambio de
+ * contraseña: la persona la apaga sobre su propia fila
+ * (`user_profiles_self_update`), que es lo único que el disparador de 0030
+ * permite.
+ */
+export async function clearPasswordChangeRequirement(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<boolean> {
+  if (!pool) return false;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+      const updated = await client.query(
+        `update app.user_profiles
+            set must_change_password = false
+          where user_id = $1 and must_change_password`,
+        [user.id]
+      );
+      return (updated.rowCount ?? 0) === 1;
+    });
+  } catch (cause) {
+    if (!(cause instanceof AuthorizationError)) {
+      log.error('could not clear a provisional password flag', { code: errorCode(cause) });
+    }
+    return false;
+  }
 }
 
 /**

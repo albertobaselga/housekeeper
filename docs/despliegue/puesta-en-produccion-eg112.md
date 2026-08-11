@@ -291,15 +291,18 @@ que se conecte la base.
   contrario: «Dejar de mostrar un calendario borra sus eventos de la casa»
   (`docs/manual/index.html:1674`). Es una promesa de privacidad incumplida en
   silencio.
-- **`time_report.autoconfirm` — bomba de relojería.**
-  `app_private.autoconfirm_weekly_report` marca `confirmed_at =
-  statement_timestamp()` (`0006_reminders_and_autoconfirm.sql:119-127`), no la
-  fecha en que debió confirmarse. Arrancar el worker meses después
-  **autoconfirma de golpe todos los partes atrasados con fecha de hoy**: un
-  histórico falso, y precisamente en el módulo que sirve de prueba de la relación
-  laboral. Mientras tanto, la empleada lee «la familia tiene tres días para
-  confirmarla» (`WeeklyReportCard.svelte:138`) y el parte se queda «Enviado ·
-  pendiente de confirmación» para siempre.
+- ~~**`time_report.autoconfirm` — bomba de relojería.**~~ **Desactivada el
+  11/08/2026 retirando la pieza entera, no el job.** Decía así: la función
+  `app_private.autoconfirm_weekly_report` marcaba `confirmed_at =
+  statement_timestamp()`, no la fecha en que debió confirmarse, así que arrancar
+  el worker meses después **autoconfirmaba de golpe todos los partes atrasados
+  con fecha de hoy** —un histórico falso, y en el módulo que sirve de prueba de
+  la relación laboral—. Mientras tanto la empleada leía «la familia tiene tres
+  días para confirmarla» y el parte se quedaba «Enviado · pendiente de
+  confirmación» para siempre, porque el comando de confirmar NUNCA EXISTIÓ.
+  La migración 0029 retira el parte semanal completo: la función, el job, la
+  pantalla y el contrato del comando. Lo encolado pasó a `dead`. Los partes ya
+  enviados se conservan como histórico y se leen en `partes-semanales.csv`.
 
 **Arreglo.** Desplegar el worker **antes o a la vez** que la base real, nunca
 después. Recomendación en §5.
@@ -977,13 +980,21 @@ un fallo concreto.
 
 Hay exactamente 5 puntos de encolado y 7 tipos de job. Sin worker:
 
+> **Al día 11/08/2026: quedan CUATRO tipos.** La migración 0029 retiró los tres
+> últimos de esta lista marcados abajo, así que sus filas ya no describen un
+> riesgo sino una decisión tomada. Lo demás de esta sección sigue en pie salvo
+> por una cosa: `loadWorkerConfig` **ya no exige `SMTP_HOST` ni `SMTP_FROM`**, y
+> el drenaje desde la web tampoco (era lo que tenía la cola parada). El párrafo
+> «El correo está roto aparte del worker», más abajo, describe una pieza que ya
+> no existe.
+
 | Job | Qué se rompe | Gravedad |
 |---|---|---|
 | `ics.sync_source` | El calendario nunca se lee; **pausarlo no borra sus eventos** | Crítica |
 | `ics.sync_all` | Ningún calendario se refresca tras el alta | Crítica |
-| `time_report.autoconfirm` | Partes `submitted` eternos + autoconfirmación masiva con fecha falsa al arrancar | Alta |
-| `notification.settlement_due` | Cero avisos de vencimiento ni escalada | Media |
-| `notification.routine_due` | Cero correos de rutina (la rutina sí se ve en la app) | Baja |
+| ~~`time_report.autoconfirm`~~ | **Retirado (0029)** junto con el parte semanal entero | — |
+| ~~`notification.settlement_due`~~ | **Retirado (0029)**: solo sabía mandar correo. El vencimiento se ve en Hoy | — |
+| ~~`notification.routine_due`~~ | **Retirado (0029)**: ídem. La rutina se ve en Hoy y en el calendario | — |
 | `document.render_receipt` | No se genera un PDF que nadie puede descargar | Baja |
 | `maintenance.prune_discovery` | La retención declarada de 45/180 días no se aplica | Baja |
 
@@ -1010,10 +1021,10 @@ una máquina que ya esté encendida en casa; si no la hay, Fly.io. Razones:
    (coherente con el ADR 0001), ~2-3 USD/mes.
 
 **No es cero-configuración:** `loadWorkerConfig` exige `S3_ENDPOINT`,
-`S3_PRIVATE_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `SMTP_HOST` y
-`SMTP_FROM` y **aborta el arranque si falta cualquiera**
-(`apps/worker/src/config.ts:20-24,46-57`), aunque los jobs que de verdad importan
-aquí (autoconfirm e ICS) no toquen ni S3 ni SMTP.
+`S3_PRIVATE_BUCKET`, `S3_ACCESS_KEY_ID` y `S3_SECRET_ACCESS_KEY`, y **aborta el
+arranque si falta cualquiera**, aunque el job que de verdad importa aquí (ICS)
+no toque el almacén. (Exigía además `SMTP_HOST` y `SMTP_FROM`; se fueron con la
+0029, y con ellas el 503 permanente que devolvía el drenaje desde la web.)
 
 **`pg_cron` como complemento, no como sustituto.** Encajan de verdad
 `maintenance.prune_discovery` (una llamada a `app_private.prune_discovery_data`)
@@ -1023,16 +1034,18 @@ migración nueva con una variante barredora. Y **no cubre `ics.sync_source`**, q
 es fetch HTTPS con guarda SSRF y expansión de RRULE
 (`apps/worker/src/ics.ts:103-219,545-607`).
 
-**El correo está roto aparte del worker.** `nodemailer.createTransport({host,
-port, secure:false})` **sin objeto `auth`** (`apps/worker/src/integrations.ts:102-106`):
-no hay `SMTP_USER`/`SMTP_PASS` en el repositorio. Solo habla con Mailpit. Ningún
-proveedor real funcionará sin tocar código. Y hay una contradicción de producto
-que hay que resolver antes: el manual afirma **dos veces** «Casa Clara no envía
-correos a nadie en ningún momento» (`docs/manual/index.html:1673,1700`), y los
-únicos correos del sistema son esos dos avisos. **Recomendación: no apuntar
-`SMTP_HOST` a un proveedor real todavía** —cada aviso moriría tras 5 intentos
-(`queue.ts:80-92`)— y decidir si esos dos avisos deben pasar a ser avisos en
-pantalla, que es lo coherente con lo prometido.
+**El correo estaba roto aparte del worker, y se resolvió quitándolo.** Decía
+así: `nodemailer.createTransport({host, port, secure:false})` **sin objeto
+`auth`**, o sea, sin `SMTP_USER`/`SMTP_PASS` en el repositorio; solo hablaba con
+Mailpit y ningún proveedor real habría funcionado sin tocar código. Y había una
+contradicción de producto: el manual afirmaba **dos veces** «Casa Clara no envía
+correos a nadie en ningún momento», y los únicos correos del sistema eran esos
+dos avisos.
+
+La contradicción se resolvió el 11/08/2026 a favor del manual: **el canal es la
+aplicación**. La migración 0029 retiró la salida SMTP entera y los dos avisos
+que la usaban. Qué queda sin canal hasta que existan las notificaciones al
+móvil está en `docs/notificaciones.md`, §0.
 
 **Falta observabilidad, y es lo que convierte un worker caído en invisible.** No
 existe métrica de retraso de cola: `/api/metrics` publica uptime y memoria

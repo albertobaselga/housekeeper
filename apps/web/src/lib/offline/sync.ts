@@ -127,7 +127,7 @@ export interface BlobUploadMapping {
 /**
  * Vacía el store de blobs (fotos de tickets capturadas offline): sube cada uno
  * a la ruta de adjuntos del hogar y SOLO tras un 2xx lo borra de IndexedDB.
- * Cualquier error —red, 413/415, 422 de cuarentena, 5xx— conserva el blob
+ * Cualquier error —red, 413/415, 422, 5xx— conserva el blob
  * local para reintentarlo o para que la persona decida ("las fotos permanecen
  * locales hasta subida y ACK completos"). El mapeo blobId→storageObjectId se
  * expone vía callback opcional; `linkPendingBlobs` lo usa para escribirlo en
