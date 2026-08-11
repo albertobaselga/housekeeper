@@ -822,6 +822,12 @@ con día ≥ 29 no es fiel** (la RFC salta, nosotros recortamos); en ese caso, y
 ese, se siguen emitiendo ocurrencias explícitas. `month_day = -1` sí es fiel
 (`BYMONTHDAY=-1`).
 
+> Hecho en T8, con tres decisiones que aquí no estaban y que la ficha de T8
+> recoge: `DTSTART` se toma del ancla (no de «hoy»), `UNTIL` se escribe como
+> DATE, y una rutina con `ends_on` pasado no publica nada. El barrido de la
+> prueba confirmó además que **no hay ningún otro caso inexpresable**: los tres
+> patrones restantes se dicen enteros.
+
 ---
 
 ## 6 · Reimportación del manual
@@ -1016,11 +1022,48 @@ chips de filtro, «Más adelante», bandas de sin conexión, casilla-botón 44×
 hoy y lo atrasado. Borra la maqueta de rejilla (`+page.svelte:223-240`). **Verifica con
 la build** que el generador de T1 no cae en el chunk compartido de arranque.
 
-### T8 · Feed ICS con RRULE (depende de: T2)
+### T8 · Feed ICS con RRULE (depende de: T2) · HECHA
 **Territorio:** `apps/web/src/routes/api/v1/ics/[token]/+server.ts`,
 `packages/server/src/ics-grant.integration.test.ts`.
 **Entrega:** §5.4. RRULE real cuando es fiel; ocurrencias explícitas cuando
 `month_day ≥ 29`. Prueba de regresión del `GRANT` de la 0011.
+
+La traducción quedó en `apps/web/src/lib/server/ics-rrule.server.ts` y devuelve
+`null` cuando no puede ser exacta. Se buscó otro caso inexpresable además del
+`month_day ≥ 29` que la especificación señalaba y **no lo hay**: `every_n_days`
+es `FREQ=DAILY;INTERVAL=n`, `days_of_week` es
+`FREQ=WEEKLY;INTERVAL=r;BYDAY=…;WKST=MO` —el `WKST` importa en cuanto
+`r > 1`—, y `months_of_year` no usa `repeat_every`, así que `INTERVAL` se queda
+en su 1 por omisión. `month_day = -1` es fiel (`BYMONTHDAY=-1`) y 1..28 también,
+porque ahí el recorte nunca llega a actuar.
+
+Tres decisiones que no estaban escritas y hubo que tomar:
+
+- **`DTSTART` es la primera ocurrencia contada desde el ancla**, no la primera a
+  partir de hoy. La RFC deja indefinida una serie cuyo `DTSTART` no case con la
+  regla, así que tiene que ser una ocurrencia real; y tomándola del ancla el
+  VEVENT sale idéntico en cada refresco, mientras que uno que empezara «hoy»
+  cambiaría de fecha a diario sin subir `SEQUENCE`. El precio, asumido: el
+  pasado de la rutina también queda publicado.
+- **`UNTIL` va como DATE.** `ical-generator` lo escribe como DATE-TIME UTC y la
+  RFC 5545 §3.3.10 exige que sea del mismo tipo que `DTSTART`, que aquí es una
+  fecha sin hora; por eso la RRULE se pasa como texto y no con el objeto de
+  opciones de la librería.
+- **Una cadencia agotada (`ends_on` pasado) no publica ni su serie muerta.**
+
+De paso apareció algo peor que lo que T8 venía a arreglar: la suite de la ruta
+que la 0033 estrenó (`apps/web/tests/ics-feed.integration.test.ts`) leía
+`DATABASE_URL` a secas, y el job de integración de CI solo exporta
+`TEST_DATABASE_URL` (`ci.yml:160`). La regresión escrita para que el feed no
+volviera a vaciarse en silencio llevaba desde entonces **saltándose entera**.
+Ahora provisiona su propia base, como hoy/snapshot/wiki, y le dice a la ruta
+dónde está.
+
+La prueba (`apps/web/tests/ics-rrule.test.ts`) no compara cadenas: expande la
+RRULE emitida con un expansor escrito desde la RFC (`tests/rrule-expand.ts`) y
+exige las mismas fechas que `occurrencesBetween`. El barrido recorre los cuatro
+patrones con anclas incómodas y los 31 días del mes, y de cada regla exige una
+de dos cosas: o no hay RRULE, o las fechas coinciden.
 
 ### T9 · Reimportación del manual (depende de: T2, T3)
 **Territorio:** `packages/db/scripts/seed-manual.mjs`,
@@ -1045,7 +1088,7 @@ descubierto lo que se había quedado a media asta:
   T8) llevaba desde la 0023 devolviendo un **calendario vacío**, callando: leía
   `frequency` de una función que había dejado de publicarla y descartaba todas las
   filas. Ninguna prueba lo cubría. Se reescribe con el motor puro y estrena su
-  regresión por la ruta; **la emisión con RRULE (§5.4) sigue pendiente de T8**.
+  regresión por la ruta; la emisión con RRULE (§5.4) llegó después, en T8.
 - **El documento de traspaso** (`handover.server.ts`) escribía «frecuencia: Semanal
   (cada 2)» leyendo la sombra que miente. Ahora dice la cadencia con `cadenceClause`.
 - **La tercera copia de la aritmética** (`nextRoutineDue` y `addMonthsClamped` en
