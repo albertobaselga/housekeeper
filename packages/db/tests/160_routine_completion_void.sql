@@ -28,12 +28,11 @@ BEGIN;
 SET LOCAL row_security = off;
 
 INSERT INTO app.routines (
-  id, household_id, title, details, audience, frequency, interval_count, next_due_on,
+  id, household_id, title, details, audience, next_due_hint,
   pattern, anchor_on, repeat_every, overdue_policy, created_by_membership_id
 ) VALUES (
   'ec100000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-  'Riego de las jardineras', 'Sólo las de la terraza.', 'all',
-  'daily', 1, '2026-08-12',
+  'Riego de las jardineras', 'Sólo las de la terraza.', 'all', '2026-08-12',
   'every_n_days', '2026-08-10', 1, 'skip',
   '11000000-0000-4000-8000-000000000001'
 );

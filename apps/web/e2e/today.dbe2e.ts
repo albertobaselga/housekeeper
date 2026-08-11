@@ -69,25 +69,24 @@ test.beforeAll(async () => {
       ) ON CONFLICT DO NOTHING;
 
       INSERT INTO app.routines (
-        id, household_id, title, details, audience, frequency, interval_count,
-        next_due_on, created_by_membership_id,
+        id, household_id, title, details, audience, next_due_hint, created_by_membership_id,
         pattern, anchor_on, repeat_every, weekdays, overdue_policy
       ) VALUES
         -- Con detalle: su título abre el desplegable nativo (E5.2).
         ('${ROUTINE_HOY}', '${HOUSEHOLD}', 'Riego de la terraza E2E-HOY', 'Solo las jardineras',
-         'employee', 'weekly', 1, '${TODAY}', '${E2E_SEED.memberships.admin}',
+         'employee', '${TODAY}', '${E2E_SEED.memberships.admin}',
          'every_n_days', '${TODAY}', 7, NULL, 'carry'),
         -- Sin detalle: su título NO debe fingir que se pulsa.
         ('${ROUTINE_SIN_DETALLE}', '${HOUSEHOLD}', 'Buzón E2E-HOY', '',
-         'employee', 'weekly', 1, '${TODAY}', '${E2E_SEED.memberships.admin}',
+         'employee', '${TODAY}', '${E2E_SEED.memberships.admin}',
          'every_n_days', '${TODAY}', 7, NULL, 'carry'),
         -- Diaria: en «Esta semana» se resume, no se repite seis veces.
         ('${ROUTINE_DIARIA}', '${HOUSEHOLD}', 'Ventilación E2E-HOY', '',
-         'employee', 'daily', 1, '${TODAY}', '${E2E_SEED.memberships.admin}',
+         'employee', '${TODAY}', '${E2E_SEED.memberships.admin}',
          'every_n_days', '${TODAY}', 1, NULL, 'skip'),
         -- De un día fijo: la que sí merece su grupo con el día nombrado.
         ('${ROUTINE_EN_DOS_DIAS}', '${HOUSEHOLD}', 'Colada E2E-HOY', '',
-         'employee', 'weekly', 1, '${EN_DOS_DIAS}', '${E2E_SEED.memberships.admin}',
+         'employee', '${EN_DOS_DIAS}', '${E2E_SEED.memberships.admin}',
          'days_of_week', '${EN_DOS_DIAS}', 1, ARRAY[${EN_DOS_DIAS_ISODOW}]::smallint[], 'skip')
       ON CONFLICT DO NOTHING;
 

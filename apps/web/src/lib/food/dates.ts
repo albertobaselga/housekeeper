@@ -19,41 +19,22 @@ export function addDays(dateISO: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Suma meses en UTC recortando el día al último del mes destino (31/01 + 1 mes → 28/02). */
-export function addMonthsClamped(dateISO: string, months: number): string {
-  const year = Number(dateISO.slice(0, 4));
-  const monthIndex = Number(dateISO.slice(5, 7)) - 1;
-  const day = Number(dateISO.slice(8, 10));
-  const total = monthIndex + months;
-  const targetYear = year + Math.floor(total / 12);
-  const targetMonth = ((total % 12) + 12) % 12;
-  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
-  const targetDay = Math.min(day, lastDay);
-  return `${String(targetYear).padStart(4, '0')}-${String(targetMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
-}
-
-/**
- * Próxima ocurrencia de una rutina tras completar la vigente. Réplica exacta
- * de `app.advance_routine_after_completion` (migración 0009) y de
- * `advanceDueDate` en el servidor: permite pintar «Hecha ✓ · próxima el X»
- * de forma OPTIMISTA con la misma fecha que confirmará el servidor.
+/*
+ * Aquí vivían `addMonthsClamped` y `nextRoutineDue`, la TERCERA copia de la
+ * aritmética de recurrencia (§2.8: «la misma aritmética está triplicada… las
+ * tres copias tienen que coincidir a mano. Las tres desaparecen»). Las otras
+ * dos —`app.advance_routine_after_completion` y `advanceDueDate`— las retira
+ * la 0033 con esta.
+ *
+ * `addMonthsClamped` no era neutral: recortar el día al último del mes destino
+ * es lo que convertía «el 31» en «el 28» al pasar por febrero, y para siempre,
+ * porque la fecha recortada pasaba a ser el nuevo punto de partida. El motor
+ * puro de `@casa-clara/domain` no recorta el estado: guarda «el día 31» como
+ * regla y resuelve cada mes por separado (31 ene → 28 feb → 31 mar).
+ *
+ * Ningún componente las llamaba ya: el chip optimista de «Hecha ✓ · próxima el
+ * X» sale del mismo generador que usa el servidor.
  */
-export function nextRoutineDue(
-  dueOn: string,
-  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly',
-  intervalCount: number
-): string {
-  switch (frequency) {
-    case 'daily':
-      return addDays(dueOn, intervalCount);
-    case 'weekly':
-      return addDays(dueOn, 7 * intervalCount);
-    case 'monthly':
-      return addMonthsClamped(dueOn, intervalCount);
-    case 'quarterly':
-      return addMonthsClamped(dueOn, 3 * intervalCount);
-  }
-}
 
 /** Lunes de la semana a la que pertenece la fecha (la propia fecha si ya es lunes). */
 export function mondayOf(dateISO: string): string {

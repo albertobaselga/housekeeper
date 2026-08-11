@@ -780,7 +780,7 @@ export async function loadTodayOverview(
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
       // Rutinas del rol (la RLS filtra por audiencia) con su REGLA, no con una
       // fecha ya resuelta. El prefiltro llega hasta el final de «Esta semana»,
-      // y `next_due_on` sirve para eso justamente porque es una cota INFERIOR:
+      // y `next_due_hint` sirve para eso justamente porque es una cota INFERIOR:
       // si se queda anticuada solo puede quedarse atrás, así que selecciona de
       // más y el generador descarta; nunca puede esconder una rutina.
       //
@@ -800,7 +800,7 @@ export async function loadTodayOverview(
             and routine.archived_at is null
             and routine.pattern is not null
             and (
-              routine.next_due_on <= $2::date
+              routine.next_due_hint <= $2::date
               or exists (
                 select 1 from app.routine_completions as marked
                  where marked.household_id = routine.household_id

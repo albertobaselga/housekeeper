@@ -119,7 +119,7 @@ export async function loadSnapshotHousehold(
           where routine.household_id = $1
             and routine.archived_at is null
             and routine.pattern is not null
-            and routine.next_due_on <= $2::date
+            and routine.next_due_hint <= $2::date
           order by routine.title`,
         [householdId, todayISO]
       );

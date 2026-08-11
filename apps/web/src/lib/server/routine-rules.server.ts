@@ -26,7 +26,14 @@ export const ROUTINE_RULE_COLUMNS = `routine.pattern::text as "pattern",
                 routine.ends_on::text as "endsOn",
                 routine.overdue_policy::text as "overduePolicy"`;
 
-export interface RoutineRuleRow {
+/**
+ * Solo las columnas de las que sale la REGLA. La política de atraso no entra:
+ * no interviene en generar ocurrencias, sino en decidir cuáles de las
+ * generadas siguen pendientes. Separarlas deja que un lector que solo necesita
+ * la cadencia —el feed ICS, que publica días y no atrasos— pida lo justo en
+ * vez de arrastrar una columna que no va a mirar.
+ */
+export interface RoutineScheduleRow {
   pattern: string | null;
   anchorOn: string | null;
   repeatEvery: number | null;
@@ -34,6 +41,9 @@ export interface RoutineRuleRow {
   monthDay: number | null;
   months: number[] | null;
   endsOn: string | null;
+}
+
+export interface RoutineRuleRow extends RoutineScheduleRow {
   overduePolicy: RoutineOverduePolicy;
 }
 
@@ -43,7 +53,7 @@ export interface RoutineRuleRow {
  * rutina es peor que no pintarla y seguir sirviendo la página. Se devuelve
  * `null`, que el llamante ya sabe descartar.
  */
-export function routineScheduleFrom(row: RoutineRuleRow): RoutineSchedule {
+export function routineScheduleFrom(row: RoutineScheduleRow): RoutineSchedule {
   const anchorOn = row.anchorOn;
   if (row.pattern === null || anchorOn === null) return null;
   const endsOn = row.endsOn;

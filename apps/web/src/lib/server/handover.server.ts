@@ -3,12 +3,14 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 
+import { cadenceClause } from '@casa-clara/domain';
 import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import { CONTACT_KINDS, CONTACT_KIND_LABELS, type ContactKind } from '$lib/contacts/kinds';
 import { mondayOf, weekDays, dayLabel } from '$lib/food/dates';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
+import { routineScheduleFrom, type RoutineScheduleRow } from './routine-rules.server';
 
 const log = createLogger('web:handover');
 
@@ -44,13 +46,6 @@ const AUDIENCE_LABELS: Record<'family' | 'employee' | 'all', string> = {
   family: 'familia',
   employee: 'empleada',
   all: 'toda la casa'
-};
-
-const FREQUENCY_LABELS: Record<'daily' | 'weekly' | 'monthly' | 'quarterly', string> = {
-  daily: 'diaria',
-  weekly: 'semanal',
-  monthly: 'mensual',
-  quarterly: 'trimestral'
 };
 
 const MEAL_ORDER_LABELS: Record<string, string> = {
@@ -142,15 +137,24 @@ function renderSpaceFile(name: string, description: string): string {
   return lines.join('\n');
 }
 
-interface RoutineExportRow {
+interface RoutineExportRow extends RoutineScheduleRow {
   title: string;
   details: string;
   audience: 'family' | 'employee' | 'all';
-  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly';
-  intervalCount: number;
-  nextDueOn: string;
+  nextDueHint: string | null;
 }
 
+/**
+ * La cadencia se dice con la frase del motor puro, no con las columnas
+ * heredadas. Hasta la 0033 esto leía `frequency`/`interval_count` y escribía
+ * «frecuencia: Semanal (cada 2)»; eran columnas SOMBRA que mentían en cuanto la
+ * cadencia no cabía en aquel vocabulario de cuatro palabras —«cada 15 días» se
+ * leía como «Diaria (cada 12)»— y un documento de traspaso es justo donde una
+ * frecuencia falsa hace más daño: alguien la lee y organiza su semana con ella.
+ *
+ * Una rutina sin cadencia confirmada se exporta igualmente, diciendo que no
+ * tiene día: existe, se hace, y quien recibe el traspaso debe saberlo.
+ */
 function renderRoutines(rows: RoutineExportRow[], audience: HandoverAudience): string {
   const lines = ['# Rutinas de la casa', ''];
   if (audience === 'helper') {
@@ -160,10 +164,10 @@ function renderRoutines(rows: RoutineExportRow[], audience: HandoverAudience): s
     lines.push('No hay rutinas activas.');
   }
   for (const row of rows) {
-    const every =
-      row.intervalCount > 1 ? `${FREQUENCY_LABELS[row.frequency]} (cada ${row.intervalCount})` : FREQUENCY_LABELS[row.frequency];
+    const cadence = cadenceClause(routineScheduleFrom(row));
+    const next = row.nextDueHint ? ` · próxima: ${row.nextDueHint}` : '';
     lines.push(
-      `- **${row.title}** — audiencia: ${AUDIENCE_LABELS[row.audience]} · frecuencia: ${every} · próxima: ${row.nextDueOn}`
+      `- **${row.title}** — audiencia: ${AUDIENCE_LABELS[row.audience]} · cadencia: ${cadence}${next}`
     );
     if (row.details) lines.push(`  - ${row.details}`);
   }
@@ -292,12 +296,17 @@ export async function buildHandoverExport(
         `select title,
                 details,
                 audience::text as "audience",
-                frequency::text as "frequency",
-                interval_count as "intervalCount",
-                next_due_on::text as "nextDueOn"
+                next_due_hint::text as "nextDueHint",
+                pattern::text as "pattern",
+                anchor_on::text as "anchorOn",
+                repeat_every as "repeatEvery",
+                weekdays::int[] as "weekdays",
+                month_day::int as "monthDay",
+                months::int[] as "months",
+                ends_on::text as "endsOn"
            from app.routines
           where household_id = $1 and archived_at is null
-          order by next_due_on, title`,
+          order by next_due_hint nulls last, title`,
         [householdId]
       );
       // La persona de apoyo solo recibe las rutinas de toda la casa (mismo

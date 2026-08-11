@@ -905,15 +905,26 @@ export const routineUpsertV2PayloadSchema = z
   );
 
 /**
- * La forma ANTERIOR a la 0023, que el servidor sigue aceptando (§3.4).
+ * La forma ANTERIOR a la 0023. Ya NO se acepta, y este esquema no sirve para
+ * admitirla sino para RECONOCERLA (§3.5, migración 0033).
  *
- * No es cortesía: puede haber envelopes encolados en el IndexedDB de un
- * dispositivo desde antes del despliegue, y rechazarlos perdería el alta que
- * alguien hizo sin conexión. El servidor los traduce con la tabla de §3.2. La
- * rama se retira en T10, un despliegue después, que es la única garantía de
- * que ninguna cola se queda por vaciar.
+ * Durante la ventana de la 0023 el servidor traducía esta forma con la tabla
+ * de §3.2, porque podía haber envelopes encolados en el IndexedDB de un
+ * dispositivo desde antes del despliegue y rechazarlos habría perdido el alta
+ * que alguien hizo sin conexión. Pasado un despliegue entero —la separación
+ * que T10 exige justamente para esto— ninguna cola sigue guardando la forma
+ * vieja, y la traducción pasa de red de seguridad a riesgo: la tabla de §3.2
+ * no sabe expresar «cada 15 días» ni «en junio y en diciembre», así que
+ * aplicarla a ciegas escribiría una cadencia que nadie pidió.
+ *
+ * Reconocer sin traducir es lo que permite el rechazo HONESTO. Sin este
+ * esquema, un envelope antiguo moriría con un `invalid_payload` genérico
+ * quejándose de que falta `pattern`, y quien lo mandó no tendría forma de
+ * saber que su cambio se guardó con un formato que la casa ya no habla. Con
+ * él, el comando responde `routine_cadence_format_retired` y una frase que lo
+ * dice. Ninguna de las dos cosas guarda el cambio; solo una lo explica.
  */
-export const legacyRoutineUpsertPayloadSchema = z.object({
+export const retiredRoutineUpsertPayloadSchema = z.object({
   ...routineUpsertIdentity,
   frequency: z.enum(["daily", "weekly", "monthly", "quarterly"]),
   intervalCount: z.number().int().min(1).max(12),
@@ -921,22 +932,13 @@ export const legacyRoutineUpsertPayloadSchema = z.object({
 });
 
 /**
- * Las dos formas conviven. El orden importa: la nueva primero, porque un
- * cliente que mande ambas (por prudencia durante la transición) debe entrar por
- * la rica. Son disjuntas de todos modos —la nueva exige la clave `pattern`, la
- * vieja exige `frequency`/`intervalCount`/`nextDueOn`—, así que ninguna carga
- * puede colarse por la rama equivocada.
+ * Ya no hay unión: la cadencia rica es la única forma que entra. La antigua se
+ * reconoce aparte, en el comando, para poder rechazarla por su nombre.
  */
-export const routineUpsertPayloadSchema = z.union(
-  [routineUpsertV2PayloadSchema, legacyRoutineUpsertPayloadSchema],
-  {
-    error:
-      "El alta de rutina no trae ni la cadencia nueva (`pattern`) ni la antigua (`frequency`, `intervalCount`, `nextDueOn`)",
-  },
-);
+export const routineUpsertPayloadSchema = routineUpsertV2PayloadSchema;
 
 export type RoutineUpsertV2Payload = z.infer<typeof routineUpsertV2PayloadSchema>;
-export type LegacyRoutineUpsertPayload = z.infer<typeof legacyRoutineUpsertPayloadSchema>;
+export type RetiredRoutineUpsertPayload = z.infer<typeof retiredRoutineUpsertPayloadSchema>;
 export type RoutineUpsertPayload = z.infer<typeof routineUpsertPayloadSchema>;
 
 /**

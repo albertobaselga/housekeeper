@@ -272,14 +272,14 @@ describe.runIf(Boolean(adminUrl))('calendario real desde Postgres bajo RLS', () 
   it('las rutinas viajan como REGLAS y la RLS decide cuáles (E3)', async () => {
     await adminPool.query(
       `insert into app.routines (id, household_id, title, details, audience,
-                                 frequency, interval_count, next_due_on, created_by_membership_id,
+                                 next_due_hint, created_by_membership_id,
                                  pattern, anchor_on, repeat_every, weekdays, overdue_policy)
        values ($1, $4, 'Revisión del botiquín', 'Caduca el paracetamol', 'family',
-               'weekly', 1, $5::date, $6, 'days_of_week', $5::date, 1, array[1,4]::smallint[], 'skip'),
+               $5::date, $6, 'days_of_week', $5::date, 1, array[1,4]::smallint[], 'skip'),
               ($2, $4, 'Ventilación de la mañana', '', 'all',
-               'daily', 1, $5::date, $6, 'every_n_days', $5::date, 1, null, 'skip'),
+               $5::date, $6, 'every_n_days', $5::date, 1, null, 'skip'),
               ($3, $4, 'Limpieza de baños', 'Sin lejía en el mármol', 'employee',
-               'daily', 1, $5::date, $6, 'every_n_days', $5::date, 1, null, 'skip')`,
+               $5::date, $6, 'every_n_days', $5::date, 1, null, 'skip')`,
       [
         FAMILY_ROUTINE,
         SHARED_ROUTINE,
