@@ -417,11 +417,11 @@ Los destinatarios se resuelven **en el instante del envío**, no en el del encol
 
 **Si el navegador ya los tiene bloqueados** (`denied` — sin botón de reintento, porque técnicamente no lo hay):
 
-> Este teléfono tiene los avisos bloqueados para Casa Clara. Se desbloquean desde los ajustes del teléfono, en la ficha de Casa Clara → Notificaciones. Si prefieres dejarlo así, no hace falta que hagas nada: la app funciona igual.
+> Este teléfono tiene los avisos bloqueados para esta aplicación. Se desbloquean desde los ajustes del teléfono, en su ficha → Notificaciones. Si prefieres dejarlo así, no hace falta que hagas nada: la app funciona igual.
 
 **Si es iPhone y no está instalada en la pantalla de inicio** (detectar iOS sin `display-mode: standalone` y **no ofrecer un interruptor que no puede funcionar**):
 
-> En iPhone los avisos solo funcionan si abres Casa Clara desde el icono de la pantalla de inicio. Si quieres, añádela: botón Compartir → «Añadir a pantalla de inicio». Y si no, entra como siempre: no te pierdes nada.
+> En iPhone los avisos solo funcionan si abres la aplicación desde el icono de la pantalla de inicio. Si quieres, añádela: botón Compartir → «Añadir a pantalla de inicio». Y si no, entra como siempre: no te pierdes nada.
 
 ### 4.4 Dónde vive el control
 
