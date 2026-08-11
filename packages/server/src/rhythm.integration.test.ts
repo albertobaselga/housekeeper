@@ -650,6 +650,151 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     expect(await nextDueOn(routineId)).toBe("2027-06-07");
   });
 
+  it("deshacer devuelve la fecha que tenía, no calcula una nueva (E5.1)", async () => {
+    // La corrección del propietario: marcar era irreversible y —peor— movía la
+    // próxima fecha, así que la casa dejaba de ver la tarea cuando le tocaba.
+    // Un semanal (`carry`) es donde más se nota: la fecha restaurada es la
+    // atrasada, no «hoy más siete».
+    const today = await householdToday();
+    const anchor = shiftDays(today, -14);
+    const routineId = await upsertRoutine({
+      title: "Cambio de toallas",
+      audience: "employee",
+      pattern: "every_n_days",
+      anchorOn: anchor,
+      repeatEvery: 7,
+    });
+    expect(await nextDueOn(routineId)).toBe(anchor);
+
+    const marked = await run(
+      EMPLOYEE,
+      envelope("routine", { action: "complete", routineId, dueOn: anchor }),
+    );
+    expect(marked).toMatchObject({ status: "accepted" });
+    expect(await nextDueOn(routineId)).toBe(shiftDays(anchor, 7));
+
+    const undone = await run(
+      EMPLOYEE,
+      envelope("routine", { action: "uncomplete", routineId, dueOn: anchor }),
+    );
+    expect(undone).toMatchObject({ status: "accepted", resourceId: routineId });
+    // Exactamente la fecha que tenía antes de marcar.
+    expect(await nextDueOn(routineId)).toBe(anchor);
+  });
+
+  it("un completado anulado se anota como anulado, con su autoría, y no se borra", async () => {
+    const routineId = await upsertRoutine({
+      title: "Revisión del filtro",
+      audience: "all",
+      pattern: "every_n_days",
+      anchorOn: "2027-09-06",
+      repeatEvery: 7,
+    });
+    await run(EMPLOYEE, envelope("routine", { action: "complete", routineId, dueOn: "2027-09-06" }));
+    await run(EMPLOYEE, envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-09-06" }));
+
+    // La fila sigue ahí: el historial de E2 puede enseñar quién la marcó y
+    // quién la deshizo. Lo que cambia es que deja de contar.
+    const stored = await adminPool.query<{
+      due_on: string;
+      voided: boolean;
+      completed_by: string;
+      voided_by: string | null;
+    }>(
+      `select due_on::text as due_on,
+              voided_at is not null as voided,
+              completed_by_membership_id::text as completed_by,
+              voided_by_membership_id::text as voided_by
+         from app.routine_completions
+        where household_id = $1 and routine_id = $2`,
+      [ROBLE_HOUSEHOLD, routineId],
+    );
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows[0]).toMatchObject({ due_on: "2027-09-06", voided: true });
+    expect(stored.rows[0]?.voided_by).toBe(stored.rows[0]?.completed_by);
+  });
+
+  it("la empleada no deshace lo que marcó otra persona; la administración sí", async () => {
+    const routineId = await upsertRoutine({
+      title: "Limpieza de campana",
+      audience: "all",
+      pattern: "every_n_days",
+      anchorOn: "2027-10-04",
+      repeatEvery: 7,
+    });
+    await run(ADMIN, envelope("routine", { action: "complete", routineId, dueOn: "2027-10-04" }));
+
+    const refused = await run(
+      EMPLOYEE,
+      envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-10-04" }),
+    );
+    expect(refused).toMatchObject({ status: "rejected", errorCode: "not_allowed" });
+    expect(await nextDueOn(routineId)).toBe("2027-10-11");
+
+    const allowed = await run(
+      ADMIN,
+      envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-10-04" }),
+    );
+    expect(allowed).toMatchObject({ status: "accepted" });
+    expect(await nextDueOn(routineId)).toBe("2027-10-04");
+  });
+
+  it("tras deshacer se puede volver a marcar de verdad la misma ocurrencia", async () => {
+    // La mitad silenciosa de E5.1: la clave primaria es (hogar, rutina,
+    // ocurrencia), así que sin revivir la fila anulada deshacer dejaría la
+    // ocurrencia bloqueada para siempre.
+    const routineId = await upsertRoutine({
+      title: "Cristales del salón",
+      audience: "all",
+      pattern: "every_n_days",
+      anchorOn: "2027-11-01",
+      repeatEvery: 7,
+    });
+    await run(ADMIN, envelope("routine", { action: "complete", routineId, dueOn: "2027-11-01" }));
+    await run(ADMIN, envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-11-01" }));
+
+    const again = await run(
+      EMPLOYEE,
+      envelope("routine", { action: "complete", routineId, dueOn: "2027-11-01" }),
+    );
+    expect(again).toMatchObject({ status: "accepted" });
+    expect(await nextDueOn(routineId)).toBe("2027-11-08");
+    // Sigue habiendo UNA fila por ocurrencia; la anulada revivió a nombre de
+    // quien la hizo de verdad.
+    const rows = await adminPool.query<{ voided: boolean }>(
+      `select voided_at is not null as voided
+         from app.routine_completions where household_id = $1 and routine_id = $2`,
+      [ROBLE_HOUSEHOLD, routineId],
+    );
+    expect(rows.rows).toEqual([{ voided: false }]);
+  });
+
+  it("deshacer algo que no está marcado se rechaza; deshacerlo dos veces, no", async () => {
+    const routineId = await upsertRoutine({
+      title: "Poda de la buganvilla",
+      audience: "all",
+      pattern: "every_n_days",
+      anchorOn: "2027-12-06",
+      repeatEvery: 7,
+    });
+
+    const nothing = await run(
+      ADMIN,
+      envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-12-06" }),
+    );
+    expect(nothing).toMatchObject({ status: "rejected", errorCode: "completion_not_found" });
+
+    await run(ADMIN, envelope("routine", { action: "complete", routineId, dueOn: "2027-12-06" }));
+    await run(ADMIN, envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-12-06" }));
+    // El segundo toque suele ser el mismo dedo, o un envelope que la cola sin
+    // conexión reintenta: no es un error, es un no-op.
+    const twice = await run(
+      ADMIN,
+      envelope("routine", { action: "uncomplete", routineId, dueOn: "2027-12-06" }),
+    );
+    expect(twice).toMatchObject({ status: "accepted", resourceId: routineId });
+  });
+
   it("el replay del mismo envelope no marca dos veces ni encola un segundo aviso", async () => {
     const routineId = await upsertRoutine({
       title: "Riego del porche",

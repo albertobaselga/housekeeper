@@ -85,7 +85,14 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
         ? 'Artículo de la compra marcado'
         : 'Añadido a la lista de la compra';
     case 'routine':
-      return action === 'complete' ? 'Rutina marcada como hecha' : 'Rutina creada o editada';
+      switch (action) {
+        case 'complete':
+          return 'Rutina marcada como hecha';
+        case 'uncomplete':
+          return 'Marcado de rutina deshecho';
+        default:
+          return 'Rutina creada o editada';
+      }
     case 'routine_occurrence':
       // Comando heredado de la maqueta: el servidor no lo implementa.
       return 'Marca de tarea de demostración (no se guarda en la casa)';
@@ -125,6 +132,11 @@ const GENERIC_ERROR_LABELS: Record<string, string> = {
   food_unreviewed: 'La receta usa un alimento sin revisar',
   already_completed: 'La rutina ya estaba marcada',
   routine_not_found: 'La rutina ya no existe',
+  // `completion_not_found`, `routine_has_no_schedule` y `not_allowed` NO se
+  // repiten aquí: viven en el diccionario compartido (offline/error-codes.ts),
+  // al que este descriptor cae por defecto. Duplicarlos dejaría dos frases para
+  // el mismo código, y la de aquí ganaría también para agregados que no son
+  // rutinas.
   slot_not_found: 'Esa comida del menú ya no existe',
   item_not_found: 'El artículo de la compra ya no existe',
   page_not_found: 'La nota de la guía ya no existe',

@@ -13,6 +13,7 @@ Este documento es la fuente de verdad para declarar terminado el brief. Los dato
 7. **Entornos:** esta oleada entrega local y staging sintético. No autoriza producción ni datos reales.
 8. **Sin correo (11/08/2026):** el canal es la aplicación. La migración 0029 retiró la salida SMTP y con ella los avisos que solo sabían usarla. Afecta a la letra de **AC-06A** y **AC-09**: el vencimiento y la escalada siguen existiendo como hecho y siguen visibles en Hoy, pero «por canales habilitados» hoy significa **ningún canal saliente** hasta que existan las notificaciones al móvil (`docs/notificaciones.md`, §0).
 9. **Sin parte semanal (11/08/2026):** retirado por decisión del propietario en la misma migración. La empleada ya no envía días trabajados y nadie los confirma; los partes enviados antes se conservan como histórico y se leen en `partes-semanales.csv`, dentro del ZIP de **AC-13**.
+10. **AC-26 sustituido (10/08/2026):** a petición del propietario, recogido en la enmienda E2 de `docs/rutinas-y-calendario.md`. La redacción, el motivo y lo que sigue prohibido están en la «Nota al AC-26» de este mismo documento, al pie de la tabla.
 
 Con estas adaptaciones, el objetivo es **25/26 literales y 26/26 según el contrato adaptado**.
 
@@ -45,7 +46,7 @@ Con estas adaptaciones, el objetivo es **25/26 literales y 26/26 según el contr
 | AC-23 | Duplicar semana copia platos, notas y recetas en una sola acción idempotente. | Test API/DB + E2E. | F3 |
 | AC-24 | Compra suma ingredientes equivalentes, respeta unidades y agrupa por sección. | Fixtures de agregación + E2E offline. | F3 |
 | AC-25 | Mantenimiento trimestral notifica a familia, no a empleada. | Test de recurrencia y destinatarios. | F3 |
-| AC-26 | (revisado 10/08/2026 — ver nota abajo) El historial de rutinas es consultable como hechos con su fecha y su autoría. No existe ningún indicador de cumplimiento —porcentaje, racha, media, comparativa ni codificación por color que califique—, en ninguna vista, API ni exportación. | Búsqueda de API/esquema + revisión E2E de todas las vistas. | F3 |
+| AC-26 | (revisado 10/08/2026 — ver nota abajo) El historial de rutinas es consultable como hechos con su fecha y su autoría. No existe ningún indicador de cumplimiento —porcentaje, racha, media, comparativa ni codificación por color que califique—, en ninguna vista, API ni exportación. | `apps/web/tests/calendar-no-metrics.test.ts` (vocabulario del código, forma de lo devuelto y ausencia de color que califique, en calendario **y** en la pantalla de Rutinas, con base de datos y sin ella) + `apps/web/e2e/calendar.dbe2e.ts` → «el pasado se ve con quién lo marcó, y sin ninguna nota (E2)». | F3 |
 
 ### Nota al AC-26: por qué cambió, y qué decía antes
 
@@ -71,6 +72,12 @@ que califique el rendimiento, en pantallas, API y exportaciones.
 El criterio anterior existía por una razón y esa razón no ha desaparecido: es
 la que sostiene la mitad que se conserva. Queda escrito para que quien lo lea
 dentro de un año vea que se sustituyó a conciencia y no por descuido.
+
+**«En ninguna vista» no admite excepciones.** La maqueta de la pantalla de
+Rutinas —el modo sin base de datos, el que ven las suites de maqueta— seguía
+pintando un anillo de progreso con su porcentaje. Se retiró al integrar: un
+criterio de aceptación que dice «en ninguna vista» no deja fuera la vista de
+demostración, que es precisamente la que más gente ve.
 
 ## Extensión de Fase 4 acordada
 

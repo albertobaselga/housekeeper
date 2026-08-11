@@ -91,30 +91,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
       { id: 'slot-hoy', onDate: '2026-08-07', meal: 'comida' },
       { id: 'slot-manana', onDate: '2026-08-08', meal: 'cena' }
     ],
-    dueRoutines: [
-      {
-        id: 'r-hoy',
-        title: 'Repaso del filtro',
-        details: '',
-        nextDueOn: '2026-08-07',
-        dueLabel: 'Hoy',
-        overdue: false,
-        completedCurrent: false,
-        frequency: 'weekly',
-        intervalCount: 1
-      },
-      {
-        id: 'r-hecha',
-        title: 'Ventilar',
-        details: '',
-        nextDueOn: '2026-08-07',
-        dueLabel: 'Hoy',
-        overdue: false,
-        completedCurrent: true,
-        frequency: 'weekly',
-        intervalCount: 1
-      }
-    ],
+    overdueRoutineCount: 2,
     vacationNews: null,
     ...overrides
   };
@@ -179,21 +156,52 @@ describe('buildTodayDecisions por rol', () => {
     expect(items.map((item) => item.key)).toEqual(['gasto-g-1', 'menu-unconfirmed']);
   });
 
-  it('empleada: su jornada aceptada, el cobro confirmable y su rutina de hoy', () => {
+  it('empleada: su jornada aceptada, el cobro confirmable y UNA fila por lo atrasado', () => {
     const items = buildTodayDecisions(
       baseFacts({ role: 'employee_live_in', membershipId: EMPLOYEE_MEMBERSHIP })
     );
-    expect(items.map((item) => item.key)).toEqual(['extra-e-accepted', 'cobro-s-pagada', 'rutina-r-hoy']);
+    expect(items.map((item) => item.key)).toEqual([
+      'extra-e-accepted',
+      'cobro-s-pagada',
+      'rutinas-atrasadas'
+    ]);
     expect(items[0]!.cta).toBe('Marcar realizada');
-    // La rutina completada no vuelve a pedir decisión; la pendiente ancla en la propia página.
+    // Una sola fila, no una por rutina: con diez rutinas diarias esta sección
+    // era una copia de la tarjeta que hay justo debajo.
+    expect(items[2]!.title).toBe('Se quedaron 2 rutinas sin hacer');
+    expect(items[2]!.cta).toBe('Ver');
     expect(items[2]!.href).toBe('#rutinas-de-hoy');
+  });
+
+  it('sin atraso real, las rutinas no piden ninguna decisión', () => {
+    // Lo que toca HOY no es una decisión: es el trabajo, y ya está en su
+    // tarjeta. Solo lo que se quedó sin hacer merece una línea aquí.
+    const items = buildTodayDecisions(
+      baseFacts({
+        role: 'employee_live_in',
+        membershipId: EMPLOYEE_MEMBERSHIP,
+        overdueRoutineCount: 0
+      })
+    );
+    expect(items.map((item) => item.key)).toEqual(['extra-e-accepted', 'cobro-s-pagada']);
+  });
+
+  it('una sola rutina atrasada se dice en singular', () => {
+    const items = buildTodayDecisions(
+      baseFacts({
+        role: 'employee_live_in',
+        membershipId: EMPLOYEE_MEMBERSHIP,
+        overdueRoutineCount: 1
+      })
+    );
+    expect(items[2]!.title).toBe('Se quedó 1 rutina sin hacer');
   });
 
   it('la jornada aceptada de OTRA empleada no aparece en su bloque', () => {
     const items = buildTodayDecisions(
       baseFacts({ role: 'employee_live_in', membershipId: 'otra-membresia' })
     );
-    expect(items.map((item) => item.key)).toEqual(['cobro-s-pagada', 'rutina-r-hoy']);
+    expect(items.map((item) => item.key)).toEqual(['cobro-s-pagada', 'rutinas-atrasadas']);
   });
 
   it('helper y viewer no tienen nada que decidir', () => {

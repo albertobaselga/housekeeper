@@ -161,35 +161,42 @@ describe.runIf(Boolean(adminUrl))('calendario real desde Postgres bajo RLS', () 
     );
     expect(written.rows[0]?.written).toBe(3);
 
-    const overview = await loadCalendar(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    const overview = await loadCalendar(ADMIN_USER, FIXTURE_HOUSEHOLD, {}, appPool);
     expect(overview).not.toBeNull();
     expect(overview!.canManage).toBe(true);
     expect(overview!.sources.map((source) => source.label)).toEqual(['Cole de los niños']);
-    expect(overview!.days.map((day) => day.dateISO)).toEqual([TODAY_ISO, TOMORROW_ISO]);
-    expect(overview!.days[0]?.isToday).toBe(true);
+    const eventDays = [...new Set(overview!.events.map((event) => event.dateISO))];
+    expect(eventDays).toEqual([TODAY_ISO, TOMORROW_ISO]);
     // El día completo primero; después la hora. Todo con su fuente en claro.
-    expect(overview!.days[0]?.events.map((event) => event.title)).toEqual(['Excursión del cole', 'Natación']);
-    const swim = overview!.days[0]!.events[1]!;
+    expect(
+      overview!.events.filter((event) => event.dateISO === TODAY_ISO).map((event) => event.title)
+    ).toEqual(['Excursión del cole', 'Natación']);
+    const swim = overview!.events.find((event) => event.title === 'Natación')!;
     expect(swim.timeLabel).toMatch(/^\d{2}:\d{2}$/);
     expect(swim.endLabel).toMatch(/^\d{2}:\d{2}$/);
     expect(swim.sourceLabel).toBe('Cole de los niños');
-    expect(overview!.days[0]?.events[0]?.timeLabel).toBe('Todo el día');
+    expect(overview!.events[0]?.timeLabel).toBe('Todo el día');
+    // La densidad del año conoce los mismos días, sin traerse su detalle.
+    expect(overview!.eventDaysISO).toContain(TODAY_ISO);
   });
 
   it('empleada y visor ven la agenda sin la gestión de fuentes; el apoyo no ve nada', async () => {
     for (const user of [EMPLOYEE_USER, VIEWER_USER]) {
-      const overview = await loadCalendar(user, FIXTURE_HOUSEHOLD, appPool);
+      const overview = await loadCalendar(user, FIXTURE_HOUSEHOLD, {}, appPool);
       expect(overview).not.toBeNull();
       expect(overview!.canManage).toBe(false);
       // La RLS de ics_sources es solo de administración: la lista llega vacía.
       expect(overview!.sources).toEqual([]);
-      expect(overview!.days.map((day) => day.dateISO)).toEqual([TODAY_ISO, TOMORROW_ISO]);
+      expect([...new Set(overview!.events.map((event) => event.dateISO))]).toEqual([
+        TODAY_ISO,
+        TOMORROW_ISO
+      ]);
     }
 
     // helper no tiene calendar.read: cero eventos por RLS.
-    const helper = await loadCalendar(HELPER_USER, FIXTURE_HOUSEHOLD, appPool);
+    const helper = await loadCalendar(HELPER_USER, FIXTURE_HOUSEHOLD, {}, appPool);
     expect(helper).not.toBeNull();
-    expect(helper!.days).toEqual([]);
+    expect(helper!.events).toEqual([]);
   });
 
   it('los eventos de hoy alimentan la agenda de «Hoy» según el rol', async () => {
@@ -243,8 +250,103 @@ describe.runIf(Boolean(adminUrl))('calendario real desde Postgres bajo RLS', () 
       sourceId,
       '[]'
     ]);
-    const overview = await loadCalendar(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
-    expect(overview!.days).toEqual([]);
+    const overview = await loadCalendar(ADMIN_USER, FIXTURE_HOUSEHOLD, {}, appPool);
+    expect(overview!.events).toEqual([]);
     expect(overview!.sources[0]?.enabled).toBe(false);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // Rutinas en el calendario: quién ve qué (E3) y el pasado con su autoría (E2)
+  // ───────────────────────────────────────────────────────────────────────────
+
+  const FAMILY_ROUTINE = 'cc000000-0000-4000-8000-000000000001';
+  const SHARED_ROUTINE = 'cc000000-0000-4000-8000-000000000002';
+  const EMPLOYEE_ROUTINE = 'cc000000-0000-4000-8000-000000000003';
+  const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
+  const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
+  // Día 1 del mes en curso: SIEMPRE dentro de la rejilla de seis semanas que
+  // descarga el calendario, mientras que «ayer» se sale de ella cuando hoy es
+  // día 1 de un mes que empieza en lunes.
+  const PAST_ISO = `${TODAY_ISO.slice(0, 8)}01`;
+
+  it('las rutinas viajan como REGLAS y la RLS decide cuáles (E3)', async () => {
+    await adminPool.query(
+      `insert into app.routines (id, household_id, title, details, audience,
+                                 frequency, interval_count, next_due_on, created_by_membership_id,
+                                 pattern, anchor_on, repeat_every, weekdays, overdue_policy)
+       values ($1, $4, 'Revisión del botiquín', 'Caduca el paracetamol', 'family',
+               'weekly', 1, $5::date, $6, 'days_of_week', $5::date, 1, array[1,4]::smallint[], 'skip'),
+              ($2, $4, 'Ventilación de la mañana', '', 'all',
+               'daily', 1, $5::date, $6, 'every_n_days', $5::date, 1, null, 'skip'),
+              ($3, $4, 'Limpieza de baños', 'Sin lejía en el mármol', 'employee',
+               'daily', 1, $5::date, $6, 'every_n_days', $5::date, 1, null, 'skip')`,
+      [
+        FAMILY_ROUTINE,
+        SHARED_ROUTINE,
+        EMPLOYEE_ROUTINE,
+        FIXTURE_HOUSEHOLD,
+        PAST_ISO,
+        ADMIN_MEMBERSHIP
+      ]
+    );
+
+    const admin = await loadCalendar(ADMIN_USER, FIXTURE_HOUSEHOLD, {}, appPool);
+    expect(admin!.routines.map((routine) => routine.title).sort()).toEqual([
+      'Limpieza de baños',
+      'Revisión del botiquín',
+      'Ventilación de la mañana'
+    ]);
+    // La regla viaja entera: con ella el navegador pinta cualquier semana.
+    const weekly = admin!.routines.find((routine) => routine.title === 'Revisión del botiquín')!;
+    expect(weekly.rule).toMatchObject({ pattern: 'days_of_week', weekdays: [1, 4] });
+    expect(weekly.cadence).toBe('los lunes y los jueves');
+
+    // La empleada NO recibe la rutina de audiencia `family`: lo impide
+    // `routines_read` (0008), no un filtro de esta capa.
+    const employee = await loadCalendar(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, {}, appPool);
+    expect(employee!.routines.map((routine) => routine.title).sort()).toEqual([
+      'Limpieza de baños',
+      'Ventilación de la mañana'
+    ]);
+    expect(JSON.stringify(employee)).not.toContain('Revisión del botiquín');
+    expect(JSON.stringify(employee)).not.toContain('Caduca el paracetamol');
+
+    // El apoyo solo alcanza las de audiencia `all`.
+    const helper = await loadCalendar(HELPER_USER, FIXTURE_HOUSEHOLD, {}, appPool);
+    expect(helper!.routines.map((routine) => routine.title)).toEqual(['Ventilación de la mañana']);
+  });
+
+  it('el pasado se ve con quién lo marcó, y sin ninguna nota (E2)', async () => {
+    await adminPool.query(
+      `insert into app.routine_completions (household_id, routine_id, due_on, completed_by_membership_id)
+       values ($1, $2, $3::date, $4)`,
+      [FIXTURE_HOUSEHOLD, EMPLOYEE_ROUTINE, PAST_ISO, EMPLOYEE_MEMBERSHIP]
+    );
+
+    const admin = await loadCalendar(ADMIN_USER, FIXTURE_HOUSEHOLD, {}, appPool);
+    const done = admin!.completions.find((row) => row.routineId === EMPLOYEE_ROUTINE);
+    expect(done).toMatchObject({ dueOn: PAST_ISO, byName: 'Fixture Empleada Roble' });
+
+    // La empleada ve su propio marcado; el nombre sale de su perfil, que sí
+    // puede leer (user_profiles_self_read).
+    const employee = await loadCalendar(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, {}, appPool);
+    expect(employee!.completions.map((row) => row.routineId)).toEqual([EMPLOYEE_ROUTINE]);
+
+    // Ni una cifra agregada en toda la carga: ni porcentaje, ni cuenta de
+    // hechas, ni nada que puntúe a nadie (AC-26 revisado).
+    const keys = new Set<string>();
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) value.forEach(walk);
+      else if (value && typeof value === 'object') {
+        for (const [key, inner] of Object.entries(value)) {
+          keys.add(key);
+          walk(inner);
+        }
+      }
+    };
+    walk(admin);
+    for (const key of keys) {
+      expect(key).not.toMatch(/percent|ratio|streak|racha|media|average|score|cumplimiento/i);
+    }
   });
 });

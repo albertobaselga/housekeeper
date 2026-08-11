@@ -389,7 +389,49 @@
   /* Rutina marcada desde Hoy: la fila no desaparece en seco; queda atenuada y
      tachada con su chip «Hecha ✓ · próxima el X» (P3). */
   .ledger-list > .routine-done { opacity: .6; transition: opacity .4s ease; }
-  .ledger-list > .routine-done strong { text-decoration: line-through; }
+  .ledger-list > .routine-done strong,
+  .ledger-list > .routine-done .routine-detail > summary { text-decoration: line-through; }
+
+  /* El detalle de la rutina, al tocar el título (E5.2). El <summary> tiene que
+     parecer el mismo título que un <strong> y a la vez decir que se pulsa: de
+     ahí el subrayado punteado y el objetivo táctil de 2,75 rem. Cuando la
+     rutina NO tiene detalle no hay <details>, así que el título no finge. */
+  .routine-detail > summary {
+    display: flex; align-items: center; gap: .35rem;
+    min-height: 2.75rem;
+    color: var(--ink); font-size: .84rem; font-weight: 700;
+    text-decoration-line: underline; text-decoration-style: dotted;
+    text-underline-offset: .25rem;
+    cursor: pointer; touch-action: manipulation;
+  }
+  .routine-detail > summary::marker { color: var(--ink-faint); font-size: .7em; }
+  .routine-detail > p { margin: .1rem 0 .5rem; color: var(--ink-soft); font-size: .78rem; }
+  /* En «Esta semana» el título no es una acción: sin objetivo táctil grande. */
+  .routine-week .routine-detail > summary { min-height: 0; font-weight: 600; }
+
+  /* En Hoy, los textos que a veces no tocan (el chip de cuenta, la segunda
+     línea de una rutina de hoy, el aviso de que no hay nada) viajan como
+     cadena vacía y los esconde esta regla. No es un truco de estilo: es un
+     bloque condicional menos por texto en el JavaScript de arranque, que es lo
+     que mide `scripts/verify-today-bundle.mjs`. */
+  #rutinas-de-hoy .status-chip:empty,
+  #rutinas-de-hoy .audit-note:empty,
+  .ledger-list small:empty { display: none; }
+
+  /* Encabezados de bloque dentro de la tarjeta de rutinas. «Hoy» solo aparece
+     cuando hay algo atrasado por encima: si no, sobra decir que hoy es hoy. */
+  h3.routine-block { margin-top: 1.1rem; font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
+  .routine-done-list { margin-top: 1.1rem; }
+  .routine-done-list > summary, .routine-week > h3 { font-size: .78rem; font-weight: 700; }
+
+  /* «Esta semana» va separada de lo de hoy con una línea, no con un color:
+     lo de hoy es trabajo y esto es información para planificar. */
+  .routine-week { margin-top: 1.35rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+  .routine-week h4 { margin-top: .8rem; color: var(--ink-soft); font-size: .74rem; font-weight: 700; }
+  .routine-week ul { margin-top: .2rem; list-style: none; }
+  .routine-week li { padding: .28rem 0; font-size: .82rem; }
+  .routine-week li small { color: var(--ink-faint); }
+  .routine-week-repeats { margin-top: .35rem; }
 
   .page-wrap { width: min(100%, calc(var(--content) + 4rem)); margin: 0 auto; padding: clamp(2rem, 5vw, 3.7rem) clamp(1.15rem, 4vw, 3rem) 5rem; }
   .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; margin-bottom: 2rem; }
@@ -546,9 +588,6 @@
 @layer pages {
   .hero-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(18rem, .85fr); gap: 1rem; }
   .today-side { display: grid; align-content: start; gap: 1rem; }
-  .progress-ring { display: grid; width: 3.4rem; height: 3.4rem; place-items: center; border-radius: 50%; background: conic-gradient(var(--primary) var(--progress), var(--primary-soft) 0); }
-  .progress-ring::before { grid-area: 1 / 1; width: 2.6rem; height: 2.6rem; border-radius: 50%; background: var(--surface); content: ''; }
-  .progress-ring i { z-index: 1; grid-area: 1 / 1; color: var(--primary); font-size: .7rem; font-style: normal; font-weight: 800; }
   .task-list { display: grid; margin-top: 1rem; }
   .task-row { display: grid; grid-template-columns: 1.45rem 3rem minmax(0, 1fr); align-items: center; gap: .7rem; min-height: 4rem; border-top: 1px solid var(--line); padding: .55rem .1rem; text-align: left; }
   .task-row:first-child { border-top: 0; }
@@ -764,12 +803,11 @@
   .search-results h3 { margin-top: .8rem; font-size: .8rem; }
   .search-results mark { border-radius: .25rem; background: var(--warning-soft); color: inherit; padding: 0 .1rem; }
 
-  .routine-progress { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 1.5fr) auto; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-  .routine-progress progress { width: 100%; height: .55rem; overflow: hidden; border: 0; border-radius: 999px; background: var(--primary-soft); }
-  .routine-progress progress::-webkit-progress-bar { background: var(--primary-soft); }
-  .routine-progress progress::-webkit-progress-value { background: var(--primary); }
-  .routine-progress progress::-moz-progress-bar { background: var(--primary); }
-  .routine-progress > strong { color: var(--primary); }
+  /* `.routine-progress` y `.progress-ring` vivían aquí y ya no: eran la barra
+     con su porcentaje de la maqueta de Rutinas y el anillo relleno en
+     proporción de la maqueta de Hoy. El AC-26 revisado no deja indicadores de
+     cumplimiento «en ninguna vista», y una maqueta es una vista. En su sitio
+     va la CUENTA, que ya tiene estilo propio (`.status-chip`). */
   .routine-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
   .routine-group h2 { margin-bottom: .7rem; }
   .routine-group button { display: flex; width: 100%; align-items: center; gap: .65rem; border-top: 1px solid var(--line); padding: .75rem 0; text-align: left; }
@@ -777,25 +815,12 @@
   .routine-group button.done > span { border-color: var(--success); background: var(--success); }
   .routine-group button.done strong { color: var(--ink-faint); text-decoration: line-through; }
 
-  .calendar-layout { display: grid; grid-template-columns: minmax(20rem, 1fr) minmax(18rem, .8fr); gap: 1rem; }
-  .mini-calendar header { display: flex; align-items: center; justify-content: space-between; }
-  .mini-calendar header button { width: 2rem; height: 2rem; border: 1px solid var(--line); border-radius: .5rem; }
-  .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; }
-  .week-labels { margin-top: 1rem; color: var(--ink-faint); font-size: .68rem; font-weight: 750; }
-  .dates { gap: .2rem; margin-top: .4rem; }
-  .dates button { aspect-ratio: 1; border-radius: 50%; font-size: .77rem; }
-  .dates button:hover { background: var(--primary-soft); }
-  .dates button.muted { color: var(--line-strong); }
-  .dates button.today { background: var(--primary); color: white; font-weight: 800; }
-  .event-list article { display: grid; grid-template-columns: .6rem 4rem minmax(0, 1fr); align-items: center; gap: .65rem; border-top: 1px solid var(--line); padding: .85rem 0; }
-  .event-list .section-heading + article { margin-top: .7rem; }
-  .event-list time, .event-list article > div { display: grid; }
-  .event-list time strong { font-size: .75rem; }
-  .event-list article > div strong { font-size: .83rem; }
-  .event-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--accent); }
-  .event-dot.activity { background: #6e5b8b; }
-  .event-dot.home { background: var(--success); }
-  .event-dot.health { background: var(--danger); }
+  /* El calendario dejó de tener CSS aquí: su rejilla de maqueta (.mini-calendar,
+     .calendar-grid, .dates) pintaba un mes de fechas inventadas y se retiró al
+     construir la rejilla real con datos del hogar (enmienda E1 de
+     docs/rutinas-y-calendario.md). Lo que la sustituye vive en el <style> de
+     routes/h/[householdId]/calendar/+page.svelte, con alcance de componente,
+     porque no lo comparte ninguna otra pantalla. */
 
   .contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.1rem; }
   /* Acciones del directorio real: llamar + editar/archivar (solo familia). */
@@ -899,7 +924,7 @@
     .bottom-nav a.active, .bottom-nav .more-button.active { color: var(--primary); }
     .bottom-nav .nav-symbol { font-size: 1rem; }
     .page-wrap { padding-top: 1.8rem; padding-bottom: 6.5rem; }
-    .hero-grid, .content-grid, .menu-layout, .recipe-layout, .wiki-layout, .calendar-layout, .emergency-layout, .settings-layout { grid-template-columns: minmax(0, 1fr); }
+    .hero-grid, .content-grid, .menu-layout, .recipe-layout, .wiki-layout, .emergency-layout, .settings-layout { grid-template-columns: minmax(0, 1fr); }
     .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .summary-strip > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
     .summary-strip > div:nth-child(4) { border-top: 1px solid var(--line); }
@@ -920,8 +945,6 @@
     .recipe-visual { min-height: 5.5rem; }
     .search-form { grid-template-columns: auto minmax(0, 1fr); }
     .search-form .button { grid-column: 1 / -1; }
-    .routine-progress { grid-template-columns: minmax(0, 1fr) auto; }
-    .routine-progress progress { grid-column: 1 / -1; grid-row: 2; }
     .emergency-callout { align-items: stretch; flex-direction: column; gap: .8rem; }
     .emergency-callout > a { text-align: center; }
     .contact-card { grid-template-columns: 2.7rem minmax(0, 1fr); }

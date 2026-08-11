@@ -190,12 +190,18 @@ export interface SnapshotMenuSlot {
   confirmed: boolean;
 }
 
-/** Rutina que vence hoy (o antes) dentro del snapshot crítico. */
+/** Rutina que toca hoy (o se quedó pendiente) dentro del snapshot crítico. */
 export interface SnapshotRoutine {
   id: string;
   title: string;
   details: string;
-  /** «Hoy» o «Vencía el 3 de agosto». */
+  /**
+   * La ocurrencia CONCRETA que representa esta fila. Sin ella, marcarla desde
+   * la página sin conexión obligaba a adivinar de qué día se hablaba, y el
+   * comando `routine.complete` identifica la ocurrencia por su fecha.
+   */
+  dueOn: string;
+  /** «Hoy» o «Tocaba el 3 ago 2026». */
   dueLabel: string;
   overdue: boolean;
   done: boolean;
@@ -245,8 +251,8 @@ const FIXTURE_TODAY: SnapshotToday = {
     { id: 'fixture-cena', mealLabel: 'Cena', groupName: 'Casa', dish: 'Tortilla francesa y tomate', confirmed: false }
   ],
   routines: [
-    { id: 'fixture-camas', title: 'Ventilar y hacer las camas', details: 'Dormitorios', dueLabel: 'Hoy', overdue: false, done: true },
-    { id: 'fixture-lavadora', title: 'Poner lavadora clara', details: 'Lavandería', dueLabel: 'Hoy', overdue: false, done: false }
+    { id: 'fixture-camas', title: 'Ventilar y hacer las camas', details: 'Dormitorios', dueOn: '2026-08-07', dueLabel: 'Hoy', overdue: false, done: true },
+    { id: 'fixture-lavadora', title: 'Poner lavadora clara', details: 'Lavandería', dueOn: '2026-08-07', dueLabel: 'Hoy', overdue: false, done: false }
   ]
 };
 

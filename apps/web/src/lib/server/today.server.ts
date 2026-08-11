@@ -2,25 +2,48 @@ import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
 import { createLogger, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
+import {
+  cadenceClause,
+  occurrencesBetween,
+  pendingFor,
+  weekdayName,
+  PENDING_LOOKBACK_DAYS,
+  type RoutineOverduePolicy,
+  type RoutineSchedule
+} from '@casa-clara/domain';
 
 import { dateLabel, formatCents, formatMinutes, parseCents, periodLabel } from '$lib/employment/model';
 import { addDays, mondayOf } from '$lib/food/dates';
 import type { MealSlot } from '$lib/food/commands';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
+import {
+  ROUTINE_RULE_COLUMNS,
+  routineScheduleFrom,
+  type RoutineRuleRow
+} from './routine-rules.server';
 import { buildVacationNews, type VacationNewsView } from './vacations.server';
 
 const log = createLogger('web:today');
 
 /**
  * «Hoy» real (UX-P1-1): proyección ligera leída de Postgres bajo RLS con la
- * fecha real de Madrid, el menú del día, las rutinas que vencen hoy o antes y
- * un bloque «Necesita tu decisión» por rol con enlace directo (1 click) a la
- * pantalla —y ancla, si existe— donde se resuelve cada cosa. Todo corre dentro
- * de UNA withAuthorizedTransaction (patrón employment.server.ts): es la base
- * de datos quien decide qué filas ve cada rol. Devuelve null solo sin pool
- * (demo sin DATABASE_URL) o sin membresía autorizada; la página cae entonces a
- * la fixture de demostración.
+ * fecha real de Madrid, el menú del día, las rutinas que tocan y un bloque
+ * «Necesita tu decisión» por rol con enlace directo (1 click) a la pantalla
+ * —y ancla, si existe— donde se resuelve cada cosa. Todo corre dentro de UNA
+ * withAuthorizedTransaction (patrón employment.server.ts): es la base de datos
+ * quien decide qué filas ve cada rol. Devuelve null solo sin pool (demo sin
+ * DATABASE_URL) o sin membresía autorizada; la página cae entonces a la
+ * fixture de demostración.
+ *
+ * TODO lo que se ve —agrupación, orden, cortes, encabezados, contadores,
+ * literales y hasta el chip optimista de «Hecha ✓»— se calcula AQUÍ y viaja
+ * como marcado. No es purismo: el presupuesto que vigila
+ * `apps/web/scripts/verify-today-bundle.mjs` mide el JavaScript de arranque de
+ * esta ruta, y el HTML servido no cuenta. Cada cadena que se arma en el
+ * servidor es un formateador que el móvil no descarga. Por el mismo motivo el
+ * generador de recurrencia (`@casa-clara/domain`) se importa desde este módulo
+ * `.server.ts` y no desde el componente.
  */
 
 const MADRID_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' });
@@ -93,18 +116,118 @@ export interface TodayMenuSlotView {
   contentHash: string;
 }
 
-export interface TodayRoutineView {
-  id: string;
+/** Cuántas filas pendientes se ven sin desplegar: a 390 px son una pantalla. */
+export const PENDING_ROWS_VISIBLE = 6;
+
+/**
+ * Hasta dónde mira «Esta semana»: seis días, no siete. El séptimo cae en el
+ * MISMO día de la semana que hoy, y «el jueves» dicho un jueves se lee como
+ * hoy. Con seis, cada grupo lleva un nombre de día distinto y ninguno se
+ * confunde con el de hoy, que es justo lo que E5.3 pide («el día nombrado, no
+ * una lista plana de fechas»).
+ */
+export const WEEK_AHEAD_DAYS = 6;
+
+/**
+ * A partir de cuántas apariciones en esos días una rutina deja de repetirse día
+ * a día y pasa a la línea de resumen. Tres es el corte honesto: con dos
+ * apariciones («los lunes y los jueves») ver los dos días ayuda a planificar;
+ * con tres o más la lista se convierte en la misma frase repetida.
+ */
+const WEEK_REPEAT_THRESHOLD = 3;
+
+/** Fila accionable de «lo que toca hoy»: una rutina y UNA ocurrencia suya. */
+export interface TodayRoutineRow {
+  /** Clave de la FILA, no de la rutina: una rutina puede traer atrasada y de hoy. */
+  key: string;
+  routineId: string;
   title: string;
   details: string;
-  nextDueOn: string;
-  dueLabel: string;
-  /** Vencía antes de hoy. */
-  overdue: boolean;
-  completedCurrent: boolean;
-  /** Recurrencia: permite pintar la próxima fecha de forma optimista al marcar. */
-  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly';
-  intervalCount: number;
+  /** La ocurrencia concreta que se marcaría al pulsar. */
+  dueOn: string;
+  /** Segunda línea: «Tocaba el jueves». Vacía en las de hoy: es hoy, siempre. */
+  note: string;
+  /**
+   * Chip optimista ya escrito: «Hecha ✓ · próxima el mar, 18 ago». Viene del
+   * servidor porque predecirlo en el navegador costaba importar la aritmética
+   * de recurrencia y un `Intl.DateTimeFormat` al arranque de Hoy.
+   */
+  doneChip: string;
+}
+
+/** Lo marcado HOY, que es la ventana en la que un toque por error se deshace. */
+export interface TodayDoneRoutineRow {
+  key: string;
+  routineId: string;
+  title: string;
+  details: string;
+  dueOn: string;
+  /**
+   * El MISMO chip que se pinta al marcar: «Hecha ✓ · próxima el mar, 18 ago».
+   * Idéntico a propósito —la aplicación habla una vez—, de modo que la fila no
+   * cambia de idioma cuando pasa de recién marcada a marcada.
+   */
+  chip: string;
+  /** «Tocaba el jueves» si se marcó una atrasada; vacío si era la de hoy. */
+  note: string;
+  /** Quien la marcó puede deshacerla; la administración, cualquiera (E5.1). */
+  canUndo: boolean;
+}
+
+/**
+ * Un bloque de filas pendientes con su encabezado. La agrupación se decide
+ * AQUÍ y no en la plantilla: cada `{#each}` y cada `{#if}` de un componente
+ * Svelte son bytes en el móvil, y el presupuesto de arranque de Hoy se mide.
+ */
+export interface TodayRoutineBlock {
+  key: string;
+  /** «Se quedó pendiente», «Hoy», «Ver las 4 restantes»; vacío si no lleva. */
+  heading: string;
+  /** Va tras un `<details>` plegado: es el corte de seis filas. */
+  folded: boolean;
+  rows: TodayRoutineRow[];
+}
+
+/** Un día de «Esta semana», con el día NOMBRADO y sin nada que pulsar. */
+export interface TodayWeekGroup {
+  key: string;
+  /** «Mañana», «El jueves». */
+  label: string;
+  items: { key: string; title: string; details: string }[];
+}
+
+/**
+ * Todo lo que la tarjeta de rutinas pinta, ya resuelto. Los tres bloques van en
+ * este orden y significan cosas distintas: lo atrasado es deuda, lo de hoy es
+ * el trabajo y lo de la semana es información para decidir si da tiempo hoy o
+ * se planifica (E5.3) — por eso lo último no es accionable.
+ */
+export interface TodayRoutinesView {
+  /** «5 por hacer» / «Todo hecho ✓» / '' cuando no toca nada. */
+  countChip: string;
+  /** Lo pendiente, ya agrupado y cortado, en el orden en que se pinta. */
+  blocks: TodayRoutineBlock[];
+  /** Solo cadencias semanales o mayores (`carry`), UNA línea por rutina. */
+  overdue: TodayRoutineRow[];
+  /** Las de hoy que caben sin desplegar. */
+  today: TodayRoutineRow[];
+  /** Las pendientes por encima del corte, tras un `<details>` nativo. */
+  more: TodayRoutineRow[];
+  done: TodayDoneRoutineRow[];
+  /** «3 hechas hoy»; vacío si no hay ninguna. */
+  doneLabel: string;
+  /** Agrupado por día y con el día nombrado. Vacío si no viene nada. */
+  week: TodayWeekGroup[];
+  /** Las de casi todos los días, dichas una vez en lugar de siete. */
+  weekRepeats: { key: string; title: string; cadence: string }[];
+  /** Cuántas atrasadas hay: lo único de rutinas que sigue siendo una decisión. */
+  overdueCount: number;
+  /** ¿Hay algo, pendiente o hecho? Si no, la tarjeta dice que hoy no toca nada. */
+  anyToday: boolean;
+  /** «Ninguna rutina toca hoy.» o ''. Cadena y no bandera: la plantilla la
+   *  pinta siempre y `:empty` esconde la vacía, que es un bloque condicional
+   *  menos en el arranque de Hoy. */
+  emptyNote: string;
 }
 
 export interface TodayAgendaItem {
@@ -135,7 +258,7 @@ export interface TodayOverview {
   /** «3 asuntos» / «1 asunto», ya con su plural resuelto. */
   decisionsCount: string;
   menu: TodayMenuSlotView[];
-  routines: TodayRoutineView[];
+  routines: TodayRoutinesView;
   /** Eventos de hoy de los calendarios enlazados (Ola E); RLS deja fuera al apoyo. */
   agenda: TodayAgendaItem[];
 }
@@ -190,8 +313,12 @@ export interface TodayDecisionFacts {
   settlements: TodaySettlementRow[];
   /** Huecos de hoy±3 días sin confirmación vigente. */
   unconfirmedSlots: UnconfirmedSlotRow[];
-  /** Rutinas del rol que vencen hoy o antes. */
-  dueRoutines: TodayRoutineView[];
+  /**
+   * Cuántas rutinas visibles se quedaron sin hacer (atraso real). No la lista:
+   * una rutina de HOY no es una decisión, es el trabajo, y listarlas una a una
+   * convertía este bloque en una copia de la tarjeta que hay justo debajo.
+   */
+  overdueRoutineCount: number;
   /**
    * Vacaciones apuntadas o anuladas que ella todavía no ha visto, ya resueltas
    * por el motor del dominio. null = no es empleada, o no hay nada que contar.
@@ -343,21 +470,244 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
         });
       }
     }
-    for (const routine of facts.dueRoutines) {
-      if (!routine.completedCurrent) {
-        items.push({
-          key: `rutina-${routine.id}`,
-          title: `Rutina de hoy: ${routine.title}`,
-          detail: routine.overdue ? `Vencía el ${dateLabel(routine.nextDueOn)}` : 'Vence hoy',
-          // La acción vive en esta misma página: ancla a la sección de rutinas.
-          href: '#rutinas-de-hoy',
-          cta: 'Marcar hecha'
-        });
-      }
+    // Una sola fila cuando hay atraso real, y ninguna cuando todo está al día
+    // (§4.2). Antes se empujaba una fila por rutina que vencía: con diez
+    // rutinas diarias esta sección era la tarjeta de rutinas otra vez.
+    if (facts.overdueRoutineCount > 0) {
+      items.push({
+        key: 'rutinas-atrasadas',
+        title:
+          facts.overdueRoutineCount === 1
+            ? 'Se quedó 1 rutina sin hacer'
+            : `Se quedaron ${facts.overdueRoutineCount} rutinas sin hacer`,
+        detail: 'Siguen pendientes del día que tocaban.',
+        // La acción vive en esta misma página: ancla a la sección de rutinas.
+        href: '#rutinas-de-hoy',
+        cta: 'Ver'
+      });
     }
   }
 
   return items;
+}
+
+// ─── Rutinas: de reglas a lo que la tarjeta pinta ───────────────────────────
+
+/** Una rutina con su regla y sus hechos, tal y como sale de la base. */
+export interface TodayRoutineFacts {
+  id: string;
+  title: string;
+  details: string;
+  /** `null` = «se hace, falta decidir cuándo»: nunca llega hasta aquí. */
+  schedule: RoutineSchedule;
+  policy: RoutineOverduePolicy;
+  /** `due_on` de las finalizaciones VIVAS; las anuladas no cuentan (0031). */
+  completedDueOns: string[];
+  /** Lo marcado HOY, con quién lo marcó: la ventana en que se puede deshacer. */
+  markedToday: { dueOn: string; byMembershipId: string }[];
+}
+
+export interface TodayViewer {
+  membershipId: string;
+  role: Role;
+}
+
+/** ISO 1=lunes … 7=domingo, sin tocar la zona del proceso. */
+function isoWeekdayOf(dateISO: string): number {
+  const weekday = new Date(`${dateISO}T00:00:00Z`).getUTCDay();
+  return weekday === 0 ? 7 : weekday;
+}
+
+function daysBetween(fromISO: string, toISO: string): number {
+  return Math.round(
+    (Date.parse(`${toISO}T00:00:00Z`) - Date.parse(`${fromISO}T00:00:00Z`)) / 86_400_000
+  );
+}
+
+/**
+ * Cómo se nombra un día pasado cercano. Dentro de la última semana el nombre
+ * del día es lo que una persona reconoce («el jueves»); más allá deja de
+ * identificar nada y hace falta la fecha.
+ */
+function pastDayLabel(dueOn: string, todayISO: string): string {
+  const gap = daysBetween(dueOn, todayISO);
+  if (gap === 1) return 'ayer';
+  if (gap <= 6) return `el ${weekdayName(isoWeekdayOf(dueOn))}`;
+  return `el ${dateLabel(dueOn)}`;
+}
+
+/** «Mañana» para el día siguiente; «El jueves» para el resto de la semana. */
+function aheadDayLabel(dueOn: string, todayISO: string): string {
+  if (daysBetween(todayISO, dueOn) === 1) return 'Mañana';
+  const name = weekdayName(isoWeekdayOf(dueOn));
+  return `El ${name}`;
+}
+
+const CHIP_DATE = new Intl.DateTimeFormat('es-ES', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'UTC'
+});
+
+/** El chip que se pinta al instante al marcar, ya resuelto en el servidor. */
+function doneChipFor(next: string | null): string {
+  if (!next) return 'Hecha ✓';
+  return `Hecha ✓ · próxima el ${CHIP_DATE.format(new Date(`${next}T00:00:00Z`))}`;
+}
+
+/**
+ * Lo que la tarjeta de rutinas enseña, y —tan importante— lo que no.
+ *
+ * Puro y determinista: recibe reglas y hechos ya filtrados por RLS y devuelve
+ * cadenas listas para pintar. Se prueba sin base de datos y sin navegador.
+ *
+ * Tres reglas gobiernan el resultado y conviene tenerlas a la vista:
+ *
+ *   · UNA rutina diaria no hecha ayer NO es una deuda. Con `skip` la ocurrencia
+ *     caduca al acabar su día; el atraso solo existe de semanal para arriba, y
+ *     entonces se enseña UNA línea, la más antigua, nunca noventa.
+ *   · «Esta semana» es información, no deberes: no se marca nada desde ahí. Y
+ *     lo que se repite casi a diario se dice UNA vez con su cadencia, porque
+ *     repetir «Ventilación» siete veces no ayuda a planificar nada.
+ *   · Ni porcentajes, ni rachas, ni medias, ni colores que califiquen: el chip
+ *     es CUENTA, no nota (AC-26 revisado). Aquí no se calcula ningún agregado
+ *     que puntúe a nadie, y esa ausencia es deliberada.
+ */
+export function buildTodayRoutines(
+  facts: readonly TodayRoutineFacts[],
+  todayISO: string,
+  viewer: TodayViewer
+): TodayRoutinesView {
+  const overdue: TodayRoutineRow[] = [];
+  const dueToday: TodayRoutineRow[] = [];
+  const done: TodayDoneRoutineRow[] = [];
+  const weekRepeats: TodayRoutinesView['weekRepeats'] = [];
+  const byDay = new Map<string, TodayWeekGroup['items']>();
+  const isAdmin = viewer.role === 'family_admin';
+
+  const weekFrom = addDays(todayISO, 1);
+  const weekTo = addDays(todayISO, WEEK_AHEAD_DAYS);
+
+  for (const fact of facts) {
+    const completed = new Set(fact.completedDueOns);
+    const pending = pendingFor(fact.schedule, fact.policy, completed, todayISO);
+
+    if (pending.overdue) {
+      // Al marcar la atrasada lo siguiente pendiente es la de hoy si la hay;
+      // si no, la próxima futura. El chip tiene que decir la verdad de ESA fila.
+      overdue.push({
+        key: `${fact.id}:${pending.overdue}`,
+        routineId: fact.id,
+        title: fact.title,
+        details: fact.details,
+        dueOn: pending.overdue,
+        note: `Tocaba ${pastDayLabel(pending.overdue, todayISO)}`,
+        doneChip: doneChipFor(pending.due[0] ?? pending.upcoming[0] ?? null)
+      });
+    }
+    if (pending.due.length > 0) {
+      dueToday.push({
+        key: `${fact.id}:${todayISO}`,
+        routineId: fact.id,
+        title: fact.title,
+        details: fact.details,
+        dueOn: todayISO,
+        note: '',
+        doneChip: doneChipFor(pending.upcoming[0] ?? null)
+      });
+    }
+
+    for (const mark of fact.markedToday) {
+      done.push({
+        key: `${fact.id}:${mark.dueOn}`,
+        routineId: fact.id,
+        title: fact.title,
+        details: fact.details,
+        dueOn: mark.dueOn,
+        // Mismo chip que el optimista: la fila no cambia de idioma al llegar
+        // los datos frescos, y la prueba de extremo a extremo no tiene que
+        // saber en cuál de los dos estados la pilló.
+        chip: doneChipFor(pending.overdue ?? pending.due[0] ?? pending.upcoming[0] ?? null),
+        note: mark.dueOn === todayISO ? '' : `Tocaba ${pastDayLabel(mark.dueOn, todayISO)}`,
+        canUndo: isAdmin || mark.byMembershipId === viewer.membershipId
+      });
+    }
+
+    // «Esta semana»: lo que viene DESPUÉS de hoy, para decidir si da tiempo hoy
+    // o se planifica. Nada de esto es accionable.
+    const ahead = occurrencesBetween(fact.schedule, weekFrom, weekTo).filter(
+      (dueOn) => !completed.has(dueOn)
+    );
+    if (ahead.length >= WEEK_REPEAT_THRESHOLD) {
+      weekRepeats.push({
+        key: fact.id,
+        title: fact.title,
+        cadence: cadenceClause(fact.schedule)
+      });
+      continue;
+    }
+    for (const dueOn of ahead) {
+      const items = byDay.get(dueOn) ?? [];
+      items.push({ key: `${fact.id}:${dueOn}`, title: fact.title, details: fact.details });
+      byDay.set(dueOn, items);
+    }
+  }
+
+  const week: TodayWeekGroup[] = [...byDay.keys()]
+    .sort()
+    .map((dueOn) => ({
+      key: dueOn,
+      label: aheadDayLabel(dueOn, todayISO),
+      items: byDay.get(dueOn) as TodayWeekGroup['items']
+    }));
+
+  // Corte a seis filas pendientes, atrasadas primero: el resto va tras un
+  // `<details>` nativo, que cuesta cero bytes de JavaScript.
+  const overdueVisible = overdue.slice(0, PENDING_ROWS_VISIBLE);
+  const todayVisible = dueToday.slice(0, Math.max(0, PENDING_ROWS_VISIBLE - overdue.length));
+  const more = [...overdue.slice(overdueVisible.length), ...dueToday.slice(todayVisible.length)];
+  const pendingCount = overdue.length + dueToday.length;
+
+  const blocks: TodayRoutineBlock[] = [];
+  if (overdueVisible.length > 0) {
+    blocks.push({ key: 'overdue', heading: 'Se quedó pendiente', folded: false, rows: overdueVisible });
+  }
+  if (todayVisible.length > 0) {
+    // El encabezado «Hoy» solo tiene sentido si hay algo por encima de lo que
+    // distinguirlo: en una tarjeta que ya se titula «Lo que toca hoy», decir
+    // «Hoy» sin nada más sobra.
+    blocks.push({
+      key: 'today',
+      heading: overdueVisible.length > 0 ? 'Hoy' : '',
+      folded: false,
+      rows: todayVisible
+    });
+  }
+  if (more.length > 0) {
+    blocks.push({
+      key: 'more',
+      heading: `Ver ${more.length === 1 ? 'la restante' : `las ${more.length} restantes`}`,
+      folded: true,
+      rows: more
+    });
+  }
+
+  return {
+    countChip:
+      pendingCount > 0 ? `${pendingCount} por hacer` : done.length > 0 ? 'Todo hecho ✓' : '',
+    blocks,
+    overdue: overdueVisible,
+    today: todayVisible,
+    more,
+    done,
+    doneLabel: done.length > 0 ? `${done.length} ${done.length === 1 ? 'hecha' : 'hechas'} hoy` : '',
+    week,
+    weekRepeats,
+    overdueCount: overdue.length,
+    anyToday: pendingCount > 0 || done.length > 0,
+    emptyNote: pendingCount > 0 || done.length > 0 ? '' : 'Ninguna rutina toca hoy.'
+  };
 }
 
 /**
@@ -402,46 +752,92 @@ export async function loadTodayOverview(
 
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
-      // Rutinas del rol (RLS filtra por audiencia) que vencen hoy o antes.
-      const routineResult = await client.query<{
-        id: string;
-        title: string;
-        details: string;
-        nextDueOn: string;
-        completedCurrent: boolean;
-        frequency: TodayRoutineView['frequency'];
-        intervalCount: number;
-      }>(
+      // Rutinas del rol (la RLS filtra por audiencia) con su REGLA, no con una
+      // fecha ya resuelta. El prefiltro llega hasta el final de «Esta semana»,
+      // y `next_due_on` sirve para eso justamente porque es una cota INFERIOR:
+      // si se queda anticuada solo puede quedarse atrás, así que selecciona de
+      // más y el generador descarta; nunca puede esconder una rutina.
+      //
+      // El segundo brazo del OR rescata lo MARCADO HOY aunque su próxima fecha
+      // ya esté lejos (una mensual recién hecha salta a dentro de un mes): sin
+      // él, marcar una rutina la haría desaparecer de la pantalla en el acto y
+      // no habría dónde deshacer el toque.
+      const routineResult = await client.query<
+        RoutineRuleRow & { id: string; title: string; details: string }
+      >(
         `select routine.id,
                 routine.title,
                 routine.details,
-                routine.next_due_on::text as "nextDueOn",
-                routine.frequency::text as "frequency",
-                routine.interval_count as "intervalCount",
-                exists (
-                  select 1 from app.routine_completions as completion
-                   where completion.household_id = routine.household_id
-                     and completion.routine_id = routine.id
-                     and completion.due_on = routine.next_due_on
-                ) as "completedCurrent"
+                ${ROUTINE_RULE_COLUMNS}
            from app.routines as routine
           where routine.household_id = $1
             and routine.archived_at is null
-            and routine.next_due_on <= $2
-          order by routine.next_due_on, routine.title`,
-        [householdId, todayISO]
+            and routine.pattern is not null
+            and (
+              routine.next_due_on <= $2::date
+              or exists (
+                select 1 from app.routine_completions as marked
+                 where marked.household_id = routine.household_id
+                   and marked.routine_id = routine.id
+                   and marked.voided_at is null
+                   and (marked.completed_at at time zone 'Europe/Madrid')::date = $3::date
+              )
+            )
+          order by routine.title`,
+        [householdId, addDays(todayISO, WEEK_AHEAD_DAYS), todayISO]
       );
-      const routines: TodayRoutineView[] = routineResult.rows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        details: row.details,
-        nextDueOn: row.nextDueOn,
-        dueLabel: row.nextDueOn === todayISO ? 'Hoy' : `Vencía el ${dateLabel(row.nextDueOn)}`,
-        overdue: row.nextDueOn < todayISO,
-        completedCurrent: row.completedCurrent,
-        frequency: row.frequency,
-        intervalCount: row.intervalCount
-      }));
+
+      // Las finalizaciones VIVAS de la ventana que mira el generador, en una
+      // sola consulta para todas las rutinas visibles. Las anuladas (0031) no
+      // viajan: para el cálculo no existen, que es lo que hace que deshacer
+      // devuelva la rutina al día que le tocaba.
+      const completionResult = await client.query<{
+        routineId: string;
+        dueOn: string;
+        byMembershipId: string;
+        markedToday: boolean;
+      }>(
+        `select completion.routine_id as "routineId",
+                completion.due_on::text as "dueOn",
+                completion.completed_by_membership_id as "byMembershipId",
+                (completion.completed_at at time zone 'Europe/Madrid')::date = $3::date as "markedToday"
+           from app.routine_completions as completion
+          where completion.household_id = $1
+            and completion.voided_at is null
+            and completion.due_on >= $2::date
+          order by completion.due_on`,
+        [householdId, addDays(todayISO, -PENDING_LOOKBACK_DAYS), todayISO]
+      );
+
+      const factsById = new Map<string, TodayRoutineFacts>();
+      for (const row of routineResult.rows) {
+        const schedule = routineScheduleFrom(row);
+        if (!schedule) continue;
+        factsById.set(row.id, {
+          id: row.id,
+          title: row.title,
+          details: row.details,
+          schedule,
+          policy: row.overduePolicy,
+          completedDueOns: [],
+          markedToday: []
+        });
+      }
+      for (const completion of completionResult.rows) {
+        const fact = factsById.get(completion.routineId);
+        if (!fact) continue;
+        fact.completedDueOns.push(completion.dueOn);
+        if (completion.markedToday) {
+          fact.markedToday.push({
+            dueOn: completion.dueOn,
+            byMembershipId: completion.byMembershipId
+          });
+        }
+      }
+      const routines = buildTodayRoutines([...factsById.values()], todayISO, {
+        membershipId: membership.id,
+        role: membership.role
+      });
 
       // Huecos de menú de hoy±3 días con su receta, grupo y confirmación. El
       // hash canónico se calcula en esta misma transacción (computeMenuSlotHash,
@@ -676,7 +1072,7 @@ export async function loadTodayOverview(
         pendingExpenses,
         settlements,
         unconfirmedSlots,
-        dueRoutines: routines,
+        overdueRoutineCount: routines.overdueCount,
         vacationNews
       });
 
