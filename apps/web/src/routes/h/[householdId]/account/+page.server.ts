@@ -3,10 +3,13 @@ import { error, fail } from '@sveltejs/kit';
 import { clearPasswordChangeRequirement } from '$lib/server/access.server';
 import { MIN_PASSWORD_LENGTH } from '$lib/server/auth-core';
 import { getAuth } from '$lib/server/auth.server';
+import { listOwnDevices, pushPublicKey } from '$lib/server/push.server';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals }) => {
+export const load: PageServerLoad = async ({ depends, locals }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
+  // Encender o apagar los avisos recarga solo esta lectura.
+  depends('cc:push');
   return {
     // Sin instalación real de identidad no hay contraseña que cambiar: la
     // página lo dice en lugar de ofrecer un formulario que no puede cumplir.
@@ -15,7 +18,14 @@ export const load: PageServerLoad = ({ locals }) => {
     // Entró con la provisional que le dieron en mano: hasta cambiarla, el hook
     // del servidor la devuelve aquí desde cualquier otra pantalla del hogar, y
     // la página tiene que explicar por qué en vez de dejarla dando vueltas.
-    mustChangePassword: locals.user.mustChangePassword
+    mustChangePassword: locals.user.mustChangePassword,
+    // Sin claves VAPID no hay canal en esta instalación, y la sección lo dice en
+    // vez de dibujar un interruptor que no puede funcionar.
+    pushPublicKey: pushPublicKey(),
+    // SOLO los suyos, y no porque esta consulta filtre: la RLS de la 0032 no
+    // deja ver otra cosa. Quien administra el hogar no puede saber desde ninguna
+    // pantalla si otra persona tiene los avisos encendidos.
+    pushDevices: await listOwnDevices({ id: locals.user.id })
   };
 };
 

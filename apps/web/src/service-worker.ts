@@ -55,6 +55,69 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+/**
+ * Un aviso al móvil, dibujado tal cual lo mandó el servidor.
+ *
+ * Este manejador NO sale a la red, y es deliberado: el payload ya trae el título,
+ * el cuerpo y el destino compuestos, así que no hay ninguna consulta que pueda
+ * fallar, tardar o filtrar nada entre que llega el aviso y aparece en pantalla.
+ *
+ * Mostrar algo es obligatorio, no una elección de diseño: la suscripción se pidió
+ * con `userVisibleOnly: true` y un service worker que recibe y calla hace que el
+ * navegador enseñe una notificación genérica suya —o revoque la suscripción—.
+ * Por eso, si el payload viniera ilegible, se enseña algo honesto en vez de
+ * intentar tragárselo.
+ */
+self.addEventListener('push', (event) => {
+  event.waitUntil((async () => {
+    let notice: { title?: string; body?: string; url?: string; tag?: string } = {};
+    try {
+      notice = (event.data?.json() ?? {}) as typeof notice;
+    } catch {
+      // Payload que no es JSON: no debería ocurrir nunca, pero callarse no es
+      // una opción que este canal permita.
+    }
+    await self.registration.showNotification(notice.title ?? 'Casa Clara', {
+      body: notice.body ?? 'Hay algo que mirar en la aplicación.',
+      // El icono lo resuelve el navegador desde el manifiesto; no se declara
+      // aquí para no tener dos sitios donde mantenerlo.
+      tag: notice.tag ?? 'casa-clara',
+      // Sustituir en silencio: el mismo asunto avisado dos veces no vibra dos
+      // veces. La escalada de la cuenta pendiente reutiliza su etiqueta a
+      // propósito.
+      renotify: false,
+      // Nada de esta casa justifica quedarse en pantalla hasta que alguien la
+      // toque, ni sonar por encima de lo que la persona esté haciendo.
+      requireInteraction: false,
+      silent: false,
+      data: { url: notice.url ?? '/' }
+    });
+  })());
+});
+
+/**
+ * Tocar el aviso lleva a donde se atiende el hecho.
+ *
+ * Si ya hay una ventana de Casa Clara abierta se reutiliza en vez de abrir otra:
+ * en un móvil, dos instancias de la misma aplicación es un estado del que cuesta
+ * salir.
+ */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data as { url?: string } | undefined)?.url ?? '/';
+  event.waitUntil((async () => {
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      if (new URL(client.url).origin === self.location.origin) {
+        await client.focus();
+        if ('navigate' in client) await client.navigate(target).catch(() => client);
+        return;
+      }
+    }
+    await self.clients.openWindow(target);
+  })());
+});
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;

@@ -137,6 +137,10 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       budgetMs: 8_000,
       maxAttempts: 5,
       leaseMs: undefined,
+      // Sin claves VAPID: en esta batería el canal de avisos no existe, que es
+      // exactamente lo que tiene que pasar cuando no están configuradas. El
+      // drenaje vacía todo lo demás igual.
+      environment: {},
       storage: {
         bucket: 'casaclara-test',
         putObject: noStorage,

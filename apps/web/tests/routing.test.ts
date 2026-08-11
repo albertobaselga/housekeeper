@@ -15,9 +15,10 @@ describe('household route contract', () => {
       'routines', 'calendar', 'contacts', 'emergency', 'account', 'personal', 'settings'
     ]);
 
-    // «Tu contraseña» la alcanza todo el mundo; Ajustes sigue siendo de la
-    // familia. Si esto se invirtiera, la empleada quedaría sin forma de cambiar
-    // su propia contraseña.
+    // «Tu cuenta» la alcanza todo el mundo; Ajustes sigue siendo de la familia.
+    // Si esto se invirtiera, la empleada quedaría sin forma de cambiar su propia
+    // contraseña — y sin forma de encender o apagar sus avisos, que es lo otro
+    // que vive ahí y que nadie más puede tocar por ella.
     expect(MODULE_CAPABILITY.account).toBe('emergency.read');
     expect(MODULE_CAPABILITY.settings).toBe('access.manage');
     // Personal enseña nombres, fechas y sueldos de las compañeras: la misma

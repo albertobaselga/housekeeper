@@ -13,8 +13,6 @@
   let { context, children }: { context: AppContext; children: Snippet } = $props();
 
   const has = (capability: Capability) => context.capabilities.includes(capability);
-  /** ¿Hay identidad real con contraseña detrás de esta instalación? */
-  const hasPasswordAuth = () => Boolean(context.passwordAuth);
 
   interface NavEntry {
     module: HouseholdModule;
@@ -53,12 +51,17 @@
   // lista para que roles con pocos módulos (viewer) la conserven a un tap.
   const mobileOrder = [...visibleNavigation, NAV_ENTRIES.emergency];
   const mobilePrimary = mobileOrder.slice(0, 4);
-  // «Tu contraseña» solo cuando hay identidad real detrás: en la demo por
-  // fixtures no existe contraseña alguna y el enlace sería una promesa vacía.
-  const accountEntry = { module: 'account', label: 'Tu contraseña', short: 'Contraseña', capability: 'emergency.read' } as NavEntry;
+  // «Tu cuenta» está siempre. Antes se escondía cuando no había identidad real
+  // detrás —sin contraseñas, el enlace era una promesa vacía—, pero ahora esa
+  // pantalla guarda además el interruptor de los avisos al móvil, que es lo
+  // único que cada persona decide por su cuenta y que nadie más puede ver ni
+  // tocar. Es también el único destino que alcanzan los cinco papeles: dejarlo
+  // fuera de la navegación sería dejarlo fuera del alcance de quien más
+  // derecho tiene a encontrarlo.
+  const accountEntry = { module: 'account', label: 'Tu cuenta', short: 'Tu cuenta', capability: 'emergency.read' } as NavEntry;
   const sheetNavigation: NavEntry[] = [
     ...mobileOrder.slice(4),
-    ...(hasPasswordAuth() ? [accountEntry] : []),
+    accountEntry,
     ...(has('access.manage')
       ? [{ module: 'settings', label: 'Ajustes del hogar', short: 'Ajustes', capability: 'access.manage' } as NavEntry]
       : [])
@@ -227,11 +230,9 @@
         <NavIcon name="emergency" />
         <span><strong>Emergencias</strong><small>Disponible sin conexión</small></span>
       </a>
-      {#if context.passwordAuth}
-        <a class="settings-link" class:active={isActive('account')} href={pathFor('account')} aria-current={isActive('account') ? 'page' : undefined}>
-          <NavIcon name="account" /> <span>Tu contraseña</span>
-        </a>
-      {/if}
+      <a class="settings-link" class:active={isActive('account')} href={pathFor('account')} aria-current={isActive('account') ? 'page' : undefined}>
+        <NavIcon name="account" /> <span>Tu cuenta</span>
+      </a>
       {#if has('access.manage')}
         <a class="settings-link" class:active={isActive('settings')} href={pathFor('settings')} aria-current={isActive('settings') ? 'page' : undefined}>
           <NavIcon name="settings" /> <span>Ajustes del hogar</span>

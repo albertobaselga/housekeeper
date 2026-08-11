@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
 import { lookup as dnsLookup } from "node:dns/promises";
-import { isIP } from "node:net";
 
 import type { Pool } from "pg";
 
+import { isForbiddenAddress, type ResolvedAddress } from "./net.js";
 import { PermanentJobError, type JobHandler } from "./queue.js";
+
+// Se re-exportan porque este módulo fue su casa y las pruebas de ICS los piden
+// aquí: el veto ahora vive en `net.ts` y lo comparten las fuentes de calendario
+// y los endpoints de aviso.
+export { isForbiddenAddress, type ResolvedAddress };
 
 export const ICS_SYNC_JOB = "ics.sync_source";
 export const ICS_SYNC_ALL_JOB = "ics.sync_all";
@@ -49,11 +54,6 @@ export interface IcsOccurrence {
   contentHash: string;
 }
 
-export interface ResolvedAddress {
-  address: string;
-  family: number;
-}
-
 export interface IcsFetchDeps {
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
   lookup?: (hostname: string) => Promise<ResolvedAddress[]>;
@@ -65,45 +65,6 @@ export interface IcsFetchDeps {
 
 function defaultLookup(hostname: string): Promise<ResolvedAddress[]> {
   return dnsLookup(hostname, { all: true });
-}
-
-/** ¿Es una dirección IPv4 privada, loopback, link-local o de metadatos? */
-function isForbiddenIpv4(address: string): boolean {
-  const octets = address.split(".").map(Number);
-  if (octets.length !== 4 || octets.some((value) => !Number.isInteger(value) || value < 0 || value > 255)) {
-    return true; // Una IP que no se deja interpretar no se contacta.
-  }
-  const [a, b] = octets as [number, number, number, number];
-  return (
-    a === 0 || // 0.0.0.0/8 ("esta red")
-    a === 10 || // 10.0.0.0/8
-    a === 127 || // 127.0.0.0/8 loopback
-    (a === 169 && b === 254) || // 169.254.0.0/16 link-local y metadatos cloud
-    (a === 172 && b >= 16 && b <= 31) || // 172.16.0.0/12
-    (a === 192 && b === 168) // 192.168.0.0/16
-  );
-}
-
-/** ¿Es una dirección IPv6 privada/loopback/link-local (o un mapeo de una IPv4 prohibida)? */
-function isForbiddenIpv6(address: string): boolean {
-  const normalized = address.toLowerCase();
-  // IPv4 embebida: ::ffff:127.0.0.1 y similares.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
-  if (mapped) return isForbiddenIpv4(mapped[1] as string);
-  if (normalized === "::" || normalized === "::1") return true; // no especificada / loopback
-  const firstGroup = normalized.split(":", 1)[0] ?? "";
-  const value = firstGroup === "" ? 0 : Number.parseInt(firstGroup, 16);
-  if (Number.isNaN(value)) return true;
-  if ((value & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
-  if ((value & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
-  return false;
-}
-
-export function isForbiddenAddress(address: string): boolean {
-  const version = isIP(address);
-  if (version === 4) return isForbiddenIpv4(address);
-  if (version === 6) return isForbiddenIpv6(address);
-  return true;
 }
 
 /**
