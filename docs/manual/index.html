@@ -1052,6 +1052,14 @@ thead th { border-top: 0; }
   </figure>
 
   <h3 id="fa-guia">Guía de la casa: las instrucciones escritas</h3>
+  <div class="tarjeta aviso">
+    <p>
+      <strong>La Guía la escribe quien administra la casa, y nadie más.</strong> El
+      miembro de la familia, la persona interna, el apoyo y el acceso puntual la
+      <strong>leen</strong>: no tienen botón de escribir ni de publicar, ni ven los
+      borradores. Es la memoria de la casa, y conviene que tenga una voz sola.
+    </p>
+  </div>
   <p>
     La <span class="ui">Guía de la casa</span> es la memoria del hogar: cómo va la
     lavadora, qué hacer si se va la luz, cómo se dobla la ropa, el recetario. Se
@@ -1116,9 +1124,11 @@ thead th { border-top: 0; }
   </div>
   <p>
     <strong>Quién ve los borradores.</strong> Una nota
-    <span class="chip alerta">Guardada sin publicar</span> la ven las personas que
-    pueden escribir en la Guía —la familia y la persona interna—; el apoyo del hogar
-    y el acceso puntual solo ven lo publicado.
+    <span class="chip alerta">Guardada sin publicar</span> solo la ve quien administra
+    la casa, que es quien puede escribirla. Para el resto del hogar esa nota
+    sencillamente <strong>no existe</strong> todavía: no aparece en la lista, ni en el
+    buscador, ni al abrir su enlace. Hasta que se publica no es una instrucción de la
+    casa, es un papel a medias.
   </p>
   <details class="tarjeta">
     <summary style="cursor:pointer; font-weight:750; color: var(--ink);">Cosas de administración de la Guía</summary>
@@ -1132,6 +1142,78 @@ thead th { border-top: 0; }
       <li><strong>Modelos (avanzado):</strong> un apartado puede convertirse en molde con <span class="ui">Usar como modelo (avanzado)</span> —pide confirmación, porque el apartado deja de salir en Destacadas— y luego clonarse con <span class="ui">Crear apartado desde el modelo</span>. <span class="ui">Volver a apartado normal</span> lo deshace.</li>
     </ul>
   </details>
+
+  <h3 id="fa-libro">Leerla entera, como un libro</h3>
+  <p>
+    La Guía se consulta cuando hace falta —se busca «lavadora» y se lee esa nota—, pero
+    conviene <strong>habérsela leído entera al menos una vez</strong>. Quien llega nuevo
+    a una casa no sabe qué preguntar; para eso está la tarjeta
+    <span class="ui">Leerla entera, como un libro</span>, al final de la portada de la
+    Guía.
+  </p>
+  <p>
+    Debajo del título dice por dónde vas —«Llevas 18 de 52 notas. Sigues por «Cómo va la
+    caldera».»— y un botón: <span class="ui">Empezar a leer</span>,
+    <span class="ui">Seguir leyendo</span> o <span class="ui">Releerla</span> si ya te
+    la leíste entera.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Guía de la casa · Casa Roble</span></div>
+      <img src="capturas/familia-guia-libro.png" loading="lazy" width="2560" height="1600"
+           alt="Tarjeta «Leerla entera, como un libro» al final de la portada de la Guía: la barra de progreso de la lectura, la línea «Llevas 18 de 52 notas» con la nota por la que se va, el botón Seguir leyendo y el enlace «Ver quién se la ha leído».">
+    </div>
+    <figcaption>
+      La tarjeta va debajo de las notas, no encima: quien viene a resolver algo concreto
+      no debería tropezarse antes con una invitación a leérselo todo.
+    </figcaption>
+  </figure>
+  <p>
+    Al pulsar se abre <strong>la Guía como un libro</strong>: una nota por pantalla, con
+    la barra de avance arriba y la cuenta —«Nota 19 de 52 · has leído 18»— y, abajo,
+    <span class="ui">← Anterior</span> y <span class="ui">Siguiente →</span> (o las
+    flechas del teclado). En la última nota el botón cambia y dice <span class="ui">He
+    terminado la guía</span>.
+  </p>
+  <p>
+    Una nota <strong>se marca leída al llegar al final y pasar de página</strong>, no
+    por abrirla ni por pasarla de largo. La propia página lo avisa antes: «Al pasar de
+    página se marcará como leída». Y si el texto cambia después, la nota vuelve a la
+    lista con su explicación: <span class="ui">La leíste, pero el texto ha cambiado
+    desde entonces</span>. Solo cuando cambian las palabras: corregir una coma o poner
+    algo en negrita no obliga a releer nada.
+  </p>
+
+  <h4>Cómo va la lectura</h4>
+  <p>
+    Desde la tarjeta del libro se llega a <span class="ui">Cómo va la lectura</span>,
+    que tiene cuatro bloques: <span class="ui">Tu lectura</span> con la barra de avance
+    y el reparto por apartados, <span class="ui">Te faltan estas</span> con los enlaces
+    directos a lo que no has leído, <span class="ui">Han cambiado desde que las
+    leíste</span> y —solo para quien administra— <span class="ui">Quién se ha leído la
+    guía</span>.
+  </p>
+  <figure class="captura">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Avance de la guía · Casa Roble</span></div>
+      <img src="capturas/familia-guia-progreso.png" loading="lazy" width="2560" height="1600"
+           alt="Pantalla «Cómo va la lectura» de Alberto: el bloque «Han cambiado desde que las leíste» con dos notas, y debajo «Quién se ha leído la guía» con una fila por persona de la casa y su chip, Guía leída o «Le faltan 12».">
+    </div>
+    <figcaption>
+      Quién lleva qué. Sirve para saber si la persona que acaba de llegar ya sabe cómo
+      va la caldera, no para pedirle cuentas a nadie.
+    </figcaption>
+  </figure>
+  <div class="tarjeta principio">
+    <h4>Lo único que se guarda es cuántas notas lleva cada quien</h4>
+    <p>
+      La pantalla lo dice con todas las letras: <em>«Esto es TODO lo que la aplicación
+      guarda: cuántas notas lleva cada persona en cada apartado. No hay horas, ni
+      fechas, ni qué nota abrió cada día; la base de datos no tiene dónde
+      apuntarlo.»</em> No es una promesa de intención: es que ese dato no existe en
+      ninguna parte, y por tanto nadie puede mirarlo.
+    </p>
+  </div>
 
   <h3 id="fa-manual">El manual de convivencia de la casa, ya dentro</h3>
   <p>
