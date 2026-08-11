@@ -19,3 +19,8 @@ apps/web/test-results
 apps/web/playwright-report
 coverage
 C:*
+
+# Los worktrees de los agentes viven aquí y cambian mientras se despliega:
+# subirlos multiplica el envío y hace fallar la subida cuando un fichero se
+# reescribe a mitad.
+.claude
