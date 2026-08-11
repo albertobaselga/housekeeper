@@ -27,7 +27,6 @@ import { addDays } from "./shared.js";
 export const ICS_SYNC_JOB = "ics.sync_source";
 
 type RoutineAudience = "family" | "employee" | "all";
-type RoutineFrequency = "daily" | "weekly" | "monthly" | "quarterly";
 
 /**
  * El día del hogar. Una ocurrencia es un DÍA de calendario, no un instante: si
