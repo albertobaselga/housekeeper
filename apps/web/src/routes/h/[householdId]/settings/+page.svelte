@@ -306,7 +306,14 @@
           </div>
         </section>
       {/if}
-      <section class="card warning-card"><p class="eyebrow">Entorno de prueba</p><h2>Datos exclusivamente sintéticos</h2><p>Las sesiones no se guardan: al reiniciar la aplicación hay que volver a entrar. Cada hogar solo puede ver lo suyo, pero esta demo no sustituye a la versión final: no introduzcas datos reales.</p></section>
+      <!-- Solo donde de verdad lo es. Esta tarjeta se escribió sin condición y
+           salía también en una instalación real, diciéndole a la casa que no
+           metiera datos reales justo en la pantalla desde la que se dan de alta
+           los accesos de las personas que trabajan en ella. El mismo flag que
+           pinta la banda del AppShell manda aquí. -->
+      {#if context.synthetic}
+        <section class="card warning-card"><p class="eyebrow">Entorno de prueba</p><h2>Datos exclusivamente sintéticos</h2><p>Las sesiones no se guardan: al reiniciar la aplicación hay que volver a entrar. Cada hogar solo puede ver lo suyo, pero esta demo no sustituye a la versión final: no introduzcas datos reales.</p></section>
+      {/if}
     </div>
   </div>
 </div>

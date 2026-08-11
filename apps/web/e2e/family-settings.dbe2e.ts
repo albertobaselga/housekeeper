@@ -153,3 +153,20 @@ test('Alberto descarga el traspaso operativo como ZIP (F4-02)', async ({ page })
   expect(response.headers()['content-type']).toBe('application/zip');
   expect(response.headers()['content-disposition']).toContain('traspaso-helper.zip');
 });
+
+test('con datos reales, Ajustes NO anuncia un entorno de prueba', async ({ page }) => {
+  // La tarjeta «Datos exclusivamente sintéticos» se escribió sin condición y
+  // salía en TODA instalación, incluida una con un contrato de verdad. Decirle
+  // a alguien «no introduzcas datos reales» en la misma pantalla donde da de
+  // alta el acceso de quien trabaja en su casa destruye la confianza en lo que
+  // acaba de guardar. Esta suite corre sin ALLOW_SYNTHETIC_DATA_ONLY, que es
+  // exactamente la forma de producción.
+  await gotoSettings(page);
+
+  await expect(page.getByRole('heading', { name: 'Datos exclusivamente sintéticos' })).toHaveCount(0);
+  await expect(page.getByText('no introduzcas datos reales')).toHaveCount(0);
+  await expect(page.getByText('Entorno de prueba')).toHaveCount(0);
+
+  // Y la banda del marco tampoco, que se alimenta del mismo flag.
+  await expect(page.getByText('Entorno sintético: no introduzcas datos reales')).toHaveCount(0);
+});
