@@ -7,7 +7,16 @@
     <meta name="description" content="Acuerdos, cuidados y el día a día del hogar." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <!--
+      iOS NO usa SVG para el icono de la pantalla de inicio: sin este PNG de
+      180×180 instala la aplicación con una captura de la página como icono.
+      Y en iPhone la pantalla de inicio no es cosmética — es el único sitio desde
+      el que funcionan los avisos al móvil (docs/runbooks/notificaciones-push.md),
+      así que la instalación tiene que quedar bien hecha o nadie la conserva.
+    -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Hogar" />
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">
