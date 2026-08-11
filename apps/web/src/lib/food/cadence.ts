@@ -337,10 +337,18 @@ export function formFromSchedule(
  */
 export function cadenceSummary(
   schedule: RoutineSchedule,
-  nextOccurrenceOn: string | null
+  nextOccurrenceOn: string | null,
+  todayISO?: string
 ): string {
   const clause = cadenceClause(schedule);
   if (schedule === null || nextOccurrenceOn === null) return clause;
+  // Lo vencido dice que está vencido, aquí también. Hoy ya lo hacía bien
+  // («Vencía el 9 ago») y Rutinas seguía anunciando «la próxima, el dom, 9 ago»
+  // para una fecha que ya pasó: una fecha en futuro para algo atrasado no es
+  // un matiz de redacción, es decirle a quien la lee que va bien de tiempo.
+  if (todayISO && nextOccurrenceOn < todayISO) {
+    return `${clause} · vencía el ${spanishDateLabel(nextOccurrenceOn, { weekday: false })}`;
+  }
   if (schedule.pattern === 'every_n_days' && schedule.repeatEvery === 1) return clause;
   const weekday = schedule.pattern !== 'months_of_year';
   return `${clause} · la próxima, el ${spanishDateLabel(nextOccurrenceOn, { weekday })}`;

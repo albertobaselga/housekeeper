@@ -7,9 +7,14 @@ test('sin sesión, una ruta profunda redirige a login conservando el destino', a
   await expect(page).toHaveURL(/\/login\?next=/);
 });
 
-test('la administradora entra y ve Hoy con su progreso', async ({ page }) => {
+test('la administradora entra y ve Hoy con el estado del día', async ({ page }) => {
   await loginAs(page, 'admin');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Alberto');
+  // El h1 de Hoy dice el ESTADO, no «Buenas noches, Alberto»: un saludo de
+  // 32 px en dos líneas a quien abre la aplicación todos los días era el
+  // ejemplo perfecto de que lo que más ocupaba era lo que menos informaba.
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('hechas hoy');
+  // Que la sesión es la suya lo dice su perfil, que es donde se mira.
+  await expect(page.locator('.profile-copy strong')).toContainText('Alberto');
 });
 
 test('el visor no puede abrir el expediente laboral por URL directa', async ({ page }) => {

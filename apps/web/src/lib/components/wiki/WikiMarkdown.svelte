@@ -10,6 +10,20 @@
     // El h1 lo pone la cabecera de la página; el contenido empieza en h2.
     return `h${Math.min(Math.max(level + 1, 2), 4)}`;
   }
+
+  /**
+   * Texto plano de una celda de cabecera, para que cada celda de datos lleve su
+   * etiqueta al convertirse en ficha por debajo de 600 px.
+   *
+   * Las tablas del manual de convivencia se leían con scroll horizontal MUDO
+   * dentro de la tarjeta: a 320 px no se veía ni una celda entera y la tercera
+   * columna —«Avisar si», la que dice cuándo hay que llamar a la familia— se
+   * partía a media palabra («Hay manchas,»). Una tabla con scroll horizontal
+   * sin señal esconde justo la columna que importa.
+   */
+  function plain(parts: WikiInline[]): string {
+    return parts.map((part) => part.text).join('');
+  }
 </script>
 
 {#snippet inline(parts: WikiInline[])}
@@ -46,8 +60,8 @@
           <tbody>
             {#each block.rows as row}
               <tr>
-                {#each row as cell}
-                  <td>{@render inline(cell)}</td>
+                {#each row as cell, column}
+                  <td data-etiqueta={plain(block.header[column] ?? [])}>{@render inline(cell)}</td>
                 {/each}
               </tr>
             {/each}

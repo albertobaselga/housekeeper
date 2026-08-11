@@ -173,6 +173,11 @@
     return nodes.reduce((total, node) => total + 1 + noteCount(node.children), 0);
   }
 
+  /** Cuántas notas hay en toda la guía: es lo que dice el titular de estado. */
+  const totalNotes = $derived(
+    home ? home.spaces.reduce((total, space) => total + noteCount(space.pages), 0) : 0
+  );
+
   // Modo fixture (sin base de datos): lectura pura, sin acciones de escritura.
   let selectedSpace = $state('Todo');
   let selectedId = $state<string>(untrack(() => data.wiki?.pages[0]?.id ?? ''));
@@ -203,9 +208,13 @@
 {/snippet}
 
 <div class="page-wrap">
+  <!-- La Guía se consulta DE PIE. El h1 dice cuánta casa hay escrita y deja de
+       gastar 300 px de marco (el 36 % de la pantalla a 390 y el 53 % a 320) en
+       un eyebrow decorativo, un título de 32 px en dos líneas y tres líneas de
+       descripción antes de la primera instrucción. -->
   <PageHeader
     eyebrow="Las instrucciones de tu casa"
-    title="Guía de la casa"
+    title={home ? `Guía de la casa · ${totalNotes} nota${totalNotes === 1 ? '' : 's'}` : 'Guía de la casa'}
     description="Aparatos, recetas, niños, limpieza. Escríbelo una vez y cualquiera lo encuentra."
   />
 
@@ -222,63 +231,22 @@
         type="search"
         autocomplete="off"
         enterkeyhint="search"
-        placeholder="¿Qué necesitas saber? p. ej. lavadora, caldera…"
+        placeholder="¿Qué necesitas saber?"
       />
       <button class="button primary" type="submit">Buscar</button>
     </form>
 
-    <!-- 2 · Leer la guía entera. Es la vía de la acogida y convive con la
-         consulta suelta: buscar y entrar a una nota sigue funcionando igual. -->
-    <section class="card guide-reading-card" aria-labelledby="lectura-title">
-      <div class="section-heading">
-        <div>
-          <h2 id="lectura-title">Leerla entera, como un libro</h2>
-          <p class="audit-note">
-            {#if home.reading.total === 0}
-              Todavía no hay notas publicadas.
-            {:else if home.reading.complete}
-              Te la has leído entera: {home.reading.total} notas.
-              {#if home.reading.changed > 0}
-                {home.reading.changed} han cambiado desde entonces.
-              {/if}
-            {:else}
-              Llevas {home.reading.read} de {home.reading.total} notas.
-              {#if home.reading.nextTitle}Sigues por «{home.reading.nextTitle}».{/if}
-            {/if}
-          </p>
-        </div>
-        {#if home.reading.total > 0}
-          <a class="button primary" href={`${base}/libro`}>
-            {home.reading.read === 0 ? 'Empezar a leer' : home.reading.complete ? 'Releerla' : 'Seguir leyendo'}
-          </a>
-        {/if}
-      </div>
-      {#if home.reading.total > 0}
-        <div
-          class="book-progress-bar"
-          role="progressbar"
-          aria-label="Notas leídas de la guía"
-          aria-valuenow={home.reading.read}
-          aria-valuemin="0"
-          aria-valuemax={home.reading.total}
-        >
-          <span style={`width: ${Math.round((home.reading.read / home.reading.total) * 100)}%`}></span>
-        </div>
-        <p class="audit-note">
-          <a href={`${base}/progreso`}>
-            {home.canWrite ? 'Ver quién se la ha leído' : 'Ver qué me falta'}
-          </a>
-        </p>
-      {/if}
-    </section>
-
-    <!-- 3 · Un solo botón primario para escribir, solo para quien administra. -->
-    {#if home.canWrite && !composerOpen}
-      <div class="wiki-write-cta">
-        <button class="button primary" type="button" onclick={() => void openComposer()}>
-          Escribir una instrucción
-        </button>
-      </div>
+    <!-- 2 · Las destacadas, como atajos y no como bloque repetido. Antes eran
+         una rejilla de tarjetas de 3 × 84 px con el mismo dato que ya sale más
+         abajo en su apartado; ahora son chips de una línea con máscara en
+         degradado y un chip siempre cortado a la mitad, así que se ve que hay
+         más. La nota sigue llevando su insignia «Destacada» en su sitio. -->
+    {#if home.pinned.length}
+      <nav class="chip-strip scroller" aria-label="Notas destacadas">
+        {#each home.pinned as entry (entry.id)}
+          <a class="chip" href={`${base}/${entry.slug}`}>{entry.title}</a>
+        {/each}
+      </nav>
     {/if}
 
     {#if home.canWrite && composerOpen}
@@ -355,44 +323,23 @@
       </section>
     {/if}
 
-    <!-- 3 · Destacadas (sin contadores de lecturas). -->
-    {#if home.pinned.length}
-      <section class="card" aria-labelledby="pinned-title">
-        <div class="section-heading"><div><h2 id="pinned-title">Destacadas</h2></div></div>
-        <div class="wiki-pinned">
-          {#each home.pinned as entry (entry.id)}
-            <a href={`${base}/${entry.slug}`}>
-              <small>{entry.spaceName}</small>
-              <strong>{entry.title}</strong>
-              <span>Actualizada el {entry.updatedLabel}</span>
-            </a>
-          {/each}
-        </div>
-      </section>
-    {/if}
-
-    <!-- 4 · Apartados como tarjetas simples. -->
+    <!-- 3 · Los apartados con sus notas: LA lista de esta pantalla, y por eso
+         va justo debajo del buscador. Antes empezaba a 300 px del borde,
+         detrás de la tarjeta de lectura y del botón de escribir, con fichas de
+         84–102 px de las que solo se veían seis a 390 px y tres a 320. -->
     {#if home.spaces.length || home.templates.length}
       <section aria-labelledby="spaces-title">
-        <div class="section-heading">
-          <div>
-            <h2 id="spaces-title">Apartados</h2>
-            {#if home.recent.length}
-              <p class="audit-note">Última nota: {home.recent[0].title} · {home.recent[0].updatedLabel}</p>
-            {/if}
-          </div>
-        </div>
+        <h2 id="spaces-title" class="sr-only">Apartados</h2>
         <div class="wiki-sections">
-          {#each home.spaces as space (space.id)}
+          {#each home.spaces as space, index (space.id)}
             {@const total = noteCount(space.pages)}
             <section class="card wiki-section-card">
               <div class="wiki-node-row">
                 <h3>{space.name}</h3>
                 <small class="wiki-section-count">{total} nota{total === 1 ? '' : 's'}</small>
               </div>
-              {#if space.description}<p class="article-summary">{space.description}</p>{/if}
               {#if space.pages.length}
-                <ul class="wiki-tree">
+                <ul class="wiki-tree" data-lista={index === 0 ? 'principal' : undefined}>
                   {#each space.pages as node (node.id)}
                     {@render pageNode(node)}
                   {/each}
@@ -437,11 +384,71 @@
       <section class="card empty-state">
         <span aria-hidden="true">⌂</span>
         <h2>Aún no hay nada publicado aquí</h2>
-        <p>Cuando la familia escriba las instrucciones de la casa, las verás en esta página.</p>
+        <p>
+          Aquí van las instrucciones de la casa: aparatos, recetas, niños, limpieza.
+          Cuando la familia las escriba, las verás en esta página.
+        </p>
       </section>
     {/if}
 
-    <!-- 5 · Mantenimiento, plegado y solo para quien administra. -->
+    <!-- 4 · Leerla entera. Es la vía de la acogida —se hace una vez— y convive
+         con la consulta suelta, que es lo que se hace a diario: por eso va
+         DEBAJO de la lista y no encima. Buscar y entrar a una nota sigue
+         funcionando igual. -->
+    <section class="card guide-reading-card" aria-labelledby="lectura-title">
+      <div class="section-heading">
+        <div>
+          <h2 id="lectura-title">Leerla entera, como un libro</h2>
+          <p class="audit-note">
+            {#if home.reading.total === 0}
+              Todavía no hay notas publicadas.
+            {:else if home.reading.complete}
+              Te la has leído entera: {home.reading.total} notas.
+              {#if home.reading.changed > 0}
+                {home.reading.changed} han cambiado desde entonces.
+              {/if}
+            {:else}
+              Llevas {home.reading.read} de {home.reading.total} notas.
+              {#if home.reading.nextTitle}Sigues por «{home.reading.nextTitle}».{/if}
+            {/if}
+          </p>
+        </div>
+        {#if home.reading.total > 0}
+          <a class="button primary" href={`${base}/libro`}>
+            {home.reading.read === 0 ? 'Empezar a leer' : home.reading.complete ? 'Releerla' : 'Seguir leyendo'}
+          </a>
+        {/if}
+      </div>
+      {#if home.reading.total > 0}
+        <div
+          class="book-progress-bar"
+          role="progressbar"
+          aria-label="Notas leídas de la guía"
+          aria-valuenow={home.reading.read}
+          aria-valuemin="0"
+          aria-valuemax={home.reading.total}
+        >
+          <span style={`width: ${Math.round((home.reading.read / home.reading.total) * 100)}%`}></span>
+        </div>
+        <p class="audit-note">
+          <a href={`${base}/progreso`}>
+            {home.canWrite ? 'Ver quién se la ha leído' : 'Ver qué me falta'}
+          </a>
+        </p>
+      {/if}
+    </section>
+
+    <!-- 5 · Escribir: leer pasa cincuenta veces por cada edición, así que el
+         botón de escribir va después de lo que se lee, no delante. -->
+    {#if home.canWrite && !composerOpen}
+      <div class="wiki-write-cta">
+        <button class="button primary" type="button" onclick={() => void openComposer()}>
+          Escribir una instrucción
+        </button>
+      </div>
+    {/if}
+
+    <!-- 6 · Mantenimiento, plegado y solo para quien administra. -->
     {#if home.canWrite}
       <details class="card wiki-maintenance">
         <summary>Mantenimiento de la guía</summary>
@@ -541,18 +548,21 @@
       </details>
     {/if}
   {:else if data.wiki}
-    <div class="space-tabs" role="list" aria-label="Apartados de la guía">
+    <!-- Siete apartados en 353 px de caja medían 467 px de contenido: «Recetas
+         y comensales» salía cortada a 390 y no existía visualmente a 320. Con
+         más de cuatro, scroller con máscara en degradado y un chip siempre
+         cortado a la mitad: se ve que hay más. -->
+    <div class="chip-strip" class:scroller={data.wiki.spaces.length > 4} role="list" aria-label="Apartados de la guía">
       {#each data.wiki.spaces as space}
-        <button type="button" class:active={selectedSpace === space} onclick={() => selectedSpace = space}>{space}</button>
+        <button type="button" class="chip" class:active={selectedSpace === space} onclick={() => selectedSpace = space}>{space}</button>
       {/each}
     </div>
 
     <div class="wiki-layout">
-      <div class="wiki-list" aria-label="Notas">
+      <div class="wiki-list" aria-label="Notas" data-lista="principal">
         {#each filteredPages as page}
           <button type="button" class:active={selectedPage?.id === page.id} onclick={() => { selectedId = page.id; }}>
-            <span class="wiki-icon" aria-hidden="true">{page.icon === 'bolt' ? 'ϟ' : page.icon === 'moon' ? '☾' : '◇'}</span>
-            <span><small>{page.space}</small><strong>{page.title}</strong><span>{page.summary}</span></span>
+            <span><strong>{page.title}</strong><span>{page.space} · {page.summary}</span></span>
             <time>{page.updated}</time>
           </button>
         {/each}

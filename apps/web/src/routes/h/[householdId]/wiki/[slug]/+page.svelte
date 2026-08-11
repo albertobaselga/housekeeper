@@ -222,20 +222,23 @@
   {#if view}
     <!-- Escribir la Guía es de la administración: para el resto, estos
          controles NO se dibujan. Un botón que siempre falla es una mentira. -->
+    <!-- «Publicar» es lo único que sigue en la cabecera, y solo mientras la
+         nota es un borrador: es la acción que la termina. «Editar» y «Destacar»
+         bajan al pie, en peso secundario. Leer pasa cincuenta veces por cada
+         edición, y el único botón de énfasis alto de esta pantalla era
+         «Editar», encima del contenido. -->
     {#snippet actions()}
-      {#if view.canWrite}
-        {#if !Editor}
-          <button class="button secondary" type="button" onclick={() => void beginEditing()}>Editar</button>
-        {/if}
-        {#if shownStatus === 'draft'}
-          <button class="button primary" type="button" disabled={busy} onclick={() => void dispatchState({ status: 'published' })}>Publicar</button>
-        {/if}
-        <button class="button secondary" type="button" disabled={busy} onclick={() => void dispatchState({ pinned: !shownPinned })}>
-          {shownPinned ? 'Quitar de destacados' : 'Destacar'}
-        </button>
+      {#if view.canWrite && shownStatus === 'draft'}
+        <button class="button primary small-button" type="button" disabled={busy} onclick={() => void dispatchState({ status: 'published' })}>Publicar</button>
       {/if}
     {/snippet}
-    <PageHeader eyebrow={view.page.spaceName} title={shownTitle} description={optimistic ? undefined : view.revision.summary} {actions} />
+    <PageHeader
+      eyebrow={view.page.spaceName}
+      title={shownTitle}
+      support={view.page.spaceName}
+      description={optimistic ? undefined : view.revision.summary}
+      {actions}
+    />
 
     <p class="audit-note wiki-meta">
       <a href={base}>← Guía de la casa</a>
@@ -287,6 +290,17 @@
                 Seguir leyendo: {view.neighbours.next.title} →
               </a>
             {/if}
+          </div>
+        {/if}
+
+        {#if view.canWrite}
+          <!-- Al pie de la nota, tras un divisor: la edición es de quien
+               administra y se hace después de leer, no antes. -->
+          <div class="action-row destructiva">
+            <button class="button secondary small-button" type="button" onclick={() => void beginEditing()}>Editar esta nota</button>
+            <button class="button secondary small-button" type="button" disabled={busy} onclick={() => void dispatchState({ pinned: !shownPinned })}>
+              {shownPinned ? 'Quitar de destacadas' : 'Destacar'}
+            </button>
           </div>
         {/if}
       {/if}

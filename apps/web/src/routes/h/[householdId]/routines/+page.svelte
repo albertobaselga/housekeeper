@@ -210,23 +210,35 @@
 
 <div class="page-wrap">
   {#if live}
-    <PageHeader eyebrow="Orden cotidiano" title="Rutinas" description="Cada rutina con su ritmo; sin porcentajes ni histórico de cumplimiento." />
+    <!-- El h1 dice el estado, no la sección: la sección ya la dice la pestaña
+         activa de la barra inferior. La descripción («sin porcentajes ni
+         histórico de cumplimiento») era copy de bienvenida en cada visita y se
+         muda al estado vacío, que es donde una explicación hace falta. -->
+    <PageHeader eyebrow="Orden cotidiano" title={`Rutinas · ${live.routines.length}`} />
 
     <ActionStatus status={actionStatus} />
 
     <section class="card" aria-labelledby="routines-title">
-      <div class="section-heading"><div><p class="eyebrow">Visibles para tu rol</p><h2 id="routines-title">Rutinas de la casa</h2></div></div>
-      {#each routineGroups as group (group.choice)}
-        <h3 class="cadence-group">{group.title} · {group.items.length}</h3>
-        <ul class="wiki-recent">
+      <h2 id="routines-title" class="sr-only">Rutinas de la casa</h2>
+      {#each routineGroups as group, index (group.choice)}
+        <h3 class="rotulo">{group.title} · {group.items.length}</h3>
+        <!-- Título, ritmo y detalle son TRES cosas, no una frase corrida de
+             10,88 px: el nombre a 16 px como en cualquier otra fila del
+             producto, el ritmo a 13 debajo y el detalle plegado. -->
+        <ul class="fila-lista routine-list" data-lista={index === 0 ? 'principal' : undefined}>
           {#each group.items as routine (routine.id)}
-            <li>
-              <div class="wiki-node-row">
-                <span>
-                  <strong>{routine.title}</strong>
-                  <small>{AUDIENCE_LABEL[routine.audience]} · {cadenceSummary(routine.schedule, routine.nextOccurrenceOn)}</small>
-                  {#if routine.details}<small>{routine.details}</small>{/if}
-                </span>
+            {@const overdue = routine.nextOccurrenceOn !== null && routine.nextOccurrenceOn < todayISO}
+            <li class="fila-accion">
+              <span class="fila-cuerpo">
+                <strong>{routine.title}</strong>
+                <small class:is-now={overdue}>
+                  {AUDIENCE_LABEL[routine.audience]} · {cadenceSummary(routine.schedule, routine.nextOccurrenceOn, todayISO)}
+                </small>
+                {#if routine.details}
+                  <details class="routine-detail"><summary>Cómo se hace</summary><p>{routine.details}</p></details>
+                {/if}
+              </span>
+              <span class="fila-fin">
                 {#if completedFeedback[routine.id]}
                   <span class="status-chip success" role="status">{completedFeedback[routine.id]}</span>
                 {:else if routine.completedToday}
@@ -245,18 +257,30 @@
                   </button>
                 {/if}
                 {#if live.canWrite}
-                  <!-- «Editar» es enlace de texto al final de la fila: a 390 px
-                       dos botones y un chip no caben en `.wiki-node-row`. -->
-                  <a class="row-edit" href="#routine-form-title" onclick={() => editRoutineForm(routine.id)}>
+                  <!-- «Editar» nombra a su sujeto para el lector de pantalla:
+                       en una lista de veinte, «Editar» a secas no dice cuál. -->
+                  <a
+                    class="button secondary small-button"
+                    href="#routine-form-title"
+                    aria-label={`${routine.schedule === null ? 'Ponerle día a' : 'Editar'} ${routine.title}`}
+                    onclick={() => editRoutineForm(routine.id)}
+                  >
                     {routine.schedule === null ? 'Ponerle día' : 'Editar'}
                   </a>
                 {/if}
-              </div>
+              </span>
             </li>
           {/each}
         </ul>
       {:else}
-        <p class="audit-note">No hay rutinas visibles para tu rol en este hogar.</p>
+        <div class="empty-state">
+          <span aria-hidden="true">✓</span>
+          <h3>Todavía no hay rutinas para ti</h3>
+          <p>
+            Aquí va lo que se repite en casa, cada una con su ritmo. No se puntúa a nadie:
+            ni porcentajes ni histórico de cumplimiento, solo qué toca y cuándo.
+          </p>
+        </div>
       {/each}
     </section>
 
@@ -374,7 +398,7 @@
       </section>
     {/if}
   {:else if data.routines}
-    <PageHeader eyebrow="Orden cotidiano" title="Rutinas" description="Pasos pequeños y compartidos, que se marcan aunque falte la red." />
+    <PageHeader eyebrow="Orden cotidiano" title={`Rutinas · ${done} de ${total} hechas`} />
     <!-- Aquí había una barra de progreso con su porcentaje. Se retiró: el AC-26
          revisado prohíbe cualquier indicador de cumplimiento «en ninguna
          vista», y la maqueta ES una vista —de hecho es la que ven las suites
@@ -382,8 +406,7 @@
          CUENTA, el mismo trato que recibe Hoy con datos reales (`countChip`):
          decir cuántas quedan ayuda a organizarse; decir qué porcentaje se
          cumple es puntuar a quien las hace. -->
-    <p class="status-chip" role="status">{done} de {total} hechas hoy</p>
-    <div class="routine-columns">
+    <div class="routine-columns" data-lista="principal">
       {#each groups as group}
         <section class="card routine-group"><h2>{group.title}</h2>
           {#each group.items as item}
@@ -396,56 +419,44 @@
 </div>
 
 <style>
-  /* Encabezado de grupo de la lista: los mismos cinco títulos del formulario,
-     con la cuenta al lado. Es un rótulo de orden, no una sección con peso. */
-  .cadence-group {
-    margin-top: .9rem;
-    color: var(--ink-soft);
-    font-size: .74rem;
-    font-weight: 750;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-  }
-  .cadence-group:first-of-type { margin-top: 0; }
+  /* El detalle de la rutina va plegado: en la lista manda el nombre. */
+  .routine-list .routine-detail > summary { min-height: var(--row-data); font-size: var(--text-meta); font-weight: 400; }
 
-  /* «Editar» / «Ponerle día»: enlace de texto al final de la fila, para que a
-     390 px el botón de acción se quede solo. */
-  .row-edit { margin-left: auto; font-size: .8rem; font-weight: 650; white-space: nowrap; }
+  .cadence-fieldset { display: grid; gap: var(--space-2); margin: 0; border: 0; padding: 0; min-width: 0; }
+  .cadence-fieldset > legend { padding: 0; color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
+  .cadence-options { display: grid; }
+  .cadence-option { display: flex; align-items: center; gap: var(--space-2); min-height: var(--row-data); font-size: var(--text-strong); }
+  .cadence-option > input { width: 1.25rem; height: 1.25rem; flex: none; accent-color: var(--primary); }
 
-  .cadence-fieldset { display: grid; gap: .55rem; margin: 0; border: 0; padding: 0; min-width: 0; }
-  .cadence-fieldset > legend { padding: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
-  .cadence-options { display: grid; gap: .35rem; }
-  .cadence-option { display: flex; align-items: center; gap: .5rem; min-height: 2rem; }
-  .cadence-option > input { width: auto; flex: none; }
-
-  .cadence-sub { display: grid; gap: .4rem; margin: 0; border: 0; padding: 0; min-width: 0; }
-  .cadence-sub > legend { padding: 0; color: var(--ink-soft); font-size: .74rem; }
+  .cadence-sub { display: grid; gap: var(--space-2); margin: 0; border: 0; padding: 0; min-width: 0; }
+  .cadence-sub > legend { padding: 0; color: var(--ink-soft); font-size: var(--text-meta); }
 
   /* `flex-wrap` y `min-width: 0`: a 320 px los siete días pasan a dos filas en
      vez de desbordar la tarjeta (mobile-overflow mide esta página). */
-  .day-buttons, .season-buttons { display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0; }
+  .day-buttons, .season-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
   .day-buttons > button, .season-buttons > button {
     min-width: 2.75rem;
     min-height: 2.75rem;
     border: 1px solid var(--line-strong);
-    border-radius: .6rem;
+    border-radius: var(--r-md);
     background: var(--surface);
     color: var(--ink);
+    font-size: var(--text-strong);
     font-weight: 700;
     /* Mata el retardo de doble toque en móvil. */
     touch-action: manipulation;
     cursor: pointer;
   }
-  .season-buttons > button { flex: 1 1 6rem; font-weight: 600; }
+  .season-buttons > button { flex: 1 1 6rem; font-weight: 500; }
   .day-buttons > button[aria-pressed='true'], .season-buttons > button[aria-pressed='true'] {
     border-color: var(--primary);
     background: var(--primary-soft);
     color: var(--primary);
   }
 
-  .cadence-help { color: var(--ink-soft); font-size: .8rem; line-height: 1.45; }
+  .cadence-help { color: var(--ink-soft); font-size: var(--text-meta); line-height: var(--lh-loose); }
 
   /* La frase de vuelta se lee antes que los controles: es lo que confirma en
      lengua de casa lo que se acaba de marcar. */
-  .cadence-phrase { font-size: 1.02rem; font-weight: 600; line-height: 1.5; }
+  .cadence-phrase { font-size: var(--text-strong); font-weight: 500; line-height: var(--lh-base); }
 </style>

@@ -1454,8 +1454,11 @@
     .card { padding: var(--pad-card); }
     .recipe-gallery, .contact-grid { grid-template-columns: minmax(0, 1fr); }
     .recipe-visual { min-height: 5.5rem; }
-    .search-form { grid-template-columns: auto minmax(0, 1fr); }
-    .search-form .button { grid-column: 1 / -1; }
+    /* El buscador se queda en UNA fila también a 320: mandar el botón a una
+       segunda línea le costaba ~60 px a la lista que hay debajo, que es lo que
+       se ha venido a ver. El botón se estrecha, no se apila. */
+    .search-form > span { display: none; }
+    .search-form .button { padding: var(--space-2); }
     .emergency-callout { align-items: stretch; flex-direction: column; gap: var(--space-3); }
     .emergency-callout > a { text-align: center; }
     .contact-card { grid-template-columns: 2.5rem minmax(0, 1fr); }

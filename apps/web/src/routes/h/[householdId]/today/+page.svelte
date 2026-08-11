@@ -133,10 +133,14 @@
 
 <div class="page-wrap today-page">
   <!-- Acceso fijo a Emergencias desde Hoy (P3 de la re-auditoría UX v2: en
-       móvil «Ayuda» pasó a vivir dentro de «Más» y perdió su tap directo). -->
+       móvil «Ayuda» pasó a vivir dentro de «Más» y perdió su tap directo).
+       Sigue estando, sigue yendo a la misma ruta y sigue funcionando sin red;
+       lo que cambia es DÓNDE: una acción que se usa menos de una vez al mes no
+       abre la pantalla con una banda completa de 42 px por delante de todo lo
+       que sí se hace a diario. Va al final, como fila. -->
   {#snippet emergencyShortcut()}
-    <a class="button secondary today-emergency-link" href={`/h/${context.household.id}/emergency`}>
-      <span aria-hidden="true">+</span> Emergencias
+    <a class="button secondary small-button today-emergency-link" href={`/h/${context.household.id}/emergency`}>
+      Emergencias
     </a>
   {/snippet}
   {#snippet accessNote()}
@@ -145,12 +149,14 @@
     {/if}
   {/snippet}
   {#if overview}
-    <PageHeader
-      eyebrow={overview.dateLabel}
-      title={`${overview.greeting}, ${context.user.name}`}
-      description="Lo importante de hoy, sin ruido."
-      actions={emergencyShortcut}
-    />
+    <!-- El `h1` sigue siendo único y descriptivo: cambia su texto, no su papel.
+         Antes decía «Buenas noches, Ana» a 32 px en dos líneas —74 px de saludo
+         a quien abre esta pantalla todos los días— con un eyebrow y una
+         descripción encima y debajo. Ahora dice en una línea de 24 px qué día
+         es y cuánto queda. El nombre del hogar sobrevive aquí, y solo aquí,
+         como línea de apoyo de 13 px: es lo que quería decir 0fdf873 con la
+         cabecera fija, a un octavo del coste. -->
+    <PageHeader eyebrow={overview.dateLabel} title={overview.stateLabel} support={context.household.name} />
     {@render accessNote()}
 
     {#await OutboxTriage then Triage}<Triage householdId={overview.householdId} />{/await}
@@ -197,59 +203,15 @@
       </section>
     {/if}
 
-    <section class="content-grid" aria-label="Menú y rutinas de hoy">
-      <article class="card" aria-labelledby="today-menu-title">
-        <div class="section-heading">
-          <div><p class="eyebrow">Menú</p><h2 id="today-menu-title">Hoy comemos</h2></div>
-          {#if context.capabilities.includes('menu.read')}
-            <a href={`/h/${overview.householdId}/menu`}>Ver la semana →</a>
-          {/if}
-        </div>
-        {#if overview.menu.length > 0}
-          <div class="ledger-list">
-            {#each overview.menu as slot (slot.id)}
-              <div>
-                <span>
-                  <strong>{slot.dish || 'Sin plato asignado'}</strong>
-                  <small>{slot.mealLabel} · {slot.groupName}{slot.notes ? ` · ${slot.notes}` : ''}</small>
-                </span>
-                {#if slot.dish}
-                  <span class="inline-actions">
-                    <!-- P2-8: a quien no puede confirmar (p. ej. la empleada) el
-                         chip no le finge una tarea suya pendiente. -->
-                    {#if slot.confirmed || resolvedInline[`menu-${slot.id}`]}
-                      <span class="status-chip success">Confirmado</span>
-                    {:else}
-                      <span class="status-chip warning">
-                        {canConfirmMenu ? 'Sin confirmar' : 'Pendiente de la familia'}
-                      </span>
-                      {#if canConfirmMenu && slot.contentHash}
-                        <!-- Ola D-5: se confirma aquí mismo; «Ver la semana»
-                             sigue arriba para lo demás. -->
-                        {#await InlineAction then Action}
-                          <Action
-                            householdId={overview.householdId}
-                            action={{ kind: 'confirm_menu', slotId: slot.id, contentHash: slot.contentHash }}
-                            label="Confirmar"
-                            {optimistic}
-                            onApply={() => (resolvedInline[`menu-${slot.id}`] = 'Confirmado')}
-                            onRevert={() => delete resolvedInline[`menu-${slot.id}`]}
-                          />
-                        {/await}
-                      {/if}
-                    {/if}
-                  </span>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="audit-note">Hoy no hay nada planificado en el menú.</p>
-        {/if}
-      </article>
-
-      {#snippet routineRows(rows: TodayRoutineRow[])}
-        <div class="ledger-list">
+    <!-- Las rutinas van primero y el menú detrás: lo primero de la pantalla es
+         lo que se hace, no lo que se lee. -->
+    <section class="content-grid" aria-label="Rutinas y menú de hoy">
+      <!-- `data-lista="principal"` no es un truco de test: es la pantalla
+           diciendo cuál es su lista principal. Si una pantalla no sabe decirlo,
+           ese es el hallazgo. Aquí es el primer bloque de rutinas: lo que se ha
+           venido a hacer. -->
+      {#snippet routineRows(rows: TodayRoutineRow[], principal = false)}
+        <div class="ledger-list" data-lista={principal ? 'principal' : undefined}>
           {#each rows as row (row.key)}
             <div class:routine-done={markedHere[row.key]}>
               <span>
@@ -301,12 +263,12 @@
 
         <!-- Los bloques («Se quedó pendiente», «Hoy» y el corte de seis) los
              arma el servidor: cada `{#each}` de más aquí son bytes en el móvil. -->
-        {#each overview.routines.blocks as block (block.key)}
+        {#each overview.routines.blocks as block, index (block.key)}
           {#if block.folded}
             <details><summary>{block.heading}</summary>{@render routineRows(block.rows)}</details>
           {:else}
             {#if block.heading}<h3 class="routine-block">{block.heading}</h3>{/if}
-            {@render routineRows(block.rows)}
+            {@render routineRows(block.rows, index === 0)}
           {/if}
         {/each}
 
@@ -333,6 +295,56 @@
         {/if}
       </article>
 
+      <article class="card" aria-labelledby="today-menu-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Menú</p><h2 id="today-menu-title">Hoy comemos</h2></div>
+          {#if context.capabilities.includes('menu.read')}
+            <a href={`/h/${overview.householdId}/menu`}>Ver la semana →</a>
+          {/if}
+        </div>
+        {#if overview.menu.length > 0}
+          <div class="ledger-list">
+            {#each overview.menu as slot (slot.id)}
+              <div>
+                <span>
+                  <strong>{slot.dish || 'Sin plato asignado'}</strong>
+                  <small>{slot.mealLabel} · {slot.groupName}{slot.notes ? ` · ${slot.notes}` : ''}</small>
+                </span>
+                {#if slot.dish}
+                  <span class="inline-actions">
+                    <!-- P2-8: a quien no puede confirmar (p. ej. la empleada) el
+                         chip no le finge una tarea suya pendiente. -->
+                    {#if slot.confirmed || resolvedInline[`menu-${slot.id}`]}
+                      <span class="status-chip success">Confirmado</span>
+                    {:else}
+                      <span class="status-chip warning">
+                        {canConfirmMenu ? 'Sin confirmar' : 'Pendiente de la familia'}
+                      </span>
+                      {#if canConfirmMenu && slot.contentHash}
+                        <!-- Ola D-5: se confirma aquí mismo; «Ver la semana»
+                             sigue arriba para lo demás. -->
+                        {#await InlineAction then Action}
+                          <Action
+                            householdId={overview.householdId}
+                            action={{ kind: 'confirm_menu', slotId: slot.id, contentHash: slot.contentHash }}
+                            label="Confirmar"
+                            {optimistic}
+                            onApply={() => (resolvedInline[`menu-${slot.id}`] = 'Confirmado')}
+                            onRevert={() => delete resolvedInline[`menu-${slot.id}`]}
+                          />
+                        {/await}
+                      {/if}
+                    {/if}
+                  </span>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <p class="audit-note">Hoy no hay nada planificado en el menú.</p>
+        {/if}
+      </article>
+
       {#if overview.agenda.length > 0}
         <!-- Agenda real del día (calendarios enlazados, Ola E): chunk lazy
              como el triaje para no romper el presupuesto de Hoy. Sin eventos
@@ -346,8 +358,14 @@
         {/await}
       {/if}
     </section>
+
+    <div class="today-emergency-row">{@render emergencyShortcut()}</div>
   {:else if data.today}
-    <PageHeader eyebrow={data.today.dateLabel} title={`${data.today.greeting}, ${context.user.name}`} description="Lo importante de hoy, sin ruido." actions={emergencyShortcut} />
+    <PageHeader
+      eyebrow={data.today.dateLabel}
+      title={`${completeCount} de ${tasks.length} hechas hoy`}
+      support={context.household.name}
+    />
     {@render accessNote()}
 
     {#await OutboxTriage then Triage}<Triage householdId={context.household.id} />{/await}
@@ -359,9 +377,9 @@
                un porcentaje dibujado. Fuera por el AC-26 revisado, que no
                admite indicadores de cumplimiento en NINGUNA vista, tampoco en
                la maqueta. La cuenta se dice con palabras, en el titular. -->
-          <div><p class="eyebrow">Rutina de hoy</p><h2>{completeCount} de {tasks.length} completadas</h2></div>
+          <div><p class="eyebrow">Rutina de hoy</p><h2>Lo que toca hoy</h2></div>
         </div>
-        <div class="task-list">
+        <div class="task-list" data-lista="principal">
           {#each tasks as task}
             <button
               class="task-row"
@@ -400,5 +418,13 @@
     </section>
 
     <aside class="day-note"><span aria-hidden="true">✦</span><div><strong>Nota de la casa</strong><p>{data.today.note}</p></div></aside>
+
+    <div class="today-emergency-row">{@render emergencyShortcut()}</div>
   {/if}
 </div>
+
+<style>
+  /* Emergencias cierra la pantalla en vez de abrirla: a la derecha, como una
+     acción de fila, sin la banda completa que le robaba 42 px a lo de hoy. */
+  .today-emergency-row { display: flex; justify-content: flex-end; }
+</style>
