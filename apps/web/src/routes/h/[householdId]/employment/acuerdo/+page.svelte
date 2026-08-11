@@ -296,7 +296,7 @@
       horario —ni vacía ni con guiones—.
     </small>
   </p>
-  <label class="check-label">
+  <label class="inline-check">
     <input type="checkbox" name="schedule.declared" bind:checked={draft.schedule.declared} />
     Este contrato declara horario
   </label>
@@ -563,7 +563,7 @@
               {:else}
                 <input type="hidden" name={`type.${index}.referenceMinutes`} value="" />
               {/if}
-              <label class="check-label">
+              <label class="inline-check">
                 <input type="checkbox" name={`type.${index}.active`} bind:checked={type.active} />
                 Se lo permito
               </label>
@@ -599,7 +599,7 @@
               <label>Hasta (opcional)
                 <input type="date" name={`supplement.${index}.endsOn`} bind:value={supplement.endsOn} />
               </label>
-              <label class="check-label">
+              <label class="inline-check">
                 <input type="checkbox" name={`supplement.${index}.active`} bind:checked={supplement.active} />
                 Vigente
               </label>
@@ -713,7 +713,7 @@
               {:else}
                 <input type="hidden" name={`type.${index}.referenceMinutes`} value="" />
               {/if}
-              <label class="check-label">
+              <label class="inline-check">
                 <input type="checkbox" name={`type.${index}.active`} bind:checked={type.active} />
                 Se lo permito
               </label>
@@ -763,7 +763,7 @@
               <label>Hasta (opcional)
                 <input type="date" name={`supplement.${index}.endsOn`} bind:value={supplement.endsOn} />
               </label>
-              <label class="check-label">
+              <label class="inline-check">
                 <input type="checkbox" name={`supplement.${index}.active`} bind:checked={supplement.active} />
                 Vigente
               </label>
@@ -787,12 +787,6 @@
 {/if}
 
 <style>
-  .check-label {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
   /* Tabla estrecha y con scroll propio: siete días con cuatro campos cada uno
      no caben en un móvil, y el remedio nunca es que la página entera se
      desplace de lado (spec mobile-overflow). */

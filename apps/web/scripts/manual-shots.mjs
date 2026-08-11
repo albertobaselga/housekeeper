@@ -83,12 +83,18 @@ const hogar = (ruta) => `/h/${HOUSEHOLD}${ruta}`;
 
 // ── Utilidades de puesta en escena ─────────────────────────────────────────
 
-/** Deja `elemento` arriba del viewport, con un respiro de 20 px. */
-async function encuadrar(page, selector, hueco = 20) {
+/**
+ * Deja el elemento arriba del viewport, POR DEBAJO de la barra superior fija:
+ * en escritorio el `.topbar` es sticky y se comía la primera línea de lo que se
+ * quería enseñar.
+ */
+async function encuadrar(page, selector, hueco = 16) {
   const target = typeof selector === 'string' ? page.locator(selector).first() : selector;
   await target.waitFor({ state: 'visible', timeout: 15_000 });
   await target.evaluate((node, gap) => {
-    const y = node.getBoundingClientRect().top + window.scrollY - gap;
+    const barra = document.querySelector('.topbar');
+    const alto = barra && getComputedStyle(barra).position === 'sticky' ? barra.getBoundingClientRect().height : 0;
+    const y = node.getBoundingClientRect().top + window.scrollY - gap - alto;
     window.scrollTo({ top: Math.max(0, y), behavior: 'instant' });
   }, hueco);
   await page.waitForTimeout(250);
@@ -101,6 +107,24 @@ async function desplegar(page, texto) {
   const abierto = await resumen.evaluate((node) => node.closest('details')?.open === true);
   if (!abierto) await resumen.click();
   await page.waitForTimeout(250);
+}
+
+/**
+ * Abre el editor «Versión nueva» del contrato de una persona concreta. Se busca
+ * por nombre y no «el primero»: el hogar tiene varios contratos vivos y el alta
+ * de la captura de Personal mete uno más por delante.
+ */
+async function abrirEditorDeVersion(page, persona = 'Ana') {
+  const ficha = page.locator('article', { has: page.getByText(persona, { exact: true }) }).first();
+  const boton = ficha.getByRole('button', { name: 'Cambiar las condiciones' }).first();
+  await boton.waitFor({ state: 'visible', timeout: 15_000 });
+  if ((await boton.getAttribute('aria-expanded')) !== 'true') await boton.click();
+  await ficha.locator('h3:has-text("Versión nueva")').first().waitFor({ timeout: 15_000 });
+  // El horario es lo que la captura de «Horario» tiene que enseñar entero: si
+  // el borrador nace sin declararlo, no hay tabla de siete días que retratar.
+  const declara = ficha.locator('input[name="schedule.declared"]').first();
+  if ((await declara.count()) > 0 && !(await declara.isChecked())) await declara.check();
+  await page.waitForTimeout(400);
 }
 
 /** Espera a que la página deje de moverse: fuentes cargadas y sin animación. */
@@ -136,12 +160,19 @@ const CAPTURAS = [
     async preparar(page) {
       // Marcar una rutina deja el bloque plegado «N hechas hoy» al fondo, que
       // es justo lo que esta captura tiene que enseñar junto a «Esta semana».
-      const marcar = page.getByRole('button', { name: 'Marcar hecha' }).first();
-      if (await marcar.count()) {
+      if ((await page.locator('summary', { hasText: 'hechas hoy' }).count()) === 0) {
+        const marcar = page.getByRole('button', { name: 'Marcar hecha' }).first();
         await marcar.click();
-        await page.getByText('Deshacer').first().waitFor({ timeout: 15_000 });
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await asentar(page);
+        await page.getByRole('button', { name: 'Deshacer' }).first().waitFor({ timeout: 15_000 });
+        // El chip aparece nada más pulsar (es optimista), pero el bloque plegado
+        // lo pinta el SERVIDOR: hay que esperar a que el marcado salga de la
+        // bandeja y volver a pedir la página.
+        for (let intento = 0; intento < 5; intento += 1) {
+          await page.waitForTimeout(2000);
+          await page.reload({ waitUntil: 'domcontentloaded' });
+          await asentar(page);
+          if ((await page.locator('summary', { hasText: 'hechas hoy' }).count()) > 0) break;
+        }
       }
       await desplegar(page, 'hechas hoy');
     },
@@ -259,7 +290,7 @@ const CAPTURAS = [
     cuenta: 'alberto',
     aparato: 'escritorio',
     ruta: hogar('/employment'),
-    foco: 'text=Elegir de quién es el expediente'
+    foco: 'nav[aria-label="Elegir de quién es el expediente"]'
   },
   {
     nombre: 'familia-contrato-cuenta',
@@ -304,7 +335,7 @@ const CAPTURAS = [
     aparato: 'escritorio',
     ruta: hogar('/employment/acuerdo'),
     async preparar(page) {
-      await desplegar(page, 'Cambiar las condiciones');
+      await abrirEditorDeVersion(page);
     },
     foco: 'h3:has-text("Trabajo extra"), h2:has-text("Trabajo extra")'
   },
@@ -314,7 +345,7 @@ const CAPTURAS = [
     aparato: 'escritorio',
     ruta: hogar('/employment/acuerdo'),
     async preparar(page) {
-      await desplegar(page, 'Cambiar las condiciones');
+      await abrirEditorDeVersion(page);
     },
     foco: 'h3:has-text("Horario"), h2:has-text("Horario")'
   },
@@ -324,7 +355,7 @@ const CAPTURAS = [
     aparato: 'escritorio',
     ruta: hogar('/employment/acuerdo'),
     async preparar(page) {
-      await desplegar(page, 'Cambiar las condiciones');
+      await abrirEditorDeVersion(page);
     },
     foco: 'h3:has-text("Complementos"), h2:has-text("Complementos")'
   },
@@ -337,7 +368,7 @@ const CAPTURAS = [
     aparato: 'escritorio',
     ruta: hogar('/calendar'),
     async preparar(page) {
-      await page.getByRole('link', { name: 'Mes', exact: true }).first().click();
+      await page.getByRole('button', { name: 'Mes', exact: true }).first().click();
       await page.waitForLoadState('domcontentloaded');
       await asentar(page);
     }
@@ -348,9 +379,10 @@ const CAPTURAS = [
     aparato: 'escritorio',
     ruta: hogar('/calendar'),
     async preparar(page) {
-      await desplegar(page, 'Enlazar un calendario');
+      await page.getByRole('button', { name: 'Enlazar un calendario' }).first().click();
+      await page.waitForTimeout(400);
     },
-    foco: 'summary:has-text("Enlazar un calendario")'
+    foco: 'h2:has-text("Calendarios enlazados"), form'
   },
   { nombre: 'familia-contactos', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/contacts') },
   { nombre: 'familia-emergencias', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/emergency') },
@@ -377,8 +409,11 @@ const CAPTURAS = [
     aparato: 'escritorio',
     ruta: hogar('/settings'),
     async preparar(page) {
-      await desplegar(page, /Repon|contraseñ/i.source);
-    }
+      await desplegar(page, 'Ana');
+      await page.getByRole('button', { name: /^Poner una contraseña nueva a/ }).first().click();
+      await page.waitForTimeout(400);
+    },
+    foco: 'summary:has-text("Ana")'
   },
   { nombre: 'familia-personal', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/personal') },
   {
@@ -387,20 +422,29 @@ const CAPTURAS = [
     aparato: 'escritorio',
     ruta: hogar('/personal'),
     async preparar(page, estado) {
-      await desplegar(page, 'Entra alguien nuevo en la casa');
+      const hoy = new Date().toISOString().slice(0, 10);
       await page.locator('input[name="displayName"]').first().fill('Elena');
       await page.locator('input[name="username"]').first().fill('elena');
       await page.locator('input[name="email"]').first().fill('elena@casaroble.invalid');
-      await page.getByRole('button', { name: /Dar de alta|Crear/i }).first().click();
+      await page.locator('input[name="startsOn"]').first().fill(hoy);
+      await page.locator('input[name="monthlySalary"]').first().fill('1.400,00');
+      await page.locator('input[name="reason"]').first().fill('Alta del contrato');
+      await page.getByRole('button', { name: 'Crear la cuenta' }).first().click();
       await page.waitForLoadState('domcontentloaded');
       await asentar(page);
-      // La contraseña provisional se enseña UNA vez: se apunta aquí para poder
-      // entrar con ella y retratar el bloqueo de la pantalla siguiente.
-      const texto = await page.locator('body').innerText();
-      const credencial = /Contraseña provisional\s*\n?\s*([A-Za-z0-9-]{8,})/.exec(texto);
-      if (credencial) estado.provisional = { usuario: 'elena', contrasena: credencial[1] };
+      // La contraseña provisional se enseña UNA sola vez: se apunta aquí para
+      // poder entrar con ella y retratar el bloqueo de la pantalla siguiente.
+      const secreto = page.locator('.handout-secret dd');
+      if ((await secreto.count()) >= 2) {
+        estado.provisional = {
+          usuario: (await secreto.nth(0).innerText()).trim(),
+          contrasena: (await secreto.nth(1).innerText()).trim()
+        };
+      } else {
+        console.error('  (el alta no entregó usuario y contraseña)');
+      }
     },
-    foco: 'text=/provisional/i'
+    foco: 'h2:has-text("Entra alguien nuevo en la casa")'
   },
   { nombre: 'familia-cuenta', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/account') },
 
@@ -439,9 +483,14 @@ const CAPTURAS = [
     aparato: 'movil',
     ruta: hogar('/today'),
     async preparar(page) {
-      await desplegar(page, 'Repaso del filtro del agua');
+      // La primera rutina del día que TIENE detalle: el resumen se pulsa y el
+      // «cómo se hace» se abre sin salir de Hoy.
+      const resumen = page.locator('#rutinas-de-hoy details.routine-detail > summary').first();
+      await resumen.waitFor({ state: 'visible', timeout: 15_000 });
+      if (!(await resumen.evaluate((node) => node.closest('details')?.open === true))) await resumen.click();
+      await page.waitForTimeout(300);
     },
-    foco: 'summary:has-text("Repaso del filtro del agua")'
+    foco: '#rutinas-de-hoy details.routine-detail > summary'
   },
   {
     nombre: 'interna-hoy-deshacer-movil',
@@ -473,7 +522,7 @@ const CAPTURAS = [
     cuenta: 'ana',
     aparato: 'movil',
     ruta: hogar('/employment'),
-    foco: 'h2:has-text("Apuntar una jornada"), h3:has-text("Apuntar una jornada")'
+    foco: 'h3:has-text("Registrar jornada extra")'
   },
   {
     nombre: 'interna-gasto-foto-movil',
@@ -553,6 +602,17 @@ async function contextoDe(cuenta, aparato) {
   const clave = `${cuenta ?? 'anonimo'}@${aparato}`;
   if (contextos.has(clave)) return contextos.get(clave);
   const contexto = await navegador.newContext(DEVICES[aparato]);
+  // Chromium sin cabeza dice SIEMPRE que las notificaciones están denegadas, y
+  // `grantPermissions` no cambia `Notification.permission`. Con eso, «Tus avisos
+  // en este teléfono» sale contando una avería del navegador de pruebas en vez
+  // de lo que ve un teléfono normal. Se le devuelve el valor de fábrica —«sin
+  // decidir»— y la pantalla vuelve a ser la que es. No se toca nada de la
+  // aplicación: solo el navegador que la retrata.
+  await contexto.addInitScript(() => {
+    if (typeof Notification === 'function') {
+      Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'default' });
+    }
+  });
   if (cuenta) {
     const credencial =
       cuenta === 'provisional'

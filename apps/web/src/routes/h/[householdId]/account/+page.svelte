@@ -140,14 +140,14 @@
       </p>
     {:else if availability === 'needs-home-screen'}
       <p>
-        En iPhone y iPad los avisos solo funcionan si abres Casa Clara desde el icono de la pantalla de
+        En iPhone y iPad los avisos solo funcionan si abres la aplicación desde el icono de la pantalla de
         inicio. Si quieres, añádela: botón Compartir → «Añadir a pantalla de inicio», y entra otra vez desde
         ahí. Y si no, entra como siempre: no te pierdes nada.
       </p>
     {:else if availability === 'blocked'}
       <p>
-        Este teléfono tiene los avisos bloqueados para Casa Clara. Se desbloquean desde los ajustes del
-        teléfono, en la ficha de Casa Clara → Notificaciones. Si prefieres dejarlo así, no hace falta que
+        Este teléfono tiene los avisos bloqueados para esta aplicación. Se desbloquean desde los ajustes del
+        teléfono, en su ficha → Notificaciones. Si prefieres dejarlo así, no hace falta que
         hagas nada: la aplicación funciona igual.
       </p>
     {:else if availability === 'unsupported'}
