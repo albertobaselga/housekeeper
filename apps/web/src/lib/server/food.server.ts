@@ -2,6 +2,13 @@ import type { Pool } from 'pg';
 
 import type { Role } from '@casa-clara/contracts';
 import {
+  PENDING_LOOKBACK_DAYS,
+  nextOccurrenceOnOrAfter,
+  pendingFor,
+  type RoutineOverduePolicy,
+  type RoutineSchedule
+} from '@casa-clara/domain';
+import {
   buildShoppingBoard,
   createLogger,
   computeMenuSlotHash,
@@ -16,6 +23,9 @@ import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:food');
+
+/** Hoy en la zona del hogar: el mismo criterio que Hoy y el calendario. */
+const MADRID_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' });
 
 const FAMILY_ROLES: readonly Role[] = ['family_admin', 'family_member'];
 const SHOPPING_WRITER_ROLES: readonly Role[] = ['family_admin', 'family_member', 'employee_live_in'];
@@ -740,29 +750,108 @@ export interface RoutineView {
   title: string;
   details: string;
   audience: 'family' | 'employee' | 'all';
-  frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly';
-  intervalCount: number;
-  nextDueOn: string;
-  /** La ocurrencia vigente (due_on = next_due_on) ya está completada. */
-  completedCurrent: boolean;
+  /**
+   * La cadencia rica de la 0023. `null` significa «se hace, falta decidir
+   * cuándo» (§2.3): la rutina se ve AQUÍ y jamás en Hoy, en el calendario, en
+   * el ICS ni en los avisos.
+   */
+  schedule: RoutineSchedule;
+  /**
+   * Primera ocurrencia pendiente, ya resuelta por el motor. NO es la columna
+   * `next_due_on`: desde la 0023 esa columna es una caché que solo garantiza ser
+   * cota inferior (§2.7), así que sirve para prefiltrar en SQL y no para enseñar.
+   */
+  nextOccurrenceOn: string | null;
+  /**
+   * Qué ocurrencia marcaría «Marcar hecha» desde esta página: la atrasada si la
+   * hay, si no la de hoy. `null` = hoy no hay nada que marcar.
+   */
+  actionableDueOn: string | null;
+  /**
+   * Qué quedaría pendiente después de marcar `actionableDueOn`. Lo calcula el
+   * servidor para que el chip optimista prometa la MISMA fecha que confirmará
+   * el ACK, en vez de que el navegador vuelva a derivarla por su cuenta.
+   */
+  nextAfterActionOn: string | null;
+  /** Hoy es ocurrencia de esta rutina y ya está marcada. */
+  completedToday: boolean;
 }
 
 export interface RoutinesOverview {
   householdId: string;
   role: Role;
   canWrite: boolean;
+  /** Hoy en la zona del hogar, para que el formulario no lo adivine. */
+  todayISO: string;
   routines: RoutineView[];
 }
 
+/** Fila de patrón de `app.routines` → regla del generador. */
+function scheduleFromRow(row: {
+  pattern: string | null;
+  anchorOn: string | null;
+  repeatEvery: number | null;
+  weekdays: number[] | null;
+  monthDay: number | null;
+  months: number[] | null;
+  endsOn: string | null;
+}): RoutineSchedule {
+  // La CHECK `routines_pattern_shape` de la 0023 hace imposible que a un patrón
+  // le falte una de sus columnas. Si aun así llegara una fila incoherente, esta
+  // pantalla la trata como «sin cadencia» en vez de reventar la carga entera:
+  // se ve, se puede editar y se le puede poner día, que es la salida útil.
+  if (row.pattern === null || row.anchorOn === null) return null;
+  const anchorOn = row.anchorOn;
+  const endsOn = row.endsOn;
+  switch (row.pattern) {
+    case 'every_n_days':
+      return row.repeatEvery === null
+        ? null
+        : { pattern: 'every_n_days', anchorOn, repeatEvery: row.repeatEvery, endsOn };
+    case 'days_of_week':
+      return row.repeatEvery === null || row.weekdays === null
+        ? null
+        : {
+            pattern: 'days_of_week',
+            anchorOn,
+            repeatEvery: row.repeatEvery,
+            weekdays: row.weekdays,
+            endsOn
+          };
+    case 'day_of_month':
+      return row.repeatEvery === null || row.monthDay === null
+        ? null
+        : {
+            pattern: 'day_of_month',
+            anchorOn,
+            repeatEvery: row.repeatEvery,
+            monthDay: row.monthDay,
+            endsOn
+          };
+    case 'months_of_year':
+      return row.months === null || row.monthDay === null
+        ? null
+        : { pattern: 'months_of_year', anchorOn, months: row.months, monthDay: row.monthDay, endsOn };
+    default:
+      return null;
+  }
+}
+
 /**
- * Rutinas visibles para el rol (RLS filtra por audiencia) con su próxima fecha
- * y si la ocurrencia vigente está completada. Deliberadamente SIN porcentajes
- * ni histórico de rendimiento (AC-26): solo el estado de la ocurrencia actual.
+ * Rutinas visibles para el rol (RLS filtra por audiencia) con su cadencia y su
+ * próxima ocurrencia. Deliberadamente SIN porcentajes, rachas ni medias
+ * (AC-26 revisado): esta página enseña qué ritmo tiene cada cosa, no cuánto
+ * cumple nadie.
+ *
+ * Las ocurrencias se calculan con el motor puro y NO se leen de `next_due_on`,
+ * que desde la 0023 es una caché con garantía de cota inferior (§2.7). El
+ * cálculo es del orden de 40 reglas × una ventana corta: microsegundos.
  */
 export async function loadRoutines(
   user: { id: string },
   householdId: string,
-  pool: Pool | null = getDatabasePool()
+  pool: Pool | null = getDatabasePool(),
+  todayISO: string = MADRID_DATE.format(new Date())
 ): Promise<RoutinesOverview | null> {
   if (!pool) return null;
   try {
@@ -772,34 +861,76 @@ export async function loadRoutines(
         title: string;
         details: string;
         audience: RoutineView['audience'];
-        frequency: RoutineView['frequency'];
-        intervalCount: number;
-        nextDueOn: string;
-        completedCurrent: boolean;
+        pattern: string | null;
+        anchorOn: string | null;
+        repeatEvery: number | null;
+        weekdays: number[] | null;
+        monthDay: number | null;
+        months: number[] | null;
+        endsOn: string | null;
+        overduePolicy: RoutineOverduePolicy;
+        completedDueOns: string[] | null;
       }>(
+        // Las finalizaciones vienen agregadas por rutina y acotadas a la ventana
+        // que mira `pendingFor`: sin el corte, un hogar con años de historia
+        // arrastraría miles de filas para decidir si hoy queda algo por hacer.
         `select routine.id,
                 routine.title,
                 routine.details,
                 routine.audience::text as "audience",
-                routine.frequency::text as "frequency",
-                routine.interval_count as "intervalCount",
-                routine.next_due_on::text as "nextDueOn",
-                exists (
-                  select 1 from app.routine_completions as completion
+                routine.pattern::text as "pattern",
+                routine.anchor_on::text as "anchorOn",
+                routine.repeat_every as "repeatEvery",
+                routine.weekdays as "weekdays",
+                routine.month_day as "monthDay",
+                routine.months as "months",
+                routine.ends_on::text as "endsOn",
+                routine.overdue_policy::text as "overduePolicy",
+                (
+                  select array_agg(completion.due_on::text)
+                    from app.routine_completions as completion
                    where completion.household_id = routine.household_id
                      and completion.routine_id = routine.id
-                     and completion.due_on = routine.next_due_on
-                ) as "completedCurrent"
+                     and completion.due_on between $2::date - $3::int and $2::date
+                ) as "completedDueOns"
            from app.routines as routine
           where routine.household_id = $1 and routine.archived_at is null
-          order by routine.next_due_on, routine.title`,
-        [householdId]
+          order by routine.title`,
+        [householdId, todayISO, PENDING_LOOKBACK_DAYS]
       );
+      const routines = result.rows.map((row) => {
+        const schedule = scheduleFromRow(row);
+        const completedDueOns = row.completedDueOns ?? [];
+        const pending = pendingFor(schedule, row.overduePolicy, new Set(completedDueOns), todayISO);
+        // Marcar resuelve primero lo atrasado; entonces lo de hoy sigue vivo y
+        // es lo próximo. Si se marca lo de hoy, lo próximo es la siguiente.
+        const actionableDueOn = pending.overdue ?? pending.due[0] ?? null;
+        const nextAfterActionOn =
+          (pending.overdue === null ? pending.upcoming[0] : (pending.due[0] ?? pending.upcoming[0])) ??
+          null;
+        // Una finalización HUÉRFANA —cuyo `due_on` dejó de ser ocurrencia
+        // porque la regla cambió— no se pinta. No se borra ni se toca: es un
+        // hecho, y el comando acepta a propósito los `dueOn` que llegan de un
+        // cliente que quedó con la regla anterior. Simplemente no se enseña.
+        const todayIsOccurrence = nextOccurrenceOnOrAfter(schedule, todayISO) === todayISO;
+        return {
+          id: row.id,
+          title: row.title,
+          details: row.details,
+          audience: row.audience,
+          schedule,
+          nextOccurrenceOn: pending.nextDueHint,
+          actionableDueOn,
+          nextAfterActionOn,
+          completedToday: todayIsOccurrence && completedDueOns.includes(todayISO)
+        } satisfies RoutineView;
+      });
       return {
         householdId,
         role: membership.role,
         canWrite: FAMILY_ROLES.includes(membership.role),
-        routines: result.rows
+        todayISO,
+        routines
       } satisfies RoutinesOverview;
     });
   } catch (cause) {
