@@ -127,6 +127,12 @@ async function abrirEditorDeVersion(page, persona = 'Ana') {
   await page.waitForTimeout(400);
 }
 
+/** Cambia a la pestaña «Lista de la compra» del menú (es un control, no una ruta). */
+async function abrirLaCompra(page) {
+  await page.getByRole('button', { name: 'Lista de la compra' }).first().click();
+  await page.waitForTimeout(600);
+}
+
 /** Espera a que la página deje de moverse: fuentes cargadas y sin animación. */
 async function asentar(page) {
   await page.evaluate(() => document.fonts?.ready);
@@ -212,7 +218,12 @@ const CAPTURAS = [
     nombre: 'familia-compra',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/menu?vista=compra')
+    ruta: hogar('/menu'),
+    preparar: abrirLaCompra,
+    // Se encuadra la sección «Personal» a media altura para que encima quepan
+    // las secciones del súper con sus «· del menú», que es la otra mitad de lo
+    // que esta captura tiene que enseñar.
+    foco: { selector: 'h3:has-text("Personal"), h2:has-text("Personal")', hueco: 430 }
   },
 
   // ── Rutinas ──────────────────────────────────────────────────────────────
@@ -382,7 +393,7 @@ const CAPTURAS = [
       await page.getByRole('button', { name: 'Enlazar un calendario' }).first().click();
       await page.waitForTimeout(400);
     },
-    foco: 'h2:has-text("Calendarios enlazados"), form'
+    foco: 'h3:has-text("Enlazar un calendario")'
   },
   { nombre: 'familia-contactos', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/contacts') },
   { nombre: 'familia-emergencias', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/emergency') },
@@ -516,7 +527,14 @@ const CAPTURAS = [
     }
   },
   { nombre: 'interna-menu-movil', cuenta: 'ana', aparato: 'movil', ruta: hogar('/menu') },
-  { nombre: 'interna-compra-movil', cuenta: 'ana', aparato: 'movil', ruta: hogar('/menu?vista=compra') },
+  {
+    nombre: 'interna-compra-movil',
+    cuenta: 'ana',
+    aparato: 'movil',
+    ruta: hogar('/menu'),
+    preparar: abrirLaCompra,
+    foco: { selector: 'h3:has-text("Personal"), h2:has-text("Personal")', hueco: 60 }
+  },
   {
     nombre: 'interna-jornada-movil',
     cuenta: 'ana',
@@ -560,7 +578,16 @@ const CAPTURAS = [
     nombre: 'interna-guia-libro-movil',
     cuenta: 'ana',
     aparato: 'movil',
-    ruta: hogar('/wiki/libro/principios-de-la-casa')
+    ruta: hogar('/wiki/libro/principios-de-la-casa'),
+    async preparar(page) {
+      // Dos notas más adentro: así se ven los dos botones de navegación y el
+      // chip «Leída», no solo la primera página del libro.
+      for (let paso = 0; paso < 2; paso += 1) {
+        await page.locator('a:has-text("Siguiente"), button:has-text("Siguiente")').first().click();
+        await page.waitForLoadState('domcontentloaded');
+        await asentar(page);
+      }
+    }
   },
   {
     nombre: 'interna-guia-progreso-movil',
@@ -638,8 +665,15 @@ for (const shot of CAPTURAS) {
     await page.goto(BASE + shot.ruta, { waitUntil: 'domcontentloaded' });
     await asentar(page);
     if (shot.preparar) await shot.preparar(page, estado);
-    if (shot.foco) await encuadrar(page, shot.foco);
+    if (shot.foco) {
+      const foco = typeof shot.foco === 'string' ? { selector: shot.foco } : shot.foco;
+      await encuadrar(page, foco.selector, foco.hueco);
+    }
     await asentar(page);
+    // Ningún foco puesto por la navegación: el anillo de foco sobre un titular
+    // no es parte de la pantalla que el manual está explicando.
+    await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined));
+    await page.waitForTimeout(150);
     titulos[shot.nombre] = await page.title();
     await page.screenshot({ path: path.join(OUT, `${shot.nombre}.png`) });
     await page.close();
