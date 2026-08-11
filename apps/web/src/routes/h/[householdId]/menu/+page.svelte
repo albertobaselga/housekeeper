@@ -931,7 +931,7 @@
       {/snippet}
       {#snippet shoppingLine(line: ShoppingLine, listKind: ShoppingListKind)}
         {@const marked = shownChecked(line, listKind)}
-        <li>
+        <li class:checked={marked}>
           {#if shopping.canWrite}
             <label class="check-row" class:checked={marked}>
               <input type="checkbox" checked={marked} onchange={() => toggleLine(line, listKind)} />
@@ -1137,6 +1137,14 @@
     cursor: pointer;
     color: var(--ink-soft);
     font-size: var(--text-meta);
+  }
+
+  /* El nombre del plato lleva a su receta: es la acción de la fila y necesita
+     su diana, no 21 px de alto de texto en línea. */
+  .menu-slot-copy strong > a {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
   }
 
   /* Compra (P2-4): el redondeo a paquetes y el desglose por origen son

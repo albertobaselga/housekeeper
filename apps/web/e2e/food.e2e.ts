@@ -43,7 +43,9 @@ test('admin en modo fixture: las rutinas conservan el toggle demo y nada más', 
   // El modo fixture dice CUÁNTAS quedan y no cuánto se cumple: la barra con su
   // porcentaje se retiró porque el AC-26 revisado no admite indicadores de
   // cumplimiento en ninguna vista, y la maqueta es la vista que más se enseña.
-  await expect(page.locator('p.status-chip')).toHaveText(/^\d+ de \d+ hechas hoy$/);
+  // La cuenta vive ahora en el propio titular, que dice el estado de la
+  // pantalla en vez de repetir el nombre de la sección.
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^Rutinas · \d+ de \d+ hechas$/);
   await expect(page.locator('progress')).toHaveCount(0);
   await expect(page.locator('.page-wrap')).not.toContainText('%');
   await expect(page.locator('.routine-columns')).toBeVisible();

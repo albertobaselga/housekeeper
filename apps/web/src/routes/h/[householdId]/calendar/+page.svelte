@@ -900,8 +900,10 @@
      día vuelve a medir 45 px. Es la única pieza del producto que reclama el
      ancho entero, y lo hace porque es la única cuya diana depende de él. */
   @media (max-width: 37.5rem) {
+    /* Cuelgan directamente de `.page-wrap`, así que el ancho que hay que
+       recuperar es el suyo: el gutter de página y nada más. */
     .month-scroller, .week-strip {
-      margin-inline: calc((var(--pad-card) + var(--pad-page-x)) * -1);
+      margin-inline: calc(var(--pad-page-x) * -1);
     }
     .week-strip { gap: 0; }
     .week-day { border-radius: 0; border-left-width: 0; }

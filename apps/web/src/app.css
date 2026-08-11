@@ -637,8 +637,9 @@
   .button.danger:hover { background: var(--danger-soft); }
   .button.full { width: 100%; }
   /* `small-button` deja de significar «más pequeño» y pasa a significar «más
-     estrecho»: 44 px de alto, menos relleno lateral. Antes medía 36. */
-  .button.small-button { min-height: 2.75rem; padding: var(--space-2); font-size: var(--text-meta); }
+     estrecho»: 44 px de alto, menos relleno lateral. Antes medía 36. Estrecho
+     tiene suelo: 44 también de ancho, que es lo que mide un dedo. */
+  .button.small-button { min-height: 2.75rem; min-width: 2.75rem; padding: var(--space-2); font-size: var(--text-meta); }
 
   .status-chip { display: inline-flex; align-items: center; border-radius: var(--r-full); padding: var(--space-1) var(--space-2); font-size: var(--text-meta); font-weight: 700; white-space: nowrap; }
   .status-chip.warning { background: var(--warning-soft); color: var(--warning); }
@@ -1354,7 +1355,9 @@
   /* «Llamar al 112» es lo primero y entero en la primera pantalla, también a
      320 px. Antes el único botón de banda completa visible era «Imprimir», que
      es una acción de escritorio. */
-  .emergency-callout { display: grid; gap: var(--space-3); border-radius: var(--r-lg); background: var(--danger); padding: var(--space-4); color: var(--ink-on-primary); }
+  /* En una línea: el 112 a la izquierda y el botón a la derecha. Apilado le
+     robaba 56 px a los teléfonos de la casa, que es lo que hay debajo. */
+  .emergency-callout { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border-radius: var(--r-lg); background: var(--danger); padding: var(--space-3); color: var(--ink-on-primary); }
   .emergency-callout > div { display: flex; align-items: center; gap: var(--space-3); }
   .emergency-callout > div > span { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: var(--r-md); background: var(--on-primary-veil); font-size: var(--text-title); }
   .emergency-callout p, .emergency-callout strong { color: var(--ink-on-primary); }
@@ -1495,8 +1498,7 @@
        se ha venido a ver. El botón se estrecha, no se apila. */
     .search-form > span { display: none; }
     .search-form .button { padding: var(--space-2); }
-    .emergency-callout { align-items: stretch; flex-direction: column; gap: var(--space-3); }
-    .emergency-callout > a { text-align: center; }
+
     .contact-card { grid-template-columns: 2.5rem minmax(0, 1fr); }
     .contact-card .call-button { grid-column: 1 / -1; }
     /* Un grupo de ≤ 4 cifras cortas NUNCA se apila en columna: rejilla 2×2.

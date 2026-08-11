@@ -203,10 +203,15 @@ async function measure(page: Page) {
        * FRASE. Lo que separa una de otra, medido y sin lista de nombres: una
        * frase termina en punto o encadena más de ocho palabras sin usar «·»,
        * que es el separador con el que esta aplicación escribe sus líneas de
-       * apoyo («Empleada · cada semana · la próxima el jueves»).
+       * apoyo («Empleada · cada semana · la próxima el jueves»). `<small>` no
+       * entra: es letra pequeña por declaración del propio marcado y su rol en
+       * la escala son los 13 px de `--text-meta`. Lo que aquí se persigue es la
+       * prosa disfrazada de apoyo, y esa se escribe en párrafos.
        */
       const words = text.split(/\s+/).length;
-      const isSentence = /\.(\s|$)/.test(text) || (words > 8 && !text.includes('·'));
+      const isSentence =
+        element.tagName !== 'SMALL' &&
+        (/\.(\s|$)/.test(text) || (words > 8 && !text.includes('·')));
       if (size < 12) tiny.push(`${size}px ${describe(element)}`);
       else if (size < 14 && isSentence) tiny.push(`${size}px, frase ${describe(element)}`);
     }
@@ -349,3 +354,71 @@ for (const viewport of VIEWPORTS) {
     }
   });
 }
+
+/*
+ * A9 · La fuente, con sus condiciones de aceptación medidas y no supuestas.
+ *
+ * Antes de esto `font-family: Inter` estaba declarado, Inter NO se enviaba y
+ * `document.fonts` devolvía cero caras: el producto no tenía tipografía, tenía
+ * la del teléfono de cada cual. Aquí se comprueba lo que la decisión de diseño
+ * exigía antes de mergear: que llega, que sus cifras son tabulares —si no, la
+ * columna del dinero no forma columna— y que los diacríticos del español
+ * (á é í ó ú ñ ü ¿ ¡ €) salen de ella y no de una familia de reserva.
+ */
+test('la fuente del producto llega y sus cifras forman columna', async ({ page }) => {
+  await page.context().clearCookies();
+  await loginAs(page, 'employee');
+  await page.goto(`/h/${HOUSEHOLD}/today`);
+  await page.waitForLoadState('networkidle');
+
+  const font = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const familia = 'Atkinson Hyperlegible Next';
+    const cargada = [...document.fonts].some(
+      (face) => face.family.includes('Atkinson') && face.status === 'loaded'
+    );
+
+    /*
+     * Se mide en el DOM y no en un canvas: `font-variant-numeric` no viaja en
+     * el atajo `font` de un contexto 2D, así que un canvas mediría siempre las
+     * cifras proporcionales y no diría nada de la columna del dinero.
+     */
+    const banco = document.createElement('div');
+    banco.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font:16px/1 "' + familia + '"';
+    document.body.append(banco);
+    const medir = (texto: string, tabular: boolean): number => {
+      const span = document.createElement('span');
+      span.style.fontVariantNumeric = tabular ? 'tabular-nums lining-nums' : 'normal';
+      span.textContent = texto;
+      banco.append(span);
+      const ancho = Math.round(span.getBoundingClientRect().width * 100) / 100;
+      span.remove();
+      return ancho;
+    };
+    // Cifras tabulares: diez unos y diez ochos miden lo mismo. Es la condición
+    // sin la cual los importes no se pueden barrer con la vista.
+    const unos = medir('1111111111', true);
+    const ochos = medir('8888888888', true);
+    // Y que la cara tiene DE VERDAD cifras proporcionales que `tnum` corrige:
+    // si midieran igual sin pedirlo, el token no estaría haciendo nada.
+    const unosProporcionales = medir('1111111111', false);
+    const acentos = medir('áéíóúñü¿¡€', false);
+    banco.remove();
+    const soporta = document.fonts.check(`16px "${familia}"`, 'áéíóúñü¿¡€');
+    const cuerpo = getComputedStyle(document.body).fontFamily;
+    return { cargada, unos, ochos, unosProporcionales, acentos, soporta, cuerpo };
+  });
+
+  expect(font.cargada, 'la cara variable de Atkinson Hyperlegible Next no ha llegado al navegador').toBe(true);
+  expect(font.cuerpo, 'el cuerpo del documento no usa la fuente del producto').toContain('Atkinson Hyperlegible Next');
+  expect(
+    font.unos,
+    `cifras no tabulares: con tabular-nums, «1111111111» mide ${font.unos} y «8888888888», ${font.ochos}`
+  ).toBe(font.ochos);
+  expect(
+    font.unosProporcionales,
+    'las cifras ya miden igual sin pedir tabular-nums: el token no está haciendo nada y la comprobación no vale'
+  ).not.toBe(font.ochos);
+  expect(font.soporta, 'los diacríticos del español no salen de esta cara').toBe(true);
+  expect(font.acentos, 'los diacríticos del español no se miden').toBeGreaterThan(0);
+});
