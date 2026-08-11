@@ -3,10 +3,10 @@ import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
 import { createCommandEnvelope } from '$lib/offline/schema';
 
 /**
- * Constructor del comando `routine.complete`, en módulo propio y mínimo:
- * es el único constructor de comida que necesita la página «Hoy», y separarlo
- * de `food/commands.ts` evita arrastrar todo el chunk de constructores al
- * presupuesto de JavaScript inicial de Hoy (120 KB).
+ * Constructores de los dos comandos de ocurrencia —marcar y deshacer—, en
+ * módulo propio y mínimo: son los únicos de comida que necesita la página
+ * «Hoy», y separarlos de `food/commands.ts` evita arrastrar todo el chunk de
+ * constructores al presupuesto de JavaScript inicial de Hoy (120 KB).
  */
 
 interface EnvelopeOptions {
@@ -14,16 +14,19 @@ interface EnvelopeOptions {
   occurredAt?: string;
 }
 
-export interface RoutineCompletePayload {
-  action: 'complete';
+export interface RoutineOccurrencePayload {
+  action: 'complete' | 'uncomplete';
   routineId: string;
   dueOn: string;
 }
 
-export function completeRoutine(
+export type RoutineCompletePayload = RoutineOccurrencePayload & { action: 'complete' };
+
+function routineOccurrenceCommand(
+  action: RoutineOccurrencePayload['action'],
   input: { householdId: string; routineId: string; dueOn: string },
-  options: EnvelopeOptions = {}
-): CommandEnvelopeV1<RoutineCompletePayload> {
+  options: EnvelopeOptions
+): CommandEnvelopeV1<RoutineOccurrencePayload> {
   return createCommandEnvelope({
     ...options,
     householdId: input.householdId,
@@ -33,9 +36,29 @@ export function completeRoutine(
     aggregateType: 'routine',
     aggregateId: input.routineId,
     payload: {
-      action: 'complete',
+      action,
       routineId: input.routineId,
       dueOn: input.dueOn
-    } satisfies RoutineCompletePayload
-  }) as CommandEnvelopeV1<RoutineCompletePayload>;
+    } satisfies RoutineOccurrencePayload
+  }) as CommandEnvelopeV1<RoutineOccurrencePayload>;
+}
+
+export function completeRoutine(
+  input: { householdId: string; routineId: string; dueOn: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<RoutineOccurrencePayload> {
+  return routineOccurrenceCommand('complete', input, options);
+}
+
+/**
+ * Deshacer un marcado hecho por error (E5.1). Va al mismo agregado y con la
+ * misma forma: identifica la ocurrencia por su fecha, sin motivo. El servidor
+ * anota el completado como anulado —no lo borra— y devuelve la rutina al día
+ * que le tocaba.
+ */
+export function uncompleteRoutine(
+  input: { householdId: string; routineId: string; dueOn: string },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<RoutineOccurrencePayload> {
+  return routineOccurrenceCommand('uncomplete', input, options);
 }

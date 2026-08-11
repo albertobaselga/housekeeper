@@ -162,10 +162,16 @@ export interface RoutineUpsertPayload {
   nextDueOn: string;
 }
 
-// `routine.complete` vive en su módulo mínimo (routine-complete.ts) para no
-// arrastrar todos los constructores al bundle inicial de Hoy; se re-exporta
-// aquí para conservar la superficie histórica del módulo.
-export { completeRoutine, type RoutineCompletePayload } from './routine-complete';
+// `routine.complete` y `routine.uncomplete` viven en su módulo mínimo
+// (routine-complete.ts) para no arrastrar todos los constructores al bundle
+// inicial de Hoy; se re-exportan aquí para conservar la superficie histórica
+// del módulo.
+export {
+  completeRoutine,
+  uncompleteRoutine,
+  type RoutineCompletePayload,
+  type RoutineOccurrencePayload
+} from './routine-complete';
 
 function trimmedOrUndefined(value: string | undefined): string | undefined {
   const trimmed = value?.trim();

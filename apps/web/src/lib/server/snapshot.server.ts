@@ -9,12 +9,20 @@ import {
   withAuthorizedTransaction
 } from '@casa-clara/server';
 
+import { pendingFor, PENDING_LOOKBACK_DAYS } from '@casa-clara/domain';
+
 import { dateLabel } from '$lib/employment/model';
 import type { MealSlot } from '$lib/food/commands';
+import { addDays } from '$lib/food/dates';
 
 import type { SnapshotContact } from './contacts.server';
 import { fixturesAllowed, unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
+import {
+  ROUTINE_RULE_COLUMNS,
+  routineScheduleFrom,
+  type RoutineRuleRow
+} from './routine-rules.server';
 import {
   getCriticalSnapshotPayload,
   type SnapshotHouseholdData,
@@ -95,38 +103,62 @@ export async function loadSnapshotHousehold(
         });
       }
 
-      const routineResult = await client.query<{
-        id: string;
-        title: string;
-        details: string;
-        nextDueOn: string;
-        completedCurrent: boolean;
-      }>(
+      // El snapshot sigue llevando OCURRENCIAS ya resueltas, no reglas (§5.3):
+      // la página sin conexión no debería tener que expandir nada. Lo que
+      // cambia es de dónde salen: del generador y no de una columna, y con
+      // `dueOn` explícito, que es lo que permite encolar la finalización
+      // correcta desde el dispositivo sin adivinar qué ocurrencia era.
+      const routineResult = await client.query<
+        RoutineRuleRow & { id: string; title: string; details: string }
+      >(
         `select routine.id,
                 routine.title,
                 routine.details,
-                routine.next_due_on::text as "nextDueOn",
-                exists (
-                  select 1 from app.routine_completions as completion
-                   where completion.household_id = routine.household_id
-                     and completion.routine_id = routine.id
-                     and completion.due_on = routine.next_due_on
-                ) as "completedCurrent"
+                ${ROUTINE_RULE_COLUMNS}
            from app.routines as routine
           where routine.household_id = $1
             and routine.archived_at is null
-            and routine.next_due_on <= $2
-          order by routine.next_due_on, routine.title`,
+            and routine.pattern is not null
+            and routine.next_due_on <= $2::date
+          order by routine.title`,
         [householdId, todayISO]
       );
-      const routines: SnapshotRoutine[] = routineResult.rows.map((row) => ({
-        id: row.id,
-        title: row.title,
-        details: row.details,
-        dueLabel: row.nextDueOn === todayISO ? 'Hoy' : `Vencía el ${dateLabel(row.nextDueOn)}`,
-        overdue: row.nextDueOn < todayISO,
-        done: row.completedCurrent
-      }));
+      const completionResult = await client.query<{ routineId: string; dueOn: string }>(
+        `select completion.routine_id as "routineId", completion.due_on::text as "dueOn"
+           from app.routine_completions as completion
+          where completion.household_id = $1
+            and completion.voided_at is null
+            and completion.due_on >= $2::date`,
+        [householdId, addDays(todayISO, -PENDING_LOOKBACK_DAYS)]
+      );
+      const completedByRoutine = new Map<string, Set<string>>();
+      for (const row of completionResult.rows) {
+        const set = completedByRoutine.get(row.routineId) ?? new Set<string>();
+        set.add(row.dueOn);
+        completedByRoutine.set(row.routineId, set);
+      }
+
+      const routines: SnapshotRoutine[] = [];
+      for (const row of routineResult.rows) {
+        const schedule = routineScheduleFrom(row);
+        if (!schedule) continue;
+        const completed = completedByRoutine.get(row.id) ?? new Set<string>();
+        const pending = pendingFor(schedule, row.overduePolicy, completed, todayISO);
+        // Una fila por rutina: la atrasada manda sobre la de hoy porque es la
+        // que se pierde si no se dice. Con `skip` no hay atrasadas y una semana
+        // de vacaciones deja de generar siete líneas «Vencía el…».
+        const dueOn = pending.overdue ?? pending.due[0] ?? null;
+        if (!dueOn) continue;
+        routines.push({
+          id: row.id,
+          title: row.title,
+          details: row.details,
+          dueOn,
+          dueLabel: dueOn === todayISO ? 'Hoy' : `Tocaba el ${dateLabel(dueOn)}`,
+          overdue: dueOn < todayISO,
+          done: false
+        });
+      }
 
       // Solo las notas FIJADAS y publicadas de espacios vivos: son las que la
       // casa ha marcado como imprescindibles y las únicas que merecen viajar

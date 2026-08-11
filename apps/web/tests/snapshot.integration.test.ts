@@ -167,17 +167,24 @@ describe.runIf(Boolean(adminUrl))('snapshot crítico con datos reales del hogar'
     expect(data!.today.dateLabel.length).toBeGreaterThan(0);
   });
 
-  it('lleva las rutinas que vencen hoy o antes, no las futuras', async () => {
+  it('lleva las rutinas que tocan hoy o se quedaron pendientes, con su ocurrencia', async () => {
     const data = await loadSnapshotHousehold(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
     const titles = data!.today.routines.map((routine) => routine.title);
     expect(titles).toContain('Cambiar sábanas (off)');
     expect(titles).toContain('Sacar la basura (off)');
     expect(titles).not.toContain('Limpiar filtros (off)');
+
     const late = data!.today.routines.find((routine) => routine.title === 'Cambiar sábanas (off)')!;
     expect(late.overdue).toBe(true);
-    expect(late.dueLabel).toMatch(/^Vencía el /);
+    expect(late.dueLabel).toMatch(/^Tocaba el /);
+
     const todayRoutine = data!.today.routines.find((routine) => routine.title === 'Sacar la basura (off)')!;
     expect(todayRoutine).toMatchObject({ overdue: false, dueLabel: 'Hoy', done: false });
+    // La ocurrencia concreta viaja con la fila: sin ella, marcarla sin conexión
+    // obligaba a adivinar de qué día se hablaba.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+    expect(todayRoutine.dueOn).toBe(today);
+    expect(late.dueOn < today).toBe(true);
   });
 
   it('RLS acota las rutinas por audiencia: la empleada no ve las de familia', async () => {

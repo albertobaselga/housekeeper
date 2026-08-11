@@ -6,6 +6,12 @@
   const OutboxTriage = import('$lib/components/OutboxTriage.svelte').then((module) => module.default);
   // La agenda real del día también va en chunk aparte (solo pesa cuando hay eventos).
   const TodayAgenda = import('$lib/components/TodayAgenda.svelte').then((module) => module.default);
+  // «Esta semana» (E5.3): lo que viene en los próximos días. No es accionable y
+  // solo pesa cuando hay algo que enseñar, así que también va aparte.
+  const TodayWeek = import('$lib/components/TodayWeek.svelte').then((module) => module.default);
+  // Lo ya hecho hoy, con el gesto de deshacer (E5.1): plegado, al fondo y en su
+  // propio chunk. Deshacer necesita JavaScript de todos modos.
+  const TodayDone = import('$lib/components/TodayDone.svelte').then((module) => module.default);
   // Los atajos que resuelven aquí mismo (confirmar la comida, aceptar la
   // jornada) arrastran los comandos de comida y empleo: otro chunk aparte.
   const InlineAction = import('$lib/components/TodayInlineAction.svelte').then((module) => module.default);
@@ -14,9 +20,8 @@
   import type { Capability } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
-  import { nextRoutineDue } from '$lib/food/dates';
-  import { completeRoutine } from '$lib/food/routine-complete';
-  import type { TodayRoutineView } from '$lib/server/today.server';
+  import { completeRoutine, uncompleteRoutine } from '$lib/food/routine-complete';
+  import type { TodayRoutineRow } from '$lib/server/today.server';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -42,13 +47,12 @@
 
   const overview = $derived(data.overview);
 
-  const DUE_LABEL = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
-
   // ── Modo real (Postgres bajo RLS): «Marcar hecha» OPTIMISTA con el patrón
   // wiki. El chip «Hecha ✓ · próxima el X» se pinta al instante y la fila NO
-  // desaparece en seco: queda atenuada y tachada con su chip (P3), aunque los
-  // datos frescos ya no la lista como pendiente. Guard POR RUTINA: las demás
-  // filas siguen accionables sin esperar. ─────────────────────────────────────
+  // desaparece en seco: queda atenuada y tachada con su chip (P3). El chip lo
+  // escribe el SERVIDOR (`row.doneChip`): predecirlo aquí costaba importar la
+  // aritmética de recurrencia y un `Intl.DateTimeFormat` al arranque de Hoy.
+  // Guard POR FILA: las demás siguen accionables sin esperar. ────────────────
   const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:today' });
   const actionStatus = optimistic.status;
   $effect(() => optimistic.start());
@@ -57,44 +61,59 @@
   // y vuelve atrás sola si el servidor rechaza el cambio.
   let resolvedInline = $state<Record<string, string>>({});
 
-  type DoneRoutine = { id: string; title: string; details: string; chip: string };
-  let doneRoutines = $state<Record<string, DoneRoutine>>({});
-  let completingIds = $state<Record<string, true>>({});
+  // Filas marcadas en esta visita (clave de fila → chip) y filas cuyo marcado
+  // se está deshaciendo. Las dos se vacían solas cuando llega el load fresco.
+  let markedHere = $state<Record<string, string>>({});
+  let undoneHere = $state<Record<string, true>>({});
+  let busyRows = $state<Record<string, true>>({});
 
-  // Fila viva mientras el load la traiga; al desaparecer del overview, la
-  // versión «hecha» local la mantiene visible (atenuada) el resto de la visita.
-  const shownRoutines = $derived.by(() => {
-    const fresh = overview?.routines ?? [];
-    const freshIds = new Set(fresh.map((routine) => routine.id));
-    const ghosts = Object.values(doneRoutines).filter((routine) => !freshIds.has(routine.id));
-    return { fresh, ghosts };
-  });
-
-  function markRoutineDone(routine: TodayRoutineView): void {
-    if (!overview || completingIds[routine.id] || doneRoutines[routine.id]) return;
-    completingIds[routine.id] = true;
-    const predictedDue = nextRoutineDue(routine.nextDueOn, routine.frequency, routine.intervalCount);
-    const entry: DoneRoutine = {
-      id: routine.id,
-      title: routine.title,
-      details: routine.details,
-      chip: `Hecha ✓ · próxima el ${DUE_LABEL.format(new Date(`${predictedDue}T00:00:00Z`))}`
-    };
+  function markRoutineDone(row: TodayRoutineRow): void {
+    if (!overview || busyRows[row.key] || markedHere[row.key]) return;
+    busyRows[row.key] = true;
     void optimistic
-      .run(completeRoutine({ householdId: overview.householdId, routineId: routine.id, dueOn: routine.nextDueOn }), {
+      .run(completeRoutine({ householdId: overview.householdId, routineId: row.routineId, dueOn: row.dueOn }), {
         apply: () => {
-          doneRoutines[routine.id] = entry;
+          markedHere[row.key] = row.doneChip;
+          delete undoneHere[row.key];
         },
         revert: () => {
-          delete doneRoutines[routine.id];
-          delete completingIds[routine.id];
+          delete markedHere[row.key];
+          delete busyRows[row.key];
         },
         settle: () => {
-          delete completingIds[routine.id];
+          delete busyRows[row.key];
         }
       })
       .catch(() => {
-        delete completingIds[routine.id];
+        delete busyRows[row.key];
+      });
+  }
+
+  /**
+   * Deshacer un marcado hecho por error (E5.1), desde el mismo sitio donde se
+   * marcó. No pide motivo: es un error de dedo, no una corrección contable. El
+   * servidor anota el completado como anulado y devuelve la rutina al día que
+   * le tocaba, así que basta con recargar.
+   */
+  function undoRoutineDone(row: { key: string; routineId: string; dueOn: string }): void {
+    if (!overview || busyRows[row.key]) return;
+    busyRows[row.key] = true;
+    void optimistic
+      .run(uncompleteRoutine({ householdId: overview.householdId, routineId: row.routineId, dueOn: row.dueOn }), {
+        apply: () => {
+          undoneHere[row.key] = true;
+          delete markedHere[row.key];
+        },
+        revert: () => {
+          delete undoneHere[row.key];
+          delete busyRows[row.key];
+        },
+        settle: () => {
+          delete busyRows[row.key];
+        }
+      })
+      .catch(() => {
+        delete busyRows[row.key];
       });
   }
 
@@ -226,47 +245,87 @@
         {/if}
       </article>
 
-      <article class="card" id="rutinas-de-hoy" aria-labelledby="today-routines-title">
-        <div class="section-heading">
-          <div><p class="eyebrow">Rutinas</p><h2 id="today-routines-title">Vencen hoy</h2></div>
-          <a href={`/h/${overview.householdId}/routines`}>Todas →</a>
-        </div>
-        {#if shownRoutines.fresh.length > 0 || shownRoutines.ghosts.length > 0}
-          <div class="ledger-list">
-            {#each shownRoutines.fresh as routine (routine.id)}
-              <div class:routine-done={doneRoutines[routine.id]}>
-                <span>
-                  <strong>{routine.title}</strong>
-                  <small>{routine.dueLabel}{routine.details ? ` · ${routine.details}` : ''}</small>
-                </span>
-                {#if doneRoutines[routine.id]}
-                  <span class="status-chip success" role="status">{doneRoutines[routine.id].chip}</span>
-                {:else if routine.completedCurrent}
-                  <span class="status-chip success">Hecha</span>
-                {:else if canToggle}
+      {#snippet routineRows(rows: TodayRoutineRow[])}
+        <div class="ledger-list">
+          {#each rows as row (row.key)}
+            <div class:routine-done={markedHere[row.key]}>
+              <span>
+                <!-- El detalle se abre al tocar el TÍTULO, y solo si lo tiene
+                     (E5.2): `<details>` nativo, cero bytes de JavaScript para
+                     enseñar un texto que ya viajó con la página. Sin detalle es
+                     un <strong> y no finge que se pulsa. -->
+                {#if row.details}
+                  <details class="routine-detail"><summary>{row.title}</summary><p>{row.details}</p></details>
+                {:else}
+                  <strong>{row.title}</strong>
+                {/if}
+                <!-- Vacío en las de hoy (es hoy, siempre); `small:empty` lo
+                     esconde sin gastar un bloque condicional en el móvil. -->
+                <small>{row.note}</small>
+              </span>
+              {#if markedHere[row.key]}
+                <span class="inline-actions">
+                  <span class="status-chip success" role="status">{markedHere[row.key]}</span>
                   <button
                     class="button secondary small-button"
                     type="button"
-                    disabled={completingIds[routine.id]}
-                    onclick={() => markRoutineDone(routine)}
-                  >Marcar hecha</button>
-                {/if}
-              </div>
-            {/each}
-            {#each shownRoutines.ghosts as routine (routine.id)}
-              <div class="routine-done">
-                <span>
-                  <strong>{routine.title}</strong>
-                  <small>Hoy{routine.details ? ` · ${routine.details}` : ''}</small>
+                    disabled={busyRows[row.key]}
+                    onclick={() => undoRoutineDone(row)}
+                  >Deshacer</button>
                 </span>
-                <span class="status-chip success" role="status">{routine.chip}</span>
-              </div>
-            {/each}
-          </div>
-        {:else}
-          <p class="audit-note">Ninguna rutina vence hoy.</p>
-        {/if}
-        {#if !canToggle && overview.routines.length > 0}
+              {:else if canToggle}
+                <button
+                  class="button secondary small-button"
+                  type="button"
+                  disabled={busyRows[row.key]}
+                  onclick={() => markRoutineDone(row)}
+                >Marcar hecha</button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/snippet}
+
+      <article class="card" id="rutinas-de-hoy" aria-labelledby="today-routines-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Rutinas</p><h2 id="today-routines-title">Lo que toca hoy</h2></div>
+          <a href={`/h/${overview.householdId}/routines`}>Todas →</a>
+        </div>
+        <!-- El chip es CUENTA, no nota: nunca porcentaje ni racha (AC-26).
+             Las cadenas vacías las esconde `:empty` en CSS: un bloque
+             condicional menos por cada texto que a veces no toca. -->
+        <p class="status-chip" role="status">{overview.routines.countChip}</p>
+
+        <!-- Los bloques («Se quedó pendiente», «Hoy» y el corte de seis) los
+             arma el servidor: cada `{#each}` de más aquí son bytes en el móvil. -->
+        {#each overview.routines.blocks as block (block.key)}
+          {#if block.folded}
+            <details><summary>{block.heading}</summary>{@render routineRows(block.rows)}</details>
+          {:else}
+            {#if block.heading}<h3 class="routine-block">{block.heading}</h3>{/if}
+            {@render routineRows(block.rows)}
+          {/if}
+        {/each}
+
+        <p class="audit-note">{overview.routines.emptyNote}</p>
+
+        <!-- Lo ya hecho y «Esta semana» (E5.1 y E5.3) van en chunks aparte,
+             como la agenda: medido, no cabían en el presupuesto de arranque, y
+             la propia enmienda deja esa salida («cabe en el presupuesto o va en
+             carga diferida; se mide, no se supone»). Cada componente decide si
+             tiene algo que enseñar; ese condicional no pesa aquí. -->
+        {#await TodayDone then Done}
+          <Done
+            view={overview.routines}
+            marked={markedHere}
+            undone={undoneHere}
+            busy={busyRows}
+            onUndo={undoRoutineDone}
+          />
+        {/await}
+        {#await TodayWeek then Week}<Week view={overview.routines} />{/await}
+
+        {#if !canToggle && overview.routines.anyToday}
           <p class="card-footnote">Tu acceso permite consultar el día, pero no marcar rutinas.</p>
         {/if}
       </article>
