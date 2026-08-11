@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { getCriticalSnapshotPayload } from '../src/lib/server/fixtures.server';
 import { buildCriticalSnapshot, loadSnapshotHousehold } from '../src/lib/server/snapshot.server';
@@ -15,6 +15,11 @@ import { FIXTURE_HOUSEHOLD } from './helpers';
 // decide qué ve cada rol.
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+
+// Igual que en contacts.integration: esta suite afirma el comportamiento CON
+// base configurada. `fixturesAllowed()` lo decide por la DATABASE_URL del
+// proceso, así que se declara aquí en vez de heredarla del shell de turno.
+vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: 'postgres://prueba/afirmada' } }));
 const APP_LOGIN = 'it_casa_clara_snapshot_login';
 const SNAPSHOT_DB = 'casaclara_off_snapshot_it';
 
@@ -212,12 +217,15 @@ describe.runIf(Boolean(adminUrl))('snapshot crítico con datos reales del hogar'
     expect(snapshot.payload.dietaryFlags).toEqual([]);
     expect(snapshot.signature.length).toBeGreaterThan(0);
 
-    // Sin pool (demo) la fixture sintética se conserva entera.
+    // Y sin lectura real —esta suite corre SIEMPRE con base configurada, que es
+    // el caso de producción— el paquete sale parcial: ni una nota, ni un menú,
+    // ni una rutina inventada viaja firmada al móvil. La maqueta entera, en su
+    // propio despliegue sin base, la cubre `search-offline`.
     expect(await loadSnapshotHousehold(ADMIN_USER, FIXTURE_HOUSEHOLD, null)).toBeNull();
-    const fixture = getCriticalSnapshotPayload(null, null);
-    expect(fixture.wikiPages.length).toBeGreaterThan(0);
-    expect(fixture.today.menu.length).toBeGreaterThan(0);
-    expect(fixture.today.routines.length).toBeGreaterThan(0);
+    const partial = getCriticalSnapshotPayload(null, null);
+    expect(partial.wikiPages).toEqual([]);
+    expect(partial.today.menu).toEqual([]);
+    expect(partial.today.routines).toEqual([]);
   });
 
   it('un usuario sin membresía en el hogar no recibe nada', async () => {

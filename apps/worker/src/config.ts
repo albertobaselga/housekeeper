@@ -10,11 +10,6 @@ export interface WorkerConfig {
     accessKeyId: string;
     secretAccessKey: string;
   };
-  smtp: {
-    host: string;
-    port: number;
-    from: string;
-  };
 }
 
 function required(env: NodeJS.ProcessEnv, key: string): string {
@@ -49,11 +44,6 @@ export function loadWorkerConfig(env = process.env): WorkerConfig {
       bucket: required(env, "S3_PRIVATE_BUCKET"),
       accessKeyId: required(env, "S3_ACCESS_KEY_ID"),
       secretAccessKey: required(env, "S3_SECRET_ACCESS_KEY"),
-    },
-    smtp: {
-      host: required(env, "SMTP_HOST"),
-      port: positiveInteger(env, "SMTP_PORT", 1025),
-      from: required(env, "SMTP_FROM"),
     },
   };
 }

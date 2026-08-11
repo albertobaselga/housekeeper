@@ -1,11 +1,17 @@
 # Planificador de la cola de trabajos (pg_cron + pg_net → Vercel)
 
-**Qué resuelve.** La aplicación fabrica trabajos desde hace tiempo —avisos de
-rutina y de liquidación, auto-confirmación del parte semanal, PDF de los
-justificantes, sincronización de calendarios enlazados, poda de los datos de
+**Qué resuelve.** La aplicación fabrica trabajos desde hace tiempo —PDF de los
+recibos, sincronización de calendarios enlazados, poda de los datos de
 descubrimiento— y **nadie los ejecutaba**: no hay worker desplegado. Lo que se
-notaba en casa: el calendario no se refrescaba solo, no llegaban recordatorios,
-los justificantes no se generaban y el parte semanal no se auto-confirmaba.
+notaba en casa: el calendario no se refrescaba solo y los recibos del mes no se
+generaban.
+
+> **Nota de 11/08/2026.** Este runbook hablaba también de avisos de rutina y de
+> liquidación y de la auto-confirmación del parte semanal. Los tres se
+> retiraron con la migración 0029 —no hay correo y no hay parte semanal—, así
+> que quedan **cuatro** tipos de trabajo. Si aplicas este runbook sobre una
+> instalación anterior, la propia 0029 deja en `dead` lo que hubiera encolado
+> de los tres tipos retirados: no hace falta tocar la cola a mano.
 
 **Cómo se resuelve, sin host extra y sin coste.** El planificador vive en la
 propia base: `pg_cron` dispara cada pocos minutos una llamada HTTP con `pg_net`
@@ -117,11 +123,26 @@ allí, con un token DISTINTO):
 | `JOB_RUNNER_LEASE_MS` | `300000` | opcional (por omisión 5 min) |
 | `WORKER_MAX_JOB_ATTEMPTS` | `5` | opcional, mismo defecto que el demonio |
 
-`SMTP_HOST`, `SMTP_FROM`, `SMTP_PORT` y las cuatro `S3_*` ya estaban en la lista
-de variables de la web (§3 y §5 de `.env.example`); el drenaje las necesita
-también, porque de ahí salen los correos de los avisos y el PDF del
-justificante. **Sin todas ellas el endpoint responde 503 y no toca la cola**:
-un drenaje a medias mandaría los avisos a `dead` por falta de SMTP, en silencio.
+El drenaje necesita además **un almacén de objetos**, porque de ahí sale el PDF
+del recibo. Vale cualquiera de los dos caminos de §3 de `.env.example` —la clave
+de servicio de Supabase (`SUPABASE_SERVICE_ROLE_KEY`) o las cuatro `S3_*`— y lo
+elige la misma función que lo elige para los adjuntos, así que no hay que
+declarar nada por segunda vez. **Sin ninguno de los dos el endpoint responde 503
+y no toca la cola**: un drenaje a medias mandaría los recibos a `dead` por falta
+de almacén, en silencio.
+
+> **Dos exigencias que se han retirado de esta lista** (11/08/2026), las dos
+> porque tenían la cola de producción parada por una configuración que en
+> realidad no faltaba:
+>
+> - **`SMTP_HOST` y `SMTP_FROM`.** Sin remitente configurado —y no lo hay,
+>   porque no hay correo— el endpoint devolvía 503 en cada pasada del cron y no
+>   se vaciaba nada. La migración 0029 retiró la salida de correo entera; si
+>   siguen puestas en el panel de Vercel, se borran.
+> - **Las cuatro `S3_*` en concreto.** El despliegue recomendado guarda los
+>   adjuntos en Supabase Storage y no tiene credenciales S3 ningunas: pedirlas
+>   aquí dejaba la cola sin vaciarse con el almacén perfectamente configurado al
+>   lado. Ahora se pide almacén, no una marca de almacén.
 
 ### Por qué `WORKER_DATABASE_URL` y no `DATABASE_URL`
 
@@ -186,23 +207,18 @@ select cron.schedule(
 ### Frecuencia: por qué cada cinco minutos
 
 La cadencia de cada trabajo **ya la lleva el trabajo dentro**: se re-encola a sí
-mismo (`ics.sync_all` a +6 h, la poda a +7 d, la escalada de liquidación a +3 d)
-o nace con su fecha (`notification.*` a las 08:00 del día que toca,
-`time_report.autoconfirm` a envío + 3 días). El cron **no marca el ritmo de los
-trabajos: marca cuánto tarda en enterarse la cola.** Así que la pregunta real es
-cuánto puede esperar el trabajo más impaciente.
+mismo (`ics.sync_all` a +6 h, la poda a +7 d) o nace al cerrar un mes. El cron
+**no marca el ritmo de los trabajos: marca cuánto tarda en enterarse la cola.**
+Así que la pregunta real es cuánto puede esperar el trabajo más impaciente.
 
 | Trabajo | Su propio ritmo | Cuánto duele el retraso |
 | --- | --- | --- |
-| `document.render_receipt` | al cerrar la cuenta del mes | **El que más**: alguien acaba de cerrar y está esperando el justificante |
-| `notification.routine_due` / `settlement_due` | una vez, a las 08:00 del día | Un aviso de las 08:00 que llega a las 08:20 ya llega tarde a un desayuno |
+| `document.render_receipt` | al cerrar la cuenta del mes | **El que más**: alguien acaba de cerrar y está esperando el recibo |
 | `ics.sync_source` / `ics.sync_all` | unas cuantas veces al día (+6 h) | Un cambio en el calendario del colegio puede esperar minutos, no horas |
-| `time_report.autoconfirm` | envío + 3 días | Ninguno |
 | `maintenance.prune_discovery` | semanal | Ninguno |
 
-Con `*/5` el peor caso es **5 minutos**, que es lo que aguanta el PDF del
-justificante sin que nadie recargue la página preguntándose si se ha roto algo,
-y deja los avisos de las 08:00 entregados como muy tarde a las 08:05.
+Con `*/5` el peor caso es **5 minutos**, que es lo que aguanta el PDF del recibo
+sin que nadie recargue la página preguntándose si se ha roto algo.
 
 Lo que cuesta: 288 llamadas al día ≈ **8.600 al mes**, frente al millón de
 invocaciones del plan gratuito de Vercel. Una pasada con la cola vacía son
@@ -323,5 +339,5 @@ trabajos y ninguno ejecuta el mismo dos veces.
 **Registro.** Cada pasada deja una línea JSON en los logs de la función con el
 logger que redacta: `{"scope":"web:jobs","msg":"job queue drained",
 "counts":{"ran":…,"remaining":…,"requeued":…,"dead":…},"ms":…}`, y cada trabajo
-otra con su `jobId`, `jobType`, `householdId` y duración. Ni correos, ni
-nombres, ni contenido de los avisos.
+otra con su `jobId`, `jobType`, `householdId` y duración. Ni nombres ni
+contenido: solo identificadores técnicos.

@@ -22,6 +22,7 @@ import {
   routineScheduleFrom,
   type RoutineRuleRow
 } from './routine-rules.server';
+import { buildVacationNews, type VacationNewsView } from './vacations.server';
 
 const log = createLogger('web:today');
 
@@ -81,6 +82,14 @@ export interface TodayDecisionItem {
   href: string;
   /** Verbo del enlace («Revisar», «Confirmar»…). */
   cta: string;
+  /**
+   * `news` = hay algo que saber, no algo que decidir. El bloque de Hoy lleva
+   * las dos cosas porque las dos son «pendientes de ti», pero el título de la
+   * sección tiene que decir la verdad de lo que hay dentro: llamar «decisión»
+   * a enterarse de que le han apuntado vacaciones sería insinuar que hay algo
+   * que aprobar, y el propietario decidió que no lo hay.
+   */
+  kind?: 'news';
   /**
    * Asunto que además se resuelve AQUÍ, sin salir de Hoy (Ola D-5). El enlace
    * a la pantalla completa se mantiene: esto es un atajo, no un sustituto.
@@ -239,6 +248,15 @@ export interface TodayOverview {
   dateLabel: string;
   greeting: string;
   decisions: TodayDecisionItem[];
+  /**
+   * Título del bloque, escrito aquí y no en la plantilla porque depende de lo
+   * que haya dentro (decisiones, novedades o las dos cosas). De paso el grafo
+   * de JavaScript inicial de Hoy se queda con una expresión en vez de con tres
+   * literales y un ternario, que en esa pantalla es presupuesto.
+   */
+  decisionsTitle: string;
+  /** «3 asuntos» / «1 asunto», ya con su plural resuelto. */
+  decisionsCount: string;
   menu: TodayMenuSlotView[];
   routines: TodayRoutinesView;
   /** Eventos de hoy de los calendarios enlazados (Ola E); RLS deja fuera al apoyo. */
@@ -301,6 +319,11 @@ export interface TodayDecisionFacts {
    * convertía este bloque en una copia de la tarjeta que hay justo debajo.
    */
   overdueRoutineCount: number;
+  /**
+   * Vacaciones apuntadas o anuladas que ella todavía no ha visto, ya resueltas
+   * por el motor del dominio. null = no es empleada, o no hay nada que contar.
+   */
+  vacationNews: VacationNewsView | null;
 }
 
 /**
@@ -405,6 +428,21 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
   }
 
   if (isEmployee) {
+    // Lo primero de la lista, y con razón: es lo único que ella no puede
+    // descubrir haciendo su trabajo. Una jornada por marcar o un cobro por
+    // confirmar los tiene delante en su pantalla; unas vacaciones apuntadas
+    // por otra persona, no. El aviso se apaga solo en cuanto las mira, así que
+    // ni es un cartel permanente ni hay nada que descartar a mano.
+    if (facts.vacationNews) {
+      items.push({
+        key: 'vacaciones-nuevas',
+        title: facts.vacationNews.headline,
+        detail: facts.vacationNews.detail ?? 'Míralas cuando quieras: quedan apuntadas en tu contrato.',
+        href: `${base}/employment/vacaciones`,
+        cta: 'Verlas',
+        kind: 'news'
+      });
+    }
     for (const extra of facts.extras) {
       if (extra.status === 'accepted' && extra.employeeMembershipId === facts.membershipId) {
         items.push({
@@ -670,6 +708,22 @@ export function buildTodayRoutines(
     anyToday: pendingCount > 0 || done.length > 0,
     emptyNote: pendingCount > 0 || done.length > 0 ? '' : 'Ninguna rutina toca hoy.'
   };
+}
+
+/**
+ * Cómo se llama el bloque según lo que haya caído dentro.
+ *
+ * Es una función y no un literal en la plantilla porque el bloque ya no
+ * contiene solo decisiones. Titular «Necesita tu decisión» encima de «te han
+ * apuntado vacaciones» le pediría a la empleada una aprobación que este hogar
+ * no le pide; titular todo como «novedades» escondería que hay cosas
+ * pendientes de verdad. Cada mezcla tiene su nombre.
+ */
+export function decisionsTitleFor(items: readonly TodayDecisionItem[]): string {
+  const news = items.filter((item) => item.kind === 'news').length;
+  if (news === 0) return 'Necesita tu decisión';
+  if (news === items.length) return news === 1 ? 'Una novedad para ti' : 'Novedades para ti';
+  return 'Novedades y decisiones';
 }
 
 /** «Buenos días» / «Buenas tardes» / «Buenas noches» según la hora de Madrid. */
@@ -962,6 +1016,53 @@ export async function loadTodayOverview(
         }));
       }
 
+      // Vacaciones que le han apuntado (o anulado) sin que ella lo sepa. Solo
+      // se pregunta cuando quien mira es la empleada: para el resto del hogar
+      // esto no es una novedad suya, es algo que acaba de hacer.
+      //
+      // El hecho es EL MISMO que pinta su sección de vacaciones —las filas de
+      // `app.vacation_periods` con sus sellos de tiempo— comparado con la marca
+      // de agua de `app.vacation_notice_marks`. No hay una tabla de avisos que
+      // pueda desincronizarse del expediente, y la notificación al móvil que
+      // vendrá después leerá esto mismo (docs/notificaciones.md).
+      let vacationNews: VacationNewsView | null = null;
+      if (membership.role === 'employee_live_in') {
+        const vacationRows = await client.query<{
+          startsOn: string;
+          endsOn: string;
+          status: 'recorded' | 'voided';
+          recordedAt: Date;
+          voidedAt: Date | null;
+        }>(
+          `select starts_on::text as "startsOn",
+                  ends_on::text as "endsOn",
+                  status::text as "status",
+                  recorded_at as "recordedAt",
+                  voided_at as "voidedAt"
+             from app.vacation_periods
+            where household_id = $1 and employee_membership_id = $2`,
+          [householdId, membership.id]
+        );
+        if (vacationRows.rows.length > 0) {
+          const mark = await client.query<{ seenThrough: Date }>(
+            `select seen_through as "seenThrough"
+               from app.vacation_notice_marks
+              where household_id = $1 and membership_id = $2`,
+            [householdId, membership.id]
+          );
+          vacationNews = buildVacationNews(
+            vacationRows.rows.map((row) => ({
+              startsOn: row.startsOn,
+              endsOn: row.endsOn,
+              status: row.status,
+              recordedAt: row.recordedAt.toISOString(),
+              voidedAt: row.voidedAt?.toISOString() ?? null
+            })),
+            mark.rows[0]?.seenThrough.toISOString() ?? null
+          );
+        }
+      }
+
       const decisions = buildTodayDecisions({
         householdId,
         role: membership.role,
@@ -971,7 +1072,8 @@ export async function loadTodayOverview(
         pendingExpenses,
         settlements,
         unconfirmedSlots,
-        overdueRoutineCount: routines.overdueCount
+        overdueRoutineCount: routines.overdueCount,
+        vacationNews
       });
 
       const hour = Number(MADRID_HOUR.format(now));
@@ -982,6 +1084,8 @@ export async function loadTodayOverview(
         dateLabel: headerDateLabel(todayISO),
         greeting: greetingFor(hour),
         decisions,
+        decisionsTitle: decisionsTitleFor(decisions),
+        decisionsCount: `${decisions.length} ${decisions.length === 1 ? 'asunto' : 'asuntos'}`,
         menu,
         routines,
         agenda

@@ -15,7 +15,6 @@ import {
   buildPendingExtraViews,
   buildSettlementViews,
   buildVacationView,
-  buildWeeklyReportViews,
   annualVacationDaysInForce,
   currentLocalDate,
   currentPeriod,
@@ -37,8 +36,7 @@ import {
   type ScheduleRow,
   type SettlementLineRow,
   type SettlementRow,
-  type VacationPeriodRow,
-  type WeeklyReportRow
+  type VacationPeriodRow
 } from '$lib/employment/model';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -119,7 +117,6 @@ export async function loadEmploymentOverview(
           settlements: [],
           pendingExtras: [],
           pendingExpenses: [],
-          recentReports: [],
           vacations: null,
           manualAdjustments: [],
           balances: { compensation: [], advances: [] }
@@ -356,21 +353,10 @@ export async function loadEmploymentOverview(
         [householdId, agreement.id]
       );
 
-      // Partes semanales recientes (últimas 6 semanas enviadas): permiten
-      // mostrar su estado y evitar reenviar una semana ya reportada.
-      const weeklyReports = await client.query<WeeklyReportRow>(
-        `select id,
-                week_starts_on::text as "weekStartsOn",
-                week_ends_on::text as "weekEndsOn",
-                status::text as "status",
-                auto_confirmed as "autoConfirmed",
-                dispute_reason as "disputeReason"
-           from app.weekly_time_reports
-          where household_id = $1 and agreement_id = $2
-          order by week_starts_on desc
-          limit 6`,
-        [householdId, agreement.id]
-      );
+      // Aquí se leían los partes semanales recientes. El parte se retiró con la
+      // migración 0029 y la pantalla ya no lo enseña; las filas antiguas siguen
+      // en la base como histórico y se leen en un único sitio, el ZIP del
+      // expediente de la empleada (employment-export.server.ts).
 
       const compensation = await client.query<CompensationBalanceRow>(
         `select account_id as "accountId",
@@ -525,7 +511,6 @@ export async function loadEmploymentOverview(
         ),
         pendingExtras: buildPendingExtraViews(pendingExtras.rows),
         pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows),
-        recentReports: buildWeeklyReportViews(weeklyReports.rows),
         // Sin versiones visibles no hay derecho que enseñar: RLS ya decidió que
         // esta persona no ve los términos, y un saldo sobre cero días mentiría.
         vacations:

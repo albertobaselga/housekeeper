@@ -2,10 +2,10 @@
  * Almacén privado de objetos (S3 / Supabase Storage) para los trabajos que
  * producen ficheros — hoy solo `document.render_receipt`.
  *
- * Separado de `integrations.ts` por el mismo motivo que `mail.ts`: el drenaje
- * de la cola desde la web necesita subir el PDF del justificante y nada más, y
- * no puede arrastrar `sharp` ni `tesseract.js` a la función serverless.
- * `integrations.ts` re-exporta ambos símbolos.
+ * Separado de `integrations.ts` porque el drenaje de la cola desde la web
+ * necesita subir el PDF del justificante y nada más, y no puede arrastrar
+ * `sharp` ni `tesseract.js` a la función serverless. `integrations.ts`
+ * re-exporta sus símbolos.
  */
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 

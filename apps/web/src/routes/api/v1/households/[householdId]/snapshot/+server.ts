@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 
+import { membershipIn } from '$lib/auth/membership';
 import { loadSnapshotContacts } from '$lib/server/contacts.server';
 import { getSnapshotKeys } from '$lib/server/keys.server';
 import { buildCriticalSnapshot, loadSnapshotHousehold } from '$lib/server/snapshot.server';
@@ -7,7 +8,10 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  if (!locals.user.householdIds.includes(params.householdId)) error(404, 'Hogar no encontrado');
+  // La membresía es la de ESTE hogar: el snapshot se firma con ella y la
+  // empleada de otra casa no puede llevarse el identificador de aquélla.
+  const membership = membershipIn(locals.user, params.householdId);
+  if (!membership) error(404, 'Hogar no encontrado');
 
   // Con pool el contenido del snapshot es el real del hogar (RLS): contactos,
   // menú de hoy, rutinas que vencen y notas fijadas de la Guía. Sin pool la
@@ -21,7 +25,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     {
       snapshot: buildCriticalSnapshot(
         params.householdId,
-        locals.user.membershipId,
+        membership.membershipId,
         snapshotContacts,
         snapshotHousehold
       ),

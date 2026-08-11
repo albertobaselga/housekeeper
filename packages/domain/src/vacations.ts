@@ -163,3 +163,109 @@ export function vacationYearBalance(input: VacationYearBalanceInput): VacationYe
     remainingDays: entitledDays - takenDays,
   });
 }
+
+// ─── Lo que todavía no se le ha contado ──────────────────────────────────────
+
+/**
+ * Un periodo tal y como lo guarda `app.vacation_periods`, con los dos sellos
+ * de tiempo que dicen cuándo pasó cada cosa. Es EL MISMO hecho que pinta la
+ * sección de vacaciones: aquí no hay una copia ni un aviso aparte.
+ */
+export interface VacationEventInput extends VacationPeriodInput {
+  readonly status: "recorded" | "voided";
+  /** Instante en que la administración lo apuntó. */
+  readonly recordedAt: string;
+  /** Instante en que lo anuló, o `null` si sigue vigente. */
+  readonly voidedAt?: string | null;
+}
+
+export interface VacationNews {
+  /** Periodos vigentes apuntados después de la marca: días nuevos para ella. */
+  readonly recorded: readonly VacationEventInput[];
+  /**
+   * Periodos que ella YA había visto apuntados y que se han anulado después.
+   * Los que se apuntaron y se anularon sin que llegara a verlos no salen: no
+   * llegaron a ser suyos, y contarlos sería ruido con forma de noticia.
+   */
+  readonly voided: readonly VacationEventInput[];
+  /** `recorded.length + voided.length`. Cero = nada que contar. */
+  readonly count: number;
+  /**
+   * Instante más reciente de TODO lo mirado, sea nuevo o no. Es la marca de
+   * agua que hay que guardar cuando ella lo ve: guardar `now()` en su lugar
+   * daría por contado lo que se apuntara mientras la pantalla estaba abierta.
+   * `null` si no hay ni un periodo.
+   */
+  readonly newestAt: string | null;
+}
+
+function instant(value: string, label: string): number {
+  const parsed = Date.parse(value);
+  invariant(
+    Number.isFinite(parsed),
+    "INVALID_VACATION_INSTANT",
+    `${label} no es un instante válido: ${value}`,
+  );
+  return parsed;
+}
+
+/**
+ * Qué le ha pasado a sus vacaciones desde la última vez que miró.
+ *
+ * La regla vive aquí, en el dominio, y no dentro de la pantalla que hoy la
+ * usa, porque va a tener dos consumidores: el aviso dentro de la aplicación y
+ * —cuando exista— la notificación al móvil (docs/notificaciones.md). Dos copias
+ * de esta regla serían dos definiciones distintas de «nuevo», y la segunda
+ * acabaría avisando de cosas que la primera ya había dado por vistas.
+ *
+ * `seenThrough` es la marca de agua de `app.vacation_notice_marks`; `null`
+ * significa que nunca ha mirado, y entonces todo lo vigente es nuevo.
+ */
+export function vacationNewsSince(
+  periods: readonly VacationEventInput[],
+  seenThrough: string | null,
+): VacationNews {
+  const seen = seenThrough === null ? null : instant(seenThrough, "La marca de lo ya visto");
+  const recorded: VacationEventInput[] = [];
+  const voided: VacationEventInput[] = [];
+  let newest = Number.NEGATIVE_INFINITY;
+  let newestValue: string | null = null;
+
+  for (const period of periods) {
+    const recordedAt = instant(period.recordedAt, "El sello de lo apuntado");
+    if (recordedAt > newest) {
+      newest = recordedAt;
+      newestValue = period.recordedAt;
+    }
+    const voidedAt =
+      period.voidedAt === undefined || period.voidedAt === null
+        ? null
+        : instant(period.voidedAt, "El sello de la anulación");
+    if (voidedAt !== null && voidedAt > newest) {
+      newest = voidedAt;
+      newestValue = period.voidedAt ?? null;
+    }
+
+    if (period.status === "recorded") {
+      if (seen === null || recordedAt > seen) recorded.push(period);
+      continue;
+    }
+    // Anulado: solo es noticia si llegó a verlo apuntado. Si nació y murió
+    // entre dos miradas suyas, para ella nunca existió.
+    if (voidedAt !== null && seen !== null && voidedAt > seen && recordedAt <= seen) {
+      voided.push(period);
+    }
+  }
+
+  // Del más reciente al más antiguo dentro de cada grupo: lo último que le han
+  // apuntado es lo primero que quiere leer.
+  const byRecency = (left: VacationEventInput, right: VacationEventInput): number =>
+    Date.parse(right.recordedAt) - Date.parse(left.recordedAt);
+
+  return Object.freeze({
+    recorded: Object.freeze([...recorded].sort(byRecency)),
+    voided: Object.freeze([...voided].sort(byRecency)),
+    count: recorded.length + voided.length,
+    newestAt: newestValue,
+  });
+}

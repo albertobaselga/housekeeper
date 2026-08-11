@@ -4,8 +4,10 @@ import {
   DomainRuleError,
   vacationCalendarDays,
   vacationDaysInYear,
+  vacationNewsSince,
   vacationPeriodsOverlap,
   vacationYearBalance,
+  type VacationEventInput,
 } from "./index.js";
 
 function domainCode(fn: () => unknown): string {
@@ -197,5 +199,92 @@ describe("saldo del año natural", () => {
         }),
       ),
     ).toBe("INVALID_VACATION_ENTITLEMENT");
+  });
+});
+
+describe("lo que todavía no se le ha contado", () => {
+  const apuntado = (
+    startsOn: string,
+    endsOn: string,
+    recordedAt: string,
+  ): VacationEventInput => ({ startsOn, endsOn, status: "recorded", recordedAt, voidedAt: null });
+
+  const anulado = (
+    startsOn: string,
+    endsOn: string,
+    recordedAt: string,
+    voidedAt: string,
+  ): VacationEventInput => ({ startsOn, endsOn, status: "voided", recordedAt, voidedAt });
+
+  it("sin haber mirado nunca, todo lo vigente es nuevo", () => {
+    const news = vacationNewsSince(
+      [apuntado("2026-08-01", "2026-08-15", "2026-07-20T10:00:00Z")],
+      null,
+    );
+    expect(news.count).toBe(1);
+    expect(news.recorded).toHaveLength(1);
+    expect(news.voided).toHaveLength(0);
+  });
+
+  it("lo apuntado antes de la última mirada ya no es noticia", () => {
+    const news = vacationNewsSince(
+      [
+        apuntado("2026-08-01", "2026-08-15", "2026-07-20T10:00:00Z"),
+        apuntado("2026-12-24", "2026-12-31", "2026-08-02T09:00:00Z"),
+      ],
+      "2026-08-01T00:00:00Z",
+    );
+    expect(news.count).toBe(1);
+    expect(news.recorded[0]?.startsOn).toBe("2026-12-24");
+  });
+
+  it("una anulación posterior a su mirada sí se le cuenta", () => {
+    const news = vacationNewsSince(
+      [anulado("2026-03-02", "2026-03-06", "2026-02-01T10:00:00Z", "2026-08-05T12:00:00Z")],
+      "2026-08-01T00:00:00Z",
+    );
+    expect(news.recorded).toHaveLength(0);
+    expect(news.voided).toHaveLength(1);
+  });
+
+  it("lo que nació y murió entre dos miradas suyas no se cuenta", () => {
+    const news = vacationNewsSince(
+      [anulado("2026-03-02", "2026-03-06", "2026-08-03T10:00:00Z", "2026-08-04T12:00:00Z")],
+      "2026-08-01T00:00:00Z",
+    );
+    expect(news.count).toBe(0);
+  });
+
+  it("la marca de agua es el sello más reciente de todo lo mirado, no solo de lo nuevo", () => {
+    const news = vacationNewsSince(
+      [
+        apuntado("2026-08-01", "2026-08-15", "2026-07-20T10:00:00Z"),
+        anulado("2026-03-02", "2026-03-06", "2026-02-01T10:00:00Z", "2026-09-09T08:30:00Z"),
+      ],
+      "2026-10-01T00:00:00Z",
+    );
+    expect(news.count).toBe(0);
+    expect(news.newestAt).toBe("2026-09-09T08:30:00Z");
+  });
+
+  it("sin ningún periodo no hay marca que guardar", () => {
+    expect(vacationNewsSince([], null)).toMatchObject({ count: 0, newestAt: null });
+  });
+
+  it("lo nuevo se ordena de lo último apuntado a lo primero", () => {
+    const news = vacationNewsSince(
+      [
+        apuntado("2026-08-01", "2026-08-15", "2026-07-20T10:00:00Z"),
+        apuntado("2026-12-24", "2026-12-31", "2026-07-25T10:00:00Z"),
+      ],
+      null,
+    );
+    expect(news.recorded.map((period) => period.startsOn)).toEqual(["2026-12-24", "2026-08-01"]);
+  });
+
+  it("rechaza un sello que no es un instante", () => {
+    expect(
+      domainCode(() => vacationNewsSince([apuntado("2026-08-01", "2026-08-15", "ayer")], null)),
+    ).toBe("INVALID_VACATION_INSTANT");
   });
 });

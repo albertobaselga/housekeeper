@@ -3,7 +3,6 @@ import { extraWorkCommandHandler } from "./extra-work.js";
 import { manualAdjustmentCommandHandler } from "./manual-adjustment.js";
 import { recordPaymentHandler } from "./payment.js";
 import { settlementCommandHandler } from "./settlement.js";
-import { submitWeeklyReportHandler } from "./time-entry.js";
 import { agreementCommandHandler, vacationCommandHandler } from "./vacation.js";
 
 /**
@@ -12,7 +11,6 @@ import { agreementCommandHandler, vacationCommandHandler } from "./vacation.js";
  * { ...employmentCommandHandlers, expense: submitExpenseHandler })`.
  */
 export const employmentCommandHandlers: CommandHandlers = {
-  time_entry: submitWeeklyReportHandler,
   extra_work: extraWorkCommandHandler,
   settlement: settlementCommandHandler,
   payment: recordPaymentHandler,

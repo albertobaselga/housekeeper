@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { can } from '../src/lib/auth/capabilities';
 import {
   HOUSEHOLD_MODULES,
   MODULE_CAPABILITY,
@@ -11,7 +12,7 @@ describe('household route contract', () => {
   it('keeps every required stable module addressable', () => {
     expect(HOUSEHOLD_MODULES).toEqual([
       'today', 'employment', 'menu', 'recipes', 'wiki', 'search',
-      'routines', 'calendar', 'contacts', 'emergency', 'account', 'settings'
+      'routines', 'calendar', 'contacts', 'emergency', 'account', 'personal', 'settings'
     ]);
 
     // «Tu contraseña» la alcanza todo el mundo; Ajustes sigue siendo de la
@@ -19,6 +20,9 @@ describe('household route contract', () => {
     // su propia contraseña.
     expect(MODULE_CAPABILITY.account).toBe('emergency.read');
     expect(MODULE_CAPABILITY.settings).toBe('access.manage');
+    // Personal enseña nombres, fechas y sueldos de las compañeras: la misma
+    // llave que Ajustes, nunca la mínima de Hoy.
+    expect(MODULE_CAPABILITY.personal).toBe('access.manage');
 
     for (const moduleName of HOUSEHOLD_MODULES) {
       const path = householdPath('household one', moduleName);
@@ -56,7 +60,18 @@ describe('household route contract', () => {
       capability: 'agreement.read',
       known: true
     });
-    // Ninguna de las dos hereda `settlement.read`, la del módulo padre.
+    // El historial de vacaciones lo abren los mismos tres que la política
+    // `vacation_periods_read` deja leer: administración, familia y la propia
+    // empleada. Al apoyo y al visor no les llega ni la ruta.
+    expect(guardForPath('/h/casa-roble/employment/vacaciones')).toEqual({
+      householdId: 'casa-roble',
+      module: 'employment',
+      capability: 'agreement.read',
+      known: true
+    });
+    expect(can('helper', 'agreement.read')).toBe(false);
+    expect(can('viewer', 'agreement.read')).toBe(false);
+    // Ninguna de las tres hereda `settlement.read`, la del módulo padre.
     expect(MODULE_CAPABILITY.employment).toBe('settlement.read');
   });
 

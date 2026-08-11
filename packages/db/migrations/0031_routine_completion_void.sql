@@ -164,7 +164,14 @@ CREATE POLICY routine_completions_void ON app.routine_completions
  * la 0011 y cuesta dos líneas.
  *
  * Sin este filtro, deshacer un marcado no volvería a avisar de la rutina: el
- * worker recibiría la ocurrencia como completada y `pendingFor` la descartaría.
+ * barrido recibiría la ocurrencia como completada y `pendingFor` la
+ * descartaría.
+ *
+ * La 0029 retiró el canal de correo, así que hoy nadie llama a esta función:
+ * queda en pie como ENTRADA del barrido diario, que es lo que alimentará el
+ * aviso al móvil (docs/notificaciones.md). Se corrige ahora y no cuando se
+ * conecte porque el fallo sería silencioso —una rutina que deja de avisar— y
+ * nadie lo relacionaría con haber deshecho un marcado meses antes.
  */
 CREATE OR REPLACE FUNCTION app_private.routine_digest_inputs(for_date date)
 RETURNS TABLE (

@@ -126,6 +126,13 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     return date.toISOString().slice(0, 10);
   }
 
+  /**
+   * Avisos `notification.routine_due` de una rutina. Desde la migración 0029 la
+   * respuesta correcta es siempre CERO: el aviso solo sabía mandar correo, no
+   * hay canal de correo, y encolarlo además copiaba las direcciones de la
+   * audiencia dentro de la fila de la cola. La consulta se queda justamente
+   * para vigilar que no vuelva.
+   */
   async function routineDueJobs(routineId: string): Promise<Array<{ payload: Record<string, unknown>; runAt: Date }>> {
     const rows = await adminPool.query<{ payload: Record<string, unknown>; run_at: Date }>(
       `select payload, run_at
@@ -187,25 +194,10 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
       expect(completed).toMatchObject({ status: "accepted", resourceId: routineId });
       expect(await nextDueOn(routineId)).toBe(testCase.expected);
 
-      // Dos avisos encolados: el primero al crear (run_at = primera ocurrencia)
-      // y el segundo al completar (run_at = la nueva next_due_on). La igualdad
-      // se comprueba en SQL para no depender de la zona horaria del servidor, y
-      // la hora civil se lee EN Madrid: el aviso del día X sale a las 08:00 de
-      // ese día (0027), no a la medianoche de la zona de la sesión.
-      const jobs = await routineDueJobs(routineId);
-      expect(jobs).toHaveLength(2);
-      for (const [index, expectedDate] of [testCase.nextDueOn, testCase.expected].entries()) {
-        const match = await adminPool.query<{ ok: boolean; madrid_wall_clock: string }>(
-          `select $1::timestamptz = app.job_run_at($2::date) as ok,
-                  to_char($1::timestamptz at time zone 'Europe/Madrid', 'YYYY-MM-DD HH24:MI')
-                    as madrid_wall_clock`,
-          [jobs[index]?.runAt, expectedDate],
-        );
-        expect(match.rows[0], `run_at del aviso ${index} de ${testCase.frequency}`).toEqual({
-          ok: true,
-          madrid_wall_clock: `${expectedDate} 08:00`,
-        });
-      }
+      // Y ni un aviso encolado: crear y completar movían antes dos trabajos de
+      // correo por rutina (0029 los retiró). La fecha se sigue viendo en Hoy y
+      // en el calendario, que es de donde salía el trabajo de verdad.
+      expect(await routineDueJobs(routineId), testCase.frequency).toHaveLength(0);
     }
   });
 
@@ -254,11 +246,7 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     // el mismo motivo estrecho por el que existía la definer de la 0009, ahora
     // reducido a un UPDATE de una columna.
     expect(await nextDueOn(routineId)).toBe("2027-08-09");
-    expect(await routineDueJobs(routineId)).toHaveLength(2);
-
-    // Los avisos de una rutina 'employee' van solo a la empleada.
-    const jobs = await routineDueJobs(routineId);
-    expect(jobs[0]?.payload.recipients).toEqual([EMPLOYEE_EMAIL]);
+    expect(await routineDueJobs(routineId)).toHaveLength(0);
   });
 
   it("el apoyo no puede completar una 'employee' pero sí una 'all'", async () => {
@@ -289,7 +277,12 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     expect(completed).toMatchObject({ status: "accepted", resourceId: sharedRoutine });
   });
 
-  it("AC-25: los recipients de un aviso 'family' jamás incluyen a la empleada", async () => {
+  it("AC-25: una rutina 'family' no encola aviso ninguno, y ninguna dirección sale de la base", async () => {
+    // La forma de cumplir el AC-25 ya no es «elegir bien los destinatarios»,
+    // sino que no haya destinatarios que elegir: el aviso por correo se retiró
+    // (0029). La rutina 'family' sigue siendo invisible para la empleada por
+    // RLS, que es donde esa garantía debe vivir; aquí se vigila lo que este
+    // comando escribía en la cola.
     const routineId = await upsertRoutine({
       title: "Mantenimiento caldera",
       audience: "family",
@@ -304,15 +297,17 @@ describe.runIf(Boolean(adminUrl))("rutinas con audiencia y feeds ICS sobre Postg
     );
     expect(completed).toMatchObject({ status: "accepted" });
 
-    const jobs = await routineDueJobs(routineId);
-    expect(jobs).toHaveLength(2);
-    for (const job of jobs) {
-      const recipients = job.payload.recipients as string[];
-      expect(recipients).toEqual([ADMIN_EMAIL, FAMILY_EMAIL]);
-      expect(recipients).not.toContain(EMPLOYEE_EMAIL);
-      expect(recipients).not.toContain(HELPER_EMAIL);
-      expect(job.payload).toMatchObject({ routineId, title: "Mantenimiento caldera", audience: "family" });
-    }
+    expect(await routineDueJobs(routineId)).toHaveLength(0);
+
+    // Y ninguna fila de la cola de este hogar lleva una dirección de correo,
+    // vengan de donde vengan: los `recipients` congelados eran una copia de
+    // datos personales en una tabla que el worker lee entera.
+    const leaked = await adminPool.query<{ total: number }>(
+      `select count(*)::int as total from app_private.job_queue
+        where household_id = $1 and payload::text like '%@%'`,
+      [ROBLE_HOUSEHOLD],
+    );
+    expect(leaked.rows[0]?.total).toBe(0);
   });
 
   // ───────────────────────────────────────────────────────────────────────────

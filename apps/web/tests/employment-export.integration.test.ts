@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { inflateSync } from 'node:zlib';
 
 import { strFromU8, unzipSync } from 'fflate';
 import pg from 'pg';
@@ -51,14 +52,89 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-/** Filas CSV como objetos cabecera→valor (la fixture no trae comas en campos). */
+/**
+ * El texto que un PDF de pdf-lib enseña de verdad.
+ *
+ * Dos capas que hay que deshacer para poder afirmar algo sobre el documento y
+ * no sobre sus bytes: los flujos de contenido van comprimidos con Flate, y
+ * dentro pdf-lib escribe cada cadena como HEXADECIMAL (`<4C6120…> Tj`), no como
+ * literal entre paréntesis. Se infla, se pasa el hexadecimal a bytes y se lee
+ * como Latin-1, que es lo que WinAnsi es en su mayor parte: así «Seguro médico
+ * privado» y «-200,00 EUR» se comparan tal como se ven en la hoja.
+ */
+function pdfText(bytes: Uint8Array): string {
+  const raw = Buffer.from(bytes);
+  const pieces: string[] = [];
+  let cursor = 0;
+  for (;;) {
+    const start = raw.indexOf('stream', cursor);
+    if (start === -1) break;
+    const end = raw.indexOf('endstream', start);
+    if (end === -1) break;
+    cursor = end + 'endstream'.length;
+    let from = start + 'stream'.length;
+    if (raw[from] === 0x0d) from += 1;
+    if (raw[from] === 0x0a) from += 1;
+    try {
+      pieces.push(inflateSync(raw.subarray(from, end)).toString('latin1'));
+    } catch {
+      // Un flujo que no es Flate (una fuente incrustada, por ejemplo): se salta.
+    }
+  }
+  const content = pieces.join('\n');
+  const shown: string[] = [];
+  for (const match of content.matchAll(/<([0-9A-Fa-f\s]*)>\s*Tj/g)) {
+    shown.push(Buffer.from(match[1]!.replace(/\s+/g, ''), 'hex').toString('latin1'));
+  }
+  for (const match of content.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)) {
+    shown.push(match[1]!.replace(/\\([()\\])/g, '$1'));
+  }
+  return shown.join('\n');
+}
+
+/**
+ * Filas CSV como objetos cabecera→valor, con comillas de verdad (RFC 4180).
+ *
+ * Partir por comas era suficiente mientras ningún campo llevaba una: dejó de
+ * serlo en cuanto el motivo de un concepto apuntado a mano —texto que escribe
+ * una persona— entró en el fichero. Un lector ingenuo desplazaba las columnas
+ * y el test comparaba la columna equivocada creyendo que comparaba bien.
+ */
 function parseCsv(text: string): Record<string, string>[] {
-  const lines = text.split('\r\n').filter((line) => line.length > 0);
-  const header = lines[0]!.split(',');
-  return lines.slice(1).map((line) => {
-    const fields = line.split(',');
-    return Object.fromEntries(header.map((name, index) => [name, fields[index] ?? '']));
-  });
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index]!;
+    if (quoted) {
+      if (char !== '"') field += char;
+      else if (text[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === ',') {
+      row.push(field);
+      field = '';
+    } else if (char === '\r' && text[index + 1] === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      index += 1;
+    } else field += char;
+  }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+  const header = rows[0] ?? [];
+  return rows
+    .slice(1)
+    .map((fields) => Object.fromEntries(header.map((name, index) => [name, fields[index] ?? ''])));
 }
 
 interface Manifest {
@@ -98,6 +174,128 @@ describe('formateo CSV (RFC 4180)', () => {
   });
 });
 
+const MAY_SETTLEMENT = '12b00000-0000-4000-8000-0000000000aa';
+
+/**
+ * Un mes con TODOS los tipos de concepto a la vez, sembrado solo en la base de
+ * esta suite.
+ *
+ * La fixture compartida trae marzo de 2025, que sirve para lo que ya se
+ * comprobaba pero no para lo que el propietario pidió: no tiene ningún concepto
+ * que reste apuntado a mano, ni ninguno de los que «constan y no se
+ * transfieren». Mayo de 2025 los tiene los cuatro:
+ *
+ *   · salario base de la v2 del contrato        +1.500,00 €
+ *   · complemento de antigüedad (suma)             +30,00 €
+ *   · descuento acordado, apuntado a mano           −50,00 €
+ *   ────────────────────────────────────────────────────────
+ *     total a transferir                          1.480,00 €
+ *
+ *   · seguro médico privado, lo paga la casa        45,00 €  ← consta, no suma
+ *   · anticipo devuelto en mano, apuntado a mano   −200,00 €  ← consta, no resta
+ *
+ * El descuento por cuota de anticipo —el otro tipo de resta— ya lo trae marzo
+ * en la fixture compartida, así que no se duplica aquí.
+ *
+ * El orden importa: el concepto apuntado a mano entra ANTES de cerrar el mes,
+ * porque el disparador de la 0022 prohíbe imputar nada a un mes ya cerrado.
+ */
+async function seedMayAccount(admin: pg.Client): Promise<void> {
+  const HOUSEHOLD = FIXTURE_HOUSEHOLD;
+  const AGREEMENT = '12000000-0000-4000-8000-000000000001';
+  const EMPLOYEE = '11000000-0000-4000-8000-000000000003';
+  const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
+  const VERSION_V2 = '12100000-0000-4000-8000-000000000002';
+
+  await admin.query('begin');
+  await admin.query('set local row_security = off');
+
+  await admin.query(
+    `insert into app.manual_adjustments
+       (id, household_id, agreement_id, employee_membership_id, period_month,
+        requested_period_month, label, reason, amount_cents, adds_to_pay,
+        recorded_by_membership_id, recorded_at)
+     values
+       ($1, $2, $3, $4, date '2025-05-01', date '2025-05-01',
+        'Descuento acordado', 'Rotura de la vitro, acordado a medias',
+        -5000, true, $5, '2025-05-02T10:00:00Z'),
+       ($6, $2, $3, $4, date '2025-05-01', date '2025-05-01',
+        'Anticipo devuelto en mano', 'Ya se devolvio en efectivo el 2 de mayo',
+        -20000, false, $5, '2025-05-02T10:01:00Z')`,
+    [
+      '12aa0000-0000-4000-8000-000000000001',
+      HOUSEHOLD,
+      AGREEMENT,
+      EMPLOYEE,
+      ADMIN_MEMBERSHIP,
+      '12aa0000-0000-4000-8000-000000000002'
+    ]
+  );
+
+  await admin.query(
+    `insert into app.settlements
+       (id, household_id, agreement_id, employee_membership_id, period_start,
+        period_end, due_on, created_by_membership_id)
+     values ($1, $2, $3, $4, date '2025-05-01', date '2025-05-31', date '2025-06-05', $5)`,
+    [MAY_SETTLEMENT, HOUSEHOLD, AGREEMENT, EMPLOYEE, ADMIN_MEMBERSHIP]
+  );
+
+  /**
+   * [nº, sección, clase, fecha, concepto, importe, versión, complemento, ajuste]
+   *
+   * Cada clase exige su procedencia (`settlement_lines_provenance_by_kind`),
+   * igual que en el cierre real: una línea sin la fila que la justifica sería
+   * un importe sin padre. La cuota de anticipo NO se repite aquí: marzo ya
+   * tiene la suya, y añadir otra movería el saldo del anticipo de la fixture.
+   */
+  const lines: Array<
+    [number, string, string, string, string, number, string | null, string | null, string | null]
+  > = [
+    [1, 'salary', 'base_salary', '2025-05-01', 'Salario acordado 2025-05', 150_000, VERSION_V2, null, null],
+    [
+      2,
+      'salary',
+      'supplement',
+      '2025-05-01',
+      'Complemento de antiguedad',
+      3_000,
+      null,
+      '14000000-0000-4000-8000-000000000001',
+      null
+    ],
+    [
+      3,
+      'salary',
+      'adjustment',
+      '2025-05-01',
+      'Descuento acordado - Rotura de la vitro, acordado a medias',
+      -5_000,
+      null,
+      null,
+      '12aa0000-0000-4000-8000-000000000001'
+    ]
+  ];
+  for (const line of lines) {
+    await admin.query(
+      `insert into app.settlement_lines
+         (household_id, settlement_id, agreement_id, employee_membership_id, line_number,
+          section, kind, occurred_on, concept, amount_cents,
+          agreement_version_id, recurring_supplement_id, manual_adjustment_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::date, $9, $10, $11, $12, $13)`,
+      [HOUSEHOLD, MAY_SETTLEMENT, AGREEMENT, EMPLOYEE, ...line]
+    );
+  }
+
+  await admin.query(
+    `update app.settlements
+        set status = 'closed', closed_by_membership_id = $2,
+            closed_at = '2025-06-01T09:00:00Z', snapshot_hash = repeat('d', 64)
+      where id = $1`,
+    [MAY_SETTLEMENT, ADMIN_MEMBERSHIP]
+  );
+  await admin.query('commit');
+}
+
 describe.runIf(Boolean(adminUrl))('exportación del expediente laboral (AC-13) bajo RLS', () => {
   let appPool: pg.Pool;
 
@@ -124,6 +322,7 @@ describe.runIf(Boolean(adminUrl))('exportación del expediente laboral (AC-13) b
       for (const fixture of (await readdir(fixturesDir)).filter((f) => f.endsWith('.sql')).sort()) {
         await admin.query(await readFile(path.join(fixturesDir, fixture), 'utf8'));
       }
+      await seedMayAccount(admin);
       await admin.query(`drop role if exists ${APP_LOGIN}`);
       await admin.query(
         `create role ${APP_LOGIN} login password 'integration-only' nosuperuser nobypassrls in role casa_clara_app`
@@ -156,7 +355,7 @@ describe.runIf(Boolean(adminUrl))('exportación del expediente laboral (AC-13) b
     expect(Object.keys(entries).sort()).toEqual(['manifest.json', ...EXPECTED_FILES].sort());
 
     const manifest = JSON.parse(strFromU8(entries['manifest.json']!)) as Manifest;
-    expect(manifest.version).toBe(1);
+    expect(manifest.version).toBe(2);
     expect(manifest.generatedAt).toBe(GENERATED_AT.toISOString());
     expect(manifest.household).toEqual({ name: 'Fixture Casa Roble' });
     expect(manifest.employee).toEqual({ name: 'Fixture Empleada Roble' });
@@ -174,7 +373,9 @@ describe.runIf(Boolean(adminUrl))('exportación del expediente laboral (AC-13) b
 
   it('liquidaciones.csv trae la fila de marzo con 145330 céntimos, cerrada y con cobro confirmado', async () => {
     const entries = await buildZip();
-    const rows = parseCsv(strFromU8(entries['liquidaciones.csv']!));
+    const rows = parseCsv(strFromU8(entries['liquidaciones.csv']!)).filter(
+      (row) => row['periodo_inicio'] === '2025-03-01'
+    );
 
     const total = rows.find((row) => row['tipo'] === 'total_transferencia');
     expect(total).toBeDefined();
@@ -257,6 +458,74 @@ describe.runIf(Boolean(adminUrl))('exportación del expediente laboral (AC-13) b
     const pdf = first['resumen.pdf']!;
     expect(strFromU8(pdf.slice(0, 5))).toBe('%PDF-');
     expect(sha256(pdf)).toBe(sha256(second['resumen.pdf']!));
+  });
+
+  it('liquidaciones.csv trae, en mayo, los conceptos que restan y los que solo constan', async () => {
+    const entries = await buildZip();
+    const rows = parseCsv(strFromU8(entries['liquidaciones.csv']!)).filter(
+      (row) => row['periodo_inicio'] === '2025-05-01'
+    );
+
+    // Lo que mueve la transferencia: cuatro líneas, dos de ellas negativas.
+    const lineRows = rows.filter((row) => row['tipo'] === 'linea');
+    expect(lineRows.map((row) => row['importe_centimos'])).toEqual(['150000', '3000', '-5000']);
+    const total = rows.find((row) => row['tipo'] === 'total_transferencia');
+    expect(total!['importe_centimos']).toBe('148000');
+    // Y cuadra: el total congelado es exactamente la suma de las líneas.
+    expect(
+      lineRows.reduce((sum, row) => sum + Number(row['importe_centimos']), 0)
+    ).toBe(Number(total!['importe_centimos']));
+
+    // Lo que consta y NO se transfiere: van con un `tipo` propio para que
+    // filtrar por 'linea' siga dando el total exacto, pero SALEN.
+    const noted = rows.filter((row) => row['tipo'] === 'concepto_informativo');
+    expect(noted).toHaveLength(2);
+    expect(noted.map((row) => [row['clase'], row['importe_centimos']])).toEqual([
+      ['complemento', '4500'],
+      ['concepto_apuntado', '-20000']
+    ]);
+    for (const row of noted) {
+      expect(row['seccion']).toBe('no_transferido');
+      expect(row['concepto']).toContain('no entra en la transferencia');
+    }
+  });
+
+  it('resumen.pdf escribe la cuenta de cada mes con todos sus conceptos y sus totales', async () => {
+    const entries = await buildZip();
+    const pdf = pdfText(entries['resumen.pdf']!);
+
+    expect(pdf).toContain('La cuenta de cada mes');
+    expect(pdf).toContain('Mayo 2025');
+    expect(pdf).toContain('Marzo 2025');
+
+    // Los tres conceptos de mayo, con su signo, y el total al que llegan.
+    expect(pdf).toContain('Salario acordado 2025-05');
+    expect(pdf).toContain('1.500,00 EUR');
+    expect(pdf).toContain('30,00 EUR');
+    expect(pdf).toContain('-50,00 EUR');
+    expect(pdf).toContain('Total a transferir');
+    expect(pdf).toContain('1.480,00 EUR');
+
+    // El descuento por cuota de anticipo, en marzo: un concepto que RESTA y no
+    // es un apunte a mano.
+    expect(pdf).toContain('Fixture advance installment');
+    expect(pdf).toContain('-100,00 EUR');
+
+    // Y los dos de mayo que constan sin transferirse, marcados como tales.
+    expect(pdf).toContain('Consta en este mes y NO entra en la transferencia');
+    expect(pdf).toContain('Seguro médico privado');
+    expect(pdf).toContain('lo paga la casa aparte; no entra en la transferencia');
+    expect(pdf).toContain('Anticipo devuelto en mano');
+    expect(pdf).toContain('consta en el expediente; no entra en la transferencia');
+    expect(pdf).toContain('-200,00 EUR');
+
+    // Ningún aviso de descuadre: las líneas suman el total congelado.
+    expect(pdf).not.toContain('Aviso: las líneas de arriba suman');
+
+    // Y cada hoja se identifica sola: una página suelta sigue diciendo de quién
+    // es y de cuándo.
+    expect(pdf).toContain('1 / 2');
+    expect(pdf).toContain('2 / 2');
   });
 
   it('solo la propia empleada: admin, helper y viewer reciben null', async () => {

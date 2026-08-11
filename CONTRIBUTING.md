@@ -29,9 +29,12 @@ las reglas mínimas que evitan pisarse.
   falla si no. **No se relaja el gate**: se le da al fichero el job o el entorno
   que necesita. Ese gate existe porque durante meses 18 de 27 specs de Playwright
   no las corría nadie.
-- **Fallar cerrado.** Si falta una dependencia (base de datos, antivirus, SMTP),
-  la respuesta correcta es un error visible, no una degradación silenciosa que
-  parezca éxito.
+- **Fallar cerrado.** Si falta una dependencia (base de datos, almacén de
+  documentos, SMTP), la respuesta correcta es un error visible, no una
+  degradación silenciosa que parezca éxito. Cuando se decide **prescindir** de
+  una pieza —el antivirus de los adjuntos, por ejemplo— no basta con que deje de
+  ser obligatoria: hay que dejar escrito el riesgo asumido y cómo se revierte
+  (`docs/security/adjuntos-sin-antivirus.md` es el modelo).
 
 ## Ejecutar las suites en local
 

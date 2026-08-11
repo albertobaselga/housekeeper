@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { contactCommandHandlers, processSyncBatch, withAuthorizedTransaction } from '@casa-clara/server';
 
@@ -17,6 +17,12 @@ import { getCriticalSnapshotPayload } from '../src/lib/server/fixtures.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+
+// Esta suite afirma el comportamiento CON base configurada, que es el de
+// producción. `fixturesAllowed()` lo decide leyendo la DATABASE_URL del
+// proceso, así que declararla aquí es parte de la prueba: heredarla del
+// entorno de quien la lance hacía que el resultado dependiera de su shell.
+vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: 'postgres://prueba/afirmada' } }));
 const APP_LOGIN = 'it_casa_clara_contacts_login';
 // Base de datos propia (patrón de la suite de comida): las otras suites
 // recrean el esquema entero en paralelo y ninguna puede compartir instancia.
@@ -246,11 +252,16 @@ describe.runIf(Boolean(adminUrl))('contactos del hogar desde Postgres bajo RLS',
     // Las notas de demostración no se mezclan con datos reales.
     expect(payload.emergency).toEqual([]);
 
-    // Sin pool (demo) la fixture sintética se conserva.
+    // Y sin lectura real —esta suite corre SIEMPRE con base configurada, que es
+    // el caso de producción— el paquete sale parcial: el 112 y nada más. Nunca
+    // los teléfonos de la maqueta, que es lo que arreglaba el §R2. La maqueta
+    // entera, en su propio despliegue sin base, la cubre `search-offline`.
     expect(await loadSnapshotContacts(ADMIN_USER, FIXTURE_HOUSEHOLD, null)).toBeNull();
-    const fixture = getCriticalSnapshotPayload(null);
-    expect(fixture.contacts.length).toBeGreaterThan(0);
-    expect(fixture.emergency.length).toBeGreaterThan(0);
+    const partial = getCriticalSnapshotPayload(null);
+    expect(partial.contacts).toEqual([
+      { id: 'emergency-112', name: 'Emergencias', phone: '112', kind: 'emergency' }
+    ]);
+    expect(partial.emergency).toEqual([]);
   });
 
   it('un usuario sin membresía en el hogar no ve el directorio', async () => {

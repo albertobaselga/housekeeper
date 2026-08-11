@@ -1,5 +1,9 @@
 import { dev } from '$app/environment';
 import { error, fail, redirect } from '@sveltejs/kit';
+// ROLE_LABELS vive en su propio módulo desde que la cabecera del hogar dejó de
+// arrastrar la matriz de capacidades para pintar cinco etiquetas: importarlo de
+// `$lib/auth/capabilities` devolvería esa arista al arranque.
+import { landingHouseholdId } from '$lib/auth/membership';
 import { ROLE_LABELS } from '$lib/auth/role-labels';
 import { getAuth } from '$lib/server/auth.server';
 import { getDemoUser, listDemoUsers } from '$lib/server/fixtures.server';
@@ -43,7 +47,8 @@ function resolveMode(): LoginMode {
 }
 
 export const load: PageServerLoad = ({ locals, url }) => {
-  if (locals.user) redirect(303, `/h/${encodeURIComponent(locals.user.householdIds[0])}/today`);
+  const landing = landingHouseholdId(locals.user);
+  if (landing) redirect(303, `/h/${encodeURIComponent(landing)}/today`);
   const mode = resolveMode();
   return {
     mode,
@@ -52,14 +57,12 @@ export const load: PageServerLoad = ({ locals, url }) => {
     // el paquete de producción `listDemoUsers` ni siquiera está referenciada.
     accounts:
       __FIXTURE_LOGIN__ && mode === 'fixture-selector'
-        ? listDemoUsers().map(({ id, name, initials, email, role }) => ({
-            id,
-            name,
-            initials,
-            email,
-            role,
-            roleLabel: ROLE_LABELS[role]
-          }))
+        ? listDemoUsers().map(({ id, name, initials, email, memberships }) => {
+            // Cada cuenta sintética vive en un único hogar; el papel que se
+            // enseña es el que juega allí.
+            const role = memberships[0]!.role;
+            return { id, name, initials, email, role, roleLabel: ROLE_LABELS[role] };
+          })
         : []
   };
 };
@@ -117,7 +120,7 @@ const demoAction: Actions['demo'] = async ({ cookies, request, url }) => {
   const user = getDemoUser(accountId);
   if (!user) return fail(400, { message: 'Elige una cuenta demo válida.' });
   createDemoSession(cookies, user.id, url.protocol === 'https:');
-  redirect(303, destination ?? `/h/${encodeURIComponent(user.householdIds[0])}/today`);
+  redirect(303, destination ?? `/h/${encodeURIComponent(landingHouseholdId(user)!)}/today`);
 };
 
 /**

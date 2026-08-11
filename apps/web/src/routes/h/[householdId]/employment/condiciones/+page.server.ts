@@ -18,6 +18,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     ? await loadEmploymentOverview({ id: locals.user.id }, params.householdId)
     : null;
   return {
+    householdId: params.householdId,
     terms: overview?.terms ?? null,
     agreement: overview?.agreement ?? null
   };

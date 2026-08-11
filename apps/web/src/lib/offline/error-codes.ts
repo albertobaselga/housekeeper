@@ -21,11 +21,10 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   internal: 'Algo falló al guardar; se reintenta solo',
 
   // Fotos pendientes de subir (los pone el propio dispositivo, no el servidor)
-  attachment_rejected: 'La casa no admitió esa foto: tamaño, tipo o antivirus',
+  attachment_rejected: 'La casa no admitió esa foto: por su tamaño o porque no es una foto ni un PDF',
   attachment_upload_blocked: 'La foto no se pudo subir tras varios intentos',
 
   // Expediente laboral
-  week_already_reported: 'La semana ya fue enviada',
   week_overlap: 'La semana se solapa con otra ya registrada',
   agreement_not_found: 'El contrato no existe o no es visible',
   extra_work_not_found: 'La jornada extra ya no existe',

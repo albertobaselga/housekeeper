@@ -26,7 +26,6 @@ import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler, type CommandHandlers } from "../sync.js";
 import { addDays } from "./shared.js";
 
-export const ROUTINE_DUE_JOB = "notification.routine_due";
 export const ICS_SYNC_JOB = "ics.sync_source";
 
 type RoutineAudience = "family" | "employee" | "all";
@@ -124,74 +123,20 @@ export function advanceDueDate(
   return nextOccurrenceOnOrAfter(rule, addDays(isoDate, 1)) ?? isoDate;
 }
 
-/**
- * Roles cuyo correo recibe el aviso de una rutina según su audiencia. El rol
- * `helper` puede ver rutinas 'all' pero deliberadamente NO recibe avisos, y la
- * audiencia 'family' JAMÁS incluye a la empleada (AC-25).
- */
-const AUDIENCE_ROLES: Readonly<Record<RoutineAudience, readonly string[]>> = {
-  family: ["family_admin", "family_member"],
-  employee: ["employee_live_in"],
-  all: ["family_admin", "family_member", "employee_live_in"],
-};
-
-/**
- * Correos de los destinatarios vivos de la audiencia EN el momento del
- * encolado, leídos bajo RLS del actor. Un administrador familiar ve todos los
- * perfiles del hogar; un `family_member` o la empleada solo ven el suyo propio,
- * así que sus encolados salen con la lista parcial que su RLS permite.
- */
-async function resolveAudienceRecipients(
-  client: PoolClient,
-  householdId: UUID,
-  audience: RoutineAudience,
-): Promise<string[]> {
-  const result = await client.query<{ email: string }>(
-    `select distinct profile.email
-       from app.household_memberships as membership
-       join app.user_profiles as profile on profile.user_id = membership.user_id
-      where membership.household_id = $1
-        and membership.role::text = any($2::text[])
-        and membership.starts_at <= now()
-        and membership.revoked_at is null
-        and (membership.expires_at is null or membership.expires_at > now())
-        and profile.email is not null
-        and length(btrim(profile.email)) > 0
-      order by profile.email`,
-    [householdId, AUDIENCE_ROLES[audience]],
-  );
-  return result.rows.map((row) => row.email);
-}
-
-/**
- * Encola el aviso de una ocurrencia para la mañana de su fecha de vencimiento.
+/*
+ * Aquí vivía `enqueueRoutineDue`: el aviso `notification.routine_due` que
+ * encolaba, con la lista de correos de la audiencia dentro del payload, un
+ * trabajo cuyo único efecto era mandar un correo.
  *
- * `app.job_run_at` (migración 0027) traduce la fecha civil al instante real en
- * la zona del hogar. Antes se usaba `::date::timestamptz`, que resuelve la
- * medianoche en la zona de la SESIÓN: con el servidor en UTC el aviso salía a
- * las 02:00 de la madrugada de Madrid.
+ * Se retiró con la migración 0029. No hay canal de correo —el canal es la
+ * aplicación— y un trabajo que no puede hacer nada no debe encolarse: se
+ * reintentaría, moriría y ensuciaría el log. De paso deja de copiarse una lista
+ * de direcciones personales dentro de una fila de la cola.
+ *
+ * La rutina que vence se ve donde siempre se vio: en Hoy y en el calendario.
+ * Cuando existan las notificaciones al móvil, el aviso vuelve por ahí y no por
+ * aquí; queda anotado en docs/notificaciones.md.
  */
-async function enqueueRoutineDue(
-  client: PoolClient,
-  householdId: UUID,
-  routine: { id: UUID; title: string; audience: RoutineAudience },
-  dueOn: string,
-): Promise<void> {
-  const recipients = await resolveAudienceRecipients(client, householdId, routine.audience);
-  await client.query(
-    `select app.enqueue_job($1, $2::jsonb, greatest(app.job_run_at($3::date), statement_timestamp()))`,
-    [
-      ROUTINE_DUE_JOB,
-      JSON.stringify({
-        routineId: routine.id,
-        title: routine.title,
-        audience: routine.audience,
-        recipients,
-      }),
-      dueOn,
-    ],
-  );
-}
 
 function requireFamilyRole(membership: ActiveMembership): void {
   if (membership.role !== "family_admin" && membership.role !== "family_member") {
@@ -478,17 +423,6 @@ async function upsertRoutine(
   const routineId = inserted.rows[0]?.id;
   if (!routineId) throw new Error("La inserción de la rutina no devolvió identificador");
 
-  // Primer aviso de la rutina recién creada, para su primera ocurrencia. Una
-  // rutina sin cadencia confirmada no encola nada: no aparece en Hoy, no avisa
-  // (§2.3).
-  if (nextDueOn) {
-    await enqueueRoutineDue(
-      client,
-      householdId,
-      { id: routineId, title: request.title, audience: request.audience },
-      nextDueOn,
-    );
-  }
   return { resourceId: routineId };
 }
 
@@ -697,15 +631,7 @@ async function completeRoutine(
   // acaba de entrar: así marcar tarde deja de empujar la serie un intervalo
   // por toque (la cinta de correr de §2.9) y completar una atrasada limpia la
   // atrasada en vez de inventarse una fecha.
-  const nextDueOn = await refreshDueHint(client, householdId, routine, schedule);
-  if (nextDueOn !== null && nextDueOn !== routine.next_due_on) {
-    await enqueueRoutineDue(
-      client,
-      householdId,
-      { id: routine.id, title: routine.title, audience: routine.audience },
-      nextDueOn,
-    );
-  }
+  await refreshDueHint(client, householdId, routine, schedule);
 
   return { resourceId: routine.id };
 }
@@ -778,19 +704,10 @@ async function uncompleteRoutine(
     );
   }
 
-  // La rutina vuelve a estar pendiente para el día que le tocaba, y el aviso de
-  // ese día vuelve a tener sentido. Si la fecha restaurada ya pasó, `enqueue`
-  // la programa para el instante actual (`greatest(...)`) y el barrido la
-  // recoge en el siguiente drenaje.
-  const nextDueOn = await refreshDueHint(client, householdId, routine, schedule);
-  if (nextDueOn !== null && nextDueOn !== routine.next_due_on) {
-    await enqueueRoutineDue(
-      client,
-      householdId,
-      { id: routine.id, title: routine.title, audience: routine.audience },
-      nextDueOn,
-    );
-  }
+  // La rutina vuelve a estar pendiente para el día que le tocaba: la caché se
+  // recalcula desde la regla y las finalizaciones VIVAS, que sin la anulada son
+  // exactamente las que había antes de marcar.
+  await refreshDueHint(client, householdId, routine, schedule);
 
   return { resourceId: routine.id };
 }

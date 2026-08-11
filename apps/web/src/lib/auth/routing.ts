@@ -12,6 +12,7 @@ export const HOUSEHOLD_MODULES = [
   'contacts',
   'emergency',
   'account',
+  'personal',
   'settings'
 ] as const;
 
@@ -34,6 +35,10 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
   // «Tu acceso» pide la misma capacidad mínima que Hoy, no `access.manage`.
   // Ajustes sigue siendo de la familia; ahí se reponen las contraseñas ajenas.
   account: 'emergency.read',
+  // Personal es el expediente de quien trabaja y trabajó en la casa, con
+  // nombres, fechas y sueldos: la misma llave que Ajustes, que solo tiene la
+  // familia administradora.
+  personal: 'access.manage',
   settings: 'access.manage'
 };
 
@@ -50,10 +55,18 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
  * · `employment/condiciones` — leer lo pactado. `agreement.read` lo tienen
  *   también la familia no administradora; para ella la RLS no devuelve ninguna
  *   versión y la página enseña su estado vacío, que es la verdad.
+ * · `employment/vacaciones` — el historial de días disfrutados. Misma llave que
+ *   `condiciones` y por el mismo motivo: `agreement.read` la tienen quien
+ *   administra, la familia y la propia empleada, que son exactamente los tres
+ *   que la política `vacation_periods_read` deja leer. Al apoyo y al visor no
+ *   les llega ni la ruta ni una fila. A la familia no administradora le llegan
+ *   los periodos pero no los términos, y la pantalla lo dice en vez de fingir
+ *   un derecho de cero días.
  */
 export const NESTED_ROUTE_CAPABILITY: Readonly<Record<string, Capability>> = {
   'employment/acuerdo': 'agreement.write',
-  'employment/condiciones': 'agreement.read'
+  'employment/condiciones': 'agreement.read',
+  'employment/vacaciones': 'agreement.read'
 };
 
 export interface HouseholdRouteGuard {

@@ -2,6 +2,7 @@ import { building } from '$app/environment';
 import { error, redirect, type Handle } from '@sveltejs/kit';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 
+import { belongsToHousehold } from '$lib/auth/membership';
 import { guardForPath } from '$lib/auth/routing';
 import { resolveAppUser } from '$lib/server/app-user.server';
 import { getAuth } from '$lib/server/auth.server';
@@ -88,8 +89,16 @@ export const handle: Handle = async ({ event, resolve }) => {
       const next = `${event.url.pathname}${event.url.search}`;
       redirect(303, `/login?next=${encodeURIComponent(next)}`);
     }
-    if (!guard.householdId || !event.locals.user.householdIds.includes(guard.householdId)) {
+    if (!guard.householdId || !belongsToHousehold(event.locals.user, guard.householdId)) {
       error(404, 'Hogar no encontrado');
+    }
+    // Contraseña provisional sin cambiar: la única pantalla del hogar que se
+    // abre es «Tu contraseña». No es una recomendación en un aviso, es la
+    // puerta. Las rutas de /api quedan fuera a propósito: no enseñan nada que
+    // esta persona no pueda ver de todos modos, y bloquearlas rompería la
+    // propia pantalla a la que se la está mandando.
+    if (event.locals.user.mustChangePassword && guard.module !== 'account') {
+      redirect(303, `/h/${encodeURIComponent(guard.householdId)}/account`);
     }
     // El 403 por capacidad NO se lanza aquí: un error en el hook renderiza la
     // página de fallo cruda de SvelteKit. La misma comprobación vive en el

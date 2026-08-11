@@ -62,15 +62,56 @@
   // vuelva la red: entonces la foto se sube y su identificador entra en el
   // mismo comando, así que el gasto nace ya con su justificante enlazado.
   const online = $derived($syncStatus.phase !== 'offline');
-  let receiptInput = $state<HTMLInputElement | null>(null);
+  /** Elegir un fichero y hacer una foto son DOS campos distintos: con el
+   * atributo `capture` puesto, el móvil abre la cámara y ya no ofrece la
+   * galería ni los ficheros, así que con un solo campo siempre falta una de
+   * las dos formas. */
+  let receiptPickInput = $state<HTMLInputElement | null>(null);
+  let receiptCameraInput = $state<HTMLInputElement | null>(null);
+  /** Fichero elegido, YA preparado para subir (reducido si hacía falta). */
+  let receiptFile = $state<File | null>(null);
   let receiptNotice = $state<string | null>(null);
   let receiptAttached = $state(false);
+  let receiptBusy = $state(false);
   /** La foto está guardada aquí y el gasto espera a la red para enlazarla. */
   let receiptWaiting = $state(false);
 
   /** Tipos que acepta la tubería de adjuntos del servidor. */
   const RECEIPT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  /** Sin tipo declarado (cámaras de Android) decide el servidor por la firma. */
+  const RECEIPT_GENERIC_TYPES = ['', 'application/octet-stream'];
   const RECEIPT_MAX_BYTES = 10 * 1024 * 1024;
+
+  function clearReceipt(): void {
+    receiptFile = null;
+    if (receiptPickInput) receiptPickInput.value = '';
+    if (receiptCameraInput) receiptCameraInput.value = '';
+  }
+
+  /**
+   * Al elegir foto o fichero se prepara YA, no al enviar: así el aviso de «se
+   * ha reducido» aparece mientras aún se puede cambiar de idea. El módulo que
+   * reduce se carga bajo demanda: quien no adjunta nada no lo descarga.
+   */
+  async function chooseReceipt(input: HTMLInputElement | null): Promise<void> {
+    const chosen = input?.files?.[0];
+    if (!chosen) return;
+    // Los dos campos comparten una sola selección: el último gana.
+    if (input === receiptPickInput && receiptCameraInput) receiptCameraInput.value = '';
+    if (input === receiptCameraInput && receiptPickInput) receiptPickInput.value = '';
+    receiptBusy = true;
+    receiptNotice = null;
+    try {
+      const prepared = await (await import('$lib/attachments/prepare')).prepareAttachment(chosen);
+      receiptFile = prepared.file;
+      receiptNotice = prepared.notice;
+    } catch {
+      receiptFile = chosen;
+      receiptNotice = 'No se ha podido comprobar el peso de la foto; se intentará subir tal cual.';
+    } finally {
+      receiptBusy = false;
+    }
+  }
 
   async function submitNewExpense(event: SubmitEvent): Promise<void> {
     event.preventDefault();
@@ -86,12 +127,11 @@
     receiptAttached = false;
 
     // Con red la foto viaja PRIMERO: el comando del gasto referencia el objeto
-    // ya confirmado. Si la subida falla (tamaño, tipo, cuarentena o un 503 sin
-    // S3/ClamAV configurados) el alta del gasto NO se bloquea: se registra sin
+    // ya confirmado. Si la subida falla (tamaño, tipo, o un 503 sin almacén de
+    // documentos configurado) el alta del gasto NO se bloquea: se registra sin
     // justificante y el mensaje explica qué pasó con la foto.
     let receiptStorageObjectId: string | undefined;
     let pendingBlob: OutboxPendingBlob | undefined;
-    const receiptFile = receiptInput?.files?.[0];
     if (receiptFile && online) {
       uploadBusy = true;
       try {
@@ -108,7 +148,7 @@
       // Sin conexión: la foto se queda en este dispositivo con su propio
       // identificador y el gasto la espera. Nada de subidas a medias.
       const contentType = receiptFile.type || 'application/octet-stream';
-      if (!RECEIPT_TYPES.includes(contentType)) {
+      if (!RECEIPT_TYPES.includes(contentType) && !RECEIPT_GENERIC_TYPES.includes(receiptFile.type)) {
         receiptNotice = 'Ese tipo de fichero no está permitido: usa una foto (JPG, PNG, WebP) o un PDF. El gasto se registra sin justificante.';
       } else if (receiptFile.size > RECEIPT_MAX_BYTES) {
         receiptNotice = 'La foto supera el tamaño máximo (10 MB). El gasto se registra sin justificante.';
@@ -159,7 +199,7 @@
           ];
           expenseDescription = '';
           expenseAmount = '';
-          if (receiptInput) receiptInput.value = '';
+          clearReceipt();
           expenseSent = true;
         },
         revert: () => {
@@ -220,7 +260,15 @@
         <span>
           <strong>{expense.description}</strong>
           <small>
-            {expense.incurredOnLabel} · pendiente de aprobación{#if expense.hasReceipt}&nbsp;· Justificante adjunto ✓{/if}
+            {expense.incurredOnLabel} · pendiente de aprobación{#if expense.hasReceipt}&nbsp;· Justificante adjunto ✓ ·
+              <!-- Se puede MIRAR antes de decidir: quien aprueba no tiene que
+                   fiarse de que la foto exista, y quien la subió comprueba que
+                   salió legible. La ruta valida sesión y pertenencia. -->
+              <a
+                href={`/api/v1/households/${householdId}/receipts/${expense.id}`}
+                target="_blank"
+                rel="noopener"
+              >Ver el justificante</a>{/if}
           </small>
         </span>
         <span class="inline-actions">
@@ -297,22 +345,48 @@
       <label>Descripción
         <input type="text" autocomplete="off" enterkeyhint="done" bind:value={expenseDescription} maxlength="500" required placeholder="Farmacia, compra…" />
       </label>
-      <label>Foto del justificante (opcional)
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          capture="environment"
-          bind:this={receiptInput}
-          disabled={uploadBusy}
-        />
-      </label>
+      <fieldset class="receipt-field">
+        <legend>Justificante (opcional)</legend>
+        <label>Elegir un fichero o una foto guardada
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            bind:this={receiptPickInput}
+            disabled={uploadBusy || receiptBusy}
+            onchange={(event) => void chooseReceipt(event.currentTarget)}
+          />
+        </label>
+        <label>Hacer la foto ahora
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            bind:this={receiptCameraInput}
+            disabled={uploadBusy || receiptBusy}
+            onchange={(event) => void chooseReceipt(event.currentTarget)}
+          />
+        </label>
+        <p class="field-hint">
+          Si la foto pesa mucho se reduce en este móvil antes de enviarla, para que no se quede a medias
+          con datos móviles. El texto del ticket se sigue leyendo.
+        </p>
+        {#if receiptBusy}<p class="queued-note" role="status">Preparando la foto…</p>{/if}
+        {#if receiptFile}
+          <p class="queued-note" role="status">
+            Adjunto: {receiptFile.name}
+            <button class="button secondary small-button" type="button" onclick={clearReceipt}>Quitar</button>
+          </p>
+        {/if}
+      </fieldset>
       {#if !online}
         <p class="queued-note" role="status">Sin conexión: haz la foto igualmente. Se guarda en este dispositivo y se une al gasto en cuanto vuelva la red.</p>
       {/if}
       {#if receiptNotice}<p class="queued-note" role="status">{receiptNotice}</p>{/if}
       {#if expenseError}<p class="queued-note" role="alert">{expenseError}</p>{/if}
       <div class="action-row">
-        <button class="button primary small-button" type="submit" disabled={uploadBusy}>Añadir gasto</button>
+        <!-- También mientras se prepara la foto: si no, el gasto podría salir
+             sin el justificante que se está reduciendo en ese momento. -->
+        <button class="button primary small-button" type="submit" disabled={uploadBusy || receiptBusy}>Añadir gasto</button>
         {#if expenseSent}
           <span class="status-chip {receiptWaiting ? 'warning' : 'success'}">
             {receiptWaiting

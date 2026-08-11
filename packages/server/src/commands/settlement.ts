@@ -500,20 +500,13 @@ async function closeSettlement(
     JSON.stringify(receipt),
   ]);
 
-  // Aviso de vencimiento: el worker despierta la mañana de tres días antes de
-  // `due_on` (o ya mismo si ese momento pasó) y decide entonces, contra el
-  // estado real, si procede avisar. Mismo `app.enqueue_job` y misma transacción
-  // que el cierre. La hora la fija `app.job_run_at` (migración 0027) en la zona
-  // del hogar: con `::date::timestamptz` y el servidor en UTC el aviso caía a
-  // las 02:00 de la madrugada de Madrid.
-  await client.query(
-    `select app.enqueue_job(
-       'notification.settlement_due',
-       $1::jsonb,
-       greatest(app.job_run_at($2::date - 3), statement_timestamp())
-     )`,
-    [JSON.stringify({ settlementId: settlement.id }), settlement.due_on],
-  );
+  // Aquí se encolaba además `notification.settlement_due`: un aviso que
+  // despertaba tres días antes del vencimiento y, mientras la liquidación
+  // siguiera pendiente, se re-encolaba a sí mismo cada tres días. Solo sabía
+  // mandar correo, y correo no hay: retirado con la migración 0029. Un trabajo
+  // sin manejador no se queda quieto —se reintenta, muere y ensucia el log—, y
+  // este además se multiplicaba solo. El vencimiento se sigue viendo en Hoy,
+  // que es donde se mira; el aviso volverá con las notificaciones al móvil.
 
   return { resourceId: settlement.id };
 }
