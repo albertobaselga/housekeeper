@@ -108,6 +108,66 @@ export interface CalendarCompletionView {
   byName: string;
 }
 
+/**
+ * Lo que SÍ hay que descargar: eventos del calendario enlazado y autoría de lo
+ * marcado. Se pide por ventanas (`GET …/calendar/ventana?d=…`) en vez de
+ * navegando, porque una navegación que falla sin red echa a quien mira de la
+ * pantalla y le quita hasta lo que su navegador ya sabía calcular.
+ */
+export interface CalendarWindow {
+  windowFromISO: string;
+  windowToISO: string;
+  events: CalendarEventView[];
+  completions: CalendarCompletionView[];
+  /** Año para el que se conocen los días con eventos (alcance «año»). */
+  eventDaysYear: number;
+  /** Días de ese año con al menos un evento. Densidad, no detalle. */
+  eventDaysISO: string[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Lo que la página tiene que confesar
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CalendarNoticeInput {
+  /** `navigator.onLine`. */
+  readonly online: boolean;
+  /** ¿Lo que se está mirando cae fuera de la ventana descargada? */
+  readonly outsideWindow: boolean;
+  /** «7 ago, 21:04» de cuando el servidor sirvió estos datos. */
+  readonly loadedAtLabel: string;
+}
+
+/**
+ * Las bandas honestas de la pantalla, en orden. Son dos hechos distintos y por
+ * eso no se funden en uno:
+ *
+ *  · SIN RED, la página la sirve el service worker desde su caché. Las rutinas
+ *    siguen siendo verdad —se calculan de sus reglas, aquí mismo—, pero los
+ *    eventos son los de la última descarga y hay que decir de cuándo.
+ *  · FUERA DE LO DESCARGADO (con red o sin ella) las rutinas también se
+ *    calculan, pero de los eventos y de quién marcó cada cosa no se sabe NADA.
+ *    Callarlo dejaría un día pasado con aspecto de «no se hizo».
+ *
+ * Función pura para que el texto se pueda probar sin navegador: bajo
+ * Playwright, `context.setOffline` no cambia `navigator.onLine`, así que la
+ * primera banda no es comprobable de extremo a extremo.
+ */
+export function calendarNotices(input: CalendarNoticeInput): string[] {
+  const notices: string[] = [];
+  if (!input.online) {
+    notices.push(
+      `Sin conexión. Las rutinas se calculan igual; los eventos son los de la última descarga (${input.loadedAtLabel}).`
+    );
+  }
+  if (input.outsideWindow) {
+    notices.push(
+      'Fuera de lo descargado: se ven las rutinas que tocan, pero los eventos del calendario y quién marcó cada cosa necesitan conexión.'
+    );
+  }
+  return notices;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Días con sus rutinas y sus eventos
 // ─────────────────────────────────────────────────────────────────────────────

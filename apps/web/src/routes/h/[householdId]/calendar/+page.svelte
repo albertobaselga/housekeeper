@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import { useAppContext } from '$lib/auth/context';
@@ -7,11 +6,13 @@
   import {
     buildCalendarDays,
     buildCalendarYear,
+    calendarNotices,
     monthGridRange,
     nextOccurrenceAfter,
     type CalendarDay,
     type CalendarRoutineItem,
-    type CalendarScope
+    type CalendarScope,
+    type CalendarWindow
   } from '$lib/calendar/view';
   import { addDays, mondayOf } from '$lib/food/dates';
   import { completeRoutine } from '$lib/food/routine-complete';
@@ -129,28 +130,59 @@
   });
 
   /**
-   * Cambia lo que se ve. Pinta primero —el cálculo es local e inmediato— y solo
-   * después, si la vista se sale de lo descargado y hay red, pide la ventana
-   * nueva. Sin red no se navega al servidor: se deja lo calculado y la banda de
-   * «fuera de lo descargado» explica qué falta.
+   * La ventana descargada (eventos y autoría). Nace de la carga del servidor y
+   * a partir de ahí la trae el endpoint `…/calendar/ventana`, NUNCA una
+   * navegación: si la red está caída, `goto` acaba en una navegación completa,
+   * el service worker no tiene esa URL guardada y quien miraba el calendario
+   * aparece en la página de «sin conexión» habiendo perdido hasta las rutinas
+   * que su navegador ya tenía calculadas.
    */
-  async function show(nextScope: CalendarScope, nextAnchor: string): Promise<void> {
-    override = { scope: nextScope, anchorISO: nextAnchor };
-    if (!live) return;
-    const needsWindow = monthGridRange(nextAnchor).fromISO !== live.windowFromISO;
-    const needsYear = nextScope === 'ano' && yearNumber(nextAnchor) !== live.eventDaysYear;
-    if (!needsWindow && !needsYear) return;
-    if (!online) return;
-    try {
-      await goto(`/h/${live.householdId}/calendar?v=${nextScope}&d=${nextAnchor}`, {
-        noScroll: true,
-        keepFocus: true,
-        replaceState: true
-      });
-      override = null;
-    } catch {
-      // Se quedó sin red a mitad: lo calculado en el navegador sigue en pie.
+  let fetched = $state<CalendarWindow | null>(null);
+  const windowData = $derived<CalendarWindow>(
+    fetched ?? {
+      windowFromISO: live?.windowFromISO ?? '',
+      windowToISO: live?.windowToISO ?? '',
+      events: live?.events ?? [],
+      completions: live?.completions ?? [],
+      eventDaysYear: live?.eventDaysYear ?? 0,
+      eventDaysISO: live?.eventDaysISO ?? []
     }
+  );
+
+  /**
+   * Pide la ventana de un día. Si falla —sin red, o el servidor no puede leer—
+   * NO pasa nada visible: las rutinas ya están pintadas y la banda de «fuera de
+   * lo descargado» dice lo que no se sabe.
+   */
+  let windowRequest = 0;
+  async function loadWindow(anchor: string): Promise<void> {
+    if (!live) return;
+    // Tres toques seguidos en «Mes siguiente» lanzan tres peticiones y no tienen
+    // por qué volver en orden: solo manda la última pedida.
+    windowRequest += 1;
+    const mine = windowRequest;
+    try {
+      const response = await fetch(
+        `/h/${live.householdId}/calendar/ventana?d=${encodeURIComponent(anchor)}`,
+        { headers: { accept: 'application/json' } }
+      );
+      if (!response.ok) return;
+      const payload = (await response.json()) as CalendarWindow;
+      if (mine === windowRequest) fetched = payload;
+    } catch {
+      // Sin red: lo calculado en el navegador sigue en pie, y con su aviso.
+    }
+  }
+
+  /**
+   * Cambia lo que se ve. Pinta primero —el cálculo es local e inmediato— y solo
+   * después, si la vista se sale de lo descargado, pide la ventana nueva.
+   */
+  function show(nextScope: CalendarScope, nextAnchor: string): void {
+    override = { scope: nextScope, anchorISO: nextAnchor };
+    const needsWindow = monthGridRange(nextAnchor).fromISO !== windowData.windowFromISO;
+    const needsYear = nextScope === 'ano' && yearNumber(nextAnchor) !== windowData.eventDaysYear;
+    if (needsWindow || needsYear) void loadWindow(nextAnchor);
   }
 
   /**
@@ -178,15 +210,15 @@
 
   function step(direction: -1 | 1): void {
     if (scope === 'semana') {
-      void show('semana', addDays(anchorISO, 7 * direction));
+      show('semana', addDays(anchorISO, 7 * direction));
       return;
     }
     if (scope === 'mes') {
       const index = yearNumber(anchorISO) * 12 + (monthNumber(anchorISO) - 1) + direction;
-      void show('mes', `${Math.floor(index / 12)}-${pad2((index % 12) + 1)}-01`);
+      show('mes', `${Math.floor(index / 12)}-${pad2((index % 12) + 1)}-01`);
       return;
     }
-    void show('ano', `${yearNumber(anchorISO) + direction}-01-01`);
+    show('ano', `${yearNumber(anchorISO) + direction}-01-01`);
   }
 
   // ── Filtro: estado local, sin ida al servidor (offline los enlaces caerían) ─
@@ -201,14 +233,16 @@
   function daysBetweenRange(fromISO: string, toISO: string): CalendarDay[] {
     if (!live || !fromISO) return [];
     return buildCalendarDays({
+      // Las REGLAS vienen de la carga de la página; lo que hubo que descargar
+      // —eventos y autoría— de la ventana vigente, que puede ser otra.
       routines: live.routines,
-      completions: live.completions,
-      events: live.events,
+      completions: windowData.completions,
+      events: windowData.events,
       fromISO,
       toISO,
       todayISO: live.todayISO,
-      knownFromISO: live.windowFromISO,
-      knownToISO: live.windowToISO
+      knownFromISO: windowData.windowFromISO,
+      knownToISO: windowData.windowToISO
     });
   }
 
@@ -225,7 +259,7 @@
   );
   const yearMonths = $derived(
     scope === 'ano' && live
-      ? buildCalendarYear(yearNumber(anchorISO), live.routines, live.eventDaysISO)
+      ? buildCalendarYear(yearNumber(anchorISO), live.routines, windowData.eventDaysISO)
       : []
   );
 
@@ -255,10 +289,19 @@
   const outsideWindow = $derived(
     !!live &&
       scope !== 'ano' &&
-      (shownFromISO < live.windowFromISO || shownToISO > live.windowToISO)
+      (shownFromISO < windowData.windowFromISO || shownToISO > windowData.windowToISO)
   );
   const yearOutsideWindow = $derived(
-    !!live && scope === 'ano' && yearNumber(anchorISO) !== live.eventDaysYear
+    !!live && scope === 'ano' && yearNumber(anchorISO) !== windowData.eventDaysYear
+  );
+  const notices = $derived(
+    live
+      ? calendarNotices({
+          online,
+          outsideWindow: outsideWindow || yearOutsideWindow,
+          loadedAtLabel: live.loadedAtLabel
+        })
+      : []
   );
 
   const periodLabel = $derived(
@@ -302,6 +345,10 @@
         },
         settle: () => {
           delete completing[key];
+          // La ventana vigente puede no ser la que sirvió la página: se refresca
+          // ella, no `data`, para que el hecho recién anotado salga con su
+          // autoría en el día que se esté mirando.
+          void loadWindow(anchorISO);
         }
       })
       .then((outcome) => {
@@ -491,17 +538,9 @@
 
     <ActionStatus status={actionStatus} />
 
-    {#if !online}
-      <p class="queued-note" role="status">
-        Sin conexión. Las rutinas se calculan igual; los eventos son los de la última descarga ({live.loadedAtLabel}).
-      </p>
-    {/if}
-    {#if outsideWindow || yearOutsideWindow}
-      <p class="queued-note" role="status">
-        Fuera de lo descargado: se ven las rutinas que tocan, pero los eventos del calendario y quién marcó cada
-        cosa necesitan conexión.
-      </p>
-    {/if}
+    {#each notices as notice (notice)}
+      <p class="queued-note" role="status">{notice}</p>
+    {/each}
 
     {#if editorOpen && live.canManage}
       <section class="card">
@@ -783,7 +822,13 @@
     padding: .25rem .1rem; border: 1px solid transparent; border-radius: .55rem;
     background: var(--surface); font-size: .78rem; touch-action: manipulation; cursor: pointer;
   }
-  .month-cell.is-outside .month-cell-number { color: var(--line-strong); }
+  /* Los días del mes vecino se atenúan hasta `--ink-faint`, que es el gris más
+     claro que llega al AA sobre el papel, y ni un tono más: `--line-strong` es
+     un color de LÍNEA y como texto se queda en 2,2:1. Tampoco se les cambia el
+     fondo, porque sobre `--canvas-deep` ese mismo gris baja a 4,1:1. Lo que de
+     verdad los distingue para todo el mundo es el nombre accesible de la
+     celda, que dice el día y el mes completos. */
+  .month-cell.is-outside .month-cell-number { color: var(--ink-faint); font-weight: 400; }
   .month-cell.is-today { border-color: var(--primary); background: var(--primary-soft); font-weight: 800; }
   .month-cell[aria-pressed='true'] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
 
@@ -813,8 +858,10 @@
   .occ-mark { width: 2.75rem; flex: 0 0 auto; color: var(--ink-faint); text-align: center; }
   .occ-time { flex: 0 0 4.1rem; color: var(--ink); font-size: .74rem; font-weight: 750; }
 
+  /* Lo hecho se tacha, y nada más. Atenuar la fila con `opacity` bajaba el
+     contraste de su segunda línea por debajo del AA (axe lo caza a 390 px), y
+     la información de que está hecha ya la dan el tachado y el chip. */
   .occ-done .occ-body strong, .occ-done .occ-detail summary { text-decoration: line-through; }
-  .occ-done { opacity: .75; }
   /* «Sin marcar» es un HECHO, no una nota: tono neutro. Ni rojo ni verde
      califican a nadie en esta pantalla (E2). */
   .status-chip.neutral { border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); }

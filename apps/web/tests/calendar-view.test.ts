@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCalendarDays,
   buildCalendarYear,
+  calendarNotices,
   monthGridRange,
   nextOccurrenceAfter,
   resolveAnchor,
@@ -306,6 +307,33 @@ describe('el año: densidad y lo señalado', () => {
   it('un año bisiesto tiene 29 celdas en febrero', () => {
     expect(buildCalendarYear(2028, [], [])[1]!.routineDays).toHaveLength(29);
     expect(buildCalendarYear(2026, [], [])[1]!.routineDays).toHaveLength(28);
+  });
+});
+
+describe('las bandas honestas', () => {
+  const label = '11 ago, 08:30';
+
+  it('con red y dentro de lo descargado no hay nada que confesar', () => {
+    expect(calendarNotices({ online: true, outsideWindow: false, loadedAtLabel: label })).toEqual([]);
+  });
+
+  it('sin red dice que las rutinas se calculan igual y de cuándo son los eventos', () => {
+    const [notice] = calendarNotices({ online: false, outsideWindow: false, loadedAtLabel: label });
+    expect(notice).toBe(
+      `Sin conexión. Las rutinas se calculan igual; los eventos son los de la última descarga (${label}).`
+    );
+  });
+
+  it('fuera de lo descargado avisa de que no sabe quién marcó qué', () => {
+    // Es la banda que impide el peor malentendido: un día pasado sin datos NO
+    // es un día en que no se hizo nada.
+    const notices = calendarNotices({ online: true, outsideWindow: true, loadedAtLabel: label });
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain('quién marcó cada cosa necesitan conexión');
+  });
+
+  it('sin red y fuera de lo descargado son dos hechos distintos, y se dicen los dos', () => {
+    expect(calendarNotices({ online: false, outsideWindow: true, loadedAtLabel: label })).toHaveLength(2);
   });
 });
 

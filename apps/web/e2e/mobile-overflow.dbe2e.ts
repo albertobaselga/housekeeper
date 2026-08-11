@@ -52,7 +52,29 @@ const ROUTES: readonly OverflowRoute[] = [
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     }
   },
-  { path: 'calendar', label: 'Calendario', as: 'admin' },
+  // Los tres alcances del calendario son tres maquetaciones distintas y la
+  // rejilla del mes y la del año son las que de verdad aprietan a 320 px: una
+  // tabla de siete columnas y doce mini-meses. Comparten URL, así que se llega
+  // a ellas por sus chips.
+  { path: 'calendar', label: 'Calendario (semana)', as: 'admin' },
+  {
+    path: 'calendar',
+    label: 'Calendario (mes)',
+    as: 'employee',
+    reveal: async (page) => {
+      await page.getByRole('button', { name: 'Mes', exact: true }).click();
+      await expect(page.locator('table.month-grid')).toBeVisible();
+    }
+  },
+  {
+    path: 'calendar',
+    label: 'Calendario (año)',
+    as: 'admin',
+    reveal: async (page) => {
+      await page.getByRole('button', { name: 'Año', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Junio', exact: true })).toBeVisible();
+    }
+  },
   { path: 'contacts', label: 'Contactos', as: 'admin' },
   { path: 'settings', label: 'Ajustes', as: 'admin' },
   { path: 'emergency', label: 'Emergencias', as: 'admin' }
