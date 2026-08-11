@@ -8,10 +8,18 @@ generaban.
 
 > **Nota de 11/08/2026.** Este runbook hablaba también de avisos de rutina y de
 > liquidación y de la auto-confirmación del parte semanal. Los tres se
-> retiraron con la migración 0029 —no hay correo y no hay parte semanal—, así
-> que quedan **cuatro** tipos de trabajo. Si aplicas este runbook sobre una
-> instalación anterior, la propia 0029 deja en `dead` lo que hubiera encolado
-> de los tres tipos retirados: no hace falta tocar la cola a mano.
+> retiraron con la migración 0029 —no hay correo y no hay parte semanal—. Si
+> aplicas este runbook sobre una instalación anterior, la propia 0029 deja en
+> `dead` lo que hubiera encolado de los tres tipos retirados: no hace falta
+> tocar la cola a mano.
+>
+> **Ampliación de esa misma tarde.** Vuelve **uno** de los tres, por el canal que
+> sí existe: `notification.push` (migración 0032), que manda los avisos al móvil.
+> Son **cinco** tipos de trabajo. Ese manejador **solo se registra si hay claves
+> VAPID**; sin ellas la cola se vacía exactamente igual y ningún aviso llega a
+> encolarse. El de rutinas NO vuelve, y las razones están en
+> `docs/notificaciones.md` §6. Puesta en marcha del canal:
+> `docs/runbooks/notificaciones-push.md`.
 
 **Cómo se resuelve, sin host extra y sin coste.** El planificador vive en la
 propia base: `pg_cron` dispara cada pocos minutos una llamada HTTP con `pg_net`
@@ -215,6 +223,7 @@ Así que la pregunta real es cuánto puede esperar el trabajo más impaciente.
 | --- | --- | --- |
 | `document.render_receipt` | al cerrar la cuenta del mes | **El que más**: alguien acaba de cerrar y está esperando el recibo |
 | `ics.sync_source` / `ics.sync_all` | unas cuantas veces al día (+6 h) | Un cambio en el calendario del colegio puede esperar minutos, no horas |
+| `notification.push` | dos veces al mes, y con hora propia | Ninguno: su `run_at` ya trae la ventana de silencio aplicada, así que cinco minutos de más no lo sacan de hora |
 | `maintenance.prune_discovery` | semanal | Ninguno |
 
 Con `*/5` el peor caso es **5 minutos**, que es lo que aguanta el PDF del recibo

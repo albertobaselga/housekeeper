@@ -28,6 +28,10 @@ const handlers = createJobHandlers({
     putPrivateObject(storageClient, config.storage.bucket, key, body, contentType),
   log,
   errorCode,
+  // Las claves VAPID no son obligatorias para arrancar: sin ellas el demonio
+  // hace todo lo demás y el canal de avisos no existe. Nada vive solo detrás del
+  // push, así que faltar no puede impedir que se generen los recibos.
+  environment: process.env,
 });
 
 const healthServer = createServer(async (request, response) => {

@@ -477,6 +477,12 @@ async function closeSettlement(
   if (!parties) throw new Error("No se pudieron resolver los nombres para el recibo");
 
   const receipt = {
+    // Fuera del snapshot y en la raíz del payload: el snapshot es el contenido
+    // del PDF y no debe cambiar de forma, mientras que esto es fontanería de la
+    // cola. Con él, el trabajo que genera el recibo puede encolar después el
+    // aviso de «tu recibo ya está» sin que la audiencia ni el texto viajen en
+    // ningún payload — solo el identificador.
+    settlementId: settlement.id,
     receipt: {
       householdName: parties.household_name,
       employeeName: parties.employee_name,
@@ -500,13 +506,34 @@ async function closeSettlement(
     JSON.stringify(receipt),
   ]);
 
-  // Aquí se encolaba además `notification.settlement_due`: un aviso que
-  // despertaba tres días antes del vencimiento y, mientras la liquidación
-  // siguiera pendiente, se re-encolaba a sí mismo cada tres días. Solo sabía
-  // mandar correo, y correo no hay: retirado con la migración 0029. Un trabajo
-  // sin manejador no se queda quieto —se reintenta, muere y ensucia el log—, y
-  // este además se multiplicaba solo. El vencimiento se sigue viendo en Hoy,
-  // que es donde se mira; el aviso volverá con las notificaciones al móvil.
+  // El aviso de la cuenta del mes por pagar, para quien administra. Aquí vivía
+  // el `notification.settlement_due` que la migración 0029 retiró por no tener
+  // más salida que el correo; vuelve por el canal que sí existe, y vuelve con
+  // las dos cosas que le faltaban:
+  //
+  //   · **La ventana de silencio en el `run_at`.** El encolado anterior usaba
+  //     `$2::date::timestamptz`, que resuelve la medianoche EN LA ZONA DE LA
+  //     SESIÓN —UTC en producción—, o sea las 02:00 en el salón de esta casa. Si
+  //     se hubiera conectado el push a la tubería tal cual, el primer aviso que
+  //     esta aplicación emitiera en su vida habría sonado de madrugada.
+  //     `app.push_run_at` traduce a la hora de pared y respeta la ventana.
+  //   · **Un tope de escalada.** El aviso se repite cada tres días mientras siga
+  //     pendiente, pero solo tres veces más (`SETTLEMENT_DUE_MAX_REPEATS` en
+  //     apps/worker/src/push.ts). Sin tope, este trabajo se multiplicaba solo, y
+  //     eso está escrito como uno de los motivos de su retirada.
+  //
+  // La audiencia NO viaja aquí. Se resuelve en el instante del envío contra las
+  // membresías vivas (`app_private.push_notice_targets`, migración 0032), que es
+  // lo que hace que retirarle el acceso a alguien apague sus avisos en el acto.
+  // Ese es exactamente el agujero que tenía el encolado de avisos de rutina, que
+  // materializaba la lista de destinatarios dentro del payload.
+  await client.query(
+    `select app.enqueue_job(
+              'notification.push',
+              $1::jsonb,
+              app.push_run_at(app.job_run_at($2::date - 3)))`,
+    [JSON.stringify({ topic: "settlement.due", settlementId: settlement.id }), settlement.due_on],
+  );
 
   return { resourceId: settlement.id };
 }

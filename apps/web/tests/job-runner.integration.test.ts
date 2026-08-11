@@ -137,6 +137,10 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       budgetMs: 8_000,
       maxAttempts: 5,
       leaseMs: undefined,
+      // Sin claves VAPID: en esta batería el canal de avisos no existe, que es
+      // exactamente lo que tiene que pasar cuando no están configuradas. El
+      // drenaje vacía todo lo demás igual.
+      environment: {},
       storage: {
         bucket: 'casaclara-test',
         putObject: noStorage,
@@ -367,10 +371,13 @@ describe('secreto compartido y configuración del drenaje', () => {
     };
     expect(loadJobRunnerConfig(withoutMail)).not.toBeNull();
     // Y declararlos tampoco cambia nada: son variables sin lector. Se comparan
-    // los valores y no el objeto entero porque el almacén trae funciones, y dos
-    // llamadas devuelven dos cierres distintos aunque digan lo mismo.
-    const { storage: _sinCorreo, ...sinCorreo } = loadJobRunnerConfig(withoutMail)!;
-    const { storage: _conCorreo, ...conCorreo } = loadJobRunnerConfig({
+    // los valores y no el objeto entero por dos motivos: el almacén trae
+    // funciones (dos llamadas devuelven dos cierres distintos aunque digan lo
+    // mismo) y `environment` es el entorno tal cual, que se pasa entero al
+    // catálogo de trabajos para que lea lo suyo —hoy, las claves VAPID—.
+    // Compararlo aquí sería comparar la entrada consigo misma.
+    const { storage: _sc, environment: _ec, ...sinCorreo } = loadJobRunnerConfig(withoutMail)!;
+    const { storage: _cc, environment: _ee, ...conCorreo } = loadJobRunnerConfig({
       ...withoutMail,
       SMTP_HOST: 'smtp.invalid',
       SMTP_FROM: 'x@invalid'

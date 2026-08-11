@@ -99,7 +99,10 @@ test('sin base de datos de identidad no se ofrece reponer ni cambiar contraseña
   // que gobernar, pero ninguna contraseña que tocar. Ofrecer los botones sería
   // prometer algo que el entorno no puede cumplir.
   await expect(page.getByRole('button', { name: 'Poner una contraseña nueva' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Tu contraseña' })).toHaveCount(0);
+  // «Tu cuenta» sí sigue en la navegación aunque no haya contraseñas que tocar:
+  // ahí vive además el interruptor de los avisos, que no depende de la identidad.
+  // Lo que no puede haber es un formulario de contraseña (se comprueba abajo).
+  await expect(page.getByRole('link', { name: 'Tu cuenta' })).not.toHaveCount(0);
 
   // El envío sale del propio documento para que lleve `Origin` y no lo pare
   // antes la protección CSRF de SvelteKit.

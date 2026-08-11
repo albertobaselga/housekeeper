@@ -72,6 +72,13 @@ export interface JobRunnerConfig {
    * declararlo aquí por segunda vez.
    */
   storage: StorageBackend;
+  /**
+   * El entorno tal cual, para lo que el catálogo de trabajos necesite leer por
+   * su cuenta —hoy, solo las claves VAPID de los avisos al móvil—. Se pasa
+   * entero en vez de extraer aquí cada variable para que este módulo no tenga
+   * que enterarse cada vez que un trabajo gana una opción.
+   */
+  environment: Partial<Record<string, string>>;
 }
 
 function positiveInteger(raw: string | undefined, fallback: number): number {
@@ -128,7 +135,8 @@ export function loadJobRunnerConfig(
     maxAttempts: positiveInteger(environment.WORKER_MAX_JOB_ATTEMPTS, 5),
     // Sin declarar (o con un valor absurdo) manda el arriendo de la cola.
     leaseMs: positiveInteger(environment.JOB_RUNNER_LEASE_MS, 0) || undefined,
-    storage
+    storage,
+    environment
   };
 }
 
@@ -282,7 +290,14 @@ export async function runJobDrainRequest(
       // no genera ningún PDF y no paga ninguna de las dos cosas.
       uploadDocument: (key, body, contentType) => config.storage.putObject(key, body, contentType),
       log,
-      errorCode
+      errorCode,
+      // De aquí salen las claves VAPID. No entran en `loadJobRunnerConfig` —y
+      // por tanto su ausencia NO devuelve 503— porque el drenaje sin avisos
+      // sigue siendo un drenaje que hace falta: exigir aquí una variable de más
+      // es exactamente lo que tuvo esta cola parada dos veces, con SMTP y con
+      // las S3_*. Sin claves no se registra el manejador de avisos y no se
+      // encola ninguno; todo lo demás se vacía igual.
+      environment: config.environment
     });
 
   try {

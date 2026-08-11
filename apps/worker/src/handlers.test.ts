@@ -5,6 +5,7 @@ import { createRenderReceiptHandler, receiptObjectKey } from "./handlers.js";
 import { PermanentJobError, type ClaimedJob } from "./queue.js";
 
 const HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
+const SETTLEMENT = "12b00000-0000-4000-8000-000000000001";
 
 function renderJob(payload: unknown): ClaimedJob {
   return { id: "job-1", householdId: HOUSEHOLD, type: "document.render_receipt", payload, attempts: 1 };
@@ -32,8 +33,10 @@ function receiptPayload() {
 describe("handler de render de recibo", () => {
   it("sube un PDF determinista bajo una clave con hash del contenido", async () => {
     const uploads: Array<{ key: string; body: Uint8Array; contentType: string }> = [];
-    const handler = createRenderReceiptHandler(async (key, body, contentType) => {
-      uploads.push({ key, body, contentType });
+    const handler = createRenderReceiptHandler({
+      upload: async (key, body, contentType) => {
+        uploads.push({ key, body, contentType });
+      },
     });
 
     await handler(renderJob(receiptPayload()));
@@ -49,10 +52,58 @@ describe("handler de render de recibo", () => {
   });
 
   it("rechaza payloads inválidos como fallo permanente sin subir nada", async () => {
-    const handler = createRenderReceiptHandler(async () => {
-      throw new Error("no debe subirse nada");
+    const handler = createRenderReceiptHandler({
+      upload: async () => {
+        throw new Error("no debe subirse nada");
+      },
     });
     await expect(handler(renderJob({}))).rejects.toBeInstanceOf(PermanentJobError);
     await expect(handler(renderJob({ receipt: { reference: "x" } }))).rejects.toBeInstanceOf(PermanentJobError);
+  });
+
+  // El aviso a la empleada sale de AQUÍ y de ningún otro sitio: el momento en
+  // que su recibo existe es el único en que la aplicación le escribe al móvil.
+  it("anuncia el recibo solo después de subirlo, y solo si el trabajo trae la liquidación", async () => {
+    const order: string[] = [];
+    const announced: Array<{ householdId: string; settlementId: string }> = [];
+    const handler = createRenderReceiptHandler({
+      upload: async () => {
+        order.push("upload");
+      },
+      announceReceipt: async (input) => {
+        order.push("announce");
+        announced.push(input);
+      },
+    });
+
+    await handler(renderJob({ ...receiptPayload(), settlementId: SETTLEMENT }));
+
+    expect(order).toEqual(["upload", "announce"]);
+    expect(announced).toEqual([{ householdId: HOUSEHOLD, settlementId: SETTLEMENT }]);
+
+    // Un recibo encolado por la versión anterior no lleva `settlementId`. Tiene
+    // que generarse igual: lo único que no tendrá es aviso.
+    await handler(renderJob(receiptPayload()));
+    expect(announced).toHaveLength(1);
+    expect(order).toEqual(["upload", "announce", "upload"]);
+  });
+
+  it("no anuncia nada si el PDF no llegó a subirse", async () => {
+    const announced: string[] = [];
+    const handler = createRenderReceiptHandler({
+      upload: async () => {
+        throw new Error("el almacén no responde");
+      },
+      announceReceipt: async ({ settlementId }) => {
+        announced.push(settlementId);
+      },
+    });
+
+    await expect(
+      handler(renderJob({ ...receiptPayload(), settlementId: SETTLEMENT })),
+    ).rejects.toThrow("el almacén no responde");
+    // «Ya está tu recibo» con el recibo sin subir es mentira, y además la
+    // llevaría a una pantalla que no puede enseñárselo.
+    expect(announced).toEqual([]);
   });
 });

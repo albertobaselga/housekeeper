@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./jobs": "./src/jobs.ts"
+    "./jobs": "./src/jobs.ts",
+    "./net": "./src/net.ts"
   },
   "scripts": {
     "backup:full": "node scripts/full-backup.mjs",

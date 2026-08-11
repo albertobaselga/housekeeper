@@ -49,16 +49,58 @@ export function receiptObjectKey(householdId: string, reference: string, hash: s
   return `${householdId}/receipts/${safeReference}-${hash.slice(0, 16)}.pdf`;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * El identificador de la liquidación, si el trabajo lo trae.
+ *
+ * Opcional a propósito, y no por comodidad: cuando esto se despliegue puede
+ * haber recibos ya encolados por la versión anterior, que no lo llevaban. Un
+ * recibo viejo tiene que seguir generándose; lo único que no tendrá es aviso.
+ * Exigirlo convertiría un despliegue en un puñado de PDF muertos.
+ */
+function optionalSettlementId(payload: unknown): string | null {
+  const value = (payload as { settlementId?: unknown } | null | undefined)?.settlementId;
+  return typeof value === "string" && UUID.test(value) ? value : null;
+}
+
+export interface RenderReceiptDeps {
+  upload: DocumentUploader;
+  /**
+   * Encola el aviso de «tu recibo ya está» para la persona del contrato.
+   *
+   * **Este es el único momento en que se le avisa de algo.** No es una elección
+   * de implementación: es la decisión del hogar. El recibo es lo suyo, aparece
+   * una vez al mes, es una buena noticia y tiene una acción al otro lado
+   * —mirarlo y confirmar el cobro—. Todo lo demás que la aplicación sabe de ella
+   * se queda en la pantalla, que es donde se atiende.
+   *
+   * Va DESPUÉS de subir el PDF, y separado en su propio trabajo, por dos
+   * razones: que un fallo del aviso no vuelva a renderizar y re-subir el recibo,
+   * y que la ventana de silencio pueda aplazarlo sin aplazar el documento.
+   */
+  announceReceipt?: ((input: { householdId: string; settlementId: string }) => Promise<void>) | undefined;
+}
+
 /**
  * Renderiza el recibo determinista desde el snapshot canónico del payload y lo
  * sube al almacenamiento privado. El worker no lee tablas de dominio bajo RLS:
  * todo el contenido viaja en el job que encoló la aplicación al cerrar.
  */
-export function createRenderReceiptHandler(upload: DocumentUploader): JobHandler {
+export function createRenderReceiptHandler(deps: RenderReceiptDeps): JobHandler {
   return async (job) => {
     const receipt = parseReceiptPayload(job.payload);
     const pdf = await renderReceiptPdf(receipt);
     const hash = sha256(pdf);
-    await upload(receiptObjectKey(job.householdId, receipt.reference, hash), pdf, "application/pdf");
+    await deps.upload(
+      receiptObjectKey(job.householdId, receipt.reference, hash),
+      pdf,
+      "application/pdf",
+    );
+
+    const settlementId = optionalSettlementId(job.payload);
+    if (settlementId && deps.announceReceipt) {
+      await deps.announceReceipt({ householdId: job.householdId, settlementId });
+    }
   };
 }
