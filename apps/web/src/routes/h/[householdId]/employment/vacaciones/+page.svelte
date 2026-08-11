@@ -124,7 +124,7 @@
         {/each}
 
         <p class="card-footnote">
-          Aquí consta lo que se ha apuntado en Casa Clara. Los días se cuentan naturales:
+          Aquí consta lo que se ha apuntado en la aplicación. Los días se cuentan naturales:
           festivos y fines de semana incluidos, del 1 al 15 son 15 días.
         </p>
       </article>

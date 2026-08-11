@@ -2,6 +2,7 @@
   import { browser } from '$app/environment';
   import { enhance } from '$app/forms';
   import { invalidate } from '$app/navigation';
+  import { APP_HOME_SCREEN_NAME } from '$lib/app-title';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import type { ActionData, PageData } from './$types';
 
@@ -140,15 +141,15 @@
       </p>
     {:else if availability === 'needs-home-screen'}
       <p>
-        En iPhone y iPad los avisos solo funcionan si abres Casa Clara desde el icono de la pantalla de
-        inicio. Si quieres, añádela: botón Compartir → «Añadir a pantalla de inicio», y entra otra vez desde
-        ahí. Y si no, entra como siempre: no te pierdes nada.
+        En iPhone y iPad los avisos solo funcionan si abres la aplicación desde el icono de la pantalla de
+        inicio, donde aparece como «{APP_HOME_SCREEN_NAME}». Si quieres, añádela: botón Compartir → «Añadir
+        a pantalla de inicio», y entra otra vez desde ahí. Y si no, entra como siempre: no te pierdes nada.
       </p>
     {:else if availability === 'blocked'}
       <p>
-        Este teléfono tiene los avisos bloqueados para Casa Clara. Se desbloquean desde los ajustes del
-        teléfono, en la ficha de Casa Clara → Notificaciones. Si prefieres dejarlo así, no hace falta que
-        hagas nada: la aplicación funciona igual.
+        Este teléfono tiene los avisos bloqueados para esta aplicación. Se desbloquean desde los ajustes
+        del teléfono, en la ficha de «{APP_HOME_SCREEN_NAME}» → Notificaciones. Si prefieres dejarlo así, no
+        hace falta que hagas nada: la aplicación funciona igual.
       </p>
     {:else if availability === 'unsupported'}
       <p>Este navegador no sabe mandar avisos. La aplicación funciona igual sin ellos.</p>

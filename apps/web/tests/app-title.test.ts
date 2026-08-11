@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { APP_NAME, documentTitle, sectionLabelFor } from '../src/lib/app-title';
+import {
+  APP_HOME_SCREEN_NAME,
+  APP_NAME,
+  documentTitle,
+  sectionLabelFor
+} from '../src/lib/app-title';
 import { HOUSEHOLD_MODULES } from '../src/lib/auth/routing';
 
 describe('título de la pestaña: una sola fuente', () => {
@@ -44,5 +50,16 @@ describe('título de la pestaña: una sola fuente', () => {
     expect(sectionLabelFor('/h/abc/wiki/libro/lavadora')).toBe('Guía de la casa');
     // Una ruta que nadie declaró no inventa etiqueta: se titula con la casa.
     expect(sectionLabelFor('/h/abc/inventada')).toBeNull();
+  });
+
+  it('el nombre del icono es el del manifiesto, o mandaríamos a buscar algo que no existe', () => {
+    // «Tu cuenta» manda a la ficha del sistema por su nombre para desbloquear
+    // los avisos. Si el manifiesto cambiara y este texto no, la instrucción
+    // llevaría a una ficha que en ese teléfono se llama de otra manera.
+    const manifest = JSON.parse(
+      readFileSync(new URL('../static/manifest.webmanifest', import.meta.url), 'utf8')
+    );
+    expect(APP_HOME_SCREEN_NAME).toBe(manifest.short_name);
+    expect(manifest.name).toBe(APP_NAME);
   });
 });

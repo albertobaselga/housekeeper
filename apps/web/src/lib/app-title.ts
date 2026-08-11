@@ -21,6 +21,18 @@
 export const APP_NAME = 'Aplicación para la gestión del personal doméstico';
 
 /**
+ * Cómo se llama el icono una vez instalada en el teléfono. Es el `short_name`
+ * del manifiesto, y es lo único que la persona ve bajo el icono y en la ficha
+ * de ajustes del sistema. Vive aquí porque hay texto de la interfaz que tiene
+ * que mandar a alguien a esa ficha: decirle otro nombre es mandarla a buscar
+ * algo que no va a encontrar.
+ *
+ * Si cambia en `static/manifest.webmanifest`, cambia aquí. La prueba de
+ * `app-title.test.ts` compara ambos y falla si divergen.
+ */
+export const APP_HOME_SCREEN_NAME = 'Hogar';
+
+/**
  * Etiqueta de cada sección, indexada por la ruta sin el prefijo del hogar
  * (`/h/<id>/…`) o por la ruta entera cuando vive fuera de él. Aquí, y solo
  * aquí, se apunta una página nueva.
