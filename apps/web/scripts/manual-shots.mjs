@@ -39,8 +39,13 @@
 //   VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… VAPID_SUBJECT=mailto:… \
 //   PORT=4363 ORIGIN=http://127.0.0.1:4363 node apps/web/build
 //
-//   # 5. Las capturas
+//   # 5. Las capturas, y adelgazarlas antes de commitear
 //   node apps/web/scripts/manual-shots.mjs --base http://127.0.0.1:4363
+//   node apps/web/scripts/manual-shots-optimize.mjs
+//
+// La captura `familia-personal-alta` da de alta a «Elena» de verdad, así que la
+// segunda vez sobre la MISMA base fallará por usuario repetido: se rehace sobre
+// una base recién sembrada, o se borra a Elena antes.
 //
 // Opciones: `--out <dir>` (por omisión docs/manual/capturas), `--only a,b,c`
 // para rehacer solo algunas, `--list` para ver los nombres.
@@ -167,7 +172,9 @@ const CAPTURAS = [
       // Marcar una rutina deja el bloque plegado «N hechas hoy» al fondo, que
       // es justo lo que esta captura tiene que enseñar junto a «Esta semana».
       if ((await page.locator('summary', { hasText: 'hechas hoy' }).count()) === 0) {
-        const marcar = page.getByRole('button', { name: 'Marcar hecha' }).first();
+        // La ÚLTIMA de la lista: las primeras pueden ser del bloque «Se quedó
+        // pendiente», cuya ocurrencia es de otro día y no cuenta como «hecha hoy».
+        const marcar = page.locator('#rutinas-de-hoy').getByRole('button', { name: 'Marcar hecha' }).last();
         await marcar.click();
         await page.getByRole('button', { name: 'Deshacer' }).first().waitFor({ timeout: 15_000 });
         // El chip aparece nada más pulsar (es optimista), pero el bloque plegado
