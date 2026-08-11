@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { getCriticalSnapshotPayload } from '../src/lib/server/fixtures.server';
 import { buildCriticalSnapshot, loadSnapshotHousehold } from '../src/lib/server/snapshot.server';
@@ -15,6 +15,11 @@ import { FIXTURE_HOUSEHOLD } from './helpers';
 // decide qué ve cada rol.
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+
+// Igual que en contacts.integration: esta suite afirma el comportamiento CON
+// base configurada. `fixturesAllowed()` lo decide por la DATABASE_URL del
+// proceso, así que se declara aquí en vez de heredarla del shell de turno.
+vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: 'postgres://prueba/afirmada' } }));
 const APP_LOGIN = 'it_casa_clara_snapshot_login';
 const SNAPSHOT_DB = 'casaclara_off_snapshot_it';
 

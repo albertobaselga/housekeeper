@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import pg from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { contactCommandHandlers, processSyncBatch, withAuthorizedTransaction } from '@casa-clara/server';
 
@@ -17,6 +17,12 @@ import { getCriticalSnapshotPayload } from '../src/lib/server/fixtures.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+
+// Esta suite afirma el comportamiento CON base configurada, que es el de
+// producción. `fixturesAllowed()` lo decide leyendo la DATABASE_URL del
+// proceso, así que declararla aquí es parte de la prueba: heredarla del
+// entorno de quien la lance hacía que el resultado dependiera de su shell.
+vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: 'postgres://prueba/afirmada' } }));
 const APP_LOGIN = 'it_casa_clara_contacts_login';
 // Base de datos propia (patrón de la suite de comida): las otras suites
 // recrean el esquema entero en paralelo y ninguna puede compartir instancia.
