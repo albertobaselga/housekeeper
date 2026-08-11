@@ -60,7 +60,19 @@ export default defineConfig({
     // ella el paquete se niega a arrancar en cualquier despliegue de Vercel
     // (deployment-config.js, 'fixture-bundle-with-database').
     command: `pnpm build && PORT=${PORT} ORIGIN=http://127.0.0.1:${PORT} node build`,
-    env: { DATABASE_URL: appDatabaseUrl(), CASA_CLARA_FIXTURE_LOGIN: 'true' },
+    env: {
+      DATABASE_URL: appDatabaseUrl(),
+      CASA_CLARA_FIXTURE_LOGIN: 'true',
+      // Con canal de avisos configurado. La batería de maqueta cubre el caso
+      // contrario —sin claves no se ofrece un interruptor que no funcionaría—,
+      // y sin esto NADIE probaba la rama con claves. Ese hueco costó caro: los
+      // avisos se desplegaron a producción sin las variables y la pantalla
+      // decía «esta instalación no manda avisos» sin que ninguna prueba se
+      // enterase. Son claves de juguete: no se manda nada, solo se pinta.
+      VAPID_PUBLIC_KEY: 'BJ6XG5oCLC2hmFRFtLbJPYCoRQXhFVFHfIvBrsYcKmYUXVSMxOZMhWJzGqvpTNSNvNsRWzKnFOTsJvBfIQfXKLA',
+      VAPID_PRIVATE_KEY: 'kFzRQ5vHJmMwPnLxTbYcVdEfGhIjKlMnOpQrStUvWxY',
+      VAPID_SUBJECT: 'https://ejemplo.invalid'
+    },
     url: `http://127.0.0.1:${PORT}/login`,
     reuseExistingServer: false,
     timeout: 240_000
