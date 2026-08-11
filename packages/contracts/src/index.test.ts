@@ -431,7 +431,7 @@ describe("alta de rutina: las dos formas conviven (§3.4)", () => {
   });
 
   it("ni la próxima fecha ni la política de atrasadas se pueden dictar desde fuera", () => {
-    // `next_due_on` es caché derivada de la regla (§2.7) y `overdue_policy` se
+    // `next_due_hint` es caché derivada de la regla (§2.7) y `overdue_policy` se
     // DERIVA del patrón en el servidor (§2.5). Que el contrato no tenga dónde
     // ponerlas es lo que garantiza que nadie las decida por su cuenta.
     const parsed = routineUpsertPayloadSchema.parse({

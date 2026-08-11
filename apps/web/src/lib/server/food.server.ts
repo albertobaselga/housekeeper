@@ -758,8 +758,10 @@ export interface RoutineView {
   schedule: RoutineSchedule;
   /**
    * Primera ocurrencia pendiente, ya resuelta por el motor. NO es la columna
-   * `next_due_on`: desde la 0023 esa columna es una caché que solo garantiza ser
-   * cota inferior (§2.7), así que sirve para prefiltrar en SQL y no para enseñar.
+   * `next_due_hint`: desde la 0023 esa columna es una caché que solo garantiza
+   * ser cota inferior (§2.7), así que sirve para prefiltrar en SQL y no para
+   * enseñar. Se llamó `next_due_on` hasta la 0033, cuando el nombre dejó de
+   * sugerir que fuera un estado.
    */
   nextOccurrenceOn: string | null;
   /**
@@ -843,7 +845,7 @@ function scheduleFromRow(row: {
  * (AC-26 revisado): esta página enseña qué ritmo tiene cada cosa, no cuánto
  * cumple nadie.
  *
- * Las ocurrencias se calculan con el motor puro y NO se leen de `next_due_on`,
+ * Las ocurrencias se calculan con el motor puro y NO se leen de `next_due_hint`,
  * que desde la 0023 es una caché con garantía de cota inferior (§2.7). El
  * cálculo es del orden de 40 reglas × una ventana corta: microsegundos.
  */

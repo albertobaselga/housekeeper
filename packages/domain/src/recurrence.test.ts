@@ -715,7 +715,7 @@ describe("lo que sale en Hoy (pendingFor)", () => {
     expect(coste).toBeLessThan(250);
   });
 
-  it("la caché `next_due_on` nunca es posterior a la ocurrencia real: es cota inferior", () => {
+  it("la caché `next_due_hint` nunca es posterior a la ocurrencia real: es cota inferior", () => {
     const hoy = pendingFor(sabanas, "carry", new Set(), "2026-08-10");
     const reales = occurrencesBetween(sabanas, "2026-01-01", "2026-12-31");
     const primeraPendiente = reales.find((dueOn) => dueOn >= "2026-01-05");
