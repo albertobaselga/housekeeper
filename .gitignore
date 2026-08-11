@@ -49,3 +49,6 @@ dist/
 scratchpad/
 .vercel
 .env*
+
+# Salida del guion de publicación del manual: se regenera, no se versiona.
+docs/manual/manual-publicable.html
