@@ -317,7 +317,12 @@ describe.runIf(Boolean(adminUrl))('migrar la recurrencia de rutinas con historia
   });
 
   it('rellena las cinco rutinas sin moverles la próxima fecha', async () => {
-    await expect(applyMigrations(client)).resolves.toBeGreaterThan(0);
+    // Se para EN la 0023 a propósito: lo que este bloque promete es lo de
+    // expandir, y una de sus aserciones es que lo heredado sigue intacto. La
+    // contracción llega más abajo, sobre estas mismas filas.
+    await expect(
+      applyMigrations(client, { until: '0023_routine_recurrence.sql' })
+    ).resolves.toBeGreaterThan(0);
 
     const { rows } = await client.query(
       `select id, next_due_on::text as next_due_on, pattern::text as pattern,
@@ -442,6 +447,219 @@ describe.runIf(Boolean(adminUrl))('migrar la recurrencia de rutinas con historia
       await client.query('set local row_security = off');
       await client.query(corruption);
       await expect(client.query(assertion), label).rejects.toThrow(expected);
+      await client.query('rollback');
+    }
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // 0033: CONTRAER, sobre las mismas cinco rutinas y su finalización.
+  //
+  // Aquí no se siembra nada nuevo a propósito. Son las filas que nacieron con
+  // el vocabulario viejo, pasaron por la 0023 y llegan ahora a la contracción:
+  // el recorrido completo que hará una fila real de producción. Y la
+  // comparación no es contra el estado intermedio sino contra lo SEMBRADO, que
+  // es la única forma de demostrar que la fecha que la casa tenía apuntada
+  // hace dos migraciones sigue siendo la misma.
+  //
+  // Lo que más se vigila no es el DROP —eso es catálogo— sino el RENAME:
+  // `next_due_on` pasa a `next_due_hint` y los cuerpos de las funciones que la
+  // citan se guardan como TEXTO, así que PostgreSQL no los toca ni avisa. Una
+  // contracción que olvidara recrearlas dejaría la base impecable y el feed
+  // ICS reventando en la primera petición.
+  // ───────────────────────────────────────────────────────────────────────────
+  it('la 0033 contrae sin mover ni una fecha ni una cadencia', async () => {
+    await expect(applyMigrations(client)).resolves.toBeGreaterThan(0);
+
+    const { rows } = await client.query(
+      `select id, next_due_hint::text as next_due_hint, pattern::text as pattern,
+              anchor_on::text as anchor_on, repeat_every, weekdays, month_day,
+              overdue_policy::text as overdue_policy, months, ends_on
+         from app.routines where household_id = $1 order by id`,
+      [RECURRENCE_HOUSEHOLD]
+    );
+    expect(rows).toHaveLength(SEEDED_ROUTINES.length);
+
+    for (const seeded of SEEDED_ROUTINES) {
+      const row = rows.find((candidate) => candidate.id === seeded.id);
+      // La promesa del encargo, fila a fila y contra el valor SEMBRADO: la
+      // fecha que estaba pendiente antes de la 0023 sigue pendiente después de
+      // la 0033, solo que la columna ya no finge ser un estado.
+      expect(row.next_due_hint, seeded.title).toBe(seeded.nextDueOn);
+      expect(row.anchor_on, seeded.title).toBe(seeded.nextDueOn);
+      // Y la cadencia entera, que es la otra mitad de la promesa: contraer no
+      // puede degradar «cada 36 meses» ni perder los días de la semana.
+      expect(row.pattern, seeded.title).toBe(seeded.expected.pattern);
+      expect(row.repeat_every, seeded.title).toBe(seeded.expected.repeat_every);
+      expect(row.weekdays, seeded.title).toEqual(seeded.expected.weekdays);
+      expect(row.month_day, seeded.title).toBe(seeded.expected.month_day);
+      expect(row.overdue_policy, seeded.title).toBe(seeded.expected.overdue_policy);
+      expect(row.months, seeded.title).toBeNull();
+      expect(row.ends_on, seeded.title).toBeNull();
+    }
+  }, 180_000);
+
+  it('la finalización que ya existía sigue exactamente donde estaba', async () => {
+    // Se repite tras la contracción y no solo tras la 0023: `routine_completions`
+    // es el activo que hace viable todo el modelo (una fila por ocurrencia), y
+    // una contracción que la tocara sería irreparable.
+    const { rows } = await client.query(
+      `select routine_id, due_on::text as due_on, completed_by_membership_id
+         from app.routine_completions where household_id = $1`,
+      [RECURRENCE_HOUSEHOLD]
+    );
+    expect(rows).toEqual([
+      {
+        routine_id: '7b100000-0000-4000-8000-000000000003',
+        due_on: '2026-07-30',
+        completed_by_membership_id: RECURRENCE_EMPLOYEE
+      }
+    ]);
+  });
+
+  it('lo retirado está retirado: columnas, ENUM y la definer que avanzaba', async () => {
+    const columns = await client.query(
+      `select column_name from information_schema.columns
+        where table_schema = 'app' and table_name = 'routines'
+          and column_name in ('frequency', 'interval_count', 'next_due_on')`
+    );
+    expect(columns.rows).toEqual([]);
+
+    const enumType = await client.query(
+      `select 1 from pg_catalog.pg_type where typname = 'routine_frequency'`
+    );
+    expect(enumType.rows).toEqual([]);
+
+    const definer = await client.query(
+      `select 1 from pg_catalog.pg_proc as p
+         join pg_catalog.pg_namespace as n on n.oid = p.pronamespace
+        where n.nspname = 'app' and p.proname = 'advance_routine_after_completion'`
+    );
+    expect(definer.rows).toEqual([]);
+
+    // Las restricciones que colgaban de las columnas se van con ellas, sin
+    // haberlas nombrado en la migración.
+    const constraints = await client.query(
+      `select conname from pg_catalog.pg_constraint
+        where conrelid = 'app.routines'::regclass
+          and conname in ('routines_frequency_not_null', 'routines_interval_count_not_null',
+                          'routines_interval_count_check')`
+    );
+    expect(constraints.rows).toEqual([]);
+  });
+
+  it('el renombrado arrastra índice y CHECK, y NO deja funciones rotas', async () => {
+    // Índice y restricción son dependencias registradas: PostgreSQL reescribe
+    // su definición al renombrar. Se comprueba en vez de darlo por hecho,
+    // porque de ello depende que el prefiltro de «lo que toca hoy» siga
+    // existiendo.
+    const index = await client.query(
+      `select indexdef from pg_catalog.pg_indexes
+        where schemaname = 'app' and tablename = 'routines'
+          and indexname = 'routines_due_hint_idx'`
+    );
+    expect(index.rows).toHaveLength(1);
+    expect(index.rows[0].indexdef).toContain('next_due_hint');
+
+    const check = await client.query(
+      `select pg_get_constraintdef(oid) as def from pg_catalog.pg_constraint
+        where conrelid = 'app.routines'::regclass and conname = 'routines_pattern_shape'`
+    );
+    expect(check.rows[0].def).toContain('next_due_hint');
+    expect(check.rows[0].def).not.toContain('next_due_on');
+
+    // Y los cuerpos de función, que es lo que el RENAME no alcanza.
+    const orphans = await client.query(
+      `select n.nspname || '.' || p.proname as fn
+         from pg_catalog.pg_proc as p
+         join pg_catalog.pg_namespace as n on n.oid = p.pronamespace
+        where n.nspname in ('app', 'app_private')
+          and (p.prosrc like '%next_due_on%' or p.prosrc like '%interval_count%')`
+    );
+    expect(orphans.rows).toEqual([]);
+  });
+
+  it('el feed ICS se puede LLAMAR tras el renombrado, y conserva su GRANT', async () => {
+    // La prueba que de verdad importa: que la función exista no basta, porque
+    // su cuerpo es texto y el fallo aparece al ejecutarla. Un token que no
+    // existe devuelve cero filas —y no un error de columna—, que es justo lo
+    // que distingue «recreada» de «rota».
+    await expect(
+      client.query(`select * from app_private.ics_feed_events($1)`, ['no-existe-este-token'])
+    ).resolves.toMatchObject({ rows: [] });
+
+    // El tipo de retorno publica el nombre nuevo y ninguno de los viejos.
+    const result = await client.query(
+      `select pg_catalog.pg_get_function_result(
+                'app_private.ics_feed_events(text)'::regprocedure) as firma`
+    );
+    expect(result.rows[0].firma).toContain('next_due_hint');
+    expect(result.rows[0].firma).not.toContain('next_due_on');
+    expect(result.rows[0].firma).not.toContain('frequency');
+
+    // Y el GRANT reemitido, que es la lección de la 0011: al recrear una
+    // función se pierde su ACL y vuelve el EXECUTE para PUBLIC.
+    const acl = await client.query(
+      `select coalesce(array_to_string(p.proacl, ' '), '') as acl
+         from pg_catalog.pg_proc as p
+         join pg_catalog.pg_namespace as n on n.oid = p.pronamespace
+        where n.nspname = 'app_private' and p.proname = 'ics_feed_events'`
+    );
+    expect(acl.rows[0].acl).toContain('casa_clara_app=X');
+    expect(acl.rows[0].acl).not.toMatch(/(^|\s)=X/);
+
+    // La otra recreada, con el mismo criterio.
+    const hintAcl = await client.query(
+      `select coalesce(array_to_string(p.proacl, ' '), '') as acl
+         from pg_catalog.pg_proc as p
+         join pg_catalog.pg_namespace as n on n.oid = p.pronamespace
+        where n.nspname = 'app' and p.proname = 'set_routine_due_hint'`
+    );
+    expect(hintAcl.rows[0].acl).toContain('casa_clara_app=X');
+    expect(hintAcl.rows[0].acl).not.toMatch(/(^|\s)=X/);
+  });
+
+  it('la aserción de la 0033 falla de verdad si la cadencia se mueve', async () => {
+    // El mismo criterio que la de la 0023: una aserción que solo se prueba
+    // contra una copia no prueba nada, así que se extrae del FICHERO. Se
+    // reconstruye la foto que la migración se toma de sí misma, se corrompe una
+    // fila, y se comprueba que la aserción lo ve.
+    const contractSql = await readFile(
+      path.join(migrationsDir, '0033_routine_recurrence_contract.sql'),
+      'utf8'
+    );
+    const assertion = contractSql.match(/DO \$check\$[\s\S]*?\$check\$;/)?.[0];
+    expect(assertion).toBeTruthy();
+
+    for (const [label, corruption] of [
+      [
+        'una próxima fecha movida un día',
+        `update app.routines set next_due_hint = next_due_hint + 1
+          where id = '7b100000-0000-4000-8000-000000000004'`
+      ],
+      [
+        'una cadencia degradada',
+        `update app.routines set repeat_every = 1
+          where id = '7b100000-0000-4000-8000-000000000005'`
+      ],
+      [
+        'una rutina que desaparece',
+        `delete from app.routines where id = '7b100000-0000-4000-8000-000000000001'`
+      ]
+    ]) {
+      await client.query('begin');
+      await client.query('set local row_security = off');
+      // La foto, tal y como la toma el paso 1 de la migración pero con los
+      // nombres ya contraídos: es el estado BUENO contra el que comparar.
+      await client.query(
+        `create temp table routine_cadence_before on commit drop as
+         select id, next_due_hint as next_due_on, pattern, anchor_on, repeat_every,
+                weekdays, month_day, months, ends_on, overdue_policy
+           from app.routines`
+      );
+      await client.query(corruption);
+      await expect(client.query(assertion), label).rejects.toThrow(
+        /la contracción movió la cadencia/
+      );
       await client.query('rollback');
     }
   });

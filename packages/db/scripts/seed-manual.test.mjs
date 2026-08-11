@@ -76,8 +76,8 @@ describe.runIf(Boolean(adminUrl))('siembra estructurada del manual', () => {
     expect(report.recipes).toBe(0);
 
     const routines = await client.query(
-      `select title, audience::text as audience, frequency::text as frequency,
-              interval_count, details
+      `select title, audience::text as audience, pattern::text as pattern,
+              repeat_every, details
          from app.routines where household_id = $1 order by title`,
       [HOUSEHOLD]
     );
@@ -85,12 +85,18 @@ describe.runIf(Boolean(adminUrl))('siembra estructurada del manual', () => {
     const quincenal = routines.rows.find((row) =>
       row.title.startsWith('Confirmar la compra personal')
     );
-    // Plan quincenal del manual → semanal con «cada 2» (el modelo lo soporta).
-    expect(quincenal).toMatchObject({ frequency: 'weekly', interval_count: 2, audience: 'all' });
+    // El plan quincenal del manual dicho como lo que es: cada catorce días.
+    // Antes se guardaba como «semanal cada 2» porque el vocabulario viejo no
+    // tenía otra forma de decirlo; la 0033 retiró ese vocabulario.
+    expect(quincenal).toMatchObject({
+      pattern: 'every_n_days',
+      repeat_every: 14,
+      audience: 'all'
+    });
     expect(routines.rows.every((row) => row.details.includes('Ver ficha:'))).toBe(true);
-    const daily = routines.rows.filter((row) => row.frequency === 'daily');
-    expect(daily).toHaveLength(2);
-    expect(daily.every((row) => row.audience === 'employee')).toBe(true);
+    const diarias = routines.rows.filter((row) => row.repeat_every === 1);
+    expect(diarias).toHaveLength(2);
+    expect(diarias.every((row) => row.audience === 'employee')).toBe(true);
 
     const contact = await client.query(
       `select name, phone, kind, featured from app.contacts where household_id = $1`,
@@ -120,7 +126,7 @@ describe.runIf(Boolean(adminUrl))('siembra estructurada del manual', () => {
     // Simula recurrencia avanzada: la siguiente pasada no debe pisarla.
     const routineId = deterministicUuid(HOUSEHOLD, 'routine:rutina-diaria-de-referencia');
     await client.query(
-      `update app.routines set next_due_on = current_date + 9 where id = $1`,
+      `update app.routines set next_due_hint = current_date + 9 where id = $1`,
       [routineId]
     );
 
@@ -139,7 +145,7 @@ describe.runIf(Boolean(adminUrl))('siembra estructurada del manual', () => {
     expect(counts.rows[0]).toEqual({ routines: 5, contacts: 1, templates: 1 });
 
     const untouched = await client.query(
-      `select (next_due_on = current_date + 9) as kept from app.routines where id = $1`,
+      `select (next_due_hint = current_date + 9) as kept from app.routines where id = $1`,
       [routineId]
     );
     expect(untouched.rows[0].kept).toBe(true);
