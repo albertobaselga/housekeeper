@@ -1854,7 +1854,7 @@ thead th { border-top: 0; }
     Es la única red de recuperación que hay, y está aquí: en la tarjeta de esa persona,
     <span class="ui">Poner una contraseña nueva</span>. Solo puede hacerlo quien
     administra el hogar, y <strong>no puede reponer la suya propia</strong> (para eso
-    está <span class="ui">Tu contraseña</span>) ni la de alguien a quien ya se le
+    está <span class="ui">Tu cuenta</span>) ni la de alguien a quien ya se le
     retiró el acceso.
   </p>
   <figure class="captura">
@@ -1872,7 +1872,7 @@ thead th { border-top: 0; }
     <li>Pulsa <span class="ui">Poner una contraseña nueva</span> en la tarjeta de esa persona.</li>
     <li>Escribe la contraseña nueva dos veces (mínimo 10 caracteres) y la palabra <strong>REPONER</strong> en <span class="ui">Confirmación</span>.</li>
     <li><span class="ui">Poner la contraseña nueva</span>. <strong>Todas sus sesiones se cierran</strong>: si tenía la app abierta en el móvil, se le pedirá entrar de nuevo. Es exactamente lo que se quiere al reponer una contraseña.</li>
-    <li>Díctasela <strong>en persona</strong> y pídele que la cambie desde <span class="ui">Tu contraseña</span> en cuanto entre. Nada de WhatsApp, correo ni una nota en la nevera.</li>
+    <li>Díctasela <strong>en persona</strong> y pídele que la cambie desde <span class="ui">Tu cuenta</span> en cuanto entre. Nada de WhatsApp, correo ni una nota en la nevera.</li>
   </ol>
   <div class="tarjeta principio">
     <h4>Dos personas que administren, siempre</h4>
@@ -2429,15 +2429,47 @@ thead th { border-top: 0; }
     </figcaption>
   </figure>
 
+  <figure class="captura movil">
+    <div class="ventana">
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · móvil</span></div>
+      <img src="capturas/apoyo-hoy-movil.png" loading="lazy" width="780" height="1688"
+           alt="Hoy en el móvil de Lucía, el apoyo del hogar: la línea «Tu acceso incluye el menú, las rutinas, los contactos, la guía de la casa y las emergencias. El resto de la casa lo lleva la familia», las rutinas que le tocan con su botón Marcar hecha, y la barra inferior Hoy · Rutinas · Menú · Guía · Más.">
+    </div>
+    <figcaption>
+      El día de Lucía. Su barra es la misma que la de la interna, pero detrás hay menos
+      casa: ni Contrato ni Calendario aparecen en su hoja <span class="ui">Más</span>.
+    </figcaption>
+  </figure>
+
   <h3>Acceso puntual (visor)</h3>
-  <p>
-    El acceso <strong>puntual</strong> (un canguro una noche, como Diego) es de solo
-    consulta: <span class="ui">Hoy</span> como resumen del día —sin poder marcar
-    nada; la propia pantalla lo dice: «Tu acceso permite consultar el día, pero no
-    marcar rutinas»—, el <span class="ui">Calendario</span> (para saber a qué hora
-    hay que recoger a quién), los <span class="ui">Contactos</span> y
-    <span class="ui">Emergencias</span>. No ve el menú, ni las rutinas, ni la Guía.
-  </p>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        El acceso <strong>puntual</strong> (un canguro una noche, como Diego) es de solo
+        consulta: <span class="ui">Hoy</span> como resumen del día —sin poder marcar
+        nada; la propia pantalla lo dice: «Tu acceso permite consultar el día, pero no
+        marcar rutinas»—, el <span class="ui">Calendario</span> (para saber a qué hora
+        hay que recoger a quién), los <span class="ui">Contactos</span> y
+        <span class="ui">Emergencias</span>. No ve el menú, ni las rutinas, ni la Guía,
+        y tampoco tiene buscador.
+      </p>
+      <p>
+        Es el único papel al que <strong>Emergencias le cabe en la barra de abajo</strong>,
+        porque solo tiene cuatro secciones: <span class="ui">Hoy</span> ·
+        <span class="ui">Agenda</span> · <span class="ui">Contactos</span> ·
+        <span class="ui">Ayuda</span>. En su hoja <span class="ui">Más</span> no queda
+        nada más que <span class="ui">Tu cuenta</span> y <span class="ui">Salir</span>.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Hoy · móvil</span></div>
+        <img src="capturas/visor-hoy-movil.png" loading="lazy" width="780" height="1688"
+             alt="Hoy en el móvil de Diego, el acceso puntual: el resumen del día con la línea «Tu acceso permite consultar el día, pero no marcar rutinas» y sin ningún botón de marcar, y la barra inferior Hoy · Agenda · Contactos · Ayuda · Más.">
+      </div>
+      <figcaption>El acceso de una noche: mirar el día y poder llamar. Nada más.</figcaption>
+    </figure>
+  </div>
   <div class="tarjeta">
     <p>
       <strong>Ojo con esta pareja:</strong> el <strong>acceso puntual sí ve el
@@ -2451,6 +2483,7 @@ thead th { border-top: 0; }
     Ajustes: cuando pasa la fecha, la puerta se cierra sola.
   </p>
 
+  <h3 id="quien-ve-que">Quién ve qué</h3>
   <div class="tabla-scroll">
   <table>
     <caption class="eyebrow" style="text-align:left; caption-side: top; padding-bottom:.4rem;">Quién ve qué</caption>
@@ -2462,14 +2495,16 @@ thead th { border-top: 0; }
       <tr><td>Menú</td><td>Edita y confirma</td><td>Edita y confirma</td><td>Consulta</td><td>Consulta</td><td>—</td></tr>
       <tr><td>Lista de la compra</td><td>Añade y marca</td><td>Añade y marca</td><td>Añade y marca</td><td>Consulta</td><td>—</td></tr>
       <tr><td>Lista «Personal»</td><td>Sí</td><td>—</td><td>Sí (es la suya)</td><td>—</td><td>—</td></tr>
-      <tr><td>Guía de la casa</td><td>Escribe y publica</td><td>Escribe y publica</td><td>Escribe; ve lo no publicado</td><td>Lee lo publicado</td><td>—</td></tr>
+      <tr><td>Guía de la casa</td><td>Escribe y publica; ve lo no publicado</td><td>Lee lo publicado</td><td>Lee lo publicado</td><td>Lee lo publicado</td><td>—</td></tr>
+      <tr><td>Buscar</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>—</td></tr>
       <tr><td>Contrato</td><td>Decide todo</td><td>Jornadas y gastos, sin importes</td><td>Lo suyo, completo</td><td>—</td><td>—</td></tr>
       <tr><td>Condiciones del contrato</td><td>Crea y cambia (versión nueva)</td><td>—</td><td>Ve las suyas, sin lo que no le aplica</td><td>—</td><td>—</td></tr>
-      <tr><td>Vacaciones</td><td>Apunta, anula y ve el saldo</td><td>—</td><td>Ve su saldo y sus periodos</td><td>—</td><td>—</td></tr>
-      <tr><td>Calendario</td><td>Enlaza y ve</td><td>Ve</td><td>Ve</td><td>—</td><td>Ve</td></tr>
+      <tr><td>Vacaciones</td><td>Apunta, anula y ve el saldo</td><td>Ve los días apuntados, no el derecho</td><td>Ve su saldo y sus periodos</td><td>—</td><td>—</td></tr>
+      <tr><td>Calendario</td><td>Enlaza y ve</td><td>Enlaza y ve</td><td>Ve</td><td>—</td><td>Ve</td></tr>
       <tr><td>Contactos</td><td>Edita</td><td>Edita</td><td>Consulta</td><td>Consulta</td><td>Consulta</td></tr>
       <tr><td>Emergencias</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
-      <tr><td>Tu contraseña</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Tu cuenta</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
+      <tr><td>Personal de la casa</td><td>Sí (y da de alta)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
       <tr><td>Ajustes del hogar</td><td>Sí (y repone contraseñas)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
     </tbody>
   </table>
@@ -2491,20 +2526,37 @@ thead th { border-top: 0; }
   </p>
   <ul>
     <li><strong>La nota de guardado</strong> te dice siempre la verdad, con el mismo lenguaje en toda la app: en verde <span class="chip exito">Guardado ✓</span> cuando el cambio está confirmado, en ámbar «Guardado en este dispositivo; se enviará al recuperar la conexión» cuando espera red, y en rojo «No se pudo guardar: …» si el servidor lo rechazó, con la causa.</li>
-    <li><strong>El punto de estado</strong> de la esquina resume lo global: «Todo guardado», «N cambios pendientes», «Sincronizando…», «Sin conexión» o «Necesita tu decisión». Sin conexión, un aviso recuerda que «el contenido crítico guardado sigue disponible».</li>
+    <li><strong>La banda de estado</strong> aparece arriba <strong>solo cuando hay algo que contar</strong>: «Sin conexión», «3 cambios pendientes» o «Necesita tu decisión · 2», cada una con su explicación de una línea. Cuando todo está enviado no aparece nada: un aviso permanente diciendo «todo bien» gasta sitio en todas las pantallas y no informa de nada.</li>
     <li><strong>Emergencias</strong> se guarda por adelantado en cada dispositivo: abre aunque nunca la hayas visitado y no haya cobertura.</li>
   </ul>
   <h4>Qué llevas encima cuando no hay red</h4>
-  <p>
-    El paquete que se guarda en tu dispositivo ya no es una maqueta: lleva
-    <strong>datos reales del hogar</strong>, los que hacen falta para seguir
-    funcionando una tarde sin cobertura. En la pantalla sin conexión encontrarás:
-  </p>
-  <ul>
-    <li><strong>Emergencias:</strong> el 112 y los contactos destacados del hogar.</li>
-    <li><strong>«El día de hoy»:</strong> <span class="ui">Qué se come</span> —el menú real de hoy, indicando lo que está «Sin confirmar»— y <span class="ui">Tareas que tocan hoy</span>, con las rutinas que vencen.</li>
-    <li><strong>«Instrucciones guardadas»:</strong> el texto completo de las notas destacadas de la Guía. Cómo va la caldera se lee igual sin datos.</li>
-  </ul>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        El paquete que se guarda en tu dispositivo ya no es una maqueta: lleva
+        <strong>datos reales del hogar</strong>, los que hacen falta para seguir
+        funcionando una tarde sin cobertura. En la pantalla sin conexión —«Lo esencial
+        sigue guardado en este dispositivo»— encontrarás:
+      </p>
+      <ul>
+        <li><strong>Emergencias:</strong> el 112 y los contactos destacados del hogar.</li>
+        <li><strong>«El día de hoy»:</strong> <span class="ui">Qué se come</span> —el menú real de hoy, indicando lo que está «Sin confirmar»— y <span class="ui">Tareas que tocan hoy</span>, con las rutinas que vencen.</li>
+        <li><strong>«Instrucciones guardadas»:</strong> el texto completo de las notas destacadas de la Guía. Cómo va la caldera se lee igual sin datos.</li>
+      </ul>
+      <p>
+        El buscador también sigue funcionando sobre ese paquete, avisando de que solo
+        está mirando lo guardado en el teléfono.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Sin conexión · móvil</span></div>
+        <img src="capturas/sin-conexion-movil.png" loading="lazy" width="780" height="1688"
+             alt="Pantalla sin conexión en el móvil: el título «Lo esencial sigue guardado en este dispositivo» y los tres bloques guardados —Emergencias con el 112 y los contactos destacados, «El día de hoy» con qué se come y las tareas que tocan, e «Instrucciones guardadas» con las notas destacadas de la Guía—.">
+      </div>
+      <figcaption>Sin cobertura no se ve una pantalla de error: se ve lo que sí hay.</figcaption>
+    </figure>
+  </div>
   <p>
     Y se puede <strong>escribir sin red</strong>: incluso la primerísima instrucción
     de una Guía vacía. La app avisa de que «se guardará en el apartado «General», que
@@ -2524,6 +2576,33 @@ thead th { border-top: 0; }
       «se sincronizará» de algo que en realidad fue rechazado.
     </p>
   </div>
+  <div class="tarjeta">
+    <h4>Y si es la casa la que no responde</h4>
+    <p>
+      Sin conexión es una cosa; que el servidor no pueda leer los datos del hogar es
+      otra. En ese caso aparece <strong>«No podemos leer los datos de la casa»</strong>,
+      y con ella una promesa que conviene entender: <em>«No te enseñamos datos de
+      ejemplo en su lugar: preferimos decirte que no los tenemos.»</em> Un menú
+      inventado o un saldo de mentira son peores que una pantalla vacía. Debajo, dos
+      botones: <span class="ui">Ir a Emergencias</span> —que sí funciona, porque va
+      guardada en el dispositivo— y <span class="ui">Volver a intentarlo</span>. Y si
+      es una urgencia, el 112.
+    </p>
+  </div>
+
+  <h3>Pensada para un móvil, y para el pulgar</h3>
+  <p>
+    Casi todo lo que se hace aquí se hace de pie, con una mano y con prisa: en la
+    cocina, en el súper, saliendo por la puerta. De ahí unas cuantas decisiones que se
+    notan aunque no se vean:
+  </p>
+  <ul>
+    <li><strong>Nada que apuntar tiene menos de 44 píxeles.</strong> Es la medida de un pulgar. Y en las listas de acción, la fila entera es el botón: no hay que acertarle a un enlace de tres letras.</li>
+    <li><strong>Una tipografía elegida por legible</strong>, no por bonita, con las cifras de anchura fija para que los importes y las horas queden en columna y se comparen de un vistazo. Va empaquetada con la aplicación: no se descarga de ningún sitio, así que se lee igual sin cobertura.</li>
+    <li><strong>Tres alturas de fila y nada más:</strong> la de las cosas que se tocan, la de los datos que solo se leen y una intermedia. Una lista con quince alturas distintas se lee como quince listas.</li>
+    <li><strong>Cuatro tamaños de letra por pantalla, como mucho.</strong> Si todo grita, nada se oye.</li>
+    <li><strong>En el móvil no hay cabecera ni barra lateral.</strong> Ocupaban el 41 % de la primera pantalla en decirte dónde estabas antes de enseñarte un dato. El nombre de la casa sobrevive donde tiene sentido: como línea de apoyo del título de <span class="ui">Hoy</span>.</li>
+  </ul>
 
   <h3>Lo de Contrato es un libro contable</h3>
   <p>
@@ -2550,6 +2629,8 @@ thead th { border-top: 0; }
     <li><strong>Y dentro del contrato, solo lo pactado.</strong> Del catálogo de condiciones, a la empleada le llega únicamente lo que su contrato le permite y tiene tarifa. Una tarifa desactivada no está escondida en su móvil: no llega a él.</li>
     <li><strong>Tu contraseña es tuya.</strong> Nadie de la casa puede verla, tampoco quien administra: lo único que puede hacer es <em>ponerte otra</em>, y al hacerlo se cierran todas tus sesiones. La aplicación no envía correos a nadie en ningún momento.</li>
     <li><strong>Calendarios enlazados, no copiados.</strong> La aplicación lee los calendarios que la familia enlaza y guarda solo los eventos de una ventana corta alrededor de hoy. Dejar de mostrar un calendario borra sus eventos de la casa, y quitarlo del todo se los lleva con él.</li>
+    <li><strong>La Guía la escribe una sola mano.</strong> Publicar una instrucción de la casa es cosa de quien administra; los borradores no existen para nadie más. Del progreso de lectura lo único que se guarda es cuántas notas lleva cada persona: ni horas, ni fechas, ni qué abrió cada día.</li>
+    <li><strong>Los avisos al móvil son tuyos.</strong> Nadie de la casa puede ver si los tienes encendidos, ni encendértelos. Y lo que se manda está escrito y es corto: dos avisos, los dos de la cuenta del mes, y sin el importe dentro.</li>
     <li><strong>Demostraciones siempre sintéticas.</strong> Los entornos de prueba avisan («Entorno sintético: no introduzcas datos reales») y no admiten datos de personas reales.</li>
   </ul>
 </section>
@@ -2564,10 +2645,99 @@ thead th { border-top: 0; }
     <dt>¿Y si marco una rutina por error?</dt>
     <dd>
       <p>
-        No hay botón de deshacer: al marcarla, la próxima fecha se reprograma según
-        su frecuencia. Si era importante hacerla hoy de verdad, avisa a la familia
-        para que ajuste la «próxima fecha» editando la rutina
-        (<span class="ui">Editar</span> → <span class="ui">Guardar rutina</span>).
+        Pulsa <span class="ui">Deshacer</span>, al lado del chip «Hecha ✓». La rutina
+        vuelve a como estaba y la próxima fecha también. <strong>No pide motivo</strong>:
+        es un error de dedo, no una corrección contable.
+      </p>
+      <p>
+        Si ya has salido de la pantalla, está al fondo de <span class="ui">Hoy</span>,
+        en el bloque plegado <span class="ui">N hechas hoy</span>: ahí sigue cada cosa
+        marcada, con su <span class="ui">Deshacer</span>. Puede deshacerlo quien la
+        marcó, y también quien administra la casa.
+      </p>
+    </dd>
+
+    <dt>¿Se puede saber lo que toca mañana, o pasado?</dt>
+    <dd>
+      <p>
+        Sí: en <span class="ui">Hoy</span>, debajo de las rutinas del día, está
+        <span class="ui">Esta semana</span> con los seis días siguientes agrupados por
+        día. Es para prever —comprar lo que hace falta, cuadrar quién está en casa—, no
+        para adelantar trabajo: <strong>ahí no hay ningún botón</strong>, a propósito.
+        Nada se marca antes de tiempo.
+      </p>
+    </dd>
+
+    <dt>Quiero apuntar una tarea pero todavía no sé cada cuánto toca.</dt>
+    <dd>
+      <p>
+        Apúntala igual y en <span class="ui">¿Cuándo toca?</span> elige
+        <span class="ui">Todavía no lo sabemos</span>. Se queda en la lista de Rutinas,
+        en su propio grupo, y <strong>no aparece en Hoy ni molesta a nadie</strong>
+        hasta que alguien decida el ritmo. Su botón dirá <span class="ui">Ponerle
+        día</span>. Es mejor eso que perder la idea.
+      </p>
+    </dd>
+
+    <dt>¿Me va a avisar el móvil de las tareas que me faltan?</dt>
+    <dd>
+      <p>
+        No, nunca. La aplicación solo manda <strong>dos avisos</strong>, los dos de la
+        cuenta del mes: a la empleada cuando su recibo está listo, y a quien administra
+        cuando una cuenta se queda sin pagar. Ni recordatorios de rutinas, ni cuentas de
+        lo que llevas hecho, ni nada por la noche o en domingo. La propia pantalla lo
+        dice: «esto no es una opción que alguien pueda cambiar».
+      </p>
+      <p>
+        Se encienden y se apagan en <span class="ui">Tu cuenta</span>, teléfono a
+        teléfono, y <strong>nadie de la casa puede ver si los tienes puestos</strong>.
+      </p>
+    </dd>
+
+    <dt>He entrado con la contraseña que me dieron y no me deja ir a ninguna parte.</dt>
+    <dd>
+      <p>
+        Es lo previsto. Esa contraseña la conoce quien te la dictó, así que hasta que
+        pongas una tuya solo se abre <span class="ui">Tu cuenta</span>. Escríbela ahí
+        (mínimo 10 caracteres) y ya tienes la casa entera.
+      </p>
+    </dd>
+
+    <dt>En casa trabaja más de una persona. ¿Cómo se llevan las dos?</dt>
+    <dd>
+      <p>
+        En <span class="ui">Contrato</span> aparece arriba una tira con los nombres:
+        tocas uno y toda la pantalla —decisiones, cuenta del mes, versiones,
+        vacaciones— pasa a ser la suya. Los epígrafes lo dicen («Contrato de Ana»). Cada
+        una, desde su móvil, sigue viendo <strong>solo lo suyo</strong>: a su
+        dispositivo no llega el contrato de nadie más.
+      </p>
+    </dd>
+
+    <dt>Entra alguien nuevo a trabajar. ¿Por dónde empiezo?</dt>
+    <dd>
+      <p>
+        <span class="ui">Ajustes del hogar</span> → <span class="ui">Ver el
+        personal</span> → <span class="ui">Entra alguien nuevo en la casa</span>. Con un
+        solo formulario se crea el acceso y, si dejas marcada la casilla
+        <span class="ui">Registrar ahora su contrato</span>, también sus condiciones
+        iniciales.
+      </p>
+      <p>
+        Al terminar, la pantalla te da <strong>el usuario y una contraseña</strong>:
+        díctaselos en persona. Esa contraseña <strong>no vuelve a mostrarse</strong>, y
+        cuando ella entre tendrá que cambiarla antes de poder hacer nada.
+      </p>
+    </dd>
+
+    <dt>¿Cómo sé si la persona nueva se ha leído las instrucciones de la casa?</dt>
+    <dd>
+      <p>
+        En la Guía, la tarjeta <span class="ui">Leerla entera, como un libro</span> →
+        <span class="ui">Ver quién se la ha leído</span>. Verás una línea por persona
+        con lo que le falta. Es para saber si ya sabe cómo va la caldera antes de que se
+        le estropee, no para pedirle cuentas: lo único que se guarda es cuántas notas
+        lleva, sin horas ni fechas.
       </p>
     </dd>
 
@@ -2579,7 +2749,7 @@ thead th { border-top: 0; }
         en <span class="ui">Ajustes del hogar</span> → tu tarjeta →
         <span class="ui">Poner una contraseña nueva</span> y te la dice
         <strong>en persona</strong>. Cámbiala tú desde <span class="ui">Tu
-        contraseña</span> en cuanto entres.
+        cuenta</span> en cuanto entres.
       </p>
       <p>
         Por eso conviene que <strong>haya dos personas con papel de
