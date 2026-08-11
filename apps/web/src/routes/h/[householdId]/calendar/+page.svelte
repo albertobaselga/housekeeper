@@ -784,53 +784,53 @@
   /* Todo lo de esta pantalla en 390 px: ninguna celda puede crecer más que su
      columna, y la rejilla del mes se desplaza dentro de su caja antes que
      desbordar la página. */
-  .cal-scopes, .cal-filters, .cal-move { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .9rem; }
-  .cal-move { gap: .5rem; }
-  .cal-period { flex: 1 1 8rem; min-width: 0; font-size: .82rem; font-weight: 750; text-align: center; }
+  .cal-scopes, .cal-filters, .cal-move { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
+  .cal-move { gap: var(--space-2); }
+  .cal-period { flex: 1 1 8rem; min-width: 0; font-size: var(--text-meta); font-weight: 700; text-align: center; }
 
   .chip {
-    min-height: 2.4rem; padding: .4rem .8rem; border: 1px solid var(--line); border-radius: 999px;
-    background: var(--surface); font-size: .76rem; font-weight: 700; touch-action: manipulation; cursor: pointer;
+    min-height: 2.75rem; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--r-full);
+    background: var(--surface); font-size: var(--text-micro); font-weight: 700; touch-action: manipulation; cursor: pointer;
   }
   .chip[aria-pressed='true'] { border-color: var(--primary); background: var(--primary-soft); color: var(--primary); }
   .cal-step {
     display: grid; width: 2.75rem; height: 2.75rem; place-items: center;
-    border: 1px solid var(--line); border-radius: .7rem; background: var(--surface);
+    border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface);
     touch-action: manipulation; cursor: pointer;
   }
 
-  .scope-title { margin: 1.1rem 0 .6rem; font-size: .95rem; }
+  .scope-title { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-body); }
 
   /* Tira de semana: la letra ENCIMA del número, nunca al lado (a 320 px cada
      celda son ~43 px y no caben en línea). Los siete días caben: no es un
      carrusel y no hay nada oculto. */
-  .week-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .25rem; }
+  .week-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); }
   .week-day {
-    display: grid; min-width: 0; min-height: 3.4rem; align-content: center; justify-items: center; gap: .1rem;
-    padding: .35rem .1rem; border: 1px solid var(--line); border-radius: .7rem;
+    display: grid; min-width: 0; min-height: var(--row-action); align-content: center; justify-items: center; gap: 0;
+    padding: var(--space-1) 0; border: 1px solid var(--line); border-radius: var(--r-md);
     background: var(--surface); text-decoration: none; touch-action: manipulation;
   }
-  .week-day-name { color: var(--ink-faint); font-size: .62rem; font-weight: 800; text-transform: uppercase; }
-  .week-day-number { font-size: .85rem; font-weight: 750; }
+  .week-day-name { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; text-transform: uppercase; }
+  .week-day-number { font-size: var(--text-meta); font-weight: 700; }
   .week-day.is-today { border-color: var(--primary); background: var(--primary-soft); }
 
   /* Las marcas de densidad son DECORACIÓN: la cuenta exacta va en el nombre
      accesible del día. Se distinguen por forma —cuadrado la rutina, círculo el
      evento—, nunca solo por color. */
-  .marks { display: flex; min-height: .42rem; gap: .16rem; }
+  .marks { display: flex; min-height: .42rem; gap: var(--space-1); }
   .mark { width: .34rem; height: .34rem; }
   .mark-routine { background: var(--primary); }
-  .mark-event { border-radius: 50%; background: var(--accent); }
+  .mark-event { border-radius: var(--r-full); background: var(--accent); }
 
   .month-scroller { overflow-x: auto; }
   .month-grid { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .month-grid th { padding: .3rem 0; color: var(--ink-faint); font-size: .62rem; font-weight: 800; }
+  .month-grid th { padding: var(--space-1) 0; color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; }
   .month-grid th abbr { text-decoration: none; }
-  .month-grid td { min-width: 0; padding: .08rem; }
+  .month-grid td { min-width: 0; padding: 0; }
   .month-cell {
-    display: grid; width: 100%; min-height: 2.9rem; align-content: center; justify-items: center; gap: .12rem;
-    padding: .25rem .1rem; border: 1px solid transparent; border-radius: .55rem;
-    background: var(--surface); font-size: .78rem; touch-action: manipulation; cursor: pointer;
+    display: grid; width: 100%; min-height: 2.75rem; align-content: center; justify-items: center; gap: 0;
+    padding: var(--space-1) 0; border: 1px solid transparent; border-radius: var(--r-sm);
+    background: var(--surface); font-size: var(--text-micro); touch-action: manipulation; cursor: pointer;
   }
   /* Los días del mes vecino se atenúan hasta `--ink-faint`, que es el gris más
      claro que llega al AA sobre el papel, y ni un tono más: `--line-strong` es
@@ -839,22 +839,23 @@
      verdad los distingue para todo el mundo es el nombre accesible de la
      celda, que dice el día y el mes completos. */
   .month-cell.is-outside .month-cell-number { color: var(--ink-faint); font-weight: 400; }
-  .month-cell.is-today { border-color: var(--primary); background: var(--primary-soft); font-weight: 800; }
+  .month-cell.is-today { border-color: var(--primary); background: var(--primary-soft); font-weight: 700; }
   .month-cell[aria-pressed='true'] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
 
-  .day-card { margin-top: .7rem; }
-  .day-card h3 { font-size: .9rem; }
+  .day-card { margin-top: var(--space-3); }
+  .day-card h3 { font-size: var(--text-body); }
   .day-card h3.is-today { color: var(--primary); }
-  .block-label { margin-top: .8rem; color: var(--ink-faint); font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+  .block-label { margin-top: var(--space-3); color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 
-  .occ-list { display: grid; margin: .25rem 0 0; padding: 0; list-style: none; }
-  .occ { display: flex; align-items: flex-start; gap: .55rem; border-top: 1px solid var(--line); padding: .6rem 0; }
+  .occ-list { display: grid; margin: var(--space-1) 0 0; padding: 0; list-style: none; }
+  .occ { display: flex; align-items: flex-start; gap: var(--space-2); border-top: 1px solid var(--line); padding: var(--space-2) 0; }
   .occ-list > .occ:first-child { border-top: none; }
-  .occ-body { display: grid; min-width: 0; flex: 1 1 auto; gap: .1rem; }
-  .occ-body strong, .occ-detail summary { font-size: .84rem; font-weight: 750; }
-  .occ-body small { color: var(--ink-soft); font-size: .72rem; }
-  .occ-detail summary { cursor: pointer; }
-  .occ-detail p { margin-top: .3rem; color: var(--ink-soft); font-size: .76rem; }
+  .occ-body { display: grid; min-width: 0; flex: 1 1 auto; gap: 0; }
+  .occ-body strong, .occ-detail summary { font-size: var(--text-meta); font-weight: 700; }
+  .occ-body small { color: var(--ink-soft); font-size: var(--text-micro); }
+  /* El detalle es un control: 44 px de diana, como cualquier otro. */
+  .occ-detail summary { display: flex; align-items: center; min-height: 2.75rem; cursor: pointer; }
+  .occ-detail p { margin-top: var(--space-1); color: var(--ink-soft); font-size: var(--text-micro); }
 
   /* La forma es la promesa: la rutina lleva una casilla que se puede marcar; el
      evento lleva una hora. Objetivo táctil de 44×44 en la casilla. */
@@ -862,11 +863,11 @@
     display: grid; width: 2.75rem; height: 2.75rem; flex: 0 0 auto; place-items: center;
     border: none; background: none; touch-action: manipulation; cursor: pointer;
   }
-  .occ-check span { width: 1.35rem; height: 1.35rem; border: 2px solid var(--line-strong); border-radius: .4rem; }
+  .occ-check span { width: 1.35rem; height: 1.35rem; border: 2px solid var(--line-strong); border-radius: var(--r-sm); }
   .occ-check:hover span { border-color: var(--primary); }
   .occ-check:disabled { opacity: .5; }
   .occ-mark { width: 2.75rem; flex: 0 0 auto; color: var(--ink-faint); text-align: center; }
-  .occ-time { flex: 0 0 4.1rem; color: var(--ink); font-size: .74rem; font-weight: 750; }
+  .occ-time { flex: 0 0 4.1rem; color: var(--ink); font-size: var(--text-micro); font-weight: 700; }
 
   /* Lo hecho se tacha, y nada más. Atenuar la fila con `opacity` bajaba el
      contraste de su segunda línea por debajo del AA (axe lo caza a 390 px), y
@@ -876,20 +877,36 @@
      califican a nadie en esta pantalla (E2). */
   .status-chip.neutral { border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); }
 
-  .year-grid { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
-  .year-month h3 { font-size: .88rem; }
-  .link-button { border: none; background: none; color: var(--primary); font-weight: 800; text-decoration: underline; cursor: pointer; padding: 0; }
-  .year-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .14rem; margin-top: .5rem; }
-  .year-day { height: .55rem; border-radius: .15rem; background: var(--canvas-deep); }
+  .year-grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); }
+  .year-month h3 { font-size: var(--text-body); }
+  .link-button { border: none; background: none; color: var(--primary); font-weight: 700; text-decoration: underline; cursor: pointer; padding: 0; }
+  .year-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0; margin-top: var(--space-2); }
+  .year-day { height: .55rem; border-radius: var(--r-sm); background: var(--canvas-deep); }
   .year-day.has-routine { background: var(--primary); }
-  .year-day.has-event { border-radius: 50%; background: var(--accent); }
-  .year-day.has-routine.has-event { border-radius: .15rem; background: linear-gradient(135deg, var(--primary) 50%, var(--accent) 50%); }
-  .year-highlights { display: grid; margin: .55rem 0 0; padding: 0; list-style: none; }
-  .year-highlights li { display: flex; align-items: flex-start; gap: .5rem; border-top: 1px solid var(--line); padding: .45rem 0; }
-  .year-highlight-day { flex: 0 0 1.6rem; font-size: .78rem; font-weight: 800; text-align: right; }
+  .year-day.has-event { border-radius: var(--r-full); background: var(--accent); }
+  .year-day.has-routine.has-event { border-radius: var(--r-sm); background: linear-gradient(135deg, var(--primary) 50%, var(--accent) 50%); }
+  .year-highlights { display: grid; margin: var(--space-2) 0 0; padding: 0; list-style: none; }
+  .year-highlights li { display: flex; align-items: flex-start; gap: var(--space-2); border-top: 1px solid var(--line); padding: var(--space-2) 0; }
+  .year-highlight-day { flex: 0 0 1.6rem; font-size: var(--text-micro); font-weight: 700; text-align: right; }
 
-  .quiet-note { margin-top: .5rem; color: var(--ink-soft); font-size: .76rem; }
+  /* «Nada previsto» es una frase, no una etiqueta: piso de 14 px. */
+  .quiet-note { margin-top: var(--space-2); color: var(--ink-soft); font-size: var(--text-body); }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* Siete columnas de 44 px no caben en 320 menos los rellenos: 320 − 24 de
+     página − 24 de tarjeta = 272, y 272/7 = 38,8. La respuesta no es rebajar la
+     diana, es dejar de gastar el ancho: a partir de aquí la rejilla del mes y
+     la tira de la semana SANGRAN hasta el borde de la pantalla, con lo que cada
+     día vuelve a medir 45 px. Es la única pieza del producto que reclama el
+     ancho entero, y lo hace porque es la única cuya diana depende de él. */
+  @media (max-width: 37.5rem) {
+    .month-scroller, .week-strip {
+      margin-inline: calc((var(--pad-card) + var(--pad-page-x)) * -1);
+    }
+    .week-strip { gap: 0; }
+    .week-day { border-radius: 0; border-left-width: 0; }
+    .week-day:first-child { border-left-width: 1px; }
+  }
 
   @media (width <= 30rem) {
     .occ-time { flex-basis: 3.4rem; }

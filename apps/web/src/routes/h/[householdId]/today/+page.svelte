@@ -172,7 +172,10 @@
           <div><p class="eyebrow">Pendientes de ti</p><h2 id="decisions-title">{overview.decisionsTitle}</h2></div>
           <span class="status-chip warning">{overview.decisionsCount}</span>
         </div>
-        <div class="ledger-list">
+        <!-- Cuando hay algo esperando una decisión, ESA es la lista principal
+             de Hoy: es lo que la pantalla ha venido a resolver. Si no la hay,
+             lo son las rutinas del día. -->
+        <div class="ledger-list" data-lista="principal">
           {#each overview.decisions as item (item.key)}
             <div>
               <span>
@@ -268,7 +271,7 @@
             <details><summary>{block.heading}</summary>{@render routineRows(block.rows)}</details>
           {:else}
             {#if block.heading}<h3 class="routine-block">{block.heading}</h3>{/if}
-            {@render routineRows(block.rows, index === 0)}
+            {@render routineRows(block.rows, index === 0 && overview.decisions.length === 0)}
           {/if}
         {/each}
 

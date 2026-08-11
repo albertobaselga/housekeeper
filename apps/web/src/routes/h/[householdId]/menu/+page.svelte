@@ -533,11 +533,15 @@
         </form>
       {/if}
     {/snippet}
+    <!-- El h1 dice DE QUÉ SEMANA se está hablando: era el dato que se repetía
+         en dos sitios con 600 px de separación y no estaba en el titular. Y
+         «Copiar esta semana al lunes» —que sobrescribe una semana entera— deja
+         de ser lo primero que se toca: baja al final, con el resto de lo que se
+         hace de vez en cuando. -->
     <PageHeader
-      eyebrow={`Semana del ${weekLabel(week.weekStartsOn)}`}
-      title="Menú de la casa"
+      eyebrow="Menú de la casa"
+      title={`Menú · semana del ${weekLabel(week.weekStartsOn)}`}
       description="Las comidas de cada día por grupo de comensales, con las alergias a la vista."
-      actions={weekActions}
     />
 
     <ActionStatus status={actionStatus} />
@@ -559,10 +563,13 @@
       <a class="button secondary" href={`${base}?week=${addDays(week.weekStartsOn, 7)}&day=${addDays(selectedDate ?? week.weekStartsOn, 7)}`}>Semana siguiente →</a>
     </nav>
 
-    <div class="space-tabs" role="list" aria-label="Secciones del menú">
-      <button type="button" class:active={tab === 'menu'} onclick={() => (tab = 'menu')}>Menú semanal</button>
-      <button type="button" class:active={tab === 'compra'} onclick={() => (tab = 'compra')}>Lista de la compra</button>
-      <a class="tab-link" href={`/h/${context.household.id}/recipes`}>Recetas y comensales</a>
+    <!-- Tres pestañas son ≤ 4: envuelven a dos líneas y ninguna queda
+         invisible. Antes medían 467 px de contenido en 353 de caja y «Recetas y
+         comensales» salía cortada a 390 px y no existía a 320. -->
+    <div class="chip-strip" role="list" aria-label="Secciones del menú">
+      <button type="button" class="chip" class:active={tab === 'menu'} onclick={() => (tab = 'menu')}>Menú semanal</button>
+      <button type="button" class="chip" class:active={tab === 'compra'} onclick={() => (tab = 'compra')}>Lista de la compra</button>
+      <a class="chip" href={`/h/${context.household.id}/recipes`}>Recetas y comensales</a>
     </div>
 
     {#if tab === 'menu'}
@@ -903,17 +910,13 @@
         </section>
       {/if}
     {:else if shopping}
-      {#snippet shoppingLine(line: ShoppingLine, listKind: ShoppingListKind)}
-        {@const marked = shownChecked(line, listKind)}
-        <li class:checked={marked}>
-          {#if shopping.canWrite}
-            <label class="inline-check">
-              <input type="checkbox" checked={marked} onchange={() => toggleLine(line, listKind)} />
-              <span>{line.name}</span>
-            </label>
-          {:else}
-            <span>{line.name}</span>
-          {/if}
+      <!-- La casilla de la compra medía 13×13 px: el 9 % del área necesaria,
+           con la cantidad FUERA del área pulsable, en el súper y con la otra
+           mano ocupada. Ahora la marca mide 20, la diana 44 y la fila entera
+           —nombre y cantidad incluidos— es el objetivo. -->
+      {#snippet shoppingCopy(line: ShoppingLine)}
+        <span>
+          {line.name}
           <small>
             {#each line.parts as part, index (part.unit ?? index)}
               {index > 0 ? ' + ' : ''}
@@ -924,16 +927,29 @@
             {/each}
             {#if line.origin === 'menu'}· del menú{/if}
           </small>
+        </span>
+      {/snippet}
+      {#snippet shoppingLine(line: ShoppingLine, listKind: ShoppingListKind)}
+        {@const marked = shownChecked(line, listKind)}
+        <li>
+          {#if shopping.canWrite}
+            <label class="check-row" class:checked={marked}>
+              <input type="checkbox" checked={marked} onchange={() => toggleLine(line, listKind)} />
+              {@render shoppingCopy(line)}
+            </label>
+          {:else}
+            <div class="check-row" class:checked={marked}><span aria-hidden="true"></span>{@render shoppingCopy(line)}</div>
+          {/if}
         </li>
       {/snippet}
 
       <section class="card" aria-labelledby="shopping-title">
         <div class="section-heading">
-          <div><p class="eyebrow">Semana del {weekLabel(shopping.weekStartsOn)}</p><h2 id="shopping-title">Lista de la compra</h2></div>
+          <div><h2 id="shopping-title">Lista de la compra</h2></div>
         </div>
-        {#each shopping.sections as section (section.section)}
+        {#each shopping.sections as section, index (section.section)}
           <h3 class="shopping-section-title">{section.section}</h3>
-          <ul class="ingredient-list">
+          <ul class="ingredient-list" data-lista={index === 0 ? 'principal' : undefined}>
             {#each section.lines as line (line.key)}
               {@render shoppingLine(line, 'casa')}
             {/each}
@@ -1039,6 +1055,10 @@
         </section>
       {/if}
     {/if}
+
+    <!-- Duplicar la semana sobrescribe siete días de comidas: es de las que se
+         hacen una vez al mes y va al final, no encima del menú. -->
+    {@render weekActions()}
   {:else if data.menu}
     {#snippet actions()}{#if canWriteFixture}<button class="button primary" type="button">Editar semana</button>{/if}{/snippet}
     <PageHeader eyebrow={data.menu.weekLabel} title="Menú de la casa" description="Una semana visible de un vistazo, con notas que importan." {actions} />
@@ -1077,22 +1097,22 @@
 <style>
   /* Guía de primer uso (P1-7): pasos numerados con su acción al lado. */
   .first-use-steps {
-    margin: 0.75rem 0 0;
+    margin: var(--space-3) 0 0;
     padding-left: 0;
     list-style: none;
     display: grid;
-    gap: 0.85rem;
+    gap: var(--space-3);
   }
   .first-use-steps li {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem 1rem;
+    gap: var(--space-2) var(--space-4);
   }
   .first-use-steps li > span:first-child {
     display: grid;
-    gap: 0.15rem;
+    gap: 0;
   }
   .first-use-steps small {
     color: var(--ink-soft);
@@ -1101,43 +1121,30 @@
   /* Archivar es una acción discreta: un enlace pequeño que no compite con las
      acciones del día a día. Lo archivado vive en una lista plegada. */
   .archive-link {
+    min-height: 2.75rem;
     border: 0;
     background: none;
-    padding: 0.2rem 0.1rem;
+    padding: var(--space-1) 0;
     color: var(--ink-soft);
-    font-size: 0.75rem;
+    font-size: var(--text-micro);
     text-decoration: underline;
     cursor: pointer;
   }
   .archived-block {
-    margin-top: 0.75rem;
+    margin-top: var(--space-3);
   }
   .archived-block > summary {
     cursor: pointer;
     color: var(--ink-soft);
-    font-size: 0.8rem;
+    font-size: var(--text-meta);
   }
 
   /* Compra (P2-4): el redondeo a paquetes y el desglose por origen son
      apoyos de la cantidad, no ruido que compita con el nombre. */
   .shopping-packages,
   .shopping-origin {
-    margin-left: 0.35rem;
+    margin-left: var(--space-1);
     color: var(--ink-soft);
   }
 
-  /* La pestaña «Recetas y comensales» es un enlace a su ruta propia con el
-     mismo aspecto que las pestañas de sección del menú. */
-  .space-tabs a.tab-link {
-    flex: 0 0 auto;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface);
-    padding: 0.45rem 0.8rem;
-    color: var(--ink-soft);
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-decoration: none;
-    line-height: normal;
-  }
 </style>

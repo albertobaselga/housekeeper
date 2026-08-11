@@ -454,7 +454,7 @@
     color: var(--primary);
   }
 
-  .cadence-help { color: var(--ink-soft); font-size: var(--text-meta); line-height: var(--lh-loose); }
+  .cadence-help { color: var(--ink-soft); font-size: var(--text-body); line-height: var(--lh-loose); }
 
   /* La frase de vuelta se lee antes que los controles: es lo que confirma en
      lengua de casa lo que se acaba de marcar. */

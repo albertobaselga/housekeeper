@@ -226,7 +226,7 @@
         <div>
           <span>
             <strong>Todavía no hay conceptos apuntados a mano</strong>
-            <small>Cuando se apunte uno, aparecerá aquí y en la cuenta de su mes.</small>
+            <p class="audit-note">Cuando se apunte uno, aparecerá aquí y en la cuenta de su mes.</p>
           </span>
         </div>
       {/if}

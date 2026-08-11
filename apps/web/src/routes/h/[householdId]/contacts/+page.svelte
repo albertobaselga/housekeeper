@@ -109,7 +109,7 @@
     {/snippet}
     <PageHeader
       eyebrow="Directorio del hogar"
-      title="Contactos"
+      title={`Contactos · ${directory.contacts.length}`}
       description="Personas y servicios del hogar; los destacados aparecen en Emergencias y en el modo sin conexión."
       {actions}
     />
@@ -172,7 +172,7 @@
     {#each grouped as group (group.kind)}
       <section aria-labelledby={`contacts-${group.kind}`}>
         <div class="section-heading"><div><p class="eyebrow">{group.label}</p><h2 id={`contacts-${group.kind}`} class="sr-only">{group.label}</h2></div></div>
-        <div class="contact-grid">
+        <div class="contact-grid" data-lista="principal">
           {#each group.contacts as contact (contact.id)}
             <article class="card contact-card" class:featured={contact.featured}>
               <span class={`contact-avatar ${contact.kind}`} aria-hidden="true">{contact.kind === 'emergency' ? '+' : contact.name.slice(0, 1)}</span>
@@ -182,13 +182,18 @@
                 <a href={telHref(contact.phone)}>{contact.phone}</a>
                 {#if contact.notes}<small>{contact.notes}</small>{/if}
               </div>
+              <!-- Una acción por fila y al final de la fila, siempre en el mismo
+                   sitio: llamar es lo que se hace con un contacto. Editar y
+                   archivar se separan por un divisor y nombran a su sujeto. -->
               <div class="contact-actions">
                 <a class="call-button" href={telHref(contact.phone)} aria-label={`Llamar a ${contact.name}`}>Llamar</a>
-                {#if directory.canWrite}
-                  <button class="call-button" type="button" disabled={busy} onclick={() => openEdit(contact)}>Editar</button>
-                  <button class="call-button" type="button" disabled={busy} onclick={() => archive(contact)}>Archivar</button>
-                {/if}
               </div>
+              {#if directory.canWrite}
+                <div class="contact-admin action-row destructiva">
+                  <button class="button secondary small-button" type="button" disabled={busy} onclick={() => openEdit(contact)}>Editar {contact.name}</button>
+                  <button class="button secondary small-button" type="button" disabled={busy} onclick={() => archive(contact)}>Archivar {contact.name}</button>
+                </div>
+              {/if}
             </article>
           {/each}
         </div>

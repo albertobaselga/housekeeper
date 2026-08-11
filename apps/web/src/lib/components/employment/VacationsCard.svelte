@@ -195,7 +195,7 @@
         <div>
           <span>
             <strong>Todavía no hay vacaciones apuntadas en {vacations.year}</strong>
-            <small>Cuando disfrute días, se apuntan aquí y el saldo se ajusta solo.</small>
+            <p class="audit-note">Cuando disfrute días, se apuntan aquí y el saldo se ajusta solo.</p>
           </span>
         </div>
       {/if}

@@ -644,8 +644,8 @@
      bloque de formulario más. Cerrado ocupa una línea; abierto, la matriz. */
   .diner-allergens {
     border: 1px solid var(--line);
-    border-radius: 0.75rem;
-    padding: 0.6rem 0.75rem;
+    border-radius: var(--r-md);
+    padding: var(--space-2) var(--space-3);
     background: var(--surface);
   }
   .diner-allergens > summary {
@@ -654,7 +654,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
   .diner-allergens > summary small {
     font-weight: 400;
@@ -662,31 +662,32 @@
   }
   .diner-allergen-row {
     display: grid;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
   .diner-allergen-note {
-    padding-left: 1.1rem;
-    font-size: 0.85rem;
+    padding-left: var(--space-4);
+    font-size: var(--text-meta);
     color: var(--ink-soft);
   }
 
   /* Archivar es una acción discreta: un enlace pequeño, no un botón que
      compita con «Editar». Lo archivado vive en una lista plegada. */
   .archive-link {
+    min-height: 2.75rem;
     border: 0;
     background: none;
-    padding: 0.2rem 0.1rem;
+    padding: var(--space-1) 0;
     color: var(--ink-soft);
-    font-size: 0.75rem;
+    font-size: var(--text-micro);
     text-decoration: underline;
     cursor: pointer;
   }
   .archived-block {
-    margin-top: 0.75rem;
+    margin-top: var(--space-3);
   }
   .archived-block > summary {
     cursor: pointer;
     color: var(--ink-soft);
-    font-size: 0.8rem;
+    font-size: var(--text-meta);
   }
 </style>

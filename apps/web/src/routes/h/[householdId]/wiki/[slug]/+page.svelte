@@ -235,13 +235,12 @@
     <PageHeader
       eyebrow={view.page.spaceName}
       title={shownTitle}
-      support={view.page.spaceName}
       description={optimistic ? undefined : view.revision.summary}
       {actions}
     />
 
     <p class="audit-note wiki-meta">
-      <a href={base}>← Guía de la casa</a>
+      <a class="volver" href={base}>← Guía de la casa</a>
       · Actualizada el {view.page.updatedLabel}{lastAuthor ? ` por ${lastAuthor}` : ''}
       {#if shownStatus === 'draft'}· <span class="status-chip warning">Guardada sin publicar</span>{/if}
       {#if shownPinned}· <span class="status-chip success">Destacada</span>{/if}

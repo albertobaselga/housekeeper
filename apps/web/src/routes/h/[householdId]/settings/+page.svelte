@@ -20,7 +20,7 @@
   const actionStatus = optimistic.status;
   $effect(() => optimistic.start());
 
-  const DATE_LABEL = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' });
+  const DATE_LABEL = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' });
   // P2-10: la palabra de confirmación acompaña al botón «Quitar el acceso».
   const CONFIRM_WORD = 'QUITAR';
 
@@ -98,57 +98,44 @@
   <PageHeader eyebrow="Administración" title="Ajustes del hogar" description="Miembros, acceso y preferencias generales de esta demo." />
 
   {#if access}
-    <!--
-      Personal no está en la barra de navegación: el AppShell vive dentro del
-      grafo inicial de Hoy y una entrada más no cabe en su presupuesto. Se
-      alcanza desde aquí, que es donde ya se viene a gestionar quién entra.
-    -->
-    <section class="card">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">Personal</p>
-          <h2>Quién trabaja en la casa</h2>
-        </div>
-      </div>
-      <p>
-        Las personas que trabajan aquí y las que trabajaron antes, con sus contratos y el historial de
-        condiciones. También se dan de alta desde ahí.
-      </p>
-      <p><a class="button secondary" href={`/h/${context.household.id}/personal`}>Ver el personal</a></p>
-    </section>
-
     <section class="card" aria-labelledby="access-title">
       <div class="section-heading"><div><p class="eyebrow">Accesos del hogar</p><h2 id="access-title">¿Hasta cuándo puede entrar cada persona?</h2></div></div>
       <ActionStatus status={actionStatus} />
       {#if form?.resetDone}
         <p class="demo-note" role="status"><strong>Contraseña repuesta.</strong> Dile a {form.resetDone} la contraseña nueva en persona; ya no puede entrar con la anterior en ningún dispositivo.</p>
       {/if}
-      <ul class="wiki-recent">
+      <ul class="wiki-recent" data-lista="principal">
         {#each access.memberships as member (member.id)}
+          <!-- Cada persona es UNA fila de 56 px, y sus controles se despliegan
+               desde ella. Sin esto la lista de seis miembros eran seis
+               formularios apilados y de la primera pantalla se veía una sola
+               persona: un listado de accesos sirve para MIRAR quién entra;
+               cambiarlo es otra cosa y se pide. -->
           <li>
-            <div class="wiki-node-row">
-              <span>
-                <strong>{member.name}</strong>
-                <small>{ROLE_LABELS[member.role]} · en el hogar desde {formatInstant(member.startsAt)}</small>
-                {#if member.revokedAt}
-                  <small>Sin acceso desde el {formatInstant(member.revokedAt)}</small>
-                {:else if member.expiresAt}
-                  <small>Puede entrar hasta el {formatInstant(member.expiresAt)}</small>
-                {/if}
-              </span>
-              {#if member.revokedAt}
-                <span class="status-chip warning">Sin acceso</span>
-              {:else if member.expiresAt && new Date(member.expiresAt).getTime() <= Date.now()}
-                <span class="status-chip warning">Fecha límite pasada</span>
-              {:else if member.expiresAt}
-                <span class="status-chip warning">Con fecha límite</span>
-              {:else}
-                <span class="status-chip success">Activo</span>
-              {/if}
-              {#if member.isSelf}
-                <span class="status-chip">Tu acceso</span>
-              {/if}
-            </div>
+            <details class="member-admin">
+              <summary class="fila-accion">
+                <span class="fila-cuerpo">
+                  <strong>{member.name}</strong>
+                  <small>
+                    {ROLE_LABELS[member.role]}
+                    {#if member.revokedAt}· sin acceso desde el {formatInstant(member.revokedAt)}
+                    {:else if member.expiresAt}· puede entrar hasta el {formatInstant(member.expiresAt)}
+                    {:else}· en el hogar desde {formatInstant(member.startsAt)}{/if}
+                  </small>
+                </span>
+                <span class="fila-fin">
+                  {#if member.revokedAt}
+                    <span class="status-chip warning">Sin acceso</span>
+                  {:else if member.expiresAt && new Date(member.expiresAt).getTime() <= Date.now()}
+                    <span class="status-chip warning">Fecha límite pasada</span>
+                  {:else if member.expiresAt}
+                    <span class="status-chip warning">Con fecha límite</span>
+                  {:else}
+                    <span class="status-chip success">Activo</span>
+                  {/if}
+                  {#if member.isSelf}<span class="status-chip">Tu acceso</span>{/if}
+                </span>
+              </summary>
             {#if !member.isSelf && !member.revokedAt}
               <form
                 class="action-form"
@@ -160,7 +147,7 @@
                 <label>Fecha límite del acceso
                   <input type="datetime-local" bind:value={expiryDrafts[member.id]} />
                 </label>
-                <div class="menu-slot-actions">
+                <div class="action-row">
                   <button class="button secondary small-button" type="submit" disabled={busy || !expiryDrafts[member.id]}>
                     Poner fecha límite
                   </button>
@@ -169,14 +156,23 @@
                       Quitar la fecha límite
                     </button>
                   {/if}
-                  <button class="button secondary small-button" type="button" disabled={busy} onclick={() => askRevoke(member.id)}>
-                    {confirmingId === member.id ? 'Cancelar' : 'Quitar el acceso'}
-                  </button>
                   {#if data.passwordAuth}
                     <button class="button secondary small-button" type="button" onclick={() => toggleReset(member.id)}>
-                      {resettingId === member.id ? 'Cancelar' : 'Poner una contraseña nueva'}
+                      {resettingId === member.id ? 'Cancelar' : `Poner una contraseña nueva a ${member.name}`}
                     </button>
                   {/if}
+                </div>
+                <!-- La destructiva va separada por un divisor, agrupada al final
+                     del bloque de SU dueño y nombrando a su sujeto en el propio
+                     botón. Antes «Poner fecha límite» y «Quitar el acceso» eran
+                     dos botones idénticos a 7 px uno de otro, y el nombre al que
+                     pertenecían quedaba a 212 px por encima —a 9 px del nombre
+                     de la siguiente persona—. Ahora también se ve que es
+                     peligrosa: `--danger` existía en :root y no se usaba nunca. -->
+                <div class="action-row destructiva">
+                  <button class="button danger small-button" type="button" disabled={busy} onclick={() => askRevoke(member.id)}>
+                    {confirmingId === member.id ? 'Cancelar' : `Quitar el acceso a ${member.name}`}
+                  </button>
                 </div>
               </form>
               {#if data.passwordAuth && resettingId === member.id}
@@ -230,19 +226,45 @@
                   </label>
                   <div class="menu-slot-actions">
                     <button
-                      class="button primary"
+                      class="button danger"
                       type="submit"
                       disabled={busy || confirmText.trim().toLocaleUpperCase('es') !== CONFIRM_WORD}
                     >
-                      Quitar el acceso ahora
+                      Quitar el acceso a {member.name} ahora
                     </button>
                   </div>
                 </form>
               {/if}
+            {:else}
+              <p class="audit-note">
+                {member.isSelf
+                  ? 'Tu propio acceso no se administra desde aquí.'
+                  : 'Este acceso ya está retirado.'}
+              </p>
             {/if}
+            </details>
           </li>
         {/each}
       </ul>
+    </section>
+
+    <!--
+      Personal no está en la barra de navegación: el AppShell vive dentro del
+      grafo inicial de Hoy y una entrada más no cabe en su presupuesto. Se
+      alcanza desde aquí, que es donde ya se viene a gestionar quién entra.
+    -->
+    <section class="card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Personal</p>
+          <h2>Quién trabaja en la casa</h2>
+        </div>
+      </div>
+      <p class="audit-note">
+        Las personas que trabajan aquí y las que trabajaron antes, con sus contratos y el historial de
+        condiciones. También se dan de alta desde ahí.
+      </p>
+      <div class="action-row"><a class="button secondary" href={`/h/${context.household.id}/personal`}>Ver el personal</a></div>
     </section>
   {/if}
 
@@ -275,11 +297,11 @@
           <div class="handover-actions">
             <div class="handover-option">
               <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=helper`}>Descargar traspaso (apoyo)</a>
-              <small>Incluye la guía publicada, las rutinas de toda la casa, el menú de la semana y los contactos.</small>
+              <p class="audit-note">Incluye la guía publicada, las rutinas de toda la casa, el menú de la semana y los contactos.</p>
             </div>
             <div class="handover-option">
               <a class="button secondary" href={`/api/v1/households/${data.handover.householdId}/handover?audience=family`}>Descargar traspaso (familia)</a>
-              <small>Lo mismo, con todas las rutinas (también las de la familia). El expediente laboral no se incluye nunca.</small>
+              <p class="audit-note">Lo mismo, con todas las rutinas (también las de la familia). El expediente laboral no se incluye nunca.</p>
             </div>
           </div>
         </section>
@@ -292,19 +314,19 @@
 <style>
   .handover-actions {
     display: grid;
-    gap: 0.85rem;
-    margin-top: 0.75rem;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
   }
 
   /* P2-11: cada descarga cuenta en una línea qué incluye su versión. */
   .handover-option {
     display: grid;
-    gap: 0.3rem;
+    gap: var(--space-1);
     justify-items: start;
   }
 
-  .handover-option small {
+  .handover-option .audit-note {
+    margin-top: 0;
     color: var(--ink-soft);
-    font-size: 0.74rem;
   }
 </style>

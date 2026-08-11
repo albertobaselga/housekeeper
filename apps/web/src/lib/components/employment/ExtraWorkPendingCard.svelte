@@ -23,7 +23,8 @@
     canRegister,
     canRegisterForEmployee = false,
     employeeLabel = 'la empleada',
-    canConfirm
+    canConfirm,
+    principal = false
   }: {
     householdId: string;
     agreementId: string;
@@ -36,6 +37,8 @@
     types: ExtraWorkTypeView[];
     ownMembershipId: string;
     canRegister: boolean;
+    /** ¿Es ESTA la lista principal de la pantalla? Lo decide quien la coloca. */
+    principal?: boolean;
     /**
      * Quien administra apunta la jornada a nombre de la empleada del acuerdo
      * que se está mirando, y puede cerrarla en el acto si ya ocurrió. El
@@ -216,7 +219,7 @@
     {#if extras.length > 0}<span class="status-chip warning">{extras.length} {extras.length === 1 ? 'pendiente' : 'pendientes'}</span>{/if}
   </div>
 
-  <div class="ledger-list">
+  <div class="ledger-list" data-lista={principal ? 'principal' : undefined}>
     {#each extras as extra (extra.id)}
       <div id={`extra-${extra.id}`}>
         <span>
@@ -317,7 +320,7 @@ Este contrato no permite registrar trabajo extra por ahora. Cuando se pacte un c
             <input type="number" inputmode="numeric" enterkeyhint="next" bind:value={registerExtraMinutes} min="0" max="59" step="1" required />
           </label>
         {:else if registerType?.referenceLabel}
-          <p><small>{registerType.referenceLabel}, según lo pactado.</small></p>
+          <p class="field-hint">{registerType.referenceLabel}, según lo pactado.</p>
         {/if}
       </div>
       <label>Nota (opcional)

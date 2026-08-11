@@ -127,8 +127,16 @@
 </script>
 
 <div class="page-wrap">
-  {#snippet actions()}
+  <!-- «Empezar la cuenta del mes» ABRE UNA LIQUIDACIÓN y era el control más
+       prominente de la pantalla, encima del resumen y con un campo de fecha
+       delante: a 320 px la primera pantalla no contenía ninguna cifra, solo
+       título, subtítulo, un campo de fecha y un botón. La acción irreversible
+       no es lo primero que se toca. Baja debajo del resumen y en peso
+       secundario. -->
+  {#snippet openSettlementForm()}
     {#if openableAccrual && !openSent}
+      <details class="card open-settlement">
+      <summary>Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}</summary>
       <form
         class="open-settlement-form"
         onsubmit={(event) => {
@@ -136,21 +144,33 @@
           openCurrentSettlement();
         }}
       >
-        <label>Vencimiento
+        <label>¿Cuándo vence el pago?
           <input type="date" bind:value={openDueOn} min={openPeriodEnd} required />
         </label>
-        <button class="button primary" type="submit">
-          Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
-        </button>
+        <p class="field-hint">
+          Al empezar la cuenta, {openableAccrual.periodLabel.toLocaleLowerCase('es')} se cierra a
+          revisión y deja de sumar solo.
+        </p>
+        <div class="action-row">
+          <button class="button secondary" type="submit">
+            Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
+          </button>
+        </div>
       </form>
+      </details>
     {:else if openSent}
-      <span class="status-chip success">Apertura enviada</span>
+      <p class="note success" role="status">Apertura enviada</p>
     {/if}
   {/snippet}
   <!-- Un solo nombre para la sección, ahora «Contrato» por decisión del
        propietario. Sigue valiendo la regla de P2-3 (revisión UX v3): un nombre,
-       el mismo en la barra lateral, en la hoja «Más» y aquí. -->
-  <PageHeader eyebrow="Condiciones, nómina y gastos" title="Contrato" description="Importes claros, confirmaciones separadas y un historial que se entiende." {actions} />
+       el mismo en la barra lateral, en la hoja «Más» y aquí. El h1 dice además
+       de qué mes se está hablando, que es lo que se ha venido a mirar. -->
+  <PageHeader
+    eyebrow="Condiciones, nómina y gastos"
+    title={overview?.accrual ? `Contrato · ${overview.accrual.periodLabel.toLocaleLowerCase('es')}` : 'Contrato'}
+    description="Importes claros, confirmaciones separadas y un historial que se entiende."
+  />
 
   <ActionStatus status={actionStatus} />
 
@@ -163,10 +183,23 @@
       </article>
     {:else}
       {#if seesAmounts}
-        <section class="summary-strip" aria-label="Resumen de lo que va sumando este mes">
+        <!-- Antes esta tira entregaba CUATRO números, tres de ellos el mismo:
+             cuando no hay reembolsos, «total salarial» y «total previsto» son
+             literalmente la misma cifra, y «1.430,00 €» aparecía tres veces en
+             la pantalla. Se borra lo repetido ANTES de maquetarlo: apilar mejor
+             un dato que sobra no arregla nada. Lo que queda es una cifra grande
+             con su desglose debajo, y la tira baja de 315 px a ~110. -->
+        {@const withReimbursements = (overview.accrual?.reimbursementCents ?? '0') !== '0'}
+        <!-- La lista principal de esta pantalla son las cifras del mes: el hallazgo
+             de la auditoría fue que a 320 px la primera pantalla no contenía
+             NINGUNA cifra —título, subtítulo, un campo de fecha y un botón—.
+             Ahora son lo primero que hay debajo del titular. -->
+        <section class="summary-strip" class:dos={!withReimbursements} data-lista="principal" aria-label="Resumen de lo que va sumando este mes">
           <div><span>Mes en curso</span><strong>{overview.accrual?.periodLabel ?? '—'}</strong></div>
-          <div><span>Total salarial</span><strong>{overview.accrual?.salaryLabel ?? '—'}</strong></div>
-          <div><span>Reembolsos</span><strong>{overview.accrual?.reimbursementLabel ?? '—'}</strong></div>
+          {#if withReimbursements}
+            <div><span>Salario</span><strong>{overview.accrual?.salaryLabel ?? '—'}</strong></div>
+            <div><span>Reembolsos</span><strong>{overview.accrual?.reimbursementLabel ?? '—'}</strong></div>
+          {/if}
           <div class="total"><span>Total previsto</span><strong>{overview.accrual?.transferTotalLabel ?? '—'}</strong></div>
         </section>
       {/if}
@@ -176,10 +209,13 @@
            elección viaja en la URL para poder volver a ella. A la empleada la
            RLS solo le devuelve su acuerdo, así que no ve ningún selector. -->
       {#if overview.agreements.length > 1}
-        <nav class="action-row" aria-label="Elegir de quién es el expediente">
+        <!-- Un nombre completo por chip no cabe dos veces en 320 px: la tira va en
+             scroller con máscara y un chip siempre cortado a la mitad, que dice
+             que hay más sin gastar una segunda línea de marco. -->
+        <nav class="chip-strip scroller" aria-label="Elegir de quién es el expediente">
           {#each overview.agreements as option (option.id)}
             <a
-              class="button {option.id === agreement?.id ? 'primary' : 'secondary'} small-button"
+              class="chip {option.id === agreement?.id ? 'active' : ''}"
               href={`?empleada=${option.id}`}
               aria-current={option.id === agreement?.id ? 'page' : undefined}
               data-sveltekit-noscroll
@@ -241,7 +277,7 @@
                           {#if line.originLabel}&nbsp;· {line.originLabel}{/if}
                         </small>
                       </span>
-                      <strong>{line.amountLabel}</strong>
+                      <strong class="cifra pequena">{line.amountLabel}</strong>
                     </div>
                   {/each}
                 </div>
@@ -479,6 +515,10 @@
           {/if}
         </aside>
       </div>
+
+      <!-- Cerrar el mes es lo último que se hace y no se puede deshacer: va
+           después de todo lo que hay que decidir, nunca abriendo la pantalla. -->
+      {#if seesAmounts}{@render openSettlementForm()}{/if}
     {/if}
   {:else if data.employment}
     <section class="summary-strip" aria-label="Resumen de liquidación">

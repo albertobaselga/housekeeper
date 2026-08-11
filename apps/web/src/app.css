@@ -128,9 +128,17 @@
        la pantalla se lee más grande ocupando menos. ── */
     --text-micro: .75rem;    /* 12 px — etiqueta de columna, pestaña, navegación. Máx. 3 palabras. */
     --text-meta: .8125rem;   /* 13 px — apoyo: fecha, autoría, origen, cadencia */
-    --text-body: .9375rem;   /* 15 px — texto corrido */
+    /* 16 px, no 15: la nota original daba 15 al texto corrido y 16 al nombre de
+       la fila, y a partir de 48rem los igualaba en 16. Un salto de UN píxel
+       entre dos roles es exactamente el vicio que esta escala viene a cerrar
+       —veinticinco sabores de «pequeño» no son una jerarquía—, y de paso toda
+       frase de la aplicación cumple el piso de 14 px por construcción. */
+    --text-body: 1rem;       /* 16 px — texto corrido */
     --text-strong: 1rem;     /* 16 px — el nombre de la cosa en cada fila */
-    --text-title: 1.25rem;   /* 20 px — título de tarjeta (h2) */
+    /* En un teléfono, un título de tarjeta a 20 px junto a filas de 16 es más
+       jerarquía de la que cabe: el peso ya los separa (700 contra 500), y así
+       una pantalla usa CUATRO tamaños de los siete, que es la disciplina. */
+    --text-title: 1rem;      /* 16 px en móvil; 22 a partir de 48rem */
     --text-page: 1.5rem;     /* 24 px — título de pantalla (h1) */
     --text-data: 1.5rem;     /* 24 px — el número: importe, hora, cuenta */
 
@@ -177,7 +185,6 @@
       --pad-card: var(--space-5);
       --gap-card: var(--space-4);
       --gap-section: var(--space-7);
-      --text-body: 1rem;
       --text-title: 1.375rem;
       --text-page: 2rem;
       --text-data: 1.75rem;
@@ -633,7 +640,7 @@
      estrecho»: 44 px de alto, menos relleno lateral. Antes medía 36. */
   .button.small-button { min-height: 2.75rem; padding: var(--space-2); font-size: var(--text-meta); }
 
-  .status-chip { display: inline-flex; align-items: center; border-radius: var(--r-full); padding: var(--space-1) var(--space-2); font-size: var(--text-micro); font-weight: 700; white-space: nowrap; }
+  .status-chip { display: inline-flex; align-items: center; border-radius: var(--r-full); padding: var(--space-1) var(--space-2); font-size: var(--text-meta); font-weight: 700; white-space: nowrap; }
   .status-chip.warning { background: var(--warning-soft); color: var(--warning); }
   .status-chip.success { background: var(--success-soft); color: var(--success); }
   /* «Ahora» es lo único que se pinta en terracota. */
@@ -740,7 +747,7 @@
     gap: var(--space-2);
     border-radius: var(--r-md);
     padding: var(--space-3);
-    font-size: var(--text-meta);
+    font-size: var(--text-body);
     font-weight: 500;
     line-height: var(--lh-loose);
   }
@@ -808,7 +815,14 @@
      empujaba la columna —y el documento— más allá del viewport. */
   .stack { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--space-4); }
   .content-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(17rem, .8fr); gap: var(--gap-card); }
-  .card-footnote, .audit-note { margin-top: var(--space-3); font-size: var(--text-meta); line-height: var(--lh-loose); }
+  .card-footnote, .audit-note { margin-top: var(--space-3); font-size: var(--text-body); line-height: var(--lh-loose); }
+  /* Un enlace que es NAVEGACIÓN no puede medir 17 px de alto por vivir dentro
+     de una nota: si la nota es solo el enlace, la nota entera es la diana. */
+  .audit-note > a:only-child, .card-footnote > a:only-child {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+  }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   /* Sin `min-height: 18rem`: 288 px de vacío reservado en Calendario a 320 px.
      El vacío se dimensiona por su contenido y es DONDE VIVE la descripción de
@@ -825,7 +839,7 @@
   .action-form { display: grid; gap: var(--space-3); margin-top: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-4); }
   .action-form form { display: grid; gap: var(--space-3); }
   .action-form h3 { font-size: var(--text-strong); }
-  .action-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
+  .action-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-body); font-weight: 700; }
   .action-form input, .action-form select, .action-form textarea {
     min-height: var(--row-data);
     border: 1px solid var(--line-strong);
@@ -868,7 +882,7 @@
     font: inherit;
     font-weight: 700;
   }
-  .field-hint { margin: 0; color: var(--ink-soft); font-size: var(--text-meta); font-weight: 400; line-height: var(--lh-loose); }
+  .field-hint { margin: 0; color: var(--ink-soft); font-size: var(--text-body); font-weight: 400; line-height: var(--lh-loose); }
   /* P2-2 rutinas: «Se repite cada [2] [semanas]» leído como frase única. */
   .repeat-fieldset { display: grid; gap: var(--space-1); margin: 0; border: 0; padding: 0; }
   .repeat-fieldset legend { padding: 0; color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
@@ -881,7 +895,7 @@
   .action-row.destructiva { margin-top: var(--space-3); border-top: 1px solid var(--line); padding-top: var(--space-3); }
   /* Apertura de liquidación: fecha de vencimiento junto al botón de cabecera. */
   .open-settlement-form { display: grid; gap: var(--space-3); }
-  .open-settlement-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
+  .open-settlement-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-body); font-weight: 700; }
   .open-settlement-form input {
     min-height: var(--row-data);
     border: 1px solid var(--line-strong);
@@ -961,7 +975,7 @@
   .routine-detail > summary::marker { color: var(--ink-faint); font-size: var(--text-micro); }
   .routine-detail > p { margin: var(--space-1) 0 var(--space-2); color: var(--ink-soft); font-size: var(--text-meta); }
   /* En «Esta semana» el título no es una acción: sin diana grande. */
-  .routine-week .routine-detail > summary { min-height: 0; }
+  .routine-week .routine-detail > summary { min-height: var(--row-data); }
 
   /* En Hoy, los textos que a veces no tocan (el chip de cuenta, la segunda
      línea de una rutina de hoy, el aviso de que no hay nada) viajan como
@@ -1028,6 +1042,9 @@
      maquetarla se borra lo repetido —cuando no hay reembolsos, «total salarial»
      y «total previsto» son el mismo número—. */
   .summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+  /* Cuando se borra la cifra repetida quedan dos celdas, no cuatro con dos
+     huecos: la rejilla lo dice, no lo finge con columnas vacías. */
+  .summary-strip.dos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .summary-strip > div { display: grid; align-content: center; gap: var(--space-1); border-left: 1px solid var(--line); padding: var(--space-3); }
   .summary-strip > div:first-child { border-left: 0; }
   .summary-strip span { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
@@ -1056,11 +1073,20 @@
   }
   .ledger-list > div:first-child, .balance-list > div:first-child { border-top: 0; }
   .ledger-list > div > span, .balance-list > div > span { display: grid; min-width: 0; }
+  /* La línea de apoyo de una fila es un VISTAZO: tres líneas y lo que sobre se
+     lee en el detalle. Sin este tope una fila del expediente medía cinco líneas
+     de meta y la lista dejaba de ser una lista. */
+  .ledger-list small, .balance-list small, .fila-lista small {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
   .ledger-list strong, .balance-list strong { font-size: var(--text-strong); font-weight: 500; }
   .ledger-total { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border-radius: var(--r-md); background: var(--primary-soft); padding: var(--space-3); color: var(--primary); }
   .ledger-total strong { color: var(--primary); font: var(--font-data); font-variant-numeric: tabular-nums lining-nums; }
   .quiet-card { background: var(--primary-pale); }
-  .quiet-card p { margin: var(--space-2) 0 var(--space-3); font-size: var(--text-meta); }
+  .quiet-card p { margin: var(--space-2) 0 var(--space-3); font-size: var(--text-body); }
   .card-icon { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: var(--r-sm); background: var(--primary); color: var(--ink-on-primary); }
 
   .day-tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); }
@@ -1227,11 +1253,13 @@
   .wiki-recent strong { font-size: var(--text-strong); font-weight: 500; }
   .wiki-recent small { color: var(--ink-soft); font-size: var(--text-meta); }
   .wiki-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  /* La vuelta a la Guía es navegación: diana entera, no 20 px de alto. */
+  .wiki-meta > a.volver { display: inline-flex; min-height: 2.75rem; align-items: center; }
   .wiki-markdown { display: grid; gap: var(--space-3); margin-top: var(--space-2); font-size: var(--text-body); line-height: var(--lh-loose); }
   .wiki-markdown ul, .wiki-markdown ol { margin: 0; padding-left: var(--space-5); }
   .wiki-markdown code { border-radius: var(--r-sm); background: var(--primary-pale, var(--surface)); padding: 0 var(--space-1); font-size: .85em; }
   .wiki-markdown blockquote { display: grid; gap: var(--space-2); margin: 0; border-left: var(--space-1) solid var(--warning, var(--primary)); border-radius: var(--r-sm); background: var(--warning-soft, var(--surface)); padding: var(--space-3); }
-  .wiki-markdown blockquote p { margin: 0; font-size: var(--text-meta); }
+  .wiki-markdown blockquote p { margin: 0; font-size: var(--text-body); }
   .wiki-table { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
   .wiki-table table { min-width: 100%; border-collapse: collapse; font-size: var(--text-meta); }
   .wiki-table th, .wiki-table td { border-bottom: 1px solid var(--line); padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; }
@@ -1318,7 +1346,7 @@
   .contact-avatar { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: var(--r-md); background: var(--primary-soft); color: var(--primary); font-weight: 700; }
   .contact-avatar.emergency { background: var(--danger-soft); color: var(--danger); }
   .contact-card h2 { font-size: var(--text-strong); font-weight: 500; }
-  .contact-card div > a { display: inline-block; color: var(--primary); font-size: var(--text-meta); font-variant-numeric: tabular-nums; font-weight: 500; }
+  .contact-card div > a { display: inline-flex; min-height: 2.75rem; align-items: center; color: var(--primary); font-size: var(--text-meta); font-variant-numeric: tabular-nums; font-weight: 500; }
   .call-button { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface); padding: var(--space-2) var(--space-3); color: var(--primary); font-size: var(--text-meta); font-weight: 700; text-decoration: none; }
 
   .offline-proof { display: flex; align-items: center; gap: var(--space-2); color: var(--success); font-size: var(--text-meta); font-weight: 500; }
@@ -1346,7 +1374,7 @@
   .instruction-list li:first-child { border-top: 0; }
   .instruction-list li > span { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: var(--r-full); background: var(--primary-soft); color: var(--primary); font-size: var(--text-meta); font-weight: 700; }
   .instruction-list strong { font-size: var(--text-strong); font-weight: 500; }
-  .instruction-list p { margin-top: var(--space-1); font-size: var(--text-meta); }
+  .instruction-list p { margin-top: var(--space-1); font-size: var(--text-body); }
 
   .settings-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(18rem, .8fr); gap: var(--gap-card); }
   .member-list { display: grid; margin-top: var(--space-3); }
@@ -1446,7 +1474,7 @@
     /* Ni eyebrow ni descripción: son copy de bienvenida servido en cada visita
        a quien abre esta pantalla todos los días. La descripción vive en el
        estado vacío, que es donde hace falta y donde sobra sitio. */
-    .page-header > div > .eyebrow, .page-description { display: none; }
+    .eyebrow, .page-description { display: none; }
     .page-header { align-items: center; }
     /* Una acción de cabecera NO lleva banda completa: la regla anterior hacía
        exactamente lo contrario de lo que pide la gramática de acciones. */
@@ -1454,6 +1482,14 @@
     .card { padding: var(--pad-card); }
     .recipe-gallery, .contact-grid { grid-template-columns: minmax(0, 1fr); }
     .recipe-visual { min-height: 5.5rem; }
+    /* Siete días no caben a 44 px en 296: la tira sangra hasta el borde de la
+       pantalla y cada día vuelve a medir 45. Es la misma respuesta que en el
+       calendario y por el mismo motivo: dejar de gastar ancho en vez de rebajar
+       la diana. */
+    .day-tabs { margin-inline: calc(var(--pad-page-x) * -1); gap: 0; }
+    .day-tabs button { border-radius: 0; border-left-width: 0; }
+    .day-tabs button:first-child { border-left-width: 1px; }
+
     /* El buscador se queda en UNA fila también a 320: mandar el botón a una
        segunda línea le costaba ~60 px a la lista que hay debajo, que es lo que
        se ha venido a ver. El botón se estrecha, no se apila. */
@@ -1463,12 +1499,28 @@
     .emergency-callout > a { text-align: center; }
     .contact-card { grid-template-columns: 2.5rem minmax(0, 1fr); }
     .contact-card .call-button { grid-column: 1 / -1; }
-    /* Un grupo de ≤ 4 cifras cortas NUNCA se apila: rejilla 2×2. Apilada medía
-       315 px de los 844 de la pantalla, 3,9 veces más alta que en un escritorio
-       con el triple de espacio. */
+    /* Un grupo de ≤ 4 cifras cortas NUNCA se apila en columna: rejilla 2×2.
+       Apilada medía 315 px de los 844 de la pantalla, 3,9 veces más alta que en
+       un escritorio con el triple de espacio. */
     .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .summary-strip > div:nth-child(odd) { border-left: 0; }
     .summary-strip > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    /* Con dos celdas la rejilla sobra: cada cifra es una LÍNEA DE RESUMEN con su
+       rótulo a la izquierda y el número a la derecha, que es la otra salida que
+       la nota da para un grupo de pocas cifras. Así el importe deja de partirse
+       («1.430,00» arriba y «€» abajo) en una celda de 123 px útiles, y la tira
+       baja de 130 px a 96. */
+    .summary-strip.dos { grid-template-columns: minmax(0, 1fr); }
+    .summary-strip.dos > div {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--space-3);
+      min-height: var(--row-dense);
+      border-left: 0;
+      border-top: 1px solid var(--line);
+    }
+    .summary-strip.dos > div:first-child { border-top: 0; }
+    .summary-strip.dos strong { justify-self: end; white-space: nowrap; }
     /* Tabla de datos → filas-ficha. La cabecera desaparece y cada celda lleva
        su etiqueta delante, así que «Avisar si» deja de cortarse a media
        palabra en la columna que dice cuándo hay que llamar a la familia. */
@@ -1584,4 +1636,38 @@
     .book-nav .button { flex: 1 1 0; justify-content: center; min-width: 0; }
     .book-nav-placeholder { flex: 1 1 0; }
   }
+}
+
+@layer pages {
+  /* El bloque de administración de un contacto ocupa la fila entera bajo su
+     dueño: nunca a 9 px del nombre de la persona siguiente. */
+  .contact-admin { grid-column: 1 / -1; }
+}
+
+@layer pages {
+  /* Los controles de acceso de cada persona, plegados bajo su nombre. */
+  .member-admin > summary {
+    display: flex;
+    min-height: var(--row-data);
+    align-items: center;
+    color: var(--primary);
+    font-size: var(--text-meta);
+    font-weight: 700;
+    cursor: pointer;
+  }
+}
+
+@layer pages {
+  /* Abrir la cuenta del mes es irreversible: va plegada bajo el resumen hasta
+     que se pide, no abriendo la pantalla con un campo de fecha por delante. */
+  .open-settlement > summary {
+    display: flex;
+    min-height: var(--row-data);
+    align-items: center;
+    color: var(--primary);
+    font-size: var(--text-strong);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .open-settlement > .open-settlement-form { margin-top: var(--space-3); }
 }

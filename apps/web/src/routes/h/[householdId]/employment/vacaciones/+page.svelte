@@ -147,24 +147,24 @@
 
 <style>
   .vacation-news {
-    margin-bottom: 1rem;
-    border-radius: 0.65rem;
+    margin-bottom: var(--space-4);
+    border-radius: var(--r-md);
     background: var(--success-soft);
-    padding: 0.65rem 0.8rem;
+    padding: var(--space-3) var(--space-3);
     color: var(--success);
-    font-size: 0.85rem;
+    font-size: var(--text-meta);
     font-weight: 700;
   }
   .vacation-year {
-    margin-top: 1.6rem;
+    margin-top: var(--space-5);
   }
   .vacation-year h3 {
-    font-size: 0.9rem;
+    font-size: var(--text-body);
     letter-spacing: 0.02em;
   }
   .vacation-headline {
-    margin: 0.35rem 0 0;
-    font-size: 0.95rem;
+    margin: var(--space-1) 0 0;
+    font-size: var(--text-body);
   }
   /* Lo anulado se lee como anulado: sigue estando, sin fingir que cuenta. */
   .period-voided strong:first-child {
