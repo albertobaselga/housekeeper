@@ -310,6 +310,39 @@ describe('el año: densidad y lo señalado', () => {
   });
 });
 
+describe('el coste de calcular al vuelo', () => {
+  /**
+   * La decisión de §4.3 —«las finalizaciones se guardan; las ocurrencias se
+   * calculan»— sale cara si expandir un año entero de un hogar grande cuesta
+   * lo que un parpadeo. Esto lo mide en vez de suponerlo.
+   *
+   * El tope es deliberadamente flojo (un orden de magnitud sobre lo medido en
+   * un portátil: ~6 ms para 40 rutinas y un año completo, la vista más cara de
+   * las tres). No es un test de rendimiento fino: es una alarma para el día en
+   * que alguien meta una llamada a `Intl`, una expresión regular o una copia
+   * de la lista dentro del bucle de días.
+   */
+  it('un año de 40 rutinas se expande sin que se note', () => {
+    const patterns: CalendarRoutineView['rule'][] = [
+      { pattern: 'every_n_days', anchorOn: '2020-01-01', repeatEvery: 1, endsOn: null },
+      { pattern: 'days_of_week', anchorOn: '2020-01-01', repeatEvery: 1, weekdays: [1, 4], endsOn: null },
+      { pattern: 'day_of_month', anchorOn: '2020-01-31', repeatEvery: 1, monthDay: 31, endsOn: null },
+      { pattern: 'months_of_year', anchorOn: '2020-01-01', months: [6, 12], monthDay: 1, endsOn: null }
+    ];
+    const routines = Array.from({ length: 40 }, (_, index) =>
+      routine({ id: `r${index}`, rule: patterns[index % patterns.length]! })
+    );
+
+    const started = performance.now();
+    const months = buildCalendarYear(2026, routines, []);
+    const elapsed = performance.now() - started;
+
+    expect(months).toHaveLength(12);
+    expect(months[5]!.routineDays.some(Boolean)).toBe(true);
+    expect(elapsed).toBeLessThan(150);
+  });
+});
+
 describe('las bandas honestas', () => {
   const label = '11 ago, 08:30';
 

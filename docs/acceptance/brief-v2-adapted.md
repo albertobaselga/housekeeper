@@ -11,6 +11,7 @@ Este documento es la fuente de verdad para declarar terminado el brief. Los dato
 5. **WhatsApp:** solo enlaces `wa.me` iniciados conscientemente por una persona. No se usa Cloud API ni se envían mensajes automáticos.
 6. **Idioma:** interfaz inicial únicamente en español, con claves y modelo preparados para i18n; no se exige contenido traducido en esta entrega.
 7. **Entornos:** esta oleada entrega local y staging sintético. No autoriza producción ni datos reales.
+8. **AC-26, sustituido el 10/08/2026 a petición del propietario** (enmienda E2 de `docs/rutinas-y-calendario.md`). Decía «no existe porcentaje **ni histórico** de cumplimiento de rutinas»; el histórico se pidió expresamente —«poder ver lo que hizo en el pasado para comprobarlo»— y la redacción anterior lo prohibía junto con lo que de verdad se quería evitar. La nueva separa las dos cosas: **hechos con autoría sí, indicadores de cumplimiento no.** El criterio anterior existía por una razón y no se ha ablandado: enseñar *qué se hizo* es la memoria de la casa; enseñar *cuánto cumple alguien* es una evaluación de desempeño sobre una trabajadora, y sigue prohibida —ahora con más superficie vigilada, porque también se nombran la comparativa y el color que califica—.
 
 Con estas adaptaciones, el objetivo es **25/26 literales y 26/26 según el contrato adaptado**.
 
@@ -43,7 +44,7 @@ Con estas adaptaciones, el objetivo es **25/26 literales y 26/26 según el contr
 | AC-23 | Duplicar semana copia platos, notas y recetas en una sola acción idempotente. | Test API/DB + E2E. | F3 |
 | AC-24 | Compra suma ingredientes equivalentes, respeta unidades y agrupa por sección. | Fixtures de agregación + E2E offline. | F3 |
 | AC-25 | Mantenimiento trimestral notifica a familia, no a empleada. | Test de recurrencia y destinatarios. | F3 |
-| AC-26 | No existe porcentaje ni histórico de cumplimiento de rutinas. | Búsqueda de API/esquema + revisión E2E de todas las vistas. | F3 |
+| AC-26 (revisado 10/08/2026) | El historial de rutinas es consultable como hechos con su fecha y su autoría. No existe ningún indicador de cumplimiento —porcentaje, racha, media, comparativa ni codificación por color que califique—, en ninguna vista, API ni exportación. | `apps/web/tests/calendar-no-metrics.test.ts` (vocabulario del código, forma de lo devuelto y ausencia de color que califique) + `apps/web/e2e/calendar.dbe2e.ts` → «el pasado se ve con quién lo marcó, y sin ninguna nota (E2)». | F3 |
 
 ## Extensión de Fase 4 acordada
 
