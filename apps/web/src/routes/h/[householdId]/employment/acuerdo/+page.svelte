@@ -790,7 +790,7 @@
   .check-label {
     flex-direction: row;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   /* Tabla estrecha y con scroll propio: siete días con cuatro campos cada uno
@@ -801,21 +801,21 @@
     overflow-x: auto;
     width: 100%;
     border-collapse: collapse;
-    margin: 0.5rem 0;
+    margin: var(--space-2) 0;
   }
 
   .schedule-table th,
   .schedule-table td {
     text-align: left;
     vertical-align: top;
-    padding: 0.35rem 0.5rem 0.35rem 0;
+    padding: var(--space-1) var(--space-2) var(--space-1) 0;
   }
 
   .form-grid.compact {
-    gap: 0.4rem;
+    gap: var(--space-2);
   }
 
   .schedule-mismatch {
-    font-weight: 600;
+    font-weight: 500;
   }
 </style>

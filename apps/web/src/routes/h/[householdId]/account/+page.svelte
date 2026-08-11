@@ -222,20 +222,20 @@
 
 <style>
   .notice-list, .device-list {
-    margin: .9rem 0 0;
-    padding-left: 1.1rem;
+    margin: var(--space-3) 0 0;
+    padding-left: var(--space-4);
     color: var(--muted);
-    font-size: .85rem;
+    font-size: var(--text-meta);
     line-height: 1.55;
   }
-  .device-list { list-style: none; padding-left: 0; font-size: .78rem; }
+  .device-list { list-style: none; padding-left: 0; font-size: var(--text-micro); }
   .promise-title {
-    margin-top: 1.6rem;
-    font-size: .95rem;
+    margin-top: var(--space-5);
+    font-size: var(--text-body);
   }
   .promise {
-    margin-top: .5rem;
-    font-size: .85rem;
+    margin-top: var(--space-2);
+    font-size: var(--text-meta);
     line-height: 1.6;
   }
 </style>

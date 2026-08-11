@@ -27,7 +27,7 @@ const RECIPE_NAME = 'Croquetas de la casa E2E';
 async function gotoMenuWeek(page: Page, week: string): Promise<void> {
   await loginAs(page, 'family');
   await page.goto(`/h/${HOUSEHOLD}/menu?week=${week}`);
-  await expect(page.getByRole('heading', { name: 'Menú de la casa' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 test('Marta crea una receta nueva desde el hueco: se asigna y aparece en el recetario', async ({ page }) => {

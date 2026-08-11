@@ -24,7 +24,7 @@ function vacationsCard(page: Page) {
 async function gotoEmployment(page: Page, account: 'admin' | 'employee'): Promise<void> {
   await loginAs(page, account);
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { name: 'Contrato', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 test('Alberto apunta una semana de vacaciones y el saldo del año baja siete días', async ({ page }) => {

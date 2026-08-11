@@ -64,6 +64,13 @@ const HEADER_LABEL = new Intl.DateTimeFormat('es-ES', {
   month: 'long',
   timeZone: 'Europe/Madrid'
 });
+/** «lun, 11 ago»: la fecha del titular de estado, que cabe en una línea. */
+const STATE_LABEL = new Intl.DateTimeFormat('es-ES', {
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  timeZone: 'Europe/Madrid'
+});
 
 export const MEAL_LABELS: Readonly<Record<MealSlot, string>> = {
   desayuno: 'Desayuno',
@@ -246,6 +253,8 @@ export interface TodayOverview {
   todayISO: string;
   /** «Viernes, 7 de agosto», calculado con la fecha real (Europe/Madrid). */
   dateLabel: string;
+  /** «Lun, 11 ago · 3 por hacer»: el h1 de la pantalla, una línea, el estado. */
+  stateLabel: string;
   greeting: string;
   decisions: TodayDecisionItem[];
   /**
@@ -739,6 +748,23 @@ export function headerDateLabel(todayISO: string): string {
   return raw.charAt(0).toLocaleUpperCase('es') + raw.slice(1);
 }
 
+/**
+ * El titular de Hoy: «Lun, 11 ago · 3 por hacer».
+ *
+ * Se escribe aquí y no en la plantilla por dos razones. La primera es de
+ * diseño: el `h1` de esta pantalla decía «Buenas noches, Ana» a 32 px en dos
+ * líneas —74 px de saludo a alguien que abre la aplicación todos los días— y
+ * ahora dice en una línea de 24 px qué día es y cuánto queda, que es lo que se
+ * ha venido a saber. La segunda es de presupuesto: montar la frase en el
+ * cliente costaría un `Intl.DateTimeFormat` y un ternario en el grafo de
+ * arranque de Hoy, que es exactamente lo que vigila verify-today-bundle.
+ */
+export function todayStateLabel(todayISO: string, countChip: string): string {
+  const raw = STATE_LABEL.format(new Date(`${todayISO}T12:00:00Z`)).replace(/\.$/, '');
+  const date = raw.charAt(0).toLocaleUpperCase('es') + raw.slice(1);
+  return countChip ? `${date} · ${countChip}` : `${date} · nada pendiente`;
+}
+
 export async function loadTodayOverview(
   user: { id: string },
   householdId: string,
@@ -1082,6 +1108,7 @@ export async function loadTodayOverview(
         role: membership.role,
         todayISO,
         dateLabel: headerDateLabel(todayISO),
+        stateLabel: todayStateLabel(todayISO, routines.countChip),
         greeting: greetingFor(hour),
         decisions,
         decisionsTitle: decisionsTitleFor(decisions),

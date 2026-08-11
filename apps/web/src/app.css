@@ -11,6 +11,26 @@
 }
 
 @layer base {
+  /* La fuente del producto, por fin enviada. Atkinson Hyperlegible Next
+     variable, subconjunto latino, autoalojada: 33.996 bytes de los 40.000 que
+     admite el presupuesto de red. No se eligió por gusto —desambigua 1/l/I y
+     0/O y se diseñó para leerse pequeña y con baja visión—, que es exactamente
+     el modo de fallo de un importe o una hora de 13 px leídos de pie, en el
+     súper o en una cocina, con la otra mano ocupada. `swap`: el texto se lee
+     con la del sistema mientras llega, nunca en blanco. El subconjunto
+     latin-ext NO se envía: el español entero cabe en U+0000-00FF y ese fichero
+     costaba otros 19 kB. Licencia OFL-1.1 en static/fonts/. */
+  @font-face {
+    font-family: 'Atkinson Hyperlegible Next';
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400 700;
+    src: url('/fonts/atkinson-hyperlegible-next-latin.woff2') format('woff2-variations');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+      U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+      U+FEFF, U+FFFD;
+  }
+
   :root {
     --canvas: #f6f3ec;
     --canvas-deep: #ece7dc;
@@ -27,8 +47,15 @@
     --primary-hover: #18382e;
     --primary-soft: #e2eee7;
     --primary-pale: #f0f6f2;
+    /* Texto sobre --primary. Existía como `#fff`/`white` a pelo doce veces. */
+    --ink-on-primary: #fff;
     /* 4.9:1 sobre --paper: el terracota anterior (#c8764e) daba 3.35 y fallaba
-       el AA de axe cuando se usa como color de texto. */
+       el AA de axe cuando se usa como color de texto.
+       A partir de la pasada móvil el terracota SOLO marca «ahora»: la fecha de
+       hoy, la hora de lo siguiente, el periodo abierto. Dejó de pintar
+       eyebrows y rótulos decorativos, que es donde estaba el 90 % de sus usos:
+       el único color con carácter de la paleta estaba reservado al texto más
+       prescindible de la pantalla. */
     --accent: #a85a33;
     --accent-soft: #fae8dd;
     --warning: #885b18;
@@ -39,18 +66,129 @@
     --success-soft: #e2efe7;
     --info: #2f6471;
     --info-soft: #e5f0f2;
+    /* Tintas y velos que estaban escritos a pelo por el CSS. Ninguno es un
+       color nuevo: son los que ya había, con nombre. */
+    --ink-on-brand: #fff9ec;
+    --ink-on-accent: #894a31;
+    --ink-on-danger-soft: #89605d;
+    --accent-pale: #fff8f2;
+    --select-bg: #cfe0d6;
+    --surface-veil: rgb(255 253 248 / .97);
+    --canvas-veil: rgb(246 243 236 / .9);
+    --scrim: rgb(28 42 34 / .45);
+    --on-primary-veil: rgb(255 255 255 / .16);
+    --on-primary-soft: rgb(255 255 255 / .75);
+    /* Fondos de los azulejos de receta: decoración de la maqueta de comida. */
+    --dish-default: #e5c7a8;
+    --dish-lentils: #d7b797;
+    --dish-rice: #e5d3a4;
+    --dish-fish: #b7d2d4;
+
+    /* ── Sombras. En móvil no hay ninguna: la separación la dan la línea de
+       1 px y el fondo. `--shadow-over` es lo único que flota (hoja «Más»,
+       popover, overlay). Las de antes (`0 12px 34px`, `0 28px 80px`) eran
+       sombras de página de marketing y emborronaban el borde de una lista
+       densa. ── */
     --shadow-xs: 0 1px 2px rgb(28 42 34 / .04);
-    --shadow-sm: 0 12px 34px rgb(33 48 39 / .07);
-    --shadow-lg: 0 28px 80px rgb(25 39 31 / .17);
-    --radius-xs: .6rem;
-    --radius-sm: .85rem;
-    --radius: 1.1rem;
-    --radius-lg: 1.45rem;
+    --shadow-over: 0 8px 24px rgb(28 42 34 / .18);
+
+    /* ── Radios. Cuatro, y el anidamiento es radio exterior − relleno con
+       suelo en --r-sm. `--r-full` SOLO para chips de estado y avatares. ── */
+    --r-sm: .5rem;    /*  8 px — chips, campos */
+    --r-md: .75rem;   /* 12 px — botones, filas */
+    --r-lg: 1rem;     /* 16 px — tarjetas, hojas */
+    --r-full: 999px;
+
+    /* ── Espaciado: 7 pasos, base 4. Ningún `gap`, `padding`, `margin` ni
+       `border-radius` fuera de esta lista o de los radios. Los ajustes ópticos
+       de antes (.05rem, .08rem, .13rem, .22rem, .28rem) fueron a 0 o al paso
+       1: nadie percibe la diferencia entre .55rem y .58rem, y veinticinco
+       sabores de «pequeño» no son una jerarquía sino una adivinanza por
+       componente. El paso 7 solo existe a partir de 48rem. ── */
+    --space-1: .25rem;  /*  4 px */
+    --space-2: .5rem;   /*  8 px */
+    --space-3: .75rem;  /* 12 px */
+    --space-4: 1rem;    /* 16 px */
+    --space-5: 1.5rem;  /* 24 px */
+    --space-6: 2rem;    /* 32 px */
+
+    /* ── Densidad: los tres únicos tokens que CAMBIAN con el ancho. Antes lo
+       hacían dos paddings sueltos, y por eso una fila de tarea medía 64 px a
+       1280 y 64 px a 390. Móvil primero (compacto); a partir de 48rem,
+       cómodo. ── */
+    --pad-page-x: var(--space-3);
+    --pad-page-y: var(--space-3);
+    --pad-card: var(--space-3);
+    --gap-card: var(--space-2);
+    --gap-section: var(--space-5);
+
+    /* ── Tipografía: 7 roles nombrados por función, no por tamaño. La
+       inversión, en una frase: el título de pantalla baja de 32 a 24 px y el
+       título de fila sube de 14,08 a 16. El marco encoge y el contenido crece:
+       la pantalla se lee más grande ocupando menos. ── */
+    --text-micro: .75rem;    /* 12 px — etiqueta de columna, pestaña, navegación. Máx. 3 palabras. */
+    --text-meta: .8125rem;   /* 13 px — apoyo: fecha, autoría, origen, cadencia */
+    /* 16 px, no 15: la nota original daba 15 al texto corrido y 16 al nombre de
+       la fila, y a partir de 48rem los igualaba en 16. Un salto de UN píxel
+       entre dos roles es exactamente el vicio que esta escala viene a cerrar
+       —veinticinco sabores de «pequeño» no son una jerarquía—, y de paso toda
+       frase de la aplicación cumple el piso de 14 px por construcción. */
+    --text-body: 1rem;       /* 16 px — texto corrido */
+    --text-strong: 1rem;     /* 16 px — el nombre de la cosa en cada fila */
+    /* En un teléfono, un título de tarjeta a 20 px junto a filas de 16 es más
+       jerarquía de la que cabe: el peso ya los separa (700 contra 500), y así
+       una pantalla usa CUATRO tamaños de los siete, que es la disciplina. */
+    --text-title: 1rem;      /* 16 px en móvil; 22 a partir de 48rem */
+    --text-page: 1.5rem;     /* 24 px — título de pantalla (h1) */
+    --text-data: 1.5rem;     /* 24 px — el número: importe, hora, cuenta */
+
+    /* Tres alturas de línea y ni una más. La 1.4 de la nota original y la 1.5
+       del texto corrido se fusionan en `--lh-loose`: la diferencia entre ambas
+       a 13 px es de 1,3 px y no la percibe nadie, mientras que el token de más
+       sí se percibe en el mantenimiento. */
+    --lh-tight: 1.2;   /* ≥ 20 px */
+    --lh-base: 1.35;   /* 15–16 px */
+    --lh-loose: 1.5;   /* ≤ 13 px y texto corrido */
+
+    /* ── Tres alturas de fila. La altura la elige el CONTENIDO, no el punto de
+       ruptura. ── */
+    --row-action: 3.5rem;  /* 56 px — lo que se pulsa; la fila entera es la diana */
+    --row-data: 2.75rem;   /* 44 px — solo lectura */
+    --row-dense: 3rem;     /* 48 px — listas de marcar en marcha (la compra) */
+
     --sidebar: 16rem;
     --topbar: 4.75rem;
+    /* Cromo fijo por encima del contenido: lo usa `scroll-margin-top` para que
+       ningún ancla aterrice debajo de la cabecera. En móvil no hay topbar. */
+    --chrome-top: var(--topbar);
+    /* Alto real de la barra inferior, 0 mientras no exista. Lo consumen el
+       relleno inferior de la página (para que nada quede debajo de la barra,
+       sin scroll que lo saque) y la hoja «Más» (que se posa encima, no sobre
+       ella). */
+    --bottom-nav-h: 0px;
     --content: 76rem;
-    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+    font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    /* El segundo rol no cuesta un segundo fichero: misma familia, cifras
+       tabulares y peso 700. Toda hora, todo importe y toda cuenta lo usan.
+       Alineadas en columna fija, la lista se baja con la vista por las cifras
+       sin leer una palabra. */
+    --font-data: var(--text-data) / var(--lh-tight) 'Atkinson Hyperlegible Next', ui-sans-serif, -apple-system, sans-serif;
     font-synthesis: none;
+  }
+
+  @media (min-width: 48rem) {
+    :root {
+      --space-7: 3rem;   /* 48 px — solo existe a partir de aquí */
+      --pad-page-x: var(--space-6);
+      --pad-page-y: var(--space-6);
+      --pad-card: var(--space-5);
+      --gap-card: var(--space-4);
+      --gap-section: var(--space-7);
+      --text-title: 1.375rem;
+      --text-page: 2rem;
+      --text-data: 1.75rem;
+    }
   }
 
   body {
@@ -58,8 +196,8 @@
     min-height: 100dvh;
     background: var(--canvas);
     color: var(--ink);
-    font-size: 1rem;
-    line-height: 1.5;
+    font-size: var(--text-body);
+    line-height: var(--lh-loose);
     text-rendering: optimizeLegibility;
   }
 
@@ -68,18 +206,24 @@
      texto; las reglas de componente pueden subirlo, nunca bajarlo. */
   input, select, textarea { font-size: max(1em, 1rem); }
 
+  /* Ningún ancla aterriza debajo del cromo fijo. */
+  :target { scroll-margin-top: calc(var(--chrome-top) + var(--space-3)); }
+
   button, a { -webkit-tap-highlight-color: transparent; }
   button { border: 0; background: none; cursor: pointer; }
   button:disabled { cursor: not-allowed; opacity: .55; }
   :focus-visible { outline: .2rem solid var(--primary); outline-offset: .2rem; }
-  ::selection { background: #cfe0d6; }
+  ::selection { background: var(--select-bg); }
   h1, h2, h3, strong { color: var(--ink); }
-  h1, h2, h3 { line-height: 1.15; letter-spacing: -.025em; }
-  h1 { font-size: clamp(2rem, 4vw, 3rem); }
-  h2 { font-size: 1.15rem; }
-  h3 { font-size: 1rem; }
+  h1, h2, h3 { letter-spacing: -.02em; line-height: var(--lh-tight); }
+  /* Se va el `clamp(2rem, 4vw, 3rem)`, que se saturaba en su mínimo en TODO
+     móvil: 32 px fijos para decir lo mismo que la pestaña activa de la barra
+     inferior. Ahora son 24 px, una línea, y dice el ESTADO. */
+  h1 { font-size: var(--text-page); }
+  h2 { font-size: var(--text-title); }
+  h3 { font-size: var(--text-strong); }
   p { color: var(--ink-soft); }
-  small { color: var(--ink-faint); font-size: .77rem; }
+  small { color: var(--ink-faint); font-size: var(--text-meta); line-height: var(--lh-loose); }
   time { font-variant-numeric: tabular-nums; }
 }
 
@@ -87,15 +231,16 @@
   .skip-link {
     position: fixed;
     z-index: 100;
-    top: .75rem;
-    left: .75rem;
+    top: var(--space-3);
+    left: var(--space-3);
     transform: translateY(-180%);
-    border: .15rem solid var(--primary);
-    border-radius: var(--radius-xs);
+    border: 2px solid var(--primary);
+    border-radius: var(--r-md);
     background: var(--surface);
-    padding: .65rem 1rem;
+    padding: var(--space-3) var(--space-4);
     color: var(--primary);
-    font-weight: 750;
+    font-size: var(--text-strong);
+    font-weight: 700;
     text-decoration: none;
   }
   .skip-link:focus { transform: none; }
@@ -105,14 +250,14 @@
     z-index: 60;
     inset: 0 0 auto;
     display: flex;
-    min-height: 2.65rem;
+    min-height: var(--row-data);
     align-items: center;
     justify-content: center;
-    gap: .55rem;
-    padding: .55rem 1rem;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
     background: var(--warning-soft);
     color: var(--warning);
-    font-size: .82rem;
+    font-size: var(--text-meta);
   }
   .status-banner span { color: inherit; }
   .status-banner.danger { background: var(--danger-soft); color: var(--danger); }
@@ -125,17 +270,17 @@
     z-index: 46;
     inset: auto 0 0;
     margin: 0;
-    padding: .22rem 1rem;
+    padding: var(--space-1) var(--space-4);
     border-top: 1px solid var(--line);
     background: var(--warning-soft);
     color: var(--warning);
-    font-size: .75rem;
+    font-size: var(--text-micro);
     text-align: center;
     pointer-events: none;
   }
   .app-shell { min-height: 100dvh; }
-  .app-shell.with-banner { padding-top: 2.65rem; }
-  .app-shell.with-banner .sidebar { top: 2.65rem; }
+  .app-shell.with-banner { padding-top: var(--row-data); }
+  .app-shell.with-banner .sidebar { top: var(--row-data); }
 
   .sidebar {
     position: fixed;
@@ -145,87 +290,87 @@
     width: var(--sidebar);
     flex-direction: column;
     border-right: 1px solid var(--line);
-    background: rgb(255 253 248 / .96);
+    background: var(--surface-veil);
     backdrop-filter: blur(1rem);
   }
   .brand {
     display: flex;
     min-height: var(--topbar);
     align-items: center;
-    gap: .75rem;
-    padding: .85rem 1.15rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     text-decoration: none;
   }
   .brand-mark {
     display: grid;
-    width: 2.55rem;
-    height: 2.55rem;
-    flex: 0 0 2.55rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    flex: 0 0 2.5rem;
     place-items: center;
-    border-radius: .8rem;
+    border-radius: var(--r-md);
     background: var(--primary);
-    color: #fff9ec;
-    font-size: 1.7rem;
+    color: var(--ink-on-brand);
+    font-size: var(--text-title);
     font-weight: 400;
     line-height: 1;
   }
-  .brand-mark.small { width: 2.05rem; height: 2.05rem; flex-basis: 2.05rem; border-radius: .65rem; font-size: 1.35rem; }
+  .brand-mark.small { width: 2rem; height: 2rem; flex-basis: 2rem; border-radius: var(--r-sm); font-size: var(--text-strong); }
   .brand-copy, .profile-copy { display: grid; min-width: 0; }
   /* El nombre del hogar es dato, no texto fijo: puede ser largo y no debe
      ensanchar la barra lateral ni la cabecera móvil. */
-  .brand-copy strong { overflow: hidden; color: var(--primary); font-size: 1.04rem; text-overflow: ellipsis; white-space: nowrap; }
+  .brand-copy strong { overflow: hidden; color: var(--primary); font-size: var(--text-strong); text-overflow: ellipsis; white-space: nowrap; }
   .brand-copy small, .profile-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .side-nav { display: grid; gap: .2rem; overflow-y: auto; padding: .85rem .7rem; }
+  .side-nav { display: grid; gap: var(--space-1); overflow-y: auto; padding: var(--space-3) var(--space-2); }
   .side-nav a, .settings-link {
     display: flex;
-    min-height: 2.85rem;
+    min-height: var(--row-data);
     align-items: center;
-    gap: .75rem;
-    border-radius: .75rem;
-    padding: .55rem .75rem;
+    gap: var(--space-3);
+    border-radius: var(--r-md);
+    padding: var(--space-2) var(--space-3);
     color: var(--ink-soft);
-    font-size: .89rem;
-    font-weight: 650;
+    font-size: var(--text-body);
+    font-weight: 500;
     text-decoration: none;
-    transition: background .16s, color .16s, transform .16s;
+    transition: background .16s, color .16s;
   }
   .side-nav a:hover, .settings-link:hover { background: var(--canvas); color: var(--ink); }
-  .side-nav a:active, .settings-link:active { transform: scale(.985); }
-  .side-nav a.active, .settings-link.active { background: var(--primary-soft); color: var(--primary); }
-  .nav-symbol { display: grid; width: 1.35rem; height: 1.35rem; place-items: center; font-size: 1.05rem; font-weight: 750; line-height: 1; }
-  .sidebar-bottom { display: grid; gap: .45rem; margin-top: auto; padding: .7rem; }
+  .side-nav a.active, .settings-link.active { background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+  .nav-symbol { display: grid; width: 1.25rem; height: 1.25rem; flex: 0 0 1.25rem; place-items: center; line-height: 1; }
+  .nav-symbol > svg { width: 100%; height: 100%; }
+  .sidebar-bottom { display: grid; gap: var(--space-2); margin-top: auto; padding: var(--space-2); }
   .emergency-link {
     display: flex;
-    min-height: 3.75rem;
+    min-height: var(--row-action);
     align-items: center;
-    gap: .75rem;
+    gap: var(--space-3);
     border: 1px solid #efcbc6;
-    border-radius: .85rem;
+    border-radius: var(--r-md);
     background: var(--danger-soft);
-    padding: .55rem .75rem;
+    padding: var(--space-2) var(--space-3);
     color: var(--danger);
     text-decoration: none;
   }
   .emergency-link > span:nth-child(2) { display: grid; }
-  .emergency-link strong { color: var(--danger); font-size: .86rem; }
-  .emergency-link small { color: #89605d; }
-  .profile-block { display: flex; align-items: center; gap: .6rem; min-width: 0; padding: .55rem .4rem .2rem; }
+  .emergency-link strong { color: var(--danger); font-size: var(--text-strong); }
+  .emergency-link small { color: var(--ink-on-danger-soft); }
+  .profile-block { display: flex; align-items: center; gap: var(--space-2); min-width: 0; padding: var(--space-2) var(--space-1) var(--space-1); }
   .avatar, .top-avatar {
     display: grid;
-    width: 2.2rem;
-    height: 2.2rem;
-    flex: 0 0 2.2rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: 0 0 2.25rem;
     place-items: center;
-    border-radius: 50%;
+    border-radius: var(--r-full);
     background: var(--accent-soft);
-    color: #894a31;
-    font-size: .75rem;
-    font-weight: 800;
+    color: var(--ink-on-accent);
+    font-size: var(--text-micro);
+    font-weight: 700;
   }
   .profile-copy { flex: 1; }
-  .profile-copy strong { font-size: .79rem; }
-  .text-button { padding: .35rem; color: var(--primary); font-size: .75rem; font-weight: 750; }
+  .profile-copy strong { font-size: var(--text-meta); }
+  .text-button { min-height: var(--row-data); padding: var(--space-2); color: var(--primary); font-size: var(--text-meta); font-weight: 700; }
 
   .main-column { min-height: 100dvh; margin-left: var(--sidebar); }
   .topbar {
@@ -237,8 +382,8 @@
     align-items: center;
     justify-content: center;
     border-bottom: 1px solid var(--line);
-    background: rgb(246 243 236 / .9);
-    padding: .7rem clamp(1.15rem, 3vw, 2.5rem);
+    background: var(--canvas-veil);
+    padding: var(--space-3) var(--space-6);
     backdrop-filter: blur(1rem);
   }
   .app-shell.with-banner .topbar { top: 0; }
@@ -246,15 +391,15 @@
   .global-search {
     display: flex;
     width: min(31rem, 48%);
-    min-height: 2.8rem;
+    min-height: var(--row-data);
     align-items: center;
-    gap: .65rem;
+    gap: var(--space-2);
     border: 1px solid var(--line);
-    border-radius: .8rem;
+    border-radius: var(--r-md);
     background: var(--surface);
-    padding: .5rem .75rem;
+    padding: var(--space-2) var(--space-3);
     color: var(--ink-faint);
-    font-size: .85rem;
+    font-size: var(--text-body);
     text-decoration: none;
     box-shadow: var(--shadow-xs);
   }
@@ -262,13 +407,13 @@
   /* P3-7: el atajo «⌘ K» solo se enseña donde suele haber teclado físico
      (puntero fino con hover); en tablet y móvil es ruido. El atajo y el
      overlay siguen funcionando igual aunque la pista no se pinte. */
-  .global-search kbd { display: none; border: 1px solid var(--line); border-radius: .35rem; background: var(--canvas); padding: .08rem .35rem; font-size: .68rem; }
+  .global-search kbd { display: none; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--canvas); padding: 0 var(--space-1); font-size: var(--text-micro); }
   @media (hover: hover) and (pointer: fine) {
     .global-search kbd { display: inline-block; }
   }
-  .topbar-actions { position: absolute; right: clamp(1.15rem, 3vw, 2.5rem); display: flex; align-items: center; gap: .7rem; }
-  .sync-pill { display: flex; align-items: center; gap: .4rem; padding: 0; color: var(--ink-faint); font-size: .72rem; }
-  .sync-pill i { width: .47rem; height: .47rem; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 .2rem var(--success-soft); }
+  .topbar-actions { position: absolute; right: var(--space-6); display: flex; align-items: center; gap: var(--space-3); }
+  .sync-pill { display: flex; min-height: var(--row-data); align-items: center; gap: var(--space-1); padding: 0; color: var(--ink-faint); font-size: var(--text-micro); }
+  .sync-pill i { width: .5rem; height: .5rem; border-radius: var(--r-full); background: var(--success); box-shadow: 0 0 0 .2rem var(--success-soft); }
   .sync-pill.pending i { background: var(--warning); box-shadow: 0 0 0 .2rem var(--warning-soft); }
 
   /* Mini-popover del estado de sincronización (P3: el detalle deja de vivir
@@ -277,17 +422,17 @@
   .sync-popover {
     position: fixed;
     z-index: 71;
-    top: calc(var(--topbar) + .35rem);
-    right: clamp(.8rem, 3vw, 2.5rem);
-    width: min(20rem, calc(100% - 1.6rem));
+    top: calc(var(--chrome-top) + var(--space-1));
+    right: var(--space-3);
+    width: min(20rem, calc(100% - var(--space-6)));
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: var(--r-lg);
     background: var(--surface);
-    padding: .8rem .9rem;
-    box-shadow: var(--shadow-lg);
+    padding: var(--space-3);
+    box-shadow: var(--shadow-over);
   }
-  .sync-popover-label { color: var(--ink); font-size: .85rem; }
-  .sync-popover-detail { margin: .3rem 0 .65rem; color: var(--ink-soft); font-size: .78rem; }
+  .sync-popover-label { color: var(--ink); font-size: var(--text-strong); }
+  .sync-popover-detail { margin: var(--space-1) 0 var(--space-3); color: var(--ink-soft); font-size: var(--text-meta); }
 
   /* Feedback de navegación (H-07/P2-4): barra fina indeterminada, fija sobre
      el borde superior (cero CLS) y visible solo en navegaciones lentas. */
@@ -305,7 +450,7 @@
     display: block;
     width: 40%;
     height: 100%;
-    border-radius: 999px;
+    border-radius: var(--r-full);
     animation: nav-progress-slide 1.1s ease-in-out infinite;
     background: var(--primary);
     content: '';
@@ -318,66 +463,78 @@
   .bottom-nav { display: none; }
 
   /* Capa modal del shell: hoja «Más» (móvil) y overlay de búsqueda (⌘K). */
-  .sheet-backdrop { position: fixed; z-index: 70; inset: 0; background: rgb(28 42 34 / .45); }
+  .sheet-backdrop { position: fixed; z-index: 70; inset: 0; background: var(--scrim); }
   .more-sheet {
     position: fixed;
     z-index: 71;
-    inset: auto 0 0;
+    /* Se posa POR ENCIMA de la barra, no sobre ella: la pestaña activa tiene
+       que seguir viéndose mientras la hoja está abierta, que es lo que dice
+       dónde se está. Antes la tapaba entera. */
+    inset: auto 0 var(--bottom-nav-h) 0;
     overflow-y: auto;
-    max-height: 82dvh;
+    max-height: 70dvh;
     border: 1px solid var(--line);
     border-bottom: 0;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
     background: var(--surface);
-    padding: .9rem 1rem calc(1rem + env(safe-area-inset-bottom));
-    box-shadow: var(--shadow-lg);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    box-shadow: var(--shadow-over);
   }
-  .sheet-header { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .5rem; }
-  .sheet-header h2 { color: var(--primary); font-size: .95rem; }
-  .sheet-close { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border: 1px solid var(--line); border-radius: .7rem; background: var(--surface-strong); color: var(--ink-soft); font-size: .95rem; }
+  .sheet-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-2); }
+  .sheet-header h2 { color: var(--primary); font-size: var(--text-strong); }
+  .sheet-close { display: grid; width: var(--row-data); height: var(--row-data); place-items: center; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-strong); color: var(--ink-soft); font-size: var(--text-strong); }
   .sheet-nav { display: grid; }
+  /* La hoja «Más» es la única lista del producto con densidad correcta: se
+     toma como referencia y no se retoca más allá de los tokens. */
   .sheet-nav a {
     display: flex;
-    min-height: 3rem;
+    min-height: var(--row-dense);
     flex-wrap: wrap;
     align-items: center;
-    gap: .75rem;
+    gap: var(--space-3);
     border-top: 1px solid var(--line);
-    border-radius: .35rem;
-    padding: .45rem .35rem;
+    border-radius: var(--r-sm);
+    padding: var(--space-2) var(--space-1);
     color: var(--ink);
-    font-size: .89rem;
-    font-weight: 650;
+    font-size: var(--text-strong);
+    font-weight: 500;
     text-decoration: none;
   }
   .sheet-nav a:first-child { border-top: 0; }
-  .sheet-nav a.active { color: var(--primary); }
+  .sheet-nav a.active { color: var(--primary); font-weight: 700; }
   .sheet-nav a.active .nav-symbol { color: var(--primary); }
   .sheet-nav a.danger { color: var(--danger); }
-  .sheet-nav a small { flex-basis: 100%; margin: -.55rem 0 0 2.1rem; }
+  .sheet-nav a small { flex-basis: 100%; margin: calc(var(--space-2) * -1) 0 0 var(--space-6); }
   .sheet-nav a .nav-symbol { color: var(--ink-faint); }
-  .sheet-logout { margin-top: .65rem; border-top: 1px solid var(--line); padding-top: .65rem; }
-  .sheet-logout button { display: grid; width: 100%; min-height: 3rem; justify-items: start; border-radius: .35rem; padding: .45rem .35rem; color: var(--primary); font-size: .89rem; font-weight: 750; text-align: left; }
-  .sheet-logout small { font-weight: 500; }
+  /* «Salir» no es una sección más: bloque propio tras un divisor. */
+  .sheet-logout { margin-top: var(--space-3); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+  .sheet-logout button { display: grid; width: 100%; min-height: var(--row-dense); justify-items: start; border-radius: var(--r-sm); padding: var(--space-2) var(--space-1); color: var(--primary); font-size: var(--text-strong); font-weight: 700; text-align: left; }
+  .sheet-logout small { font-weight: 400; }
 
   .search-overlay {
     position: fixed;
     z-index: 71;
     top: min(14dvh, 7.5rem);
     left: 50%;
-    width: min(36rem, calc(100% - 1.6rem));
+    width: min(36rem, calc(100% - var(--space-6)));
     transform: translateX(-50%);
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: var(--r-lg);
     background: var(--surface);
-    padding: .65rem;
-    box-shadow: var(--shadow-lg);
+    padding: var(--space-3);
+    box-shadow: var(--shadow-over);
   }
-  .search-overlay form { display: flex; align-items: center; gap: .55rem; }
-  .search-overlay form > span { padding-left: .35rem; color: var(--primary); font-size: 1.4rem; }
-  .search-overlay input { min-height: 2.75rem; flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 1rem; }
-  .search-overlay p { margin: .45rem .4rem 0; font-size: .72rem; color: var(--ink-faint); }
-  .search-overlay .button { min-height: 2.75rem; }
+  .search-overlay form { display: flex; align-items: center; gap: var(--space-2); }
+  .search-overlay form > span { padding-left: var(--space-1); color: var(--primary); font-size: var(--text-title); }
+  .search-overlay input { min-height: var(--row-data); flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: var(--text-strong); }
+  /* El lenguaje de teclado solo donde hay teclado: en móvil nadie tiene Enter
+     ni Escape, y decirlo era ocupar sitio con una instrucción imposible. */
+  .search-overlay p { display: none; margin: var(--space-2) var(--space-1) 0; font-size: var(--text-micro); color: var(--ink-faint); }
+  @media (hover: hover) and (pointer: fine) {
+    .search-overlay p { display: block; }
+  }
+  .search-overlay .button { min-height: var(--row-data); }
+  .search-overlay-close { display: grid; width: var(--row-data); height: var(--row-data); flex: 0 0 var(--row-data); place-items: center; border-radius: var(--r-md); color: var(--ink-soft); font-size: var(--text-strong); }
 }
 
 @keyframes nav-progress-slide {
@@ -386,112 +543,310 @@
 }
 
 @layer components {
-  /* Rutina marcada desde Hoy: la fila no desaparece en seco; queda atenuada y
-     tachada con su chip «Hecha ✓ · próxima el X» (P3). */
-  .ledger-list > .routine-done { opacity: .6; transition: opacity .4s ease; }
-  .ledger-list > .routine-done strong,
-  .ledger-list > .routine-done .routine-detail > summary { text-decoration: line-through; }
-
-  /* El detalle de la rutina, al tocar el título (E5.2). El <summary> tiene que
-     parecer el mismo título que un <strong> y a la vez decir que se pulsa: de
-     ahí el subrayado punteado y el objetivo táctil de 2,75 rem. Cuando la
-     rutina NO tiene detalle no hay <details>, así que el título no finge. */
-  .routine-detail > summary {
-    display: flex; align-items: center; gap: .35rem;
-    min-height: 2.75rem;
-    color: var(--ink); font-size: .84rem; font-weight: 700;
-    text-decoration-line: underline; text-decoration-style: dotted;
-    text-underline-offset: .25rem;
-    cursor: pointer; touch-action: manipulation;
+  /* ─────────────────────────────────────────────────────────────────────────
+     EL MARCO DE PÁGINA
+     Un contenedor por pantalla. Nada de tarjeta dentro de tarjeta: la sangría
+     antes del texto era `page-wrap 18,4 + card 16 = 34,4 px` de 390 —el 9 % del
+     ancho— y ahora son 24.
+     ───────────────────────────────────────────────────────────────────────── */
+  .page-wrap {
+    display: grid;
+    align-content: start;
+    gap: var(--gap-card);
+    width: min(100%, calc(var(--content) + var(--space-6)));
+    margin: 0 auto;
+    padding: var(--pad-page-y) var(--pad-page-x) calc(var(--bottom-nav-h) + var(--space-6));
   }
-  .routine-detail > summary::marker { color: var(--ink-faint); font-size: .7em; }
-  .routine-detail > p { margin: .1rem 0 .5rem; color: var(--ink-soft); font-size: .78rem; }
-  /* En «Esta semana» el título no es una acción: sin objetivo táctil grande. */
-  .routine-week .routine-detail > summary { min-height: 0; font-weight: 600; }
+  /* Cabecera de página: UNA línea de 24 px que dice el estado. El eyebrow y la
+     descripción siguen existiendo en la firma del componente —las 15 llamadas
+     no se rompen— pero no se pintan en móvil: son copy de bienvenida servido
+     en cada visita a alguien que abre esta pantalla todos los días. La
+     descripción se muda al estado vacío, que es donde una explicación hace
+     falta y donde sobra sitio. */
+  .page-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-3) var(--space-4);
+    min-width: 0;
+  }
+  .page-header > div { min-width: 0; }
+  .page-header h1 { color: var(--primary); overflow-wrap: anywhere; }
+  .page-description { max-width: 42rem; margin-top: var(--space-2); font-size: var(--text-body); }
+  .page-actions { display: flex; flex: 0 0 auto; align-items: center; gap: var(--space-2); }
+  /* Línea de apoyo de la cabecera: el nombre del hogar en Hoy, el apartado en
+     una nota de la Guía. 13 px, sin adornos, y NUNCA en terracota. */
+  .page-support { color: var(--ink-soft); font-size: var(--text-meta); }
+  .eyebrow { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 
-  /* En Hoy, los textos que a veces no tocan (el chip de cuenta, la segunda
-     línea de una rutina de hoy, el aviso de que no hay nada) viajan como
-     cadena vacía y los esconde esta regla. No es un truco de estilo: es un
-     bloque condicional menos por texto en el JavaScript de arranque, que es lo
-     que mide `scripts/verify-today-bundle.mjs`. */
-  #rutinas-de-hoy .status-chip:empty,
-  #rutinas-de-hoy .audit-note:empty,
-  .ledger-list small:empty { display: none; }
-
-  /* Encabezados de bloque dentro de la tarjeta de rutinas. «Hoy» solo aparece
-     cuando hay algo atrasado por encima: si no, sobra decir que hoy es hoy. */
-  h3.routine-block { margin-top: 1.1rem; font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
-  .routine-done-list { margin-top: 1.1rem; }
-  .routine-done-list > summary, .routine-week > h3 { font-size: .78rem; font-weight: 700; }
-
-  /* «Esta semana» va separada de lo de hoy con una línea, no con un color:
-     lo de hoy es trabajo y esto es información para planificar. */
-  .routine-week { margin-top: 1.35rem; border-top: 1px solid var(--line); padding-top: 1rem; }
-  .routine-week h4 { margin-top: .8rem; color: var(--ink-soft); font-size: .74rem; font-weight: 700; }
-  .routine-week ul { margin-top: .2rem; list-style: none; }
-  .routine-week li { padding: .28rem 0; font-size: .82rem; }
-  .routine-week li small { color: var(--ink-faint); }
-  .routine-week-repeats { margin-top: .35rem; }
-
-  .page-wrap { width: min(100%, calc(var(--content) + 4rem)); margin: 0 auto; padding: clamp(2rem, 5vw, 3.7rem) clamp(1.15rem, 4vw, 3rem) 5rem; }
-  .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; margin-bottom: 2rem; }
-  .page-header h1 { margin-top: .28rem; color: var(--primary); }
-  .page-description { max-width: 42rem; margin-top: .6rem; font-size: 1rem; }
-  .page-actions { display: flex; flex: 0 0 auto; align-items: center; gap: .6rem; }
-  .eyebrow { color: var(--accent); font-size: .69rem; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
-  .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: clamp(1.15rem, 2.5vw, 1.65rem); box-shadow: var(--shadow-xs); }
-  .card:hover { border-color: #cac5ba; }
+  .card {
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    padding: var(--pad-card);
+  }
   /* La cabecera de sección envuelve en móvil: con tres piezas (título, apoyo y
      acción) su mínimo intrínseco superaba los 320 px y arrastraba a la tarjeta
      entera fuera de la pantalla. */
-  .section-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .5rem 1rem; }
+  .section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-4); }
   .section-heading > * { min-width: 0; }
-  .section-heading h2 { margin-top: .22rem; }
-  .section-heading > a { color: var(--primary); font-size: .78rem; font-weight: 750; text-decoration: none; }
-  .section-heading > a:hover { text-decoration: underline; }
-  .button {
+  /* Regla del enlace-fila: ningún enlace de navegación es un `<a>` de 19 px
+     suelto dentro de un encabezado. Se convierte en chip con diana completa. */
+  .section-heading > a {
     display: inline-flex;
-    min-height: 2.65rem;
+    min-height: var(--row-data);
     align-items: center;
-    justify-content: center;
-    border: 1px solid transparent;
-    border-radius: .72rem;
-    padding: .6rem 1rem;
-    font-size: .84rem;
-    font-weight: 750;
+    border-radius: var(--r-md);
+    padding: var(--space-2) var(--space-3);
+    margin: 0 calc(var(--space-3) * -1);
+    color: var(--primary);
+    font-size: var(--text-meta);
+    font-weight: 700;
     text-decoration: none;
   }
-  .button.primary { background: var(--primary); color: #fff; }
+  .section-heading > a:hover { background: var(--primary-pale); }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     GRAMÁTICA DE ACCIONES — tres pesos y solo tres
+     ───────────────────────────────────────────────────────────────────────── */
+  .button {
+    display: inline-flex;
+    /* 2.75rem = 44 px clavados. Antes eran 2.65rem = 42,4: dos píxeles cortos
+       en toda la aplicación, que es lo peor de los dos mundos. */
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-meta);
+    font-weight: 700;
+    line-height: var(--lh-base);
+    text-align: center;
+    text-decoration: none;
+    touch-action: manipulation;
+  }
+  .button.primary { background: var(--primary); color: var(--ink-on-primary); }
   .button.primary:hover { background: var(--primary-hover); }
-  .button.secondary { border-color: var(--line); background: var(--surface-strong); color: var(--primary); }
+  .button.secondary { border-color: var(--line-strong); background: var(--surface-strong); color: var(--primary); }
   .button.secondary:hover { border-color: var(--primary); background: var(--primary-pale); }
+  /* El tercer peso existía en `:root` y no se usaba nunca. Ahora la acción
+     destructiva se ve destructiva. */
+  .button.danger { border-color: var(--danger); background: var(--surface-strong); color: var(--danger); }
+  .button.danger:hover { background: var(--danger-soft); }
   .button.full { width: 100%; }
-  .button.small-button { min-height: 2.25rem; padding: .4rem .75rem; }
-  .status-chip { display: inline-flex; align-items: center; border-radius: 999px; padding: .28rem .55rem; font-size: .68rem; font-weight: 750; white-space: nowrap; }
+  /* `small-button` deja de significar «más pequeño» y pasa a significar «más
+     estrecho»: 44 px de alto, menos relleno lateral. Antes medía 36. Estrecho
+     tiene suelo: 44 también de ancho, que es lo que mide un dedo. */
+  .button.small-button { min-height: 2.75rem; min-width: 2.75rem; padding: var(--space-2); font-size: var(--text-meta); }
+
+  .status-chip { display: inline-flex; align-items: center; border-radius: var(--r-full); padding: var(--space-1) var(--space-2); font-size: var(--text-meta); font-weight: 700; white-space: nowrap; }
   .status-chip.warning { background: var(--warning-soft); color: var(--warning); }
   .status-chip.success { background: var(--success-soft); color: var(--success); }
+  /* «Ahora» es lo único que se pinta en terracota. */
+  .status-chip.now, .is-now { color: var(--accent); }
+  .status-chip.now { background: var(--accent-soft); }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     LAS TRES ALTURAS DE FILA (§2.3)
+     La altura la elige el CONTENIDO, no el punto de ruptura.
+     ───────────────────────────────────────────────────────────────────────── */
+  .fila-lista { display: grid; }
+  .fila-accion, .fila-dato, .fila-densa {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--line);
+    padding: var(--space-2) 0;
+    text-align: left;
+  }
+  .fila-lista > :first-child.fila-accion,
+  .fila-lista > :first-child.fila-dato,
+  .fila-lista > :first-child.fila-densa,
+  .fila-lista > li:first-child > .fila-accion { border-top: 0; }
+  /* Lo que se pulsa: la FILA ENTERA es la diana, de 56 px. */
+  .fila-accion { min-height: var(--row-action); }
+  /* Solo lectura: 44 px, sin diana. */
+  .fila-dato { min-height: var(--row-data); }
+  /* Listas de marcar en marcha (la compra en el súper): 48 px, fila entera. */
+  .fila-densa { min-height: var(--row-dense); }
+  button.fila-accion, a.fila-accion, button.fila-densa, a.fila-densa {
+    width: 100%;
+    border-left: 0; border-right: 0; border-bottom: 0;
+    background: none;
+    color: inherit;
+    text-decoration: none;
+    touch-action: manipulation;
+  }
+  button.fila-accion:hover strong, a.fila-accion:hover strong { color: var(--primary); }
+  /* El nombre de la cosa, a 16 px. Antes medía 14,08 y competía en desventaja
+     con un título de pantalla de 32 que no informaba de nada. */
+  .fila-accion strong, .fila-dato strong, .fila-densa strong {
+    display: block;
+    font-size: var(--text-strong);
+    font-weight: 500;
+    line-height: var(--lh-base);
+  }
+  .fila-accion small, .fila-dato small, .fila-densa small { display: block; }
+  .fila-cuerpo { display: grid; min-width: 0; gap: 0; }
+  .fila-fin { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     FilaDeImporte (§2.8) — un solo componente para todo el dinero y toda hora
+       [ concepto que se recorta con ellipsis …… ] [ 1.430,00 € ]
+                                                    ^ columna fija, tabular
+     El importe nunca se mueve: si algo no cabe, se recorta el concepto. Con eso
+     las cifras vuelven a formar columna y se pueden barrer con la vista.
+     ───────────────────────────────────────────────────────────────────────── */
+  .cifra {
+    font: var(--font-data);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    white-space: nowrap;
+  }
+  .cifra.pequena { font-size: var(--text-strong); }
+  .cifra.ahora { color: var(--accent); }
+  .fila-importe > .cifra, .fila-dato > .cifra, .fila-accion > .cifra { justify-self: end; text-align: right; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     .check-row — casilla de 20 px con diana de 44 y fila entera pulsable.
+     Antes el `input[type=checkbox]` de la compra medía 13×13 (el 9 % del área
+     necesaria) y el de los quince alérgenos, 13×13 con 6 px entre etiquetas:
+     el formulario que decide si un niño con alergia alta a la lactosa come.
+     ───────────────────────────────────────────────────────────────────────── */
+  .check-row {
+    display: grid;
+    grid-template-columns: var(--space-5) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--row-dense);
+    border-top: 1px solid var(--line);
+    padding: var(--space-2) 0;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .check-row:first-child { border-top: 0; }
+  .check-row > input[type='checkbox'] {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin: 0;
+    accent-color: var(--primary);
+  }
+  .check-row > span { min-width: 0; font-size: var(--text-strong); line-height: var(--lh-base); }
+  .check-row.checked > span { color: var(--ink-faint); text-decoration: line-through; }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     .note — UN solo aviso. Sustituye a `.queued-note`, `.success-message`,
+     `.form-error`, `.wiki-confirm`, `.allergen-block` y `.demo-note`: seis
+     cajas con seis rellenos y cinco tamaños de letra.
+     ───────────────────────────────────────────────────────────────────────── */
+  .note, .queued-note, .success-message, .form-error, .demo-note, .allergen-block, .wiki-confirm {
+    display: grid;
+    gap: var(--space-2);
+    border-radius: var(--r-md);
+    padding: var(--space-3);
+    font-size: var(--text-body);
+    font-weight: 500;
+    line-height: var(--lh-loose);
+  }
+  .note.info { background: var(--info-soft); color: var(--info); }
+  .note.success, .success-message { background: var(--success-soft); color: var(--success); }
+  .note.pending, .queued-note, .demo-note, .allergen-block, .wiki-confirm { background: var(--warning-soft); color: var(--warning); }
+  .note.error, .form-error { background: var(--danger-soft); color: var(--danger); }
+  .note strong, .queued-note strong, .success-message strong, .form-error strong, .demo-note strong, .allergen-block strong, .wiki-confirm strong { color: inherit; }
+  /* El acuse aparece DONDE ESTABA EL DEDO y no empuja nada: el hueco se
+     reserva en la fila. Antes se insertaba sobre la tarjeta y bajaba el
+     contenido ~90 px, con lo que el dedo quedaba sobre otra fila. */
+  .note-slot { display: grid; min-height: var(--space-5); align-content: center; }
+  .note-slot:empty { min-height: 0; }
+  .note.fila { margin: 0; padding: 0 0 var(--space-1); background: none; font-size: var(--text-meta); }
+  .note.fila.success { color: var(--success); }
+  .note.fila.pending { color: var(--warning); }
+  .note.fila.error { color: var(--danger); }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     DESBORDAMIENTO CON SEÑAL (§2.7)
+     Tira de chips: ≤4 envuelven; >4 van en scroller con máscara en degradado y
+     un chip siempre cortado a la mitad, nunca pegado al borde.
+     ───────────────────────────────────────────────────────────────────────── */
+  .chip-strip { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+  .chip-strip.scroller {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: var(--space-1);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - var(--space-6)), transparent 100%);
+  }
+  .chip-strip.scroller::-webkit-scrollbar { display: none; }
+  .chip-strip > * { flex: 0 0 auto; }
+  .chip {
+    display: inline-flex;
+    min-height: var(--row-data);
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--r-full);
+    background: var(--surface);
+    padding: var(--space-2) var(--space-4);
+    color: var(--ink-soft);
+    font-size: var(--text-meta);
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+    touch-action: manipulation;
+  }
+  .chip.active { border-color: var(--primary); background: var(--primary); color: var(--ink-on-primary); font-weight: 700; }
+
+  /* Tabla de datos → FILAS-FICHA por debajo de 600 px. La primera columna es el
+     título del bloque y el resto son pares etiqueta/valor a ancho completo. Se
+     acabó el `overflow-x: auto` mudo que cortaba «Avisar si» a media palabra
+     («Hay manchas,») justo en la columna que dice cuándo llamar a la familia. */
+  .tabla-ficha { display: grid; gap: var(--space-3); }
+  .tabla-ficha > article { display: grid; gap: var(--space-1); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--space-3); }
+  .tabla-ficha > article > h4 { font-size: var(--text-strong); }
+  .tabla-ficha dl { display: grid; gap: var(--space-1); margin: 0; }
+  .tabla-ficha dt { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .tabla-ficha dd { margin: 0; font-size: var(--text-meta); line-height: var(--lh-loose); }
+
   /* `minmax(0, 1fr)` y no `1fr` a secas: un `1fr` implícito arranca en
      `min-content`, así que el ancho mínimo de cualquier control interior
      empujaba la columna —y el documento— más allá del viewport. */
-  .stack { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1rem; }
-  .content-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(17rem, .8fr); gap: 1rem; }
-  .card-footnote, .audit-note { margin-top: 1rem; font-size: .75rem; }
+  .stack { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: var(--space-4); }
+  .content-grid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(17rem, .8fr); gap: var(--gap-card); }
+  .card-footnote, .audit-note { margin-top: var(--space-3); font-size: var(--text-body); line-height: var(--lh-loose); }
+  /* Un enlace que es NAVEGACIÓN no puede medir 17 px de alto por vivir dentro
+     de una nota: si la nota es solo el enlace, la nota entera es la diana. */
+  .audit-note > a:only-child, .card-footnote > a:only-child {
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+  }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .empty-state { display: grid; min-height: 18rem; place-items: center; align-content: center; gap: .65rem; text-align: center; }
-  .empty-state > span { color: var(--line-strong); font-size: 2.5rem; }
-  .empty-state p { max-width: 30rem; }
-  .success-message { margin: 1rem 0; border-radius: .65rem; background: var(--success-soft); padding: .65rem .8rem; color: var(--success); font-size: .8rem; font-weight: 700; }
+  /* Sin `min-height: 18rem`: 288 px de vacío reservado en Calendario a 320 px.
+     El vacío se dimensiona por su contenido y es DONDE VIVE la descripción de
+     la pantalla. */
+  .empty-state { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-5) var(--space-3); text-align: center; }
+  .empty-state > span { color: var(--line-strong); font-size: var(--text-page); }
+  .empty-state p { max-width: 30rem; font-size: var(--text-body); }
 
-  /* Formularios de acción del expediente laboral (outbox offline-first). */
-  .action-form { display: grid; gap: .65rem; margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 1rem; }
-  .action-form form { display: grid; gap: .65rem; }
-  .action-form h3 { font-size: .84rem; }
-  .action-form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  /* ─────────────────────────────────────────────────────────────────────────
+     FORMULARIOS (§2.9) — UNA sola columna por debajo de 600 px, sin
+     excepciones. La rejilla `auto-fit` de antes daba dos columnas de 155 px a
+     390 para campos que llevan importes y meses.
+     ───────────────────────────────────────────────────────────────────────── */
+  .action-form { display: grid; gap: var(--space-3); margin-top: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-4); }
+  .action-form form { display: grid; gap: var(--space-3); }
+  .action-form h3 { font-size: var(--text-strong); }
+  .action-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-body); font-weight: 700; }
   .action-form input, .action-form select, .action-form textarea {
+    min-height: var(--row-data);
     border: 1px solid var(--line-strong);
-    border-radius: .6rem;
+    border-radius: var(--r-sm);
     background: var(--surface);
-    padding: .5rem .65rem;
+    padding: var(--space-2) var(--space-3);
     color: var(--ink);
     /* ≥16 px efectivos: evita el zoom automático de iOS al enfocar (P2-3). */
     font-size: 1rem;
@@ -504,219 +859,335 @@
   /* Los campos del formulario ocupan su columna entera; las casillas y los
      radios conservan su tamaño de siempre. */
   .action-form label > input, .action-form label > select, .action-form label > textarea { width: 100%; }
-  .action-form label.inline-check > input { width: auto; }
-  /* `min(9rem, 100%)`: la columna mínima nunca supera al contenedor, así que
-     en pantallas muy estrechas la rejilla apila en vez de desbordar. */
-  .action-form .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(9rem, 100%), 1fr)); gap: .6rem; }
+  .action-form label.inline-check > input { width: auto; min-height: 0; }
+  .action-form .form-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  /* Los pares que de verdad SON un par (horas + minutos, primer día + último
+     día) se declaran explícitos, no por `auto-fit`. */
+  .action-form .form-grid.par { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* Justificante: «elegir fichero» y «hacer la foto» son dos campos, porque el
      atributo `capture` del segundo hace que el móvil abra la cámara y deje de
      ofrecer la galería. Van juntos bajo una sola leyenda. */
-  .receipt-field { display: grid; gap: .5rem; margin: 0; border: 0; padding: 0; }
-  .receipt-field legend { padding: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
-  .field-hint { margin: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 500; line-height: 1.45; }
-  /* P2-2 rutinas: «Se repite cada [2] [semanas]» leído como frase única. */
-  .repeat-fieldset { display: grid; gap: .28rem; margin: 0; border: 0; padding: 0; }
-  .repeat-fieldset legend { padding: 0; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
-  .repeat-phrase { display: flex; align-items: center; gap: .45rem; }
-  .repeat-phrase > span { color: var(--ink); font-size: 1rem; }
-  .repeat-phrase input { width: 4.5rem; }
-  .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-  /* Apertura de liquidación: fecha de vencimiento junto al botón de cabecera. */
-  .open-settlement-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; }
-  .open-settlement-form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
-  .open-settlement-form input {
+  .receipt-field { display: grid; gap: var(--space-2); margin: 0; border: 0; padding: 0; }
+  .receipt-field legend { padding: 0; color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
+  /* Control nativo domado: «Choose File / No file chosen» salía en inglés en el
+     camino de la foto del justificante, que es un paso clave de la interna. */
+  input[type='file'] { font-size: var(--text-meta); }
+  input[type='file']::file-selector-button {
+    min-height: 2.75rem;
+    margin-right: var(--space-3);
     border: 1px solid var(--line-strong);
-    border-radius: .6rem;
+    border-radius: var(--r-md);
+    background: var(--surface-strong);
+    padding: var(--space-2) var(--space-3);
+    color: var(--primary);
+    font: inherit;
+    font-weight: 700;
+  }
+  .field-hint { margin: 0; color: var(--ink-soft); font-size: var(--text-body); font-weight: 400; line-height: var(--lh-loose); }
+  /* P2-2 rutinas: «Se repite cada [2] [semanas]» leído como frase única. */
+  .repeat-fieldset { display: grid; gap: var(--space-1); margin: 0; border: 0; padding: 0; }
+  .repeat-fieldset legend { padding: 0; color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
+  .repeat-phrase { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .repeat-phrase > span { color: var(--ink); font-size: var(--text-strong); }
+  .repeat-phrase input { width: 4.5rem; }
+  .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  /* La destructiva va separada por un divisor y agrupada al final del bloque de
+     su dueño, a ≥8 px de cualquier otra diana. */
+  .action-row.destructiva { margin-top: var(--space-3); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+  /* Apertura de liquidación: fecha de vencimiento junto al botón de cabecera. */
+  .open-settlement-form { display: grid; gap: var(--space-3); }
+  .open-settlement-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-body); font-weight: 700; }
+  .open-settlement-form input {
+    min-height: var(--row-data);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r-sm);
     background: var(--surface);
-    padding: .5rem .65rem;
+    padding: var(--space-2) var(--space-3);
     color: var(--ink);
     /* ≥16 px efectivos: evita el zoom automático de iOS al enfocar (P2-3). */
     font-size: 1rem;
   }
-  .inline-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
-  .queued-note { margin-top: .6rem; border-radius: .65rem; background: var(--warning-soft); padding: .55rem .75rem; color: var(--warning); font-size: .75rem; font-weight: 700; }
+  .inline-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
 
   .login-stage, .error-stage {
     display: grid;
     min-height: 100dvh;
     place-items: center;
-    padding: 2rem 1rem;
+    padding: var(--space-5) var(--space-4);
     background: radial-gradient(circle at 12% 12%, rgb(200 118 78 / .14), transparent 30%), radial-gradient(circle at 88% 88%, rgb(33 72 58 / .17), transparent 34%), var(--canvas);
   }
-  .login-card { width: min(100%, 47rem); border: 1px solid var(--line); border-radius: 1.7rem; background: var(--surface); padding: clamp(1.5rem, 5vw, 3rem); box-shadow: var(--shadow-lg); }
-  .login-brand { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.7rem; }
+  .login-card { width: min(100%, 47rem); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); padding: var(--space-5); box-shadow: var(--shadow-over); }
+  .login-brand { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
   .login-brand > div { display: grid; }
   .login-brand strong { color: var(--primary); }
-  .login-brand span:last-child { color: var(--ink-faint); font-size: .77rem; }
-  .login-card h1 { margin-top: .35rem; color: var(--primary); }
-  .login-card .lede { max-width: 36rem; margin-top: .65rem; }
+  .login-brand span:last-child { color: var(--ink-faint); font-size: var(--text-meta); }
+  .login-card h1 { margin-top: var(--space-1); color: var(--primary); }
+  .login-card .lede { max-width: 36rem; margin-top: var(--space-2); }
   /* Formulario de entrada real (usuario + contraseña): mismos campos que
      .action-form, sin el separador superior que allí marca «zona de acciones». */
-  .login-form { display: grid; gap: .85rem; max-width: 24rem; margin-top: 1.6rem; }
-  .login-form label { display: grid; gap: .3rem; color: var(--ink-soft); font-size: .78rem; font-weight: 700; }
+  .login-form { display: grid; gap: var(--space-3); max-width: 24rem; margin-top: var(--space-5); }
+  .login-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
   .login-form input {
     width: 100%;
-    min-height: 2.9rem;
+    min-height: 2.75rem;
     border: 1px solid var(--line-strong);
-    border-radius: .7rem;
-    background: white;
-    padding: .6rem .75rem;
+    border-radius: var(--r-md);
+    background: var(--surface-strong);
+    padding: var(--space-2) var(--space-3);
     color: var(--ink);
     font-size: 1rem;
   }
   .login-form input:focus-visible { border-color: var(--primary); outline: 2px solid var(--primary-pale); }
-  .login-form .button { margin-top: .35rem; }
-  .account-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-top: 1.6rem; }
-  .account-grid form:last-child { grid-column: 1 / -1; }
-  .account-card { display: flex; width: 100%; min-height: 5rem; align-items: center; gap: .75rem; border: 1px solid var(--line); border-radius: .8rem; background: var(--surface-strong); padding: .7rem; text-align: left; transition: border .16s, background .16s, transform .16s; }
+  .login-form .button { margin-top: var(--space-1); }
+  .account-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); margin-top: var(--space-5); }
+  .account-card { display: flex; width: 100%; min-height: var(--row-action); align-items: center; gap: var(--space-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-strong); padding: var(--space-3); text-align: left; transition: border .16s, background .16s; }
   .account-card:hover { border-color: var(--primary); background: var(--primary-pale); }
-  .account-card:active { transform: scale(.99); }
   .account-copy { display: grid; min-width: 0; flex: 1; }
   .account-copy strong, .account-copy span, .account-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .account-copy span { color: var(--ink-soft); font-size: .76rem; }
-  .account-copy small { font-size: .66rem; }
-  .account-arrow { color: var(--primary); font-weight: 800; }
-  .demo-note { margin-top: 1.3rem; border-radius: .7rem; background: var(--warning-soft); padding: .75rem .9rem; color: var(--warning); font-size: .75rem; }
-  .demo-note strong { color: inherit; }
-  .form-error { margin-top: 1rem; border-radius: .65rem; background: var(--danger-soft); padding: .65rem .8rem; color: var(--danger); font-size: .8rem; font-weight: 700; }
-  .error-card { width: min(100%, 34rem); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); padding: clamp(1.5rem, 6vw, 3rem); box-shadow: var(--shadow-lg); }
-  .error-card .eyebrow { margin-top: 1.5rem; }
-  .error-card h1 { margin-top: .35rem; color: var(--primary); }
-  .error-card p:not(.eyebrow) { margin: .8rem 0 1.4rem; }
+  .account-copy strong { font-size: var(--text-strong); font-weight: 500; }
+  .account-copy span { color: var(--ink-soft); font-size: var(--text-meta); }
+  .account-copy small { font-size: var(--text-micro); }
+  .account-arrow { color: var(--primary); font-weight: 700; }
+  .demo-note { margin-top: var(--space-4); }
+  .form-error, .success-message, .queued-note { margin: var(--space-3) 0; }
+  .error-card { width: min(100%, 34rem); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); padding: var(--space-5); box-shadow: var(--shadow-over); }
+  .error-card .eyebrow { margin-top: var(--space-5); }
+  .error-card h1 { margin-top: var(--space-1); color: var(--primary); }
+  .error-card p:not(.eyebrow) { margin: var(--space-3) 0 var(--space-4); }
+
+  /* ─────────────────────────────────────────────────────────────────────────
+     RUTINAS EN HOY — lo que queda del bloque anterior, ya en tokens.
+     ───────────────────────────────────────────────────────────────────────── */
+  .routine-done { opacity: .6; transition: opacity .4s ease; }
+  .routine-done strong, .routine-done .routine-detail > summary { text-decoration: line-through; }
+
+  /* El detalle de la rutina, al tocar el título (E5.2). El <summary> tiene que
+     parecer el mismo título que un <strong> y a la vez decir que se pulsa: de
+     ahí el subrayado punteado y la diana de 44 px. Cuando la rutina NO tiene
+     detalle no hay <details>, así que el título no finge. */
+  .routine-detail > summary {
+    display: flex; align-items: center; gap: var(--space-1);
+    min-height: var(--row-data);
+    color: var(--ink); font-size: var(--text-strong); font-weight: 500;
+    text-decoration-line: underline; text-decoration-style: dotted;
+    text-underline-offset: .25rem;
+    cursor: pointer; touch-action: manipulation;
+  }
+  .routine-detail > summary::marker { color: var(--ink-faint); font-size: var(--text-micro); }
+  .routine-detail > p { margin: var(--space-1) 0 var(--space-2); color: var(--ink-soft); font-size: var(--text-meta); }
+  /* En «Esta semana» el título no es una acción: sin diana grande. */
+  .routine-week .routine-detail > summary { min-height: var(--row-data); }
+
+  /* En Hoy, los textos que a veces no tocan (el chip de cuenta, la segunda
+     línea de una rutina de hoy, el aviso de que no hay nada) viajan como
+     cadena vacía y los esconde esta regla. No es un truco de estilo: es un
+     bloque condicional menos por texto en el JavaScript de arranque, que es lo
+     que mide `scripts/verify-today-bundle.mjs`. */
+  #rutinas-de-hoy .status-chip:empty,
+  #rutinas-de-hoy .audit-note:empty,
+  .fila-lista small:empty { display: none; }
+
+  /* Encabezados de bloque dentro de la tarjeta de rutinas. «Hoy» solo aparece
+     cuando hay algo atrasado por encima: si no, sobra decir que hoy es hoy. */
+  h3.routine-block, .rotulo {
+    margin-top: var(--space-4);
+    color: var(--ink-faint);
+    font-size: var(--text-micro);
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  h3.routine-block:first-of-type, .rotulo:first-child { margin-top: 0; }
+  .routine-done-list { margin-top: var(--space-4); }
+  .routine-done-list > summary, .routine-week > h3 { min-height: var(--row-data); display: flex; align-items: center; font-size: var(--text-meta); font-weight: 700; cursor: pointer; }
+
+  /* «Esta semana» va separada de lo de hoy con una línea, no con un color:
+     lo de hoy es trabajo y esto es información para planificar. */
+  .routine-week { margin-top: var(--space-4); border-top: 1px solid var(--line); padding-top: var(--space-3); }
+  .routine-week h4 { margin-top: var(--space-3); color: var(--ink-soft); font-size: var(--text-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .routine-week ul { margin-top: var(--space-1); padding: 0; list-style: none; }
+  .routine-week li { display: grid; gap: 0; padding: var(--space-1) 0; font-size: var(--text-meta); }
+  .routine-week li small { color: var(--ink-faint); }
+  .routine-week-repeats { margin-top: var(--space-2); }
 }
 
 @layer pages {
-  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(18rem, .85fr); gap: 1rem; }
-  .today-side { display: grid; align-content: start; gap: 1rem; }
-  .task-list { display: grid; margin-top: 1rem; }
-  .task-row { display: grid; grid-template-columns: 1.45rem 3rem minmax(0, 1fr); align-items: center; gap: .7rem; min-height: 4rem; border-top: 1px solid var(--line); padding: .55rem .1rem; text-align: left; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(18rem, .85fr); gap: var(--gap-card); }
+  .today-side { display: grid; align-content: start; gap: var(--gap-card); }
+  .task-list { display: grid; margin-top: var(--space-3); }
+  .task-row { display: grid; grid-template-columns: 1.5rem 3rem minmax(0, 1fr); align-items: center; gap: var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-2) 0; text-align: left; touch-action: manipulation; }
   .task-row:first-child { border-top: 0; }
   .task-row:not(:disabled):hover .task-copy strong { color: var(--primary); }
-  .task-check { display: grid; width: 1.35rem; height: 1.35rem; place-items: center; border: 1.5px solid var(--line-strong); border-radius: 50%; color: white; font-size: .72rem; }
+  .task-check { display: grid; width: 1.25rem; height: 1.25rem; place-items: center; border: 2px solid var(--line-strong); border-radius: var(--r-full); color: var(--ink-on-primary); font-size: var(--text-micro); }
   .task-row.done .task-check { border-color: var(--success); background: var(--success); }
   .task-row.done .task-copy strong { color: var(--ink-faint); text-decoration: line-through; }
-  .task-time { color: var(--ink-faint); font-size: .72rem; }
+  /* La hora es dato: tabular y en columna. */
+  .task-time { color: var(--ink-faint); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
   .task-copy, .meal-list span, .agenda-row span { display: grid; }
-  .task-copy strong { font-size: .88rem; }
-  .meal-list { display: grid; margin-top: .85rem; }
-  .meal-list > div { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: .7rem; border-top: 1px solid var(--line); padding: .75rem 0; }
-  .meal-list time { color: var(--accent); font-size: .7rem; font-weight: 750; }
-  .meal-list strong { font-size: .82rem; }
-  .agenda-row { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: .7rem; border-top: 1px solid var(--line); padding: .8rem 0; }
-  .agenda-card .section-heading + .agenda-row { margin-top: .7rem; }
-  .agenda-row time { color: var(--info); font-size: .73rem; font-weight: 750; }
-  .agenda-row strong { font-size: .82rem; }
-  .day-note { display: flex; align-items: flex-start; gap: .8rem; margin-top: 1rem; border: 1px solid #ead3c5; border-radius: var(--radius); background: #fff8f2; padding: 1rem 1.2rem; }
+  .task-copy strong { font-size: var(--text-strong); font-weight: 500; }
+  .meal-list { display: grid; margin-top: var(--space-3); }
+  .meal-list > div { display: grid; grid-template-columns: 3rem minmax(0, 1fr); align-items: center; gap: var(--space-3); min-height: var(--row-data); border-top: 1px solid var(--line); padding: var(--space-2) 0; }
+  /* La hora de la siguiente comida SÍ es «ahora»: terracota justificado. */
+  .meal-list time { color: var(--accent); font-size: var(--text-meta); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .meal-list strong { font-size: var(--text-strong); font-weight: 500; }
+  .agenda-row { display: grid; grid-template-columns: 3rem minmax(0, 1fr); align-items: center; gap: var(--space-3); min-height: var(--row-data); border-top: 1px solid var(--line); padding: var(--space-2) 0; }
+  .agenda-card .section-heading + .agenda-row { margin-top: var(--space-2); }
+  .agenda-row time { color: var(--info); font-size: var(--text-meta); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .agenda-row strong { font-size: var(--text-strong); font-weight: 500; }
+  .day-note { display: flex; align-items: flex-start; gap: var(--space-3); border: 1px solid #ead3c5; border-radius: var(--r-lg); background: var(--accent-pale); padding: var(--space-3); }
   .day-note > span { color: var(--accent); }
-  .day-note strong { font-size: .82rem; }
-  .day-note p { font-size: .82rem; }
+  .day-note strong { font-size: var(--text-strong); font-weight: 500; }
+  .day-note p { font-size: var(--text-meta); }
 
-  .summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 1rem; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
-  .summary-strip > div { display: grid; gap: .2rem; border-left: 1px solid var(--line); padding: 1.05rem 1.2rem; }
+  /* Tira de cifras. Nunca apilada: rejilla 2×2 de celdas cortas. Y antes de
+     maquetarla se borra lo repetido —cuando no hay reembolsos, «total salarial»
+     y «total previsto» son el mismo número—. */
+  .summary-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+  /* Cuando se borra la cifra repetida quedan dos celdas, no cuatro con dos
+     huecos: la rejilla lo dice, no lo finge con columnas vacías. */
+  .summary-strip.dos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-strip > div { display: grid; align-content: center; gap: var(--space-1); border-left: 1px solid var(--line); padding: var(--space-3); }
   .summary-strip > div:first-child { border-left: 0; }
-  .summary-strip span { color: var(--ink-faint); font-size: .7rem; }
-  .summary-strip strong { font-size: 1rem; }
+  .summary-strip span { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .summary-strip strong { font-size: var(--text-strong); font-variant-numeric: tabular-nums lining-nums; }
   .summary-strip .total { background: var(--primary); }
-  .summary-strip .total span, .summary-strip .total strong { color: white; }
-  .ledger-list { display: grid; margin-top: 1rem; }
-  /* Concepto e importe envuelven en móvil en vez de estirar la fila: el
-     concepto puede ser largo y el importe lleva su chip o sus botones. */
-  .ledger-list > div, .balance-list > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .35rem 1rem; border-top: 1px solid var(--line); padding: .85rem 0; }
+  .summary-strip .total span, .summary-strip .total strong { color: var(--ink-on-primary); }
+  /* La cifra grande del resumen: una sola, en `--text-data`, con su desglose
+     debajo. Antes la primera pantalla entregaba cuatro números, tres de ellos
+     el mismo, a 158 px por fila. */
+  .summary-strip .total strong { font-size: var(--text-data); }
+
+  /* `.ledger-list` es ya una lista de FilaDeImporte: rejilla de dos columnas
+     donde el importe no se mueve nunca. Antes era `flex-wrap: wrap` con
+     `space-between`, así que el envoltorio decidía fila a fila si el importe
+     iba a la derecha o caía debajo: a 390 px, 13 a la derecha y 12 caídas; a
+     320, 3 y 22, en doce posiciones horizontales distintas. */
+  .ledger-list, .balance-list { display: grid; margin-top: var(--space-3); }
+  .ledger-list > div, .balance-list > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    min-height: var(--row-action);
+    border-top: 1px solid var(--line);
+    padding: var(--space-2) 0;
+  }
+  .ledger-list > div:first-child, .balance-list > div:first-child { border-top: 0; }
   .ledger-list > div > span, .balance-list > div > span { display: grid; min-width: 0; }
-  .ledger-list strong, .balance-list strong { font-size: .84rem; }
-  .ledger-total { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .35rem .75rem; border-radius: .7rem; background: var(--primary-soft); padding: .9rem 1rem; color: var(--primary); }
-  .ledger-total strong { color: var(--primary); font-size: 1.15rem; }
+  /* La línea de apoyo de una fila es un VISTAZO: tres líneas y lo que sobre se
+     lee en el detalle. Sin este tope una fila del expediente medía cinco líneas
+     de meta y la lista dejaba de ser una lista. */
+  .ledger-list small, .balance-list small, .fila-lista small {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+  }
+  .ledger-list strong, .balance-list strong { font-size: var(--text-strong); font-weight: 500; }
+  .ledger-total { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border-radius: var(--r-md); background: var(--primary-soft); padding: var(--space-3); color: var(--primary); }
+  .ledger-total strong { color: var(--primary); font: var(--font-data); font-variant-numeric: tabular-nums lining-nums; }
   .quiet-card { background: var(--primary-pale); }
-  .quiet-card h2 { margin-top: .6rem; }
-  .quiet-card p { margin: .45rem 0 1rem; font-size: .84rem; }
-  .card-icon { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: .6rem; background: var(--primary); color: white; }
+  .quiet-card p { margin: var(--space-2) 0 var(--space-3); font-size: var(--text-body); }
+  .card-icon { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: var(--r-sm); background: var(--primary); color: var(--ink-on-primary); }
 
-  .day-tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .5rem; margin-bottom: 1rem; }
-  .day-tabs button { display: grid; min-height: 3.7rem; place-items: center; align-content: center; border: 1px solid var(--line); border-radius: .75rem; background: var(--surface); color: var(--ink-soft); }
-  .day-tabs button span { font-size: .68rem; }
-  .day-tabs button.active { border-color: var(--primary); background: var(--primary); color: white; }
-  .day-tabs button.active strong { color: white; }
-  .menu-layout { display: grid; grid-template-columns: minmax(18rem, .8fr) minmax(0, 1.25fr); gap: 1rem; }
+  .day-tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); }
+  .day-tabs button { display: grid; min-height: var(--row-action); place-items: center; align-content: center; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); color: var(--ink-soft); touch-action: manipulation; }
+  .day-tabs button span { font-size: var(--text-micro); }
+  .day-tabs button strong { font-size: var(--text-strong); font-variant-numeric: tabular-nums; }
+  .day-tabs button.active { border-color: var(--primary); background: var(--primary); color: var(--ink-on-primary); }
+  .day-tabs button.active strong { color: var(--ink-on-primary); }
+  .menu-layout { display: grid; grid-template-columns: minmax(18rem, .8fr) minmax(0, 1.25fr); gap: var(--gap-card); }
   .featured-day { background: linear-gradient(145deg, var(--surface) 55%, var(--primary-pale)); }
-  .featured-day > h2 { margin-top: .25rem; }
-  .meal-feature { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: .7rem; border-top: 1px solid var(--line); padding: 1.15rem 0; }
-  .featured-day > .meal-feature:first-of-type { margin-top: 1rem; }
-  .meal-feature > span { color: var(--accent); font-size: .72rem; font-weight: 750; }
+  .meal-feature { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-3) 0; }
+  .featured-day > .meal-feature:first-of-type { margin-top: var(--space-3); }
+  .meal-feature > span { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
   .meal-feature div { display: grid; }
-  .allergen-note { margin-top: .4rem; border-radius: .75rem; background: var(--warning-soft); padding: .8rem; }
-  .allergen-note strong { color: var(--warning); font-size: .75rem; }
-  .allergen-note p { margin-top: .2rem; color: var(--warning); font-size: .78rem; }
-  .week-overview > button { display: grid; width: 100%; grid-template-columns: 2.8rem minmax(0, 1fr) 1rem; align-items: center; gap: .7rem; border-top: 1px solid var(--line); padding: .65rem .2rem; text-align: left; }
-  .week-overview > button:first-of-type { margin-top: .8rem; }
+  .allergen-note { margin-top: var(--space-2); border-radius: var(--r-md); background: var(--warning-soft); padding: var(--space-3); }
+  .allergen-note strong { color: var(--warning); font-size: var(--text-meta); }
+  .allergen-note p { margin-top: var(--space-1); color: var(--warning); font-size: var(--text-meta); }
+  .week-overview > button { display: grid; width: 100%; grid-template-columns: 2.75rem minmax(0, 1fr) var(--space-4); align-items: center; gap: var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-2) 0; text-align: left; touch-action: manipulation; }
+  .week-overview > button:first-of-type { margin-top: var(--space-3); border-top: 0; }
   .week-overview > button.active { color: var(--primary); }
-  .week-overview > button > span:nth-child(2) { display: grid; }
-  .week-overview > button > span:nth-child(2) strong { font-size: .81rem; }
-  .date-tile { display: grid; place-items: center; border-radius: .55rem; background: var(--canvas); padding: .3rem; }
-  .week-overview button.active .date-tile { background: var(--primary); color: white; }
-  .week-overview button.active .date-tile strong, .week-overview button.active .date-tile small { color: white; }
+  .week-overview > button > span:nth-child(2) { display: grid; min-width: 0; }
+  .week-overview > button > span:nth-child(2) strong { font-size: var(--text-strong); font-weight: 500; }
+  .date-tile { display: grid; place-items: center; border-radius: var(--r-sm); background: var(--canvas); padding: var(--space-1); font-variant-numeric: tabular-nums; }
+  .week-overview button.active .date-tile { background: var(--primary); color: var(--ink-on-primary); }
+  .week-overview button.active .date-tile strong, .week-overview button.active .date-tile small { color: var(--ink-on-primary); }
 
-  .recipe-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(19rem, .7fr); gap: 1rem; }
-  .recipe-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
-  .recipe-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); text-align: left; }
+  .recipe-layout { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(19rem, .7fr); gap: var(--gap-card); }
+  .recipe-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+  .recipe-card { overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); text-align: left; }
   .recipe-card.active { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
-  .recipe-visual { display: grid; min-height: 7rem; place-items: center; background: #e5c7a8; }
-  .recipe-visual.lentils { background: #d7b797; }
-  .recipe-visual.rice { background: #e5d3a4; }
-  .recipe-visual.fish { background: #b7d2d4; }
-  .recipe-visual i { color: rgb(255 255 255 / .75); font-size: 3rem; font-style: normal; }
-  .recipe-copy { display: grid; padding: .8rem; }
-  .recipe-copy strong { margin: .1rem 0; }
-  .recipe-copy > span { color: var(--ink-faint); font-size: .7rem; }
-  .recipe-detail h2 { margin-top: .25rem; }
-  .serving-control { display: flex; align-items: center; gap: .6rem; margin: 1rem 0; border-radius: .7rem; background: var(--canvas); padding: .65rem; }
-  .serving-control > span { margin-right: auto; font-size: .78rem; font-weight: 700; }
-  .serving-control button { width: 1.8rem; height: 1.8rem; border: 1px solid var(--line); border-radius: .45rem; background: var(--surface); }
-  .ingredient-list { list-style: none; margin: .6rem 0 1.2rem; padding: 0; }
-  .ingredient-list li { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding: .58rem 0; font-size: .8rem; }
+  .recipe-visual { display: grid; min-height: 7rem; place-items: center; background: var(--dish-default); }
+  .recipe-visual.lentils { background: var(--dish-lentils); }
+  .recipe-visual.rice { background: var(--dish-rice); }
+  .recipe-visual.fish { background: var(--dish-fish); }
+  .recipe-visual i { color: var(--on-primary-soft); font-size: var(--text-page); font-style: normal; }
+  .recipe-copy { display: grid; padding: var(--space-3); }
+  .recipe-copy strong { font-size: var(--text-strong); font-weight: 500; }
+  .recipe-copy > span { color: var(--ink-faint); font-size: var(--text-micro); }
+  .serving-control { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-3) 0; border-radius: var(--r-md); background: var(--canvas); padding: var(--space-2); }
+  .serving-control > span { margin-right: auto; font-size: var(--text-meta); font-weight: 700; }
+  .serving-control button { width: 2.75rem; height: 2.75rem; border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--surface); font-size: var(--text-strong); font-weight: 700; touch-action: manipulation; }
+  .ingredient-list { display: grid; list-style: none; margin: var(--space-3) 0; padding: 0; }
+  .ingredient-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--row-data); border-top: 1px solid var(--line); padding: var(--space-2) 0; font-size: var(--text-meta); }
+  .ingredient-list li:first-child { border-top: 0; }
 
-  .space-tabs { display: flex; gap: .4rem; overflow-x: auto; margin-bottom: 1rem; padding-bottom: .2rem; }
-  .space-tabs button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: .45rem .8rem; color: var(--ink-soft); font-size: .75rem; font-weight: 700; }
-  .space-tabs button.active { border-color: var(--primary); background: var(--primary); color: white; }
-  .wiki-layout { display: grid; grid-template-columns: minmax(17rem, .72fr) minmax(0, 1.28fr); gap: 1rem; }
-  .wiki-list { display: grid; align-content: start; gap: .5rem; }
-  .wiki-list > button { display: grid; grid-template-columns: 2.4rem minmax(0, 1fr) auto; align-items: center; gap: .65rem; border: 1px solid var(--line); border-radius: .8rem; background: var(--surface); padding: .7rem; text-align: left; }
-  .wiki-list > button.active { border-color: var(--primary); background: var(--primary-pale); }
-  .wiki-list > button > span:nth-child(2) { display: grid; min-width: 0; }
-  .wiki-list > button > span:nth-child(2) span { overflow: hidden; color: var(--ink-soft); font-size: .7rem; text-overflow: ellipsis; white-space: nowrap; }
-  .wiki-list time { align-self: start; color: var(--ink-faint); font-size: .63rem; }
-  .wiki-icon { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: .6rem; background: var(--primary-soft); color: var(--primary); font-weight: 800; }
-  .wiki-article { min-height: 24rem; }
-  .wiki-article .article-summary { margin: 1.1rem 0; color: var(--ink); font-size: 1rem; font-weight: 650; }
-  .wiki-article > p:not(.eyebrow, .article-summary, .success-message) { margin-top: .8rem; }
-  .wiki-article footer { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: .8rem; color: var(--ink-faint); font-size: .7rem; }
-  .editor-panel { display: grid; gap: .65rem; margin-top: 1rem; }
-  .editor-panel label { font-size: .78rem; font-weight: 750; }
-  .editor-panel textarea, .editor-panel input[type="text"] { width: 100%; resize: vertical; border: 1px solid var(--line-strong); border-radius: .7rem; background: white; padding: .8rem; color: var(--ink); line-height: 1.55; }
-  .file-field { display: grid; gap: .35rem; border: 1px dashed var(--line-strong); border-radius: .7rem; padding: .75rem; }
+  .wiki-layout { display: grid; grid-template-columns: minmax(17rem, .72fr) minmax(0, 1.28fr); gap: var(--gap-card); }
+  /* Las fichas de la Guía como filas-acción de 56 px: a 390 px se ven ~11 en
+     vez de 6, y a 320 unas 6 en vez de 3. Antes medían 84–102 px cada una. */
+  .wiki-list { display: grid; align-content: start; }
+  .wiki-list > button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+    min-height: var(--row-action);
+    border: 0;
+    border-top: 1px solid var(--line);
+    background: none;
+    padding: var(--space-2) 0;
+    text-align: left;
+    touch-action: manipulation;
+  }
+  .wiki-list > button:first-child { border-top: 0; }
+  .wiki-list > button.active strong { color: var(--primary); }
+  .wiki-list > button > span:nth-child(1) { display: grid; min-width: 0; }
+  .wiki-list > button strong { font-size: var(--text-strong); font-weight: 500; }
+  .wiki-list > button > span span { overflow: hidden; color: var(--ink-soft); font-size: var(--text-meta); text-overflow: ellipsis; white-space: nowrap; }
+  .wiki-list time { align-self: center; color: var(--ink-faint); font-size: var(--text-meta); white-space: nowrap; }
+  .wiki-icon { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: var(--r-sm); background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+  .wiki-article .article-summary { margin: var(--space-3) 0; color: var(--ink); font-size: var(--text-body); font-weight: 500; }
+  .wiki-article > p:not(.eyebrow, .article-summary, .success-message) { margin-top: var(--space-3); }
+  .wiki-article footer { margin-top: var(--space-5); border-top: 1px solid var(--line); padding-top: var(--space-3); color: var(--ink-faint); font-size: var(--text-meta); }
+  .editor-panel { display: grid; gap: var(--space-3); margin-top: var(--space-3); }
+  .editor-panel label { font-size: var(--text-meta); font-weight: 700; }
+  .editor-panel textarea, .editor-panel input[type="text"] { width: 100%; min-height: var(--row-data); resize: vertical; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface-strong); padding: var(--space-3); color: var(--ink); line-height: var(--lh-loose); }
+  .file-field { display: grid; gap: var(--space-2); border: 1px dashed var(--line-strong); border-radius: var(--r-md); padding: var(--space-3); }
 
   /* Editor único de la guía: el visual delante y el Markdown en avanzadas. */
-  .editor-content-label { font-size: .78rem; font-weight: 750; }
-  .editor-body { display: grid; gap: .45rem; }
-  .wiki-advanced summary { cursor: pointer; color: var(--ink-soft); font-size: .78rem; font-weight: 750; }
-  .wiki-advanced > .stack { margin-top: .8rem; gap: .65rem; }
+  .editor-content-label { font-size: var(--text-meta); font-weight: 700; }
+  .editor-body { display: grid; gap: var(--space-2); }
+  .wiki-advanced summary { display: flex; align-items: center; min-height: var(--row-data); cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
+  .wiki-advanced > .stack { margin-top: var(--space-3); gap: var(--space-3); }
   .wiki-advanced .text-button { justify-self: start; }
 
   /* Superficie Milkdown: mismo marco que el textarea y estilos ProseMirror
      mínimos escritos a mano (sin CSS del tema: nada de url() externas). */
-  .milkdown-surface { border: 1px solid var(--line-strong); border-radius: .7rem; background: white; }
+  .milkdown-surface { border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface-strong); }
   .milkdown-surface:focus-within { outline: .2rem solid var(--primary); outline-offset: .2rem; }
-  .milkdown-surface .ProseMirror { position: relative; min-height: 16rem; padding: .8rem; outline: none; color: var(--ink); line-height: 1.55; word-wrap: break-word; white-space: pre-wrap; white-space: break-spaces; font-variant-ligatures: none; }
-  .milkdown-surface .ProseMirror p { margin: .4rem 0; color: var(--ink); }
+  .milkdown-surface .ProseMirror { position: relative; min-height: 16rem; padding: var(--space-3); outline: none; color: var(--ink); line-height: var(--lh-loose); word-wrap: break-word; white-space: pre-wrap; white-space: break-spaces; font-variant-ligatures: none; }
+  .milkdown-surface .ProseMirror p { margin: var(--space-2) 0; color: var(--ink); }
   .milkdown-surface .ProseMirror h1, .milkdown-surface .ProseMirror h2, .milkdown-surface .ProseMirror h3,
-  .milkdown-surface .ProseMirror h4, .milkdown-surface .ProseMirror h5, .milkdown-surface .ProseMirror h6 { margin: .9rem 0 .4rem; }
-  .milkdown-surface .ProseMirror h1 { font-size: 1.35rem; }
-  .milkdown-surface .ProseMirror h2 { font-size: 1.15rem; }
-  .milkdown-surface .ProseMirror h3 { font-size: 1rem; }
-  .milkdown-surface .ProseMirror ul, .milkdown-surface .ProseMirror ol { margin: .4rem 0; padding-left: 1.3rem; }
+  .milkdown-surface .ProseMirror h4, .milkdown-surface .ProseMirror h5, .milkdown-surface .ProseMirror h6 { margin: var(--space-3) 0 var(--space-2); }
+  .milkdown-surface .ProseMirror h1 { font-size: var(--text-title); }
+  .milkdown-surface .ProseMirror h2 { font-size: var(--text-strong); }
+  .milkdown-surface .ProseMirror h3 { font-size: var(--text-strong); }
+  .milkdown-surface .ProseMirror ul, .milkdown-surface .ProseMirror ol { margin: var(--space-2) 0; padding-left: var(--space-5); }
   .milkdown-surface .ProseMirror li { position: relative; }
-  .milkdown-surface .ProseMirror pre { overflow-x: auto; margin: .5rem 0; border: 1px solid var(--line); border-radius: .5rem; background: var(--primary-pale); padding: .6rem; white-space: pre-wrap; }
-  .milkdown-surface .ProseMirror code { border-radius: .3rem; background: var(--primary-pale); padding: .05rem .3rem; font-size: .85em; }
-  .milkdown-surface .ProseMirror blockquote { margin: .5rem 0; border-left: 3px solid var(--line-strong); padding-left: .8rem; color: var(--ink-soft); }
+  .milkdown-surface .ProseMirror pre { overflow-x: auto; margin: var(--space-2) 0; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--primary-pale); padding: var(--space-2); white-space: pre-wrap; }
+  .milkdown-surface .ProseMirror code { border-radius: var(--r-sm); background: var(--primary-pale); padding: 0 var(--space-1); font-size: .85em; }
+  .milkdown-surface .ProseMirror blockquote { margin: var(--space-2) 0; border-left: 3px solid var(--line-strong); padding-left: var(--space-3); color: var(--ink-soft); }
   .milkdown-surface .ProseMirror a { color: var(--primary); }
   .milkdown-surface .ProseMirror hr { border: 0; border-top: 1px solid var(--line); }
   .milkdown-surface .ProseMirror-selectednode { outline: 2px solid var(--primary); }
@@ -724,94 +1195,119 @@
   .milkdown-surface .ProseMirror-hideselection { caret-color: transparent; }
   .milkdown-surface img.ProseMirror-separator { display: inline !important; margin: 0 !important; border: none !important; }
 
-  .wiki-pinned { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(14rem, 100%), 1fr)); gap: .6rem; }
-  .wiki-pinned > a { display: grid; gap: .2rem; border: 1px solid var(--line); border-radius: .8rem; background: var(--surface); padding: .75rem; text-decoration: none; }
+  .wiki-pinned { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(14rem, 100%), 1fr)); gap: var(--space-2); }
+  .wiki-pinned > a { display: grid; align-content: center; gap: var(--space-1); min-height: var(--row-action); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); padding: var(--space-3); text-decoration: none; }
   .wiki-pinned > a:hover { border-color: var(--primary); }
-  .wiki-pinned small { color: var(--accent); font-size: .66rem; font-weight: 800; text-transform: uppercase; }
-  .wiki-pinned span { color: var(--ink-soft); font-size: .7rem; }
-  .wiki-space { margin-top: 1rem; }
-  .wiki-space h3, .wiki-space h4 { font-size: .9rem; }
+  .wiki-pinned strong { font-size: var(--text-strong); font-weight: 500; }
+  /* El terracota se va de aquí: un rótulo de apartado no es «ahora». */
+  .wiki-pinned small { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .wiki-pinned span { color: var(--ink-soft); font-size: var(--text-meta); }
+  .wiki-space { margin-top: var(--space-3); }
+  .wiki-space h3, .wiki-space h4 { font-size: var(--text-strong); }
 
   /* Portada «Guía de la casa»: escribir, destacadas, apartados, mantenimiento. */
   .wiki-write-cta { display: flex; }
-  .wiki-composer form label, .wiki-maintenance form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .78rem; font-weight: 750; }
+  .wiki-composer form label, .wiki-maintenance form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
   .wiki-composer form input[type="text"], .wiki-composer form input[type="search"], .wiki-composer form select, .wiki-composer form textarea,
   .wiki-maintenance form input[type="text"] {
     width: 100%;
+    min-height: var(--row-data);
     resize: vertical;
     border: 1px solid var(--line-strong);
-    border-radius: .7rem;
-    background: white;
-    padding: .6rem .8rem;
+    border-radius: var(--r-md);
+    background: var(--surface-strong);
+    padding: var(--space-2) var(--space-3);
     color: var(--ink);
     /* ≥16 px efectivos: evita el zoom automático de iOS al enfocar. */
     font-size: 1rem;
   }
-  .wiki-composer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; }
-  .wiki-sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr)); gap: .8rem; align-items: start; margin-top: .8rem; }
-  .wiki-section-card h3 { font-size: .95rem; }
-  .wiki-section-count { margin-left: auto; color: var(--ink-soft); font-size: .7rem; }
-  .wiki-maintenance > summary { cursor: pointer; font-weight: 750; }
-  .wiki-maintenance > .stack { margin-top: 1rem; }
-  .wiki-maintenance h3 { font-size: .9rem; }
-  .wiki-confirm { display: grid; gap: .6rem; margin-top: .6rem; border: 1px solid var(--warning); border-radius: .8rem; background: var(--warning-soft); padding: .8rem; font-size: .8rem; }
-  .wiki-tree { display: grid; gap: .35rem; margin: .5rem 0 0; padding: 0; list-style: none; }
-  .wiki-tree .wiki-tree { margin-left: 1rem; border-left: 1px solid var(--line); padding-left: .75rem; }
-  .wiki-node-row { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
-  .wiki-node-row > a { display: grid; text-decoration: none; }
-  .wiki-node-row > a small { color: var(--ink-soft); font-size: .68rem; }
-  .wiki-recent { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; }
-  .wiki-recent a { display: grid; text-decoration: none; }
-  .wiki-recent small { color: var(--ink-soft); font-size: .68rem; }
-  .wiki-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; }
-  .wiki-markdown { display: grid; gap: .8rem; margin-top: .5rem; line-height: 1.6; }
-  .wiki-markdown ul, .wiki-markdown ol { margin: 0; padding-left: 1.3rem; }
-  .wiki-markdown code { border-radius: .3rem; background: var(--primary-pale, var(--surface)); padding: .05rem .3rem; font-size: .85em; }
-  .wiki-markdown blockquote { display: grid; gap: .4rem; margin: 0; border-left: .25rem solid var(--warning, var(--primary)); border-radius: .45rem; background: var(--warning-soft, var(--surface)); padding: .6rem .8rem; }
-  .wiki-markdown blockquote p { margin: 0; font-size: .85rem; }
-  .wiki-table { overflow-x: auto; border: 1px solid var(--line); border-radius: .7rem; }
-  .wiki-table table { min-width: 100%; border-collapse: collapse; font-size: .82rem; }
-  .wiki-table th, .wiki-table td { border-bottom: 1px solid var(--line); padding: .5rem .65rem; text-align: left; vertical-align: top; }
-  .wiki-table th { background: var(--surface); font-size: .72rem; text-transform: uppercase; letter-spacing: .02em; color: var(--ink-soft); }
+  .wiki-composer-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .wiki-sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr)); gap: var(--gap-card); align-items: start; }
+  .wiki-section-card h3 { font-size: var(--text-title); }
+  .wiki-section-count { margin-left: auto; color: var(--ink-soft); font-size: var(--text-meta); white-space: nowrap; }
+  .wiki-maintenance > summary { display: flex; align-items: center; min-height: var(--row-data); cursor: pointer; font-weight: 700; }
+  .wiki-maintenance > .stack { margin-top: var(--space-3); }
+  .wiki-maintenance h3 { font-size: var(--text-strong); }
+  .wiki-confirm { margin-top: var(--space-2); border: 1px solid var(--warning); }
+  .wiki-tree { display: grid; margin: 0; padding: 0; list-style: none; }
+  .wiki-tree .wiki-tree { margin-left: var(--space-4); border-left: 1px solid var(--line); padding-left: var(--space-3); }
+  /* La fila de una nota de la Guía: 56 px, la fila entera pulsable, el título a
+     16 px y la meta a 13. Antes el `<a>` medía 19 px de alto. */
+  .wiki-node-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .wiki-node-row > a {
+    display: grid;
+    flex: 1 1 auto;
+    align-content: center;
+    min-width: 0;
+    min-height: var(--row-action);
+    padding: var(--space-1) 0;
+    text-decoration: none;
+  }
+  .wiki-node-row > a strong { font-size: var(--text-strong); font-weight: 500; }
+  .wiki-node-row > a small { color: var(--ink-soft); font-size: var(--text-meta); }
+  .wiki-tree > li { border-top: 1px solid var(--line); }
+  .wiki-tree > li:first-child { border-top: 0; }
+  .wiki-recent { display: grid; margin: 0; padding: 0; list-style: none; }
+  .wiki-recent > li { border-top: 1px solid var(--line); }
+  .wiki-recent > li:first-child { border-top: 0; }
+  .wiki-recent a { display: grid; align-content: center; min-height: var(--row-action); text-decoration: none; }
+  .wiki-recent strong { font-size: var(--text-strong); font-weight: 500; }
+  .wiki-recent small { color: var(--ink-soft); font-size: var(--text-meta); }
+  .wiki-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  /* La vuelta a la Guía es navegación: diana entera, no 20 px de alto. */
+  .wiki-meta > a.volver { display: inline-flex; min-height: 2.75rem; align-items: center; }
+  .wiki-markdown { display: grid; gap: var(--space-3); margin-top: var(--space-2); font-size: var(--text-body); line-height: var(--lh-loose); }
+  .wiki-markdown ul, .wiki-markdown ol { margin: 0; padding-left: var(--space-5); }
+  .wiki-markdown code { border-radius: var(--r-sm); background: var(--primary-pale, var(--surface)); padding: 0 var(--space-1); font-size: .85em; }
+  .wiki-markdown blockquote { display: grid; gap: var(--space-2); margin: 0; border-left: var(--space-1) solid var(--warning, var(--primary)); border-radius: var(--r-sm); background: var(--warning-soft, var(--surface)); padding: var(--space-3); }
+  .wiki-markdown blockquote p { margin: 0; font-size: var(--text-body); }
+  .wiki-table { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+  .wiki-table table { min-width: 100%; border-collapse: collapse; font-size: var(--text-meta); }
+  .wiki-table th, .wiki-table td { border-bottom: 1px solid var(--line); padding: var(--space-2) var(--space-3); text-align: left; vertical-align: top; }
+  .wiki-table th { background: var(--surface); color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
   .wiki-table tr:last-child td { border-bottom: 0; }
-  .wiki-terms { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: 1.2rem; }
+  .wiki-terms { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); }
   .wiki-terms .status-chip { border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft); }
-  .wiki-history summary { cursor: pointer; font-weight: 750; }
-  .wiki-history h3 { margin-top: 1rem; font-size: .8rem; }
-  .wiki-revisions { display: grid; gap: .45rem; margin: .8rem 0 0; padding: 0; list-style: none; }
-  .wiki-revisions li { display: grid; border-top: 1px solid var(--line); padding-top: .45rem; font-size: .8rem; }
-  .wiki-revisions span, .wiki-revisions small { color: var(--ink-soft); font-size: .72rem; }
-  .wiki-diff { overflow-x: auto; margin-top: .6rem; border: 1px solid var(--line); border-radius: .7rem; padding: .7rem; font-size: .74rem; line-height: 1.5; }
+  .wiki-history summary { display: flex; align-items: center; min-height: var(--row-data); cursor: pointer; font-weight: 700; }
+  .wiki-history h3 { margin-top: var(--space-3); font-size: var(--text-strong); }
+  .wiki-revisions { display: grid; margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+  .wiki-revisions li { display: grid; align-content: center; min-height: var(--row-data); border-top: 1px solid var(--line); padding: var(--space-2) 0; font-size: var(--text-meta); }
+  .wiki-revisions li:first-child { border-top: 0; }
+  .wiki-revisions span, .wiki-revisions small { color: var(--ink-soft); font-size: var(--text-meta); }
+  .wiki-diff { overflow-x: auto; margin-top: var(--space-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--space-2); font-size: var(--text-meta); line-height: var(--lh-loose); }
   .wiki-diff span { display: block; white-space: pre-wrap; }
   .wiki-diff span.added { background: var(--success-soft); color: var(--success); }
   .wiki-diff span.removed { background: var(--warning-soft); color: var(--warning); text-decoration: line-through; }
-  .inline-check { display: flex; align-items: center; gap: .45rem; font-size: .78rem; font-weight: 750; }
+  .inline-check { display: flex; align-items: center; gap: var(--space-2); min-height: var(--row-data); font-size: var(--text-meta); font-weight: 500; }
+  .inline-check > input[type='checkbox'] { width: 1.25rem; height: 1.25rem; accent-color: var(--primary); }
 
   .search-page { max-width: 58rem; }
-  .search-form { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .65rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: .55rem; box-shadow: var(--shadow-sm); }
-  .search-form > span { padding-left: .5rem; color: var(--primary); font-size: 1.5rem; }
-  .search-form input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); }
-  .suggestions { margin-top: 2rem; }
-  .suggestions h2, .search-results > h2 { font-size: .88rem; }
-  .suggestions div { display: flex; gap: .5rem; margin-top: .7rem; }
-  .suggestions a { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: .4rem .75rem; color: var(--primary); font-size: .75rem; text-decoration: none; }
-  .search-results { display: grid; gap: .5rem; margin-top: 1.5rem; }
-  .search-results > a { display: grid; grid-template-columns: 4.5rem minmax(0, 1fr) auto; align-items: center; gap: .75rem; border: 1px solid var(--line); border-radius: .8rem; background: var(--surface); padding: .8rem; text-decoration: none; }
-  .search-results > a:hover { border-color: var(--primary); }
-  .search-results > a > span:nth-child(2) { display: grid; }
-  .result-type { color: var(--accent); font-size: .68rem; font-weight: 800; text-transform: uppercase; }
-  .search-results h3 { margin-top: .8rem; font-size: .8rem; }
-  .search-results mark { border-radius: .25rem; background: var(--warning-soft); color: inherit; padding: 0 .1rem; }
+  .search-form { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); padding: var(--space-2); }
+  .search-form > span { padding-left: var(--space-2); color: var(--primary); font-size: var(--text-title); }
+  .search-form input { width: 100%; min-height: var(--row-data); border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 1rem; }
+  .suggestions { margin-top: var(--gap-section); }
+  .suggestions h2, .search-results > h2 { font-size: var(--text-title); }
+  .suggestions div { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+  .suggestions a { display: inline-flex; min-height: var(--row-data); align-items: center; border: 1px solid var(--line); border-radius: var(--r-full); background: var(--surface); padding: var(--space-2) var(--space-4); color: var(--primary); font-size: var(--text-meta); font-weight: 500; text-decoration: none; }
+  .search-results { display: grid; margin-top: var(--space-4); }
+  .search-results > a { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-1) var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-2) 0; text-decoration: none; }
+  .search-results > a:first-of-type { border-top: 0; }
+  .search-results > a > span:nth-child(1) { display: grid; min-width: 0; }
+  .search-results > a strong { font-size: var(--text-strong); font-weight: 500; }
+  .result-type { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .search-results h3 { margin-top: var(--space-4); font-size: var(--text-strong); }
+  .search-results mark { border-radius: var(--r-sm); background: var(--warning-soft); color: inherit; padding: 0 var(--space-1); }
 
   /* `.routine-progress` y `.progress-ring` vivían aquí y ya no: eran la barra
      con su porcentaje de la maqueta de Rutinas y el anillo relleno en
      proporción de la maqueta de Hoy. El AC-26 revisado no deja indicadores de
      cumplimiento «en ninguna vista», y una maqueta es una vista. En su sitio
      va la CUENTA, que ya tiene estilo propio (`.status-chip`). */
-  .routine-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
-  .routine-group h2 { margin-bottom: .7rem; }
-  .routine-group button { display: flex; width: 100%; align-items: center; gap: .65rem; border-top: 1px solid var(--line); padding: .75rem 0; text-align: left; }
-  .routine-group button > span { display: grid; width: 1.3rem; height: 1.3rem; flex: 0 0 1.3rem; place-items: center; border: 1.5px solid var(--line-strong); border-radius: 50%; color: white; font-size: .68rem; }
+  .routine-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap-card); }
+  .routine-group button { display: flex; width: 100%; align-items: center; gap: var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-2) 0; text-align: left; touch-action: manipulation; }
+  .routine-group button:first-of-type { border-top: 0; }
+  .routine-group button > span { display: grid; width: 1.25rem; height: 1.25rem; flex: 0 0 1.25rem; place-items: center; border: 2px solid var(--line-strong); border-radius: var(--r-full); color: var(--ink-on-primary); font-size: var(--text-micro); }
+  .routine-group button strong { font-size: var(--text-strong); font-weight: 500; }
   .routine-group button.done > span { border-color: var(--success); background: var(--success); }
   .routine-group button.done strong { color: var(--ink-faint); text-decoration: line-through; }
 
@@ -822,65 +1318,82 @@
      routes/h/[householdId]/calendar/+page.svelte, con alcance de componente,
      porque no lo comparte ninguna otra pantalla. */
 
-  .contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1.1rem; }
-  /* Acciones del directorio real: llamar + editar/archivar (solo familia). */
-  .contact-actions { display: grid; gap: .35rem; justify-items: stretch; }
-  .contact-actions .call-button { text-align: center; }
-  .contact-card div > small { display: block; margin-top: .15rem; }
+  .contact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap-card); }
+  /* Acciones del directorio real: llamar es la de la fila y va al final, a la
+     derecha; editar y archivar se separan de ella. */
+  .contact-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; }
+  .contact-card div > small { display: block; margin-top: var(--space-1); }
   /* Selector de semana destino del duplicado (P3 week_overlap). */
-  .duplicate-week-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .6rem; }
-  .duplicate-week-form label { display: grid; gap: .28rem; color: var(--ink-soft); font-size: .72rem; font-weight: 700; }
+  .duplicate-week-form { display: grid; gap: var(--space-2); }
+  .duplicate-week-form label { display: grid; gap: var(--space-1); color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
   .duplicate-week-form input {
+    min-height: var(--row-data);
     border: 1px solid var(--line-strong);
-    border-radius: .6rem;
+    border-radius: var(--r-sm);
     background: var(--surface);
-    padding: .5rem .65rem;
+    padding: var(--space-2) var(--space-3);
     color: var(--ink);
     font-size: 1rem;
   }
-  /* Acceso fijo a Emergencias desde Hoy (P3): siempre visible, también móvil. */
-  .button.secondary.today-emergency-link { gap: .4rem; border-color: var(--danger); color: var(--danger); }
-  .button.secondary.today-emergency-link:hover { border-color: var(--danger); background: var(--danger-soft); }
-  .today-emergency-link span { font-weight: 800; }
-  .contact-card { display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto; align-items: center; gap: .8rem; }
-  .contact-card.featured { background: linear-gradient(140deg, var(--surface), var(--primary-pale)); }
-  .contact-avatar { display: grid; width: 3rem; height: 3rem; place-items: center; border-radius: .8rem; background: var(--primary-soft); color: var(--primary); font-weight: 800; }
-  .contact-avatar.emergency { background: var(--danger-soft); color: var(--danger); font-size: 1.5rem; }
-  .contact-card h2 { margin: .13rem 0; font-size: 1rem; }
-  .contact-card div > a { color: var(--primary); font-size: .78rem; font-weight: 750; }
-  .call-button { border: 1px solid var(--line); border-radius: .55rem; background: var(--surface); padding: .45rem .65rem; color: var(--primary); font-size: .72rem; font-weight: 750; text-decoration: none; }
+  /* Acceso fijo a Emergencias desde Hoy (P3): sigue existiendo y sigue yendo a
+     la misma ruta, pero deja de ser la banda completa de la cabecera. Una
+     acción que se usa menos de una vez al mes no lleva nunca banda completa. */
+  .today-emergency-link { border-color: var(--danger); color: var(--danger); }
+  .today-emergency-link:hover { border-color: var(--danger); background: var(--danger-soft); }
+  /* El avatar decorativo medía 100×100 px y el botón «Llamar», 71×35: la
+     decoración triplicaba a la acción. Ahora son 40 px. */
+  .contact-card { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); }
+  .contact-card.featured { background: var(--primary-pale); }
+  .contact-avatar { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: var(--r-md); background: var(--primary-soft); color: var(--primary); font-weight: 700; }
+  .contact-avatar.emergency { background: var(--danger-soft); color: var(--danger); }
+  .contact-card h2 { font-size: var(--text-strong); font-weight: 500; }
+  .contact-card div > a { display: inline-flex; min-height: 2.75rem; align-items: center; color: var(--primary); font-size: var(--text-meta); font-variant-numeric: tabular-nums; font-weight: 500; }
+  .call-button { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface); padding: var(--space-2) var(--space-3); color: var(--primary); font-size: var(--text-meta); font-weight: 700; text-decoration: none; }
 
-  .offline-proof { display: flex; align-items: center; gap: .45rem; margin-bottom: 1rem; color: var(--success); font-size: .75rem; font-weight: 700; }
-  .offline-proof span { display: grid; width: 1.2rem; height: 1.2rem; place-items: center; border-radius: 50%; background: var(--success-soft); }
-  .emergency-callout { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; border-radius: var(--radius); background: var(--danger); padding: 1.15rem 1.35rem; color: white; }
-  .emergency-callout > div { display: flex; align-items: center; gap: .8rem; }
-  .emergency-callout > div > span { display: grid; width: 2.8rem; height: 2.8rem; place-items: center; border-radius: .8rem; background: rgb(255 255 255 / .16); font-size: 1.8rem; }
-  .emergency-callout p, .emergency-callout strong { color: white; }
-  .emergency-callout strong { font-size: 1.5rem; }
-  .emergency-callout > a { border-radius: .65rem; background: white; padding: .65rem .9rem; color: var(--danger); font-weight: 800; text-decoration: none; }
-  .emergency-layout { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 1rem; }
-  .emergency-layout .card > h2 { margin-top: .2rem; }
-  .emergency-contacts { display: grid; margin-top: .8rem; }
-  .emergency-contacts > div { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr) auto; align-items: center; gap: .65rem; border-top: 1px solid var(--line); padding: .75rem 0; }
-  .emergency-contacts > div > span { display: grid; width: 2.2rem; height: 2.2rem; place-items: center; border-radius: 50%; background: var(--danger-soft); color: var(--danger); font-weight: 800; }
-  .emergency-contacts > div > div { display: grid; }
-  .emergency-contacts a { color: var(--danger); font-size: .78rem; font-weight: 800; }
-  .instruction-list { display: grid; list-style: none; margin-top: .8rem; padding: 0; }
-  .instruction-list li { display: grid; grid-template-columns: 1.7rem minmax(0, 1fr); gap: .7rem; border-top: 1px solid var(--line); padding: .8rem 0; }
-  .instruction-list li > span { display: grid; width: 1.6rem; height: 1.6rem; place-items: center; border-radius: 50%; background: var(--primary-soft); color: var(--primary); font-size: .7rem; font-weight: 800; }
-  .instruction-list p { margin-top: .2rem; font-size: .8rem; }
+  .offline-proof { display: flex; align-items: center; gap: var(--space-2); color: var(--success); font-size: var(--text-meta); font-weight: 500; }
+  .offline-proof span { display: grid; width: 1.25rem; height: 1.25rem; flex: 0 0 1.25rem; place-items: center; border-radius: var(--r-full); background: var(--success-soft); }
+  /* «Llamar al 112» es lo primero y entero en la primera pantalla, también a
+     320 px. Antes el único botón de banda completa visible era «Imprimir», que
+     es una acción de escritorio. */
+  /* En una línea: el 112 a la izquierda y el botón a la derecha. Apilado le
+     robaba 56 px a los teléfonos de la casa, que es lo que hay debajo. */
+  .emergency-callout { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); border-radius: var(--r-lg); background: var(--danger); padding: var(--space-3); color: var(--ink-on-primary); }
+  .emergency-callout > div { display: flex; align-items: center; gap: var(--space-3); }
+  .emergency-callout > div > span { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border-radius: var(--r-md); background: var(--on-primary-veil); font-size: var(--text-title); }
+  .emergency-callout p, .emergency-callout strong { color: var(--ink-on-primary); }
+  .emergency-callout strong { font: var(--font-data); }
+  .emergency-callout > a { display: flex; min-height: 2.75rem; align-items: center; justify-content: center; border-radius: var(--r-md); background: var(--surface-strong); padding: var(--space-2) var(--space-4); color: var(--danger); font-size: var(--text-strong); font-weight: 700; text-decoration: none; }
+  .emergency-layout { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: var(--gap-card); }
+  .emergency-contacts { display: grid; margin-top: var(--space-3); }
+  /* Los teléfonos son filas pulsables de 56 px, no enlaces de 18,7. */
+  .emergency-contacts > div { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-2) 0; }
+  .emergency-contacts > div:first-child { border-top: 0; }
+  .emergency-contacts > div > span { display: grid; width: 2.25rem; height: 2.25rem; place-items: center; border-radius: var(--r-full); background: var(--danger-soft); color: var(--danger); font-weight: 700; }
+  .emergency-contacts > div > div { display: grid; min-width: 0; }
+  .emergency-contacts > div > div > strong { font-size: var(--text-strong); font-weight: 500; }
+  .emergency-contacts a { display: inline-flex; min-height: 2.75rem; align-items: center; border-radius: var(--r-md); padding: var(--space-2) var(--space-3); color: var(--danger); font-size: var(--text-meta); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .instruction-list { display: grid; list-style: none; margin-top: var(--space-3); padding: 0; }
+  .instruction-list li { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--space-3); border-top: 1px solid var(--line); padding: var(--space-3) 0; }
+  .instruction-list li:first-child { border-top: 0; }
+  .instruction-list li > span { display: grid; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: var(--r-full); background: var(--primary-soft); color: var(--primary); font-size: var(--text-meta); font-weight: 700; }
+  .instruction-list strong { font-size: var(--text-strong); font-weight: 500; }
+  .instruction-list p { margin-top: var(--space-1); font-size: var(--text-body); }
 
-  .settings-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(18rem, .8fr); gap: 1rem; }
-  .member-list { display: grid; margin-top: .8rem; }
-  .member-list > div { display: grid; grid-template-columns: 2.2rem minmax(0, 1fr) auto; align-items: center; gap: .65rem; border-top: 1px solid var(--line); padding: .65rem 0; }
-  .member-list > div > span:nth-child(2) { display: grid; }
-  .settings-list { margin-top: .8rem; }
-  .settings-list > div { display: flex; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--line); padding: .65rem 0; font-size: .78rem; }
+  .settings-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(18rem, .8fr); gap: var(--gap-card); }
+  .member-list { display: grid; margin-top: var(--space-3); }
+  /* Cada persona es un bloque con su propio final: la acción destructiva se
+     agrupa dentro del bloque de SU dueño y nombra a su sujeto en el botón. */
+  .member-list > div { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-2) 0; }
+  .member-list > div:first-child { border-top: 0; }
+  .member-list > div > span:nth-child(2) { display: grid; min-width: 0; }
+  .member-list strong { font-size: var(--text-strong); font-weight: 500; }
+  .settings-list { display: grid; margin-top: var(--space-3); }
+  .settings-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--row-data); border-top: 1px solid var(--line); padding: var(--space-2) 0; font-size: var(--text-meta); }
+  .settings-list > div:first-child { border-top: 0; }
   .settings-list dt { color: var(--ink-faint); }
-  .settings-list dd { font-weight: 700; text-align: right; }
+  .settings-list dd { margin: 0; font-weight: 500; text-align: right; }
   .warning-card { background: var(--warning-soft); }
   .warning-card h2, .warning-card p { color: var(--warning); }
-  .warning-card h2 { margin: .2rem 0 .4rem; }
 }
 
 @layer responsive {
@@ -890,68 +1403,152 @@
     .hero-grid, .content-grid { grid-template-columns: minmax(0, 1.35fr) minmax(16rem, .75fr); }
   }
 
+  /* ───────────────────────────────────────────────────────────────────────────
+     EL MARCO SE RECORTA (§4). Por debajo de 52rem el topbar desaparece entero y
+     sus cuatro contenidos se re-alojan: el nombre del hogar sobrevive solo en
+     Hoy como línea de apoyo, la búsqueda pasa a la hoja «Más» y a su ruta, la
+     píldora de sync solo se pinta cuando hay algo pendiente (reusando la banda
+     que ya existe) y el avatar y «Salir» ya vivían en la hoja.
+     Cuenta en Hoy a 390×844: 64 (topbar) + 28,8 (relleno) + 17 (eyebrow) + 74
+     (h1 de 32 px en dos líneas) + 24 (descripción) + 42 (banda «Emergencias») +
+     32 (margen) + 68 (barra) = 346 px, el 41 % de la pantalla, gastados en
+     decirle a alguien dónde está antes de enseñarle un dato.
+     ─────────────────────────────────────────────────────────────────────────── */
   @media (max-width: 52rem) {
+    :root {
+      --chrome-top: 0px;
+      /* 56 px: icono de 20 + etiqueta de 12. Antes 68, con la etiqueta a
+         9,76 px —el texto más pequeño del producto, en el control más usado—. */
+      --bottom-nav-h: calc(3.5rem + env(safe-area-inset-bottom));
+    }
     .status-banner { justify-content: flex-start; }
-    .status-banner span { display: none; }
     .app-shell.with-banner .sidebar { top: 0; }
     .sidebar { display: none; }
     .main-column { margin-left: 0; }
-    .topbar { justify-content: space-between; min-height: 4rem; padding: .55rem 1rem; }
-    .mobile-brand { display: flex; min-width: 0; align-items: center; gap: .55rem; color: var(--primary); text-decoration: none; }
-    .mobile-brand strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .global-search { width: 2.75rem; min-height: 2.75rem; justify-content: center; margin-left: auto; border: 0; background: transparent; box-shadow: none; padding: .4rem; }
-    .global-search span:nth-child(2), .global-search kbd { display: none; }
-    .topbar-actions { position: static; }
-    /* La píldora de sync sobrevive al breakpoint (H-02/I-05): punto de color
-       ampliado a diana táctil junto al avatar, sin tapar contenido. */
-    .sync-pill { display: grid; min-width: 1.5rem; min-height: 2.75rem; place-items: center; }
-    .sync-pill i { width: .62rem; height: .62rem; box-shadow: 0 0 0 .26rem var(--success-soft); }
-    .sync-pill.pending i { box-shadow: 0 0 0 .26rem var(--warning-soft); }
+    /* Fuera. Con él se van sus 64 px y la primera línea de la pantalla pasa a
+       ser lo que se ha venido a ver. */
+    .topbar { display: none; }
+    #main-content { min-height: 100dvh; }
+
+    /* Ninguna sombra en móvil salvo lo que flota: las de antes eran sombras de
+       página de marketing y emborronaban el borde de una lista densa. */
+    .card, .global-search, .search-form, .book-nav { box-shadow: none; }
+
     .bottom-nav {
       position: fixed;
       z-index: 45;
       inset: auto 0 0;
       display: flex;
-      min-height: calc(4.25rem + env(safe-area-inset-bottom));
+      min-height: var(--bottom-nav-h);
       border-top: 1px solid var(--line);
-      background: rgb(255 253 248 / .97);
-      padding: .35rem .25rem calc(.3rem + env(safe-area-inset-bottom));
+      background: var(--surface-veil);
+      padding: 0 var(--space-1) env(safe-area-inset-bottom);
       backdrop-filter: blur(1rem);
     }
     /* En móvil el aviso sintético se posa justo encima de la bottom-nav. */
-    .synthetic-banner { bottom: calc(4.25rem + env(safe-area-inset-bottom)); }
-    .bottom-nav a, .bottom-nav .more-button { display: grid; flex: 1 1 0; min-width: 0; place-items: center; align-content: center; gap: .1rem; padding: 0; color: var(--ink-faint); font-size: .61rem; font-weight: 700; text-decoration: none; }
-    .bottom-nav a.active, .bottom-nav .more-button.active { color: var(--primary); }
-    .bottom-nav .nav-symbol { font-size: 1rem; }
-    .page-wrap { padding-top: 1.8rem; padding-bottom: 6.5rem; }
+    .synthetic-banner { bottom: var(--bottom-nav-h); }
+    .bottom-nav a, .bottom-nav .more-button {
+      display: grid;
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 3.5rem;
+      place-items: center;
+      align-content: center;
+      gap: var(--space-1);
+      padding: 0;
+      color: var(--ink-faint);
+      font-size: var(--text-micro);
+      font-weight: 500;
+      line-height: 1;
+      text-decoration: none;
+      touch-action: manipulation;
+    }
+    .bottom-nav a.active, .bottom-nav .more-button.active { color: var(--primary); font-weight: 700; }
+    .bottom-nav .nav-symbol { width: 1.25rem; height: 1.25rem; }
+
     .hero-grid, .content-grid, .menu-layout, .recipe-layout, .wiki-layout, .emergency-layout, .settings-layout { grid-template-columns: minmax(0, 1fr); }
-    .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .summary-strip > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
-    .summary-strip > div:nth-child(4) { border-top: 1px solid var(--line); }
-    .routine-columns { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .routine-columns { grid-template-columns: minmax(0, 1fr); }
   }
 
-  @media (max-width: 36rem) {
-    .status-banner { font-size: .74rem; }
-    .page-header { align-items: flex-start; flex-direction: column; gap: .9rem; }
-    .page-actions, .page-actions .button { width: 100%; }
-    .account-grid { grid-template-columns: minmax(0, 1fr); }
-    .account-grid form:last-child { grid-column: auto; }
-    .hero-grid { gap: .75rem; }
-    .card { padding: 1rem; }
-    .day-tabs { gap: .25rem; }
-    .day-tabs button { min-height: 3.3rem; }
-    .recipe-gallery, .contact-grid, .routine-columns { grid-template-columns: minmax(0, 1fr); }
+  /* Por debajo de 600 px el sistema aprieta del todo: una sola columna en todo
+     formulario, el marco decorativo fuera y las tablas convertidas en fichas. */
+  @media (max-width: 37.5rem) {
+    .status-banner { font-size: var(--text-micro); }
+    /* Ni eyebrow ni descripción: son copy de bienvenida servido en cada visita
+       a quien abre esta pantalla todos los días. La descripción vive en el
+       estado vacío, que es donde hace falta y donde sobra sitio. */
+    .eyebrow, .page-description { display: none; }
+    .page-header { align-items: center; }
+    /* Una acción de cabecera NO lleva banda completa: la regla anterior hacía
+       exactamente lo contrario de lo que pide la gramática de acciones. */
+    .page-actions .button { width: auto; }
+    .card { padding: var(--pad-card); }
+    .recipe-gallery, .contact-grid { grid-template-columns: minmax(0, 1fr); }
     .recipe-visual { min-height: 5.5rem; }
-    .search-form { grid-template-columns: auto minmax(0, 1fr); }
-    .search-form .button { grid-column: 1 / -1; }
-    .emergency-callout { align-items: stretch; flex-direction: column; gap: .8rem; }
-    .emergency-callout > a { text-align: center; }
-    .contact-card { grid-template-columns: 2.7rem minmax(0, 1fr); }
-    .contact-card .call-button { grid-column: 1 / -1; text-align: center; }
-    .summary-strip { grid-template-columns: minmax(0, 1fr); }
-    .summary-strip > div { border-top: 1px solid var(--line); border-left: 0; }
-    .summary-strip > div:first-child { border-top: 0; }
+    /* Siete días no caben a 44 px en 296: la tira sangra hasta el borde de la
+       pantalla y cada día vuelve a medir 45. Es la misma respuesta que en el
+       calendario y por el mismo motivo: dejar de gastar ancho en vez de rebajar
+       la diana. */
+    .day-tabs { margin-inline: calc(var(--pad-page-x) * -1); gap: 0; }
+    .day-tabs button { border-radius: 0; border-left-width: 0; }
+    .day-tabs button:first-child { border-left-width: 1px; }
+
+    /* El buscador se queda en UNA fila también a 320: mandar el botón a una
+       segunda línea le costaba ~60 px a la lista que hay debajo, que es lo que
+       se ha venido a ver. El botón se estrecha, no se apila. */
+    .search-form > span { display: none; }
+    .search-form .button { padding: var(--space-2); }
+
+    .contact-card { grid-template-columns: 2.5rem minmax(0, 1fr); }
+    .contact-card .call-button { grid-column: 1 / -1; }
+    /* Un grupo de ≤ 4 cifras cortas NUNCA se apila en columna: rejilla 2×2.
+       Apilada medía 315 px de los 844 de la pantalla, 3,9 veces más alta que en
+       un escritorio con el triple de espacio. */
+    .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .summary-strip > div:nth-child(odd) { border-left: 0; }
+    .summary-strip > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    /* Con dos celdas la rejilla sobra: cada cifra es una LÍNEA DE RESUMEN con su
+       rótulo a la izquierda y el número a la derecha, que es la otra salida que
+       la nota da para un grupo de pocas cifras. Así el importe deja de partirse
+       («1.430,00» arriba y «€» abajo) en una celda de 123 px útiles, y la tira
+       baja de 130 px a 96. */
+    .summary-strip.dos { grid-template-columns: minmax(0, 1fr); }
+    .summary-strip.dos > div {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: var(--space-3);
+      min-height: var(--row-dense);
+      border-left: 0;
+      border-top: 1px solid var(--line);
+    }
+    .summary-strip.dos > div:first-child { border-top: 0; }
+    .summary-strip.dos strong { justify-self: end; white-space: nowrap; }
+    /* Tabla de datos → filas-ficha. La cabecera desaparece y cada celda lleva
+       su etiqueta delante, así que «Avisar si» deja de cortarse a media
+       palabra en la columna que dice cuándo hay que llamar a la familia. */
+    .wiki-table { overflow: visible; border: 0; border-radius: 0; }
+    .wiki-table table, .wiki-table tbody, .wiki-table tr, .wiki-table td { display: block; }
+    .wiki-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .wiki-table tr {
+      margin-bottom: var(--space-3);
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      padding: var(--space-3);
+    }
+    .wiki-table td { border: 0; padding: 0 0 var(--space-2); }
+    .wiki-table td:last-child { padding-bottom: 0; }
+    .wiki-table td::before {
+      display: block;
+      color: var(--ink-faint);
+      content: attr(data-etiqueta);
+      font-size: var(--text-micro);
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    /* La primera celda es el TÍTULO del bloque, no un par etiqueta/valor. */
+    .wiki-table td:first-child { font-size: var(--text-strong); font-weight: 500; }
+    .wiki-table td:first-child::before { content: none; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -963,30 +1560,33 @@
     .main-column { margin: 0; }
     .page-wrap { max-width: none; padding: 0; }
     .card, .emergency-callout { break-inside: avoid; box-shadow: none; }
-    body { background: white; }
+    body { background: var(--surface-strong); }
   }
 }
 
 @layer pages {
   /* Menú, compra y catálogo de comida (Oleada 4). */
-  .week-nav { display: flex; justify-content: space-between; gap: .5rem; margin-bottom: 1rem; }
-  .menu-group-card { margin-bottom: 1rem; }
-  .menu-slot-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; border-top: 1px solid var(--line); padding: .7rem 0; }
-  .menu-slot-copy { display: grid; gap: .25rem; font-size: .82rem; }
-  .menu-slot-copy small { color: var(--ink-soft); font-size: .72rem; }
+  .week-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+  .menu-slot-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2) var(--space-3); min-height: var(--row-action); border-top: 1px solid var(--line); padding: var(--space-2) 0; }
+  .menu-slot-row:first-of-type { border-top: 0; }
+  .menu-slot-copy { display: grid; min-width: 0; font-size: var(--text-strong); }
+  .menu-slot-copy strong { font-size: var(--text-strong); font-weight: 500; }
+  .menu-slot-copy small { color: var(--ink-soft); font-size: var(--text-meta); }
   .menu-slot-copy .status-chip { justify-self: start; }
   .menu-slot-note { font-style: italic; }
-  .menu-slot-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
-  .menu-slot-editor { margin: .6rem 0 1rem; border: 1px solid var(--line); border-radius: .8rem; background: var(--canvas); padding: .9rem; }
-  .allergen-block { display: grid; gap: .5rem; border-radius: .7rem; background: var(--warning-soft); padding: .75rem .9rem; color: var(--warning); font-size: .78rem; }
-  .allergen-block ul { margin: 0; padding-left: 1.1rem; }
-  .inline-check-group { display: grid; gap: .4rem; border: 1px solid var(--line); border-radius: .7rem; margin: 0; padding: .7rem .9rem; }
-  .inline-check-group legend { padding: 0 .3rem; color: var(--ink-soft); font-size: .72rem; font-weight: 800; }
+  .menu-slot-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); }
+  .menu-slot-editor { margin: var(--space-2) 0 var(--space-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--canvas); padding: var(--space-3); }
+  .allergen-block ul { margin: 0; padding-left: var(--space-4); }
+  .inline-check-group { display: grid; border: 1px solid var(--line); border-radius: var(--r-md); margin: 0; padding: var(--space-2) var(--space-3); }
+  .inline-check-group legend { padding: 0 var(--space-1); color: var(--ink-soft); font-size: var(--text-meta); font-weight: 700; }
   .action-form label.inline-check { display: flex; align-items: center; }
-  .shopping-section-title { margin-top: 1rem; font-size: .8rem; text-transform: capitalize; }
+  /* Rótulo de sección de la compra: es un rótulo de orden, no una sección. */
+  .shopping-section-title { margin-top: var(--space-4); color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  .shopping-section-title:first-of-type { margin-top: 0; }
   .ingredient-list li.checked span { color: var(--ink-faint); text-decoration: line-through; }
-  .ingredient-editor-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(8rem, 100%), 1fr)); gap: .5rem; align-items: end; border-top: 1px solid var(--line); padding-top: .6rem; }
-  .recipe-detail .ingredient-list .status-chip { margin-left: .4rem; }
+  /* Una sola columna por debajo de 600 px, sin excepciones (§2.9). */
+  .ingredient-editor-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); align-items: end; border-top: 1px solid var(--line); padding-top: var(--space-2); }
+  .recipe-detail .ingredient-list .status-chip { margin-left: var(--space-2); }
 
   /* ───────────────────────────────────────────────────────────────────────────
      Guía de la casa: modo libro y avance de lectura.
@@ -994,49 +1594,82 @@
      pulgar en móvil y nada que se salga a lo ancho en 390 px.
      ─────────────────────────────────────────────────────────────────────────── */
   .book-wrap { max-width: 46rem; }
-  .book-topbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; margin-bottom: .8rem; font-size: .78rem; }
-  .book-topbar a { color: var(--ink-soft); }
-  .book-progress { display: grid; gap: .35rem; margin-bottom: .9rem; }
-  .book-progress-bar { overflow: hidden; height: .4rem; border-radius: 999px; background: var(--line); }
-  .book-progress-bar > span { display: block; height: 100%; border-radius: 999px; background: var(--primary); transition: width .25s ease; }
-  .book-page { padding-bottom: 1.4rem; }
-  .book-page h1 { margin: .15rem 0 .4rem; font-size: clamp(1.35rem, 4.5vw, 1.85rem); line-height: 1.2; }
-  .book-page h1:focus-visible { outline: .18rem solid var(--primary); outline-offset: .3rem; }
-  .book-page .wiki-markdown { font-size: 1rem; line-height: 1.7; }
+  .book-topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); font-size: var(--text-meta); }
+  .book-topbar a { display: inline-flex; min-height: var(--row-data); align-items: center; color: var(--ink-soft); }
+  .book-progress { display: grid; gap: var(--space-1); }
+  .book-progress-bar { overflow: hidden; height: var(--space-1); border-radius: var(--r-full); background: var(--line); }
+  .book-progress-bar > span { display: block; height: 100%; border-radius: var(--r-full); background: var(--primary); transition: width .25s ease; }
+  .book-page h1 { font-size: var(--text-page); line-height: var(--lh-tight); }
+  .book-page h1:focus-visible { outline: .2rem solid var(--primary); outline-offset: .3rem; }
+  .book-page .wiki-markdown { font-size: var(--text-body); line-height: var(--lh-loose); }
   .book-page .wiki-markdown pre, .book-page .wiki-markdown code { overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
-  .book-flag { display: flex; align-items: center; gap: .4rem; margin: .3rem 0 .6rem; font-size: .78rem; font-weight: 700; }
+  .book-flag { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-meta); font-weight: 500; }
   .book-flag.success { color: var(--success); }
   .book-flag.warning { color: var(--warning); }
-  .book-end { display: grid; gap: .5rem; margin-top: 1.6rem; border-top: 1px solid var(--line); padding-top: .8rem; }
+  .book-end { display: grid; gap: var(--space-2); margin-top: var(--space-5); border-top: 1px solid var(--line); padding-top: var(--space-3); }
   .book-end .text-button { justify-self: start; text-align: left; }
-  .book-nav { display: flex; align-items: center; justify-content: space-between; gap: .6rem; margin-top: 1rem; }
-  .book-nav .button { min-height: 2.9rem; }
+  .book-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-top: var(--space-3); }
   .book-nav-placeholder { flex: 0 0 auto; }
-  .book-index { margin-top: 1.2rem; }
-  .book-index > summary { cursor: pointer; font-weight: 750; }
-  .book-chapters { display: grid; gap: .9rem; margin: 1rem 0 0; padding: 0; list-style: none; counter-reset: capitulo; }
-  .book-chapter-title { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; }
-  .book-chapter-title small { color: var(--ink-soft); font-size: .7rem; white-space: nowrap; }
-  .book-chapter-notes { display: grid; gap: .15rem; margin: .35rem 0 0; padding: 0; list-style: none; }
-  .book-chapter-notes a { display: flex; align-items: baseline; gap: .45rem; border-radius: .4rem; padding: .22rem .3rem; color: var(--ink-soft); font-size: .82rem; text-decoration: none; }
+  .book-index { margin-top: var(--space-4); }
+  .book-index > summary { display: flex; align-items: center; min-height: var(--row-data); cursor: pointer; font-weight: 700; }
+  .book-chapters { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+  .book-chapter-title { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); }
+  .book-chapter-title h3 { font-size: var(--text-strong); }
+  .book-chapter-title small { color: var(--ink-soft); font-size: var(--text-meta); white-space: nowrap; }
+  .book-chapter-notes { display: grid; margin: var(--space-1) 0 0; padding: 0; list-style: none; }
+  .book-chapter-notes a { display: flex; min-height: var(--row-data); align-items: center; gap: var(--space-2); border-radius: var(--r-sm); padding: var(--space-1) var(--space-2); color: var(--ink-soft); font-size: var(--text-meta); text-decoration: none; }
   .book-chapter-notes a:hover { background: var(--primary-pale); }
   .book-chapter-notes li.current a { background: var(--primary-pale); color: var(--ink); font-weight: 700; }
-  .book-mark { flex: 0 0 .9rem; color: var(--primary); font-weight: 800; }
+  .book-mark { flex: 0 0 var(--space-3); color: var(--primary); font-weight: 700; }
 
-  .guide-reading-card { display: grid; gap: .7rem; }
-  .guide-chapter-list { display: grid; gap: .3rem; margin: .2rem 0 0; padding: 0; list-style: none; font-size: .82rem; }
-  .guide-chapter-list li { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; border-top: 1px solid var(--line); padding-top: .3rem; }
+  .guide-reading-card { display: grid; gap: var(--space-3); }
+  .guide-chapter-list { display: grid; margin: 0; padding: 0; list-style: none; font-size: var(--text-meta); }
+  .guide-chapter-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); min-height: var(--row-data); border-top: 1px solid var(--line); padding: var(--space-1) 0; }
+  .guide-chapter-list li:first-child { border-top: 0; }
   .guide-chapter-name { min-width: 0; overflow-wrap: anywhere; }
-  .guide-chapter-count { color: var(--ink-soft); font-size: .74rem; white-space: nowrap; }
-  .guide-chapter-count.done { color: var(--success); font-weight: 750; }
-  .guide-people { display: grid; gap: 1rem; margin-top: .6rem; }
-  .guide-person { display: grid; gap: .5rem; border: 1px solid var(--line); border-radius: .8rem; padding: .8rem; }
-  .guide-person small { color: var(--ink-soft); font-size: .7rem; }
+  .guide-chapter-count { color: var(--ink-soft); font-size: var(--text-meta); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .guide-chapter-count.done { color: var(--success); font-weight: 700; }
+  .guide-people { display: grid; gap: var(--gap-card); }
+  .guide-person { display: grid; gap: var(--space-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--space-3); }
+  .guide-person small { color: var(--ink-soft); font-size: var(--text-meta); }
 
-  @media (max-width: 36rem) {
-    .book-nav { position: sticky; bottom: calc(4.6rem + env(safe-area-inset-bottom)); z-index: 2; border-radius: 999px; background: rgb(255 253 248 / .97); padding: .3rem; box-shadow: var(--shadow-sm); backdrop-filter: blur(1rem); }
+  @media (max-width: 37.5rem) {
+    .book-nav { position: sticky; bottom: calc(var(--bottom-nav-h) + var(--space-2)); z-index: 2; border-radius: var(--r-full); background: var(--surface-veil); padding: var(--space-1); box-shadow: var(--shadow-over); backdrop-filter: blur(1rem); }
     .book-nav .button { flex: 1 1 0; justify-content: center; min-width: 0; }
     .book-nav-placeholder { flex: 1 1 0; }
-    .book-topbar { font-size: .74rem; }
   }
+}
+
+@layer pages {
+  /* El bloque de administración de un contacto ocupa la fila entera bajo su
+     dueño: nunca a 9 px del nombre de la persona siguiente. */
+  .contact-admin { grid-column: 1 / -1; }
+}
+
+@layer pages {
+  /* Los controles de acceso de cada persona, plegados bajo su nombre. */
+  .member-admin > summary {
+    display: flex;
+    min-height: var(--row-data);
+    align-items: center;
+    color: var(--primary);
+    font-size: var(--text-meta);
+    font-weight: 700;
+    cursor: pointer;
+  }
+}
+
+@layer pages {
+  /* Abrir la cuenta del mes es irreversible: va plegada bajo el resumen hasta
+     que se pide, no abriendo la pantalla con un campo de fecha por delante. */
+  .open-settlement > summary {
+    display: flex;
+    min-height: var(--row-data);
+    align-items: center;
+    color: var(--primary);
+    font-size: var(--text-strong);
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .open-settlement > .open-settlement-form { margin-top: var(--space-3); }
 }

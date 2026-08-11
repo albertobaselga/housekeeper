@@ -81,7 +81,7 @@ async function gotoShopping(page: Page, account: 'family' | 'employee' | 'helper
 test('Marta planifica la semana y marca como comprado un artículo «del menú» (P2-4)', async ({ page }) => {
   await loginAs(page, 'family');
   await page.goto(`/h/${HOUSEHOLD}/menu?week=${WEEK}`);
-  await expect(page.getByRole('heading', { name: 'Menú de la casa' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
   // El arroz con leche choca con Leo (lácteos): hay que reconocerlo (AC-21).
   const groupCard = page.locator('section.menu-group-card').filter({ hasText: 'Casa' });

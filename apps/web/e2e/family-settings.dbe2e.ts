@@ -31,27 +31,33 @@ test('Alberto pone una fecha límite futura a Lucía y aparece «Con fecha lími
   const lucia = memberItem(page, 'Fixture Apoyo Roble');
   await expect(lucia.locator('.status-chip').filter({ hasText: 'Activo' })).toBeVisible();
 
+  // Los controles de cada persona viven plegados bajo su fila: la lista sirve
+  // para MIRAR quién entra, y cambiarlo se pide.
+  await lucia.locator('summary').click();
   await lucia.getByLabel('Fecha límite del acceso').fill('2031-12-31T10:00');
   await lucia.getByRole('button', { name: 'Poner fecha límite' }).click();
 
   await expect(lucia.locator('.status-chip').filter({ hasText: 'Con fecha límite' })).toBeVisible();
-  await expect(lucia).toContainText('Puede entrar hasta el');
+  await expect(lucia).toContainText('puede entrar hasta el');
 });
 
 test('Alberto quita el acceso a Diego escribiendo QUITAR y la base de datos le niega el hogar (F4-03)', async ({ page, browser }) => {
   await gotoSettings(page);
 
   const diego = memberItem(page, 'Fixture Visor Roble');
-  await diego.getByRole('button', { name: 'Quitar el acceso', exact: true }).click();
+  await diego.locator('summary').click();
+  // La destructiva nombra a su sujeto en el propio botón: en una lista de seis
+  // personas, «Quitar el acceso» a secas no dice a quién.
+  await diego.getByRole('button', { name: 'Quitar el acceso a Fixture Visor Roble', exact: true }).click();
 
   // La confirmación exige escribir la palabra exacta; hasta entonces, deshabilitado.
-  const confirmButton = diego.getByRole('button', { name: 'Quitar el acceso ahora' });
+  const confirmButton = diego.getByRole('button', { name: 'Quitar el acceso a Fixture Visor Roble ahora' });
   await expect(confirmButton).toBeDisabled();
   await diego.getByLabel('Confirmación').fill('QUITAR');
   await confirmButton.click();
 
   await expect(diego.locator('.status-chip').filter({ hasText: 'Sin acceso' })).toBeVisible();
-  await expect(diego).toContainText('Sin acceso desde el');
+  await expect(diego).toContainText('sin acceso desde el');
 
   // Nueva pestaña/contexto: Diego aún puede abrir el selector demo (la cáscara
   // de sesión es fixture), pero la base de datos rechaza cualquier operación

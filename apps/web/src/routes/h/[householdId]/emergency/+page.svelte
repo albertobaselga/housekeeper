@@ -51,15 +51,19 @@
 </script>
 
 <div class="page-wrap emergency-page">
-  {#snippet actions()}<button class="button secondary print-button" type="button" onclick={() => window.print()}>Imprimir</button>{/snippet}
-  <PageHeader eyebrow="Acceso prioritario" title="Emergencias" description="Esta pantalla se guarda en tu dispositivo: se abre aunque no haya cobertura." {actions} />
-
-  {#if !data.unreadable}
-    <p class="offline-proof" role="status"><span aria-hidden="true">✓</span>{live ? 'Contactos del hogar · disponibles sin conexión' : data.emergency?.updatedLabel}</p>
-  {/if}
+  <!-- El único botón de banda completa visible en la primera pantalla era
+       «Imprimir», que es una acción de escritorio, mientras «Llamar al 112»
+       quedaba debajo. Imprimir baja al final; el 112 abre la pantalla y cabe
+       entero a 320 px. -->
+  <PageHeader
+    eyebrow="Acceso prioritario"
+    title="Emergencias"
+    support="Se abre aunque no haya cobertura"
+    description="Esta pantalla se guarda en tu dispositivo: se abre aunque no haya cobertura."
+  />
 
   <section class="emergency-callout">
-    <div><span aria-hidden="true">+</span><div><p>Emergencia vital</p><strong>112</strong></div></div>
+    <div><span aria-hidden="true">+</span><strong>112</strong></div>
     <a href="tel:112">Llamar al 112</a>
   </section>
 
@@ -67,7 +71,7 @@
     <div class="emergency-layout">
       <section class="card"><p class="eyebrow">Contactos destacados del hogar</p><h2>A quién llamar</h2>
         {#if live.featured.length > 0}
-          <div class="emergency-contacts">
+          <div class="emergency-contacts" data-lista="principal">
             {#each live.featured as contact (contact.id)}
               <div>
                 <span aria-hidden="true">{contact.name.slice(0, 1)}</span>
@@ -136,4 +140,15 @@
       </section>
     </div>
   {/if}
+
+  {#if !data.unreadable}
+    <!-- La prueba de que esto funciona sin cobertura es tranquilidad, no acción:
+         va después de los teléfonos, no entre ellos y el 112. -->
+    <p class="offline-proof" role="status"><span aria-hidden="true">✓</span>{live ? 'Contactos del hogar · disponibles sin conexión' : data.emergency?.updatedLabel}</p>
+  {/if}
+
+  <!-- Imprimir es de escritorio y va al final, donde no le quita sitio al 112. -->
+  <div class="action-row destructiva">
+    <button class="button secondary print-button" type="button" onclick={() => window.print()}>Imprimir esta pantalla</button>
+  </div>
 </div>

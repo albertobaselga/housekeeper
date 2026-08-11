@@ -31,7 +31,7 @@ function dueDateLabel(iso: string): string {
 async function gotoEmployment(page: Page): Promise<void> {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/employment`);
-  await expect(page.getByRole('heading', { name: 'Contrato', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 test('Alberto acepta la jornada solicitada y resuelve el festivo como descanso: el saldo permanente sube', async ({ page }) => {
@@ -91,9 +91,12 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
   await gotoEmployment(page);
 
   // 1) Abrir: el formulario de cabecera propone el fin de mes como vencimiento.
+  // Abrir la cuenta del mes es irreversible: vive plegada al final de la
+  // pantalla, no encima del resumen.
+  await page.locator('details.open-settlement > summary').click();
   const openForm = page.locator('form.open-settlement-form');
   await expect(openForm).toBeVisible();
-  const dueOn = await openForm.getByLabel('Vencimiento').inputValue();
+  const dueOn = await openForm.getByLabel('¿Cuándo vence el pago?').inputValue();
   expect(dueOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   await openForm.getByRole('button', { name: /Empezar la cuenta de/ }).click();
 

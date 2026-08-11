@@ -270,7 +270,7 @@
 <style>
   .staff-list {
     display: grid;
-    gap: 0.9rem;
+    gap: var(--space-4);
     list-style: none;
     margin: 0;
     padding: 0;
@@ -278,17 +278,17 @@
 
   .staff-card {
     border: 1px solid var(--line);
-    border-radius: 0.9rem;
+    border-radius: var(--r-lg);
     display: grid;
-    gap: 0.6rem;
-    padding: 0.85rem;
+    gap: var(--space-2);
+    padding: var(--space-3);
   }
 
   .staff-head {
     align-items: start;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
     justify-content: space-between;
   }
 
@@ -296,7 +296,7 @@
   .version-list small {
     color: var(--ink-soft);
     display: block;
-    font-size: 0.78rem;
+    font-size: var(--text-micro);
   }
 
   .version-reason {
@@ -305,7 +305,7 @@
 
   .agreement-list {
     display: grid;
-    gap: 0.7rem;
+    gap: var(--space-3);
     list-style: none;
     margin: 0;
     padding: 0;
@@ -315,44 +315,44 @@
     align-items: baseline;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem 0.6rem;
+    gap: var(--space-2) var(--space-2);
     justify-content: space-between;
   }
 
   .version-list {
     border-left: 2px solid var(--line);
     display: grid;
-    gap: 0.55rem;
+    gap: var(--space-2);
     list-style: none;
-    margin: 0.35rem 0 0;
-    padding: 0 0 0 0.7rem;
+    margin: var(--space-1) 0 0;
+    padding: 0 0 0 var(--space-3);
   }
 
   .version-head {
     align-items: baseline;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: var(--space-2);
   }
 
   .empty-line {
     color: var(--ink-soft);
-    font-size: 0.85rem;
+    font-size: var(--text-meta);
   }
 
   /* La contraseña se dicta en voz alta: grande, monoespaciada y seleccionable. */
   .handout {
     border: 1px solid var(--line);
-    border-radius: 0.9rem;
+    border-radius: var(--r-lg);
     display: grid;
-    gap: 0.6rem;
-    margin-bottom: 0.9rem;
-    padding: 0.9rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
   }
 
   .handout-secret {
     display: grid;
-    gap: 0.4rem;
+    gap: var(--space-2);
     margin: 0;
   }
 
@@ -360,18 +360,18 @@
     align-items: baseline;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.6rem;
+    gap: var(--space-2);
   }
 
   .handout-secret dt {
     color: var(--ink-soft);
-    font-size: 0.78rem;
+    font-size: var(--text-micro);
     min-width: 6rem;
   }
 
   .handout-secret dd {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 1.15rem;
+    font-size: var(--text-title);
     letter-spacing: 0.04em;
     margin: 0;
     user-select: all;
@@ -380,6 +380,6 @@
   .inline-check {
     align-items: center;
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 </style>

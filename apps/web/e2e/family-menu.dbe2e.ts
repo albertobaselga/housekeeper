@@ -18,7 +18,7 @@ const TODAY_TAB_LABEL = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month
 async function gotoMenu(page: Page): Promise<void> {
   await loginAs(page, 'family');
   await page.goto(`/h/${HOUSEHOLD}/menu`);
-  await expect(page.getByRole('heading', { name: 'Menú de la casa' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 test('Marta asigna la receta con leche al grupo Casa: bloqueo de alérgenos y reconocimiento explícito (AC-21)', async ({ page }) => {
