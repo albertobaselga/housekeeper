@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 
+import { belongsToHousehold } from '$lib/auth/membership';
 import type { CalendarWindow } from '$lib/calendar/view';
 import { loadCalendar } from '$lib/server/calendar.server';
 import type { RequestHandler } from './$types';
@@ -25,7 +26,11 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  if (!locals.user.householdIds.includes(params.householdId)) error(404, 'Hogar no encontrado');
+  // `belongsToHousehold`, no `householdIds`: mientras se escribía el calendario,
+  // main sustituyó la lista plana de hogares por membresías con su papel, y el
+  // rol dejó de ser una propiedad de la persona. La comprobación es la misma que
+  // hace el resto de la API (vacaciones, guía) y sale del mismo sitio.
+  if (!belongsToHousehold(locals.user, params.householdId)) error(404, 'Hogar no encontrado');
 
   const live = await loadCalendar({ id: locals.user.id }, params.householdId, {
     anchor: url.searchParams.get('d')
