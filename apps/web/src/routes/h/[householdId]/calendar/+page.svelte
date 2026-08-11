@@ -304,9 +304,19 @@
       : []
   );
 
+  /** «Semana del 10 al 16 de agosto», y «del 31 de agosto al 6 de septiembre». */
+  function weekLabel(mondayISO: string): string {
+    const sunday = addDays(mondayISO, 6);
+    const head =
+      monthNumber(mondayISO) === monthNumber(sunday)
+        ? `${dayNumber(mondayISO)}`
+        : `${dayNumber(mondayISO)} de ${monthName(mondayISO)}`;
+    return `Semana del ${head} al ${dayNumber(sunday)} de ${monthName(sunday)}`;
+  }
+
   const periodLabel = $derived(
     scope === 'semana'
-      ? `Semana del ${dayNumber(weekStart)} al ${dayNumber(addDays(weekStart, 6))} de ${monthName(addDays(weekStart, 6))}`
+      ? weekLabel(weekStart)
       : scope === 'mes'
         ? `${MONTH_NAMES[monthNumber(anchorISO) - 1]} de ${yearNumber(anchorISO)}`
         : String(yearNumber(anchorISO))
