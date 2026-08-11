@@ -44,7 +44,15 @@ function demoUser(
     memberships: [{ householdId: HOUSEHOLD.id, membershipId, role }],
     // En la demo por fixtures no hay contraseña que cambiar: nadie entró con
     // una provisional porque nadie entró con ninguna.
-    mustChangePassword: false
+    mustChangePassword: false,
+    // El resumen del hogar viaja CON la cuenta, y no es redundante con
+    // `getHousehold()`: el layout del hogar busca el nombre en
+    // `user.households` primero y solo cae a la maqueta cuando este despliegue
+    // no tiene base de datos. La batería e2e con Postgres es justamente el caso
+    // mixto —selector sintético SOBRE datos reales—, donde esa caída está
+    // cerrada; sin esto, cada pantalla del hogar respondía «Hogar no
+    // encontrado» con la membresía delante.
+    households: [{ ...HOUSEHOLD }]
   };
 }
 
