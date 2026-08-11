@@ -6,6 +6,130 @@
 
 ---
 
+## 0bis. Enmienda de 11/08/2026 (tarde) — CONSTRUIDO, y con qué se decidió
+
+> Lo que sigue reemplaza al veredicto «hacerlo después» de §7 y a la numeración
+> de migración de §3.2. **El canal existe.** El resto del documento se conserva
+> tal cual porque su valor es el razonamiento, no el estado; donde discrepe de
+> esta sección, manda esta sección.
+>
+> Lo que cambió el cálculo: el paso 1 de §7 —«el ejecutor de la cola», dos
+> jornadas, el que bloqueaba todo— **ya está hecho**. `pg_cron` llama cada cinco
+> minutos a `apps/web/src/lib/server/job-runner.server.ts` y la cola se vacía. Y
+> el paso 0 también: la 0027 arregló el `::date::timestamptz` que habría hecho
+> sonar el primer aviso a las dos de la madrugada.
+
+### Lo que se construyó, y lo que NO
+
+**Dos avisos.** La migración es la **0032** (no la 0023 de §3.2).
+
+| Aviso | A quién | Cuándo se dispara |
+|---|---|---|
+| «El recibo de junio ya está» | La persona del contrato, y solo ella | Cuando el trabajo `document.render_receipt` **acaba de subir el PDF**, no antes |
+| «La cuenta de junio está sin pagar» | `family_admin`, y solo ellos | Tres días antes del vencimiento, con reaviso cada tres días **y tope** |
+
+**El aviso A cambió de momento respecto a §2.1.** El documento lo disparaba desde
+el comando de pago, cuando el pendiente llega a cero. Sale del recibo: son las
+palabras del propietario —«a Mirian solo cuando esté el PDF del pago listo»— y
+además es el instante honesto, porque es cuando el documento existe de verdad. Si
+el almacén falla, no se le promete un recibo que no está.
+
+**Los avisos B y C se quedan fuera tal como estaban descritos.** El de vacaciones
+(§2.1bis) no se construye: el aviso dentro de la aplicación ya existe y funciona,
+y el propietario acotó el alcance a dos. La marca de agua de
+`app.vacation_notice_marks` sigue siendo el sitio correcto el día que se retome.
+
+### Las cuatro decisiones que quedaban abiertas
+
+**1. El importe NO viaja en el texto del aviso.** El propietario lo pidió «con la
+cantidad necesaria», y la tiene: a un toque, detrás de su contraseña. Lo que no
+tiene es la cifra pintada en la pantalla de bloqueo. Tres razones, en orden de
+peso:
+
+- **El número no es de quien recibe el aviso.** Es el sueldo de la empleada y el
+  destinatario es quien administra. Nadie puede consentir por otra persona que su
+  salario se dibuje en una pantalla apagada; ella no está en esa conversación.
+- **No compra nada.** Desde una notificación no se transfiere dinero. Se abre la
+  aplicación, se ve la cifra y se paga. Llevar el dato adelanta un toque y
+  entrega un dato a cualquiera que pase por delante del teléfono.
+- **La regla de uno.** El momento en que se admite un importe «porque es la
+  pantalla del jefe», la regla de §5.4 deja de ser una regla y pasa a ser un
+  juicio por aviso. El siguiente juicio se equivoca.
+
+El texto exacto: *«La cuenta de junio está sin pagar. Vence el 5 de julio. El
+importe se ve al abrir.»* La última frase está a propósito: dice qué se gana
+abriendo, en vez de dejar al lector adivinando qué falta.
+
+**2. La ventana de silencio es universal: 09:00–21:30, de lunes a sábado, hora de
+Madrid, para los cinco papeles.** Se adopta el Nivel 1 de §5.1 y se descarta el
+Nivel 2 (la ventana propia de quien trabaja), por la razón que el propio
+documento anticipaba: una regla que protege solo a la parte débil la levanta la
+parte fuerte el día que le estorba. Una propiedad del producto, no.
+
+El domingo entero en silencio es la misma decisión, y hay que leer con cuidado
+lo que afirma. **No afirma que el domingo sea el descanso semanal de nadie** —eso
+lo diría el manual, y `convivencia/070-parametros-de-organizacion.md` sigue con
+ese hueco vacío, así que no se delega ninguna decisión que dependa de él—.
+Afirma algo más pequeño y enteramente nuestro: **este canal no escribe los
+domingos.** A nadie.
+
+Se conserva, además, el silencio en vacaciones de §6.1.9, pero **por persona y no
+por papel**: quien tenga vacaciones apuntadas que cubran hoy no recibe nada. Hoy
+en la práctica es la empleada, porque es quien tiene vacaciones en el expediente;
+la regla, sin embargo, está escrita sobre la persona.
+
+Queda un residuo honesto que conviene no maquillar: **el último tramo no lo
+decide esta casa.** Si el teléfono estaba apagado, el servicio de push entrega
+cuando vuelva, y eso puede ser de madrugada. No hay forma de evitarlo —no se
+puede programar en el dispositivo ni recibir sin mostrar—. Por eso el `TTL` es de
+cuatro horas: un aviso que no llegó en cuatro horas **se pierde**, que es
+preferible a que suene a las tres.
+
+**3. El ajuste vive en `/h/<hogar>/account`, renombrada «Tu cuenta».** Como
+decía §4.4, y con la comprobación hecha: es la única pantalla que alcanzan los
+cinco papeles (`emergency.read`) y su cabecera ya decía la frase correcta. Se
+quita el candado que la escondía cuando la instalación no gestiona contraseñas:
+ahora guarda además lo único que cada persona decide sola.
+
+**4. NO hay ofrecimiento contextual.** Se descarta la segunda puerta de §4.1
+—ofrecerlo una vez tras cerrar una liquidación o confirmar un cobro— y esto sí es
+una discrepancia con el documento. La razón: en esta casa, «después de confirmar
+un cobro» significa «a la empleada, justo después de hacer algo para la casa», y
+quien más veces vería ese ofrecimiento es quien menos margen tiene para
+ignorarlo. Un ofrecimiento que aparece solo es indistinguible de un empujón. **La
+puerta 1 sola**: el interruptor, en reposo, para quien vaya a buscarlo. Con tres
+personas y una instalación que se hace en persona, sobra.
+
+### Dónde está escrito lo prohibido, y qué lo sostiene
+
+Igual que con el AC-26: la prosa sin prueba se erosiona. La lista de §6.1 vive
+ahora en tres sitios que fallan si alguien la contradice.
+
+| Qué impide | Dónde |
+|---|---|
+| Que exista un aviso fuera de los dos: tareas, recuentos, presencia, ausencia de acción, relleno | `apps/worker/src/push.ts` (catálogo cerrado) y su suite, más el `22023` de `app_private.push_notice_targets` |
+| Que quien administra vea —o encienda, o apague— el canal de otra persona | RLS de `app.push_subscriptions` (0032), `packages/db/tests/170_*.sql` y `apps/web/tests/push.integration.test.ts` |
+| Que se encole un aviso fuera de la ventana horaria | `app.push_run_at` (0032), pinada en la suite 170 y en `mail-retirement.integration.test.ts` |
+| Que la escalada alcance a quien no puede resolver el asunto | La audiencia de `settlement.due` es `family_admin` por construcción: la empleada no entra en la consulta |
+| Que la promesa desaparezca de la pantalla | `apps/web/e2e/avisos.e2e.ts` |
+
+Y una que no es una prueba sino una ausencia, que es más fuerte: **no existe la
+capacidad `notification.manage.others`, y no se añade.** No es que el navegador
+no lo permita —que tampoco—: es que el comando no debe existir.
+
+### Lo que sigue sin poder verificarse
+
+- **Web Push real en los tres teléfonos de esta casa.** No se ha probado y no se
+  puede desde aquí: exige un navegador con permiso concedido. Lo que sí está
+  cubierto es todo lo demás —el catálogo, el texto, la ventana, la audiencia, la
+  RLS, el veto anti-SSRF, la revocación— y el procedimiento manual de la primera
+  entrega está en `docs/runbooks/notificaciones-push.md` §3.
+- **El `TimeZone` efectivo del proyecto Supabase real.** Ya no importa para esto:
+  `app.push_run_at` y `app.job_run_at` convierten con `AT TIME ZONE
+  'Europe/Madrid'` explícito y no dependen de la zona de la sesión.
+
+---
+
 ## 0. Enmienda de 11/08/2026 — qué avisos quedan SIN canal
 
 Decisión del propietario: **no hay correo en ninguna parte; el canal es la
