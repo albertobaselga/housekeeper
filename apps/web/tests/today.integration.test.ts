@@ -35,6 +35,10 @@ const SLOT_FUERA_VENTANA = '53200000-0000-4000-8000-000000000002';
 const ROUTINE_EMPLOYEE = '54000000-0000-4000-8000-000000000001';
 const ROUTINE_FAMILY = '54000000-0000-4000-8000-000000000002';
 const ROUTINE_ALL = '54000000-0000-4000-8000-000000000003';
+// Diaria: la que llenaría «Esta semana» de repeticiones si no se resumiera.
+const ROUTINE_DIARIA = '54000000-0000-4000-8000-000000000004';
+// De un día fijo dentro de la semana: la que sí merece su grupo con nombre.
+const ROUTINE_UN_DIA = '54000000-0000-4000-8000-000000000005';
 
 const ADMIN_USER = { id: 'fixture:roble:admin' };
 const MEMBER_USER = { id: 'fixture:roble:family' };
@@ -44,6 +48,14 @@ const VIEWER_USER = { id: 'fixture:roble:viewer' };
 
 // La misma referencia de «hoy» que usa el loader (fecha civil de Madrid).
 const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+// Pasado mañana, dentro de la ventana de «Esta semana» (hoy+1 … hoy+6) y con
+// nombre de día distinto del de hoy y del de mañana.
+const EN_DOS_DIAS = addDays(TODAY, 2);
+const EN_DOS_DIAS_ISODOW = ((new Date(`${EN_DOS_DIAS}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+const DIA_EN_DOS_DIAS = new Intl.DateTimeFormat('es-ES', {
+  weekday: 'long',
+  timeZone: 'UTC'
+}).format(new Date(`${EN_DOS_DIAS}T00:00:00Z`));
 
 function todayUrlFor(base: string): string {
   const url = new URL(base);
@@ -111,10 +123,12 @@ INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, free_text
   ('${SLOT_FUERA_VENTANA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', '${addDays(TODAY, 5)}', 'cena', 'Sopa IT', '', '${ADMIN_MEMBERSHIP}');
 
 INSERT INTO app.routines (id, household_id, title, details, audience, frequency, interval_count, next_due_on, created_by_membership_id,
-  pattern, anchor_on, repeat_every) VALUES
-  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7),
-  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', 'monthly', 1, '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${addDays(TODAY, -1)}', 30),
-  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7);
+  pattern, anchor_on, repeat_every, weekdays, overdue_policy) VALUES
+  ('${ROUTINE_EMPLOYEE}', '${FIXTURE_HOUSEHOLD}', 'Filtro del agua (IT)', 'Aclarar la jarra', 'employee', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7, NULL, 'carry'),
+  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Botiquín (IT)', '', 'family', 'monthly', 1, '${addDays(TODAY, -1)}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${addDays(TODAY, -1)}', 30, NULL, 'carry'),
+  ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', 'weekly', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7, NULL, 'carry'),
+  ('${ROUTINE_DIARIA}', '${FIXTURE_HOUSEHOLD}', 'Ventilación (IT)', '', 'employee', 'daily', 1, '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 1, NULL, 'skip'),
+  ('${ROUTINE_UN_DIA}', '${FIXTURE_HOUSEHOLD}', 'Colada de sábanas (IT)', '', 'employee', 'weekly', 1, '${EN_DOS_DIAS}', '${ADMIN_MEMBERSHIP}', 'days_of_week', '${EN_DOS_DIAS}', 1, ARRAY[${EN_DOS_DIAS_ISODOW}]::smallint[], 'skip');
 
 COMMIT;
 `;
@@ -204,13 +218,42 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(overview!.menu).toHaveLength(1);
     expect(overview!.menu[0]!.dish).toBe('Guiso de verduras IT');
     expect(overview!.menu[0]!.confirmed).toBe(false);
-    expect(overview!.routines.map((routine) => routine.title).sort()).toEqual([
-      'Botiquín (IT)',
+    // La familia las ve todas. Lo atrasado va en su bloque y lo de hoy en el
+    // suyo: son cosas distintas y la pantalla no las mezcla.
+    expect(overview!.routines.overdue.map((row) => row.title)).toEqual(['Botiquín (IT)']);
+    expect(overview!.routines.overdue[0]!.note).toBe('Tocaba ayer');
+    expect(overview!.routines.overdue[0]!.dueOn).toBe(addDays(TODAY, -1));
+    expect(overview!.routines.today.map((row) => row.title).sort()).toEqual([
       'Filtro del agua (IT)',
-      'Regar plantas (IT)'
+      'Regar plantas (IT)',
+      'Ventilación (IT)'
     ]);
-    // La del botiquín venció ayer: aparece como atrasada.
-    expect(overview!.routines.find((routine) => routine.title === 'Botiquín (IT)')!.overdue).toBe(true);
+    // El chip es CUENTA, no nota: ni porcentaje ni racha (AC-26 revisado).
+    expect(overview!.routines.countChip).toBe('4 por hacer');
+    expect(JSON.stringify(overview!.routines)).not.toMatch(/%|racha/);
+    // El chip optimista viaja resuelto desde el servidor: el navegador ya no
+    // importa la aritmética de recurrencia para predecirlo.
+    expect(overview!.routines.today[0]!.doneChip).toMatch(/^Hecha ✓ · próxima el /);
+  });
+
+  it('«Esta semana» agrupa por día con el día nombrado y resume lo que se repite', async () => {
+    const overview = await loadTodayOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    // La diaria no se repite seis veces: se dice una, con su cadencia.
+    expect(overview!.routines.weekRepeats).toEqual([
+      expect.objectContaining({ title: 'Ventilación (IT)', cadence: 'todos los días' })
+    ]);
+    expect(overview!.routines.week.flatMap((group) => group.items.map((item) => item.title))).not.toContain(
+      'Ventilación (IT)'
+    );
+
+    // Y la de un día fijo sí tiene su grupo, con el día NOMBRADO y no una fecha.
+    const group = overview!.routines.week.find((candidate) => candidate.key === EN_DOS_DIAS);
+    expect(group).toBeDefined();
+    expect(group!.label).toBe(`El ${DIA_EN_DOS_DIAS}`);
+    expect(group!.items.map((item) => item.title)).toEqual(['Colada de sábanas (IT)']);
+    // Nada de la semana es accionable: no hay ocurrencia que marcar en estas
+    // filas, solo título y detalle.
+    expect(Object.keys(group!.items[0]!).sort()).toEqual(['details', 'key', 'title']);
   });
 
   it('lo pendiente de la SEGUNDA empleada también necesita decisión, y el enlace dice de quién es', async () => {
@@ -246,16 +289,19 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
 
     const keys = overview!.decisions.map((item) => item.key);
     expect(keys).toContain(`extra-${EXTRA_ACCEPTED}`);
-    expect(keys).toContain(`rutina-${ROUTINE_EMPLOYEE}`);
-    expect(keys).toContain(`rutina-${ROUTINE_ALL}`);
     expect(keys).not.toContain(`extra-${EXTRA_REQUESTED}`);
     expect(keys).not.toContain(`gasto-${EXPENSE_PENDING}`);
     expect(keys).not.toContain('menu-unconfirmed');
+    // Sus rutinas de hoy NO piden decisión: son el trabajo, y están en su
+    // tarjeta. Sin atraso suyo, este bloque no dice nada de rutinas.
+    expect(keys.some((key) => key.startsWith('rutina'))).toBe(false);
 
     // RLS por audiencia: la rutina de familia no existe para ella.
-    expect(overview!.routines.map((routine) => routine.title).sort()).toEqual([
+    expect(overview!.routines.overdue).toEqual([]);
+    expect(overview!.routines.today.map((row) => row.title).sort()).toEqual([
       'Filtro del agua (IT)',
-      'Regar plantas (IT)'
+      'Regar plantas (IT)',
+      'Ventilación (IT)'
     ]);
     // El menú del día sí es suyo (lo cocina ella).
     expect(overview!.menu).toHaveLength(1);
@@ -266,7 +312,7 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(overview).not.toBeNull();
     expect(overview!.decisions).toEqual([]);
     expect(overview!.menu).toHaveLength(1);
-    expect(overview!.routines.map((routine) => routine.title)).toEqual(['Regar plantas (IT)']);
+    expect(overview!.routines.today.map((row) => row.title)).toEqual(['Regar plantas (IT)']);
   });
 
   it('viewer: cero filas en todo — la base de datos, no la vista, decide', async () => {
@@ -274,7 +320,10 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(overview).not.toBeNull();
     expect(overview!.decisions).toEqual([]);
     expect(overview!.menu).toEqual([]);
-    expect(overview!.routines).toEqual([]);
+    expect(overview!.routines.anyToday).toBe(false);
+    expect(overview!.routines.overdue).toEqual([]);
+    expect(overview!.routines.today).toEqual([]);
+    expect(overview!.routines.week).toEqual([]);
   });
 
   it('un usuario sin membresía cae a null (la página degrada a la fixture)', async () => {

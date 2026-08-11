@@ -71,6 +71,8 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   // Rutinas y calendario
   routine_not_found: 'La rutina ya no existe',
   already_completed: 'Ya estaba marcada como hecha',
+  routine_has_no_schedule: 'Esa rutina todavía no tiene día',
+  completion_not_found: 'Esa rutina ya no estaba marcada como hecha',
   feed_not_found: 'El calendario externo ya no existe',
   source_not_found: 'El origen ya no existe',
 
