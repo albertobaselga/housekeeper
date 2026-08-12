@@ -42,8 +42,12 @@ dist/
 *.sql.zst
 *.backup
 
-# Espacios de trabajo de agentes y borradores
-.claude/
+# Espacios de trabajo de agentes y borradores.
+# `.claude/skills/` es la excepción: las skills SÍ se versionan, porque son
+# procedimiento del repositorio y no espacio de trabajo de nadie. El resto de
+# `.claude/` (worktrees, ajustes locales, sesiones) sigue fuera.
+.claude/*
+!.claude/skills/
 .codex/
 .agents/
 scratchpad/
