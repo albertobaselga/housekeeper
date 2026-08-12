@@ -102,7 +102,7 @@ Ejemplo **inventado** (el real vive fuera de Git):
     "startsOn": "2026-01-07",
     "monthlySalaryCents": 123400,
     "currencyCode": "EUR",
-    "contractedWeeklyMinutes": 2400,
+    "contractedWeeklyMinutes": 2460,
     "annualVacationDays": 30,
     "schedule": {
       "from": "08:00", "to": "19:00", "longBreakMinutes": 120,
@@ -121,6 +121,13 @@ Ejemplo **inventado** (el real vive fuera de Git):
 
 **Dos `family_admin`, siempre.** Es la red de recuperación de contraseñas.
 
+> **El horario y `contractedWeeklyMinutes` tienen que cuadrar.** En este ejemplo
+> el horario suma 41 h (lunes a jueves 08:00–19:00 con 2 h de descanso = 9 h, y
+> el viernes hasta las 15:00 = 5 h), y por eso `contractedWeeklyMinutes` son
+> `2460`. Si no cuadran, el guion imprime un `AVISO` con las dos cifras **y
+> guarda igual**: no le toca decidir cuál de las dos condiciones está mal.
+> Comprobado en los dos sentidos.
+
 ### 2. Las personas
 
 ```bash
@@ -136,6 +143,10 @@ chmod 600 /fuera/del/repo/credenciales.txt
 
 Imprime el **identificador del hogar** —apúntalo, hace falta en el paso 4— y las
 contraseñas generadas, **una sola vez**.
+
+Si lanzas el guion con `pnpm`, el fichero se lleva también las dos líneas de
+cabecera que pnpm escribe (`> @casa-clara/web@0.1.0 seed:accounts …`). No
+estorban, pero no te confundas: las contraseñas están más abajo.
 
 > **La trampa que más cara sale, y no está en ningún runbook.**
 > `DATABASE_AUTH_URL` **tiene que ser el rol `casa_clara_auth_login`**, cuyo
@@ -180,6 +191,13 @@ el contacto del 112.
 
 **Avisará de que se salta la plantilla de semana si no hay grupo de comensales.**
 Crea el grupo desde Menú y **vuelve a pasar el importador**.
+
+> **No te asustes con el prefijo `[dry-run]`.** La ejecución de verdad imprime
+> igualmente una línea `[dry-run] guía: …` antes del resumen bueno: el importador
+> hace primero un ensayo interno de la guía y no le quita la etiqueta. Lo que
+> dice que ha escrito de verdad es la línea `guía importada: …` y el cierre
+> `manual volcado por completo.` Si sólo ves `ensayo completado; nada
+> persistido.`, entonces sí fue un ensayo.
 
 ### 5. Lo que sólo se hace desde la aplicación
 
