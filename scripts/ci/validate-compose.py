@@ -9,7 +9,11 @@ import sys
 import yaml
 
 
-SELF_HOSTED = {"caddy", "postgres", "web", "worker", "minio", "mailpit", "clamav"}
+# `mailpit` estuvo aquí hasta que la 0029 retiró el correo. El validador siguió
+# exigiéndolo después de que infra/compose.local.yml dejara de traerlo, así que
+# el job `compose` de CI llevaba desde entonces en rojo por pedir un servicio
+# que la aplicación ya no usa.
+SELF_HOSTED = {"caddy", "postgres", "web", "worker", "minio", "clamav"}
 # infra/compose.worker.yml despliega SOLO las dos piezas que no caben en una
 # función serverless; su base de datos es Supabase y su almacén, Supabase
 # Storage, así que no puede traer postgres, minio, caddy ni web.

@@ -59,11 +59,6 @@ jobs:
       - uses: ./.github/actions/setup
       - name: Run a non-empty unit suite
         run: scripts/ci/run-tests-nonempty.sh pnpm test:unit
-      - name: Run the preserved prototype suite
-        # tests/*.test.mjs (node:test) valida logic.js/data.js/server.mjs del
-        # prototipo conservado en la raíz. No lo recogía ningún job porque la
-        # raíz no es un paquete del workspace y `pnpm -r` no la visita.
-        run: scripts/ci/run-tests-nonempty.sh pnpm test:legacy
       - name: Assert JUnit unit evidence is non-empty
         run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/unit/*.xml'
       - name: Upload unit artifacts
@@ -235,7 +230,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      # Las 19 specs *.dbe2e.ts: la batería de aceptación de los cinco roles
+      # Las specs *.dbe2e.ts: la batería de aceptación de los cinco roles
       # contra Postgres real. El globalSetup recrea el esquema, aplica fixtures
       # y crea el login NOBYPASSRLS con el que arranca el servidor web.
       E2E_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_e2e
@@ -299,7 +294,7 @@ jobs:
       - name: Show what was collected
         run: find evidence -name '*.xml' | sort
       - name: Every Playwright spec on disk must have run
-        # 28 ficheros: 8 *.e2e.ts + 19 *.dbe2e.ts + 1 *.a11y.ts. Los nombres de
+        # Los *.e2e.ts, los *.dbe2e.ts y el *.a11y.ts. Los nombres de
         # `testsuite` de Playwright son relativos a testDir (apps/web/e2e).
         run: >-
           python3 scripts/ci/assert-suite-coverage.py

@@ -1,6 +1,6 @@
 // Alta de las cuentas reales de un hogar: identidad en Better Auth (usuario +
 // contraseña) y membresía de aplicación en el esquema `app`. Es el guion de
-// producción, hermano de seed-demo-users.mjs pero SIN las rejas de entorno
+// producción, heredero de seed-demo-users.mjs (retirado) pero SIN las rejas de entorno
 // sintético: aquí sí se crean personas de verdad.
 //
 // Los datos NUNCA viven en el repositorio: se pasan en un JSON externo.

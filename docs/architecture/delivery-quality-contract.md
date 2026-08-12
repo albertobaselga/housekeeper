@@ -10,13 +10,12 @@ El monorepo debe publicar estos scripts raíz; si falta uno, CI falla en vez de 
 | `typecheck` | Tipos de todos los workspaces. |
 | `build` | Build reproducible de web y worker. |
 | `test:unit` | Unidades y motor de dominio; imprime recuento positivo. |
-| `test:legacy` | Batería `node:test` del prototipo conservado en la raíz (`tests/*.test.mjs`). |
 | `db:migrate` | Aplica todas las migraciones a la DB indicada. Reejecutarlo no debe causar cambios. |
 | `test:db` | Restricciones, libros, auditoría y concurrencia. |
 | `test:rls` | Matriz negativa de hogares, roles, campos y Storage. |
 | `test:import` | Ida y vuelta del importador del manual y del corpus wiki. |
-| `test:e2e` | Flujos, PWA, offline e IndexedDB en modo fixture (8 specs `*.e2e.ts`). |
-| `test:e2e:db` | Aceptación de los cinco roles contra Postgres real bajo RLS (18 specs `*.dbe2e.ts`). |
+| `test:e2e` | Flujos, PWA, offline e IndexedDB en modo fixture (11 specs `*.e2e.ts`). |
+| `test:e2e:db` | Aceptación de los cinco roles contra Postgres real bajo RLS (26 specs `*.dbe2e.ts`). |
 | `test:a11y` | axe, teclado, foco y escalado. |
 | `test:lighthouse` | Arranca la web y ejecuta LHCI con `infra/quality/lighthouserc.json`. |
 
@@ -29,7 +28,7 @@ Todos viven en `.github/workflows/ci.yml`, un job por puerta:
 | Job | Qué corre | Postgres propio |
 |---|---|---|
 | `static-analysis` | `lint`, `typecheck`, `build`, `verify:bundle` | no |
-| `unit` | `test:unit` y `test:legacy` | no |
+| `unit` | `test:unit` | no |
 | `compose` | `scripts/ci/validate-compose.sh` | no |
 | `database` | `db:migrate` desde cero → `test:db` → `test:rls` → `test:import` → `db:migrate` otra vez | sí |
 | `integration` | `@casa-clara/server`, `@casa-clara/web` y `@casa-clara/worker`, **en secuencia** | sí |
@@ -51,7 +50,7 @@ Tres capas, cada una nacida de un fallo real:
 
 1. `scripts/ci/run-tests-nonempty.sh` — falla si el runner termina con éxito sin haber ejecutado ninguna prueba. Nació del falso verde en WSL, donde el npm de Windows finalizaba con éxito tras ejecutar cero pruebas. Normaliza la salida quitando secuencias ANSI antes de buscar el recuento: Vitest 3.x colorea su resumen precisamente cuando detecta `CI=true`.
 2. `scripts/ci/assert-junit-nonempty.py` — falla si el JUnit no existe, no parsea o suma cero casos.
-3. `scripts/ci/assert-suite-coverage.py` — falla si un fichero de spec **existe en el árbol pero no aparece ejecutado** en ningún informe JUnit, o si aparece con todos sus casos saltados. Cubre los dos huecos que documentó `docs/despliegue/plan-vercel-supabase.md` §12.2: las 18 specs `*.dbe2e.ts` que no invocaba ningún workflow y las suites de integración inertes por falta de base de datos. Las dos primeras guardas no los detectaban, porque bastaba con que *alguna* prueba corriera.
+3. `scripts/ci/assert-suite-coverage.py` — falla si un fichero de spec **existe en el árbol pero no aparece ejecutado** en ningún informe JUnit, o si aparece con todos sus casos saltados. Cubre los dos huecos que documentó `docs/despliegue/plan-vercel-supabase.md` §12.2: las specs `*.dbe2e.ts` que no invocaba ningún workflow y las suites de integración inertes por falta de base de datos. Las dos primeras guardas no los detectaban, porque bastaba con que *alguna* prueba corriera.
 
 Este tercer gate no se relaja nunca: si falla, se le da al fichero el job o el entorno que necesita.
 

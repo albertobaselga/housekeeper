@@ -14,15 +14,6 @@ export default tseslint.config(
       '**/.vercel/**',
       'coverage/**',
       'artifacts/**',
-      // Prototipo legacy preservado en el tag demo-v0.1.0; no se lintan sus fuentes.
-      'app.js',
-      'auth.js',
-      'data.js',
-      'logic.js',
-      'offline.js',
-      'server.mjs',
-      'sw.js',
-      'tests/**',
       // Los .svelte requieren eslint-plugin-svelte; pendiente de incorporarse.
       '**/*.svelte'
     ]
