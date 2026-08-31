@@ -45,6 +45,39 @@
   let voidReason = $state('');
   let voided = $state<string[]>([]);
 
+  /**
+   * Atajos de precarga, no rutas de escritura nuevas: «Adelanto» y «Ausencia»
+   * rellenan ESTE formulario (etiqueta, sentido y motivo orientativo) y acaban
+   * en el mismo comando `recordManualAdjustment`. El importe queda por
+   * escribir y todo es editable: la precarga es un empujón, no una jaula.
+   * Los anticipos con cuota (`app.advances`) siguen siendo de solo lectura en
+   * los saldos del Resumen; este atajo apunta un descuento del mes.
+   */
+  type Preset = 'adelanto' | 'ausencia' | 'otro';
+  let preset = $state<Preset>('otro');
+
+  function applyPreset(choice: Preset): void {
+    preset = choice;
+    formError = null;
+    amount = '';
+    if (choice === 'adelanto') {
+      label = 'Adelanto entregado';
+      reason = 'Entregado a cuenta, se descuenta de este mes';
+      direction = 'subtracts';
+      addsToPay = true;
+    } else if (choice === 'ausencia') {
+      label = 'Ausencia no retribuida';
+      reason = 'Día no trabajado sin sueldo, hablado con ella';
+      direction = 'subtracts';
+      addsToPay = true;
+    } else {
+      label = '';
+      reason = '';
+      direction = 'adds';
+      addsToPay = true;
+    }
+  }
+
   type Draft = {
     operationId: string;
     periodLabel: string;
@@ -245,6 +278,28 @@
   {#if canRecord}
     <form class="action-form" onsubmit={record}>
       <h3>Apuntar un concepto</h3>
+      <!-- Los tres casos de cada mes, a un toque. Son botones de relleno: lo
+           que precargan se ve y se puede corregir antes de enviar. -->
+      <div class="action-row" role="group" aria-label="Qué tipo de concepto">
+        <button
+          class="button secondary small-button"
+          type="button"
+          aria-pressed={preset === 'adelanto'}
+          onclick={() => applyPreset('adelanto')}
+        >Adelanto</button>
+        <button
+          class="button secondary small-button"
+          type="button"
+          aria-pressed={preset === 'ausencia'}
+          onclick={() => applyPreset('ausencia')}
+        >Ausencia</button>
+        <button
+          class="button secondary small-button"
+          type="button"
+          aria-pressed={preset === 'otro'}
+          onclick={() => applyPreset('otro')}
+        >Otro concepto</button>
+      </div>
       <label>Cómo se llama en la cuenta
         <input
           type="text"
