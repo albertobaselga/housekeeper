@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentPersonBar from '$lib/components/employment/EmploymentPersonBar.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import { can } from '$lib/auth/capabilities';
@@ -12,11 +13,15 @@
   // El Resumen ya no escribe nada por sí mismo: registrar y decidir viven en
   // Conceptos y abrir la cuenta en Pagos, así que aquí no hay acciones
   // optimistas que orquestar. El triaje del outbox se gobierna solo.
+  const portada = $derived(data.portada);
   const overview = $derived(data.overview);
 
   // Las acciones de escritura solo existen sobre datos reales de Postgres; en
   // modo fixture (demo sin base de datos) la página es de solo lectura.
   const agreement = $derived(overview?.hasEmploymentData ? overview.agreement : null);
+  const selectedOption = $derived(
+    overview?.agreements.find((option) => option.id === agreement?.id) ?? null
+  );
   const isOwnAgreement = $derived(
     agreement !== null && agreement.employeeMembershipId === context.membershipId
   );
@@ -50,11 +55,86 @@
        propietario. Sigue valiendo la regla de P2-3 (revisión UX v3): un nombre,
        el mismo en la barra lateral, en la hoja «Más» y aquí. El h1 dice además
        de qué mes se está hablando, que es lo que se ha venido a mirar. -->
+  {#if portada}
+    <!-- La portada del hogar: primero se elige a la persona. Sin barra de
+         pestañas —las pestañas son del expediente de una— y con la cuenta
+         total de la casa arriba, que es la pregunta que se viene a mirar. -->
+    <PageHeader
+      eyebrow="Condiciones, nómina y gastos"
+      title={`Contrato · ${portada.periodLabel.toLocaleLowerCase('es')}`}
+      description="La cuenta de la casa este mes y el expediente de cada persona empleada."
+    />
+
+    {#if portada.seesAmounts}
+      <section class="summary-strip" class:dos={!portada.withReimbursements} aria-label="La cuenta de la casa este mes">
+        <div><span>Mes en curso</span><strong>{portada.periodLabel}</strong></div>
+        {#if portada.withReimbursements}
+          <div><span>Salarios</span><strong>{portada.salaryLabel}</strong></div>
+          <div><span>Reembolsos</span><strong>{portada.reimbursementLabel}</strong></div>
+        {/if}
+        <div class="total"><span>Total de la casa</span><strong>{portada.totalLabel}</strong></div>
+      </section>
+    {:else}
+      <!-- Ausencia por permiso, no por falta de datos: la RLS no enseña
+           importes a quien no administra ni es la empleada. -->
+      <article class="card quiet-card">
+        <span class="card-icon" aria-hidden="true">·</span>
+        <h2>Importes reservados</h2>
+        <p>
+          Los importes de cada contrato solo los ven quien administra el hogar y cada
+          empleada. Puedes abrir cada expediente y revisar lo pendiente.
+        </p>
+      </article>
+    {/if}
+
+    <article class="card">
+      <div class="section-heading">
+        <div><p class="eyebrow">Personas empleadas</p><h2>El expediente de cada una</h2></div>
+      </div>
+      <div class="ledger-list" data-lista="principal">
+        {#each portada.employees as employee (employee.agreementId)}
+          <div>
+            <span>
+              <strong>{employee.employeeLabel}{employee.active ? '' : ' (acuerdo terminado)'}</strong>
+              <small>
+                {#if employee.monthTotalLabel}
+                  Este mes va sumando {employee.monthTotalLabel}
+                {:else if portada.seesAmounts}
+                  Su contrato no está en vigor este mes
+                {:else}
+                  Importes reservados
+                {/if}
+                &nbsp;· {employee.pendingLabel}
+              </small>
+            </span>
+            <span class="inline-actions">
+              {#if employee.monthTotalLabel}
+                <strong class="cifra pequena">{employee.monthTotalLabel}</strong>
+              {/if}
+              <a
+                class="button secondary small-button"
+                href={`?empleada=${encodeURIComponent(employee.agreementId)}`}
+                data-sveltekit-noscroll
+              >Abrir su expediente</a>
+            </span>
+          </div>
+        {/each}
+      </div>
+    </article>
+  {:else}
   <PageHeader
     eyebrow="Condiciones, nómina y gastos"
     title={overview?.accrual ? `Contrato · ${overview.accrual.periodLabel.toLocaleLowerCase('es')}` : 'Contrato'}
     description="Importes claros, confirmaciones separadas y un historial que se entiende."
   />
+
+  {#if overview && overview.agreements.length > 1 && selectedOption}
+    <EmploymentPersonBar
+      householdId={overview.householdId}
+      employeeLabel={selectedOption.employeeLabel}
+      active={selectedOption.active}
+    />
+  {/if}
 
   <EmploymentTabs
     householdId={context.household.id}
@@ -92,26 +172,8 @@
         </section>
       {/if}
 
-      <!-- Un hogar puede emplear a varias personas a la vez. Cuando así es,
-           quien administra elige de quién es el expediente que mira; la
-           elección viaja en la URL para poder volver a ella. A la empleada la
-           RLS solo le devuelve su acuerdo, así que no ve ningún selector. -->
-      {#if overview.agreements.length > 1}
-        <!-- Un nombre completo por chip no cabe dos veces en 320 px: la tira va en
-             scroller con máscara y un chip siempre cortado a la mitad, que dice
-             que hay más sin gastar una segunda línea de marco. -->
-        <nav class="chip-strip scroller" aria-label="Elegir de quién es el expediente">
-          {#each overview.agreements as option (option.id)}
-            <a
-              class="chip {option.id === agreement?.id ? 'active' : ''}"
-              href={`?empleada=${option.id}`}
-              aria-current={option.id === agreement?.id ? 'page' : undefined}
-              data-sveltekit-noscroll
-            >{option.employeeLabel}{option.active ? '' : ' (acuerdo terminado)'}</a>
-          {/each}
-        </nav>
-      {/if}
-
+      <!-- De quién es el expediente lo dice la barra de arriba: la elección se
+           hace en la portada del hogar, no aquí. -->
       <OutboxTriageCard householdId={overview.householdId} />
 
       <!-- Lo que espera una decisión vive en Conceptos; el Resumen solo lo
@@ -312,5 +374,6 @@
         </article>
       </aside>
     </div>
+  {/if}
   {/if}
 </div>

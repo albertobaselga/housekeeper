@@ -124,13 +124,25 @@ la acción `?/hire` de acuerdo llama al mismo `hireHouseholdMember()` (identidad
 + acceso + contrato en un acto, con contraseña provisional), y Personal sigue
 funcionando igual con el componente extraído.
 
-## Selector de empleada
+## Primero la persona, luego su expediente (revisión del propietario)
 
-Sigue siendo `?empleada=<agreementId>` en la URL, con la tira de chips actual,
-pero ahora **encima de la barra de pestañas y presente en todas** las pestañas
-por-persona (Resumen, Conceptos, Pagos; Vacaciones ordena a la elegida
-primero; Contrato resalta su acuerdo). Con una sola empleada no se pinta,
-como hoy.
+La entrada de «Contrato» con varias empleadas **no aterriza en el expediente
+de una**: aterriza en la **portada del hogar**, que responde «¿cuánto nos
+cuesta la casa este mes y cómo va cada una?»:
+
+- La **cuenta total de la casa en salarios** del mes en curso (suma de lo que
+  va sumando cada contrato), con su desglose salario/reembolsos si lo hay.
+- Una **tarjeta por empleada**: su nombre, el estado del contrato, **su gasto
+  del mes en curso** y lo que espera decisión, con «Abrir su expediente».
+
+Entrar en una tarjeta lleva al expediente (`?empleada=<agreementId>`) con las
+cinco pestañas de siempre. Dentro del expediente ya no hay tira de chips: una
+línea fija dice **de quién** es lo que se mira y ofrece «Cambiar», que vuelve
+a la portada. Con **una sola empleada** la portada no aporta nada y
+`employment` sigue aterrizando directamente en su Resumen; la empleada, que
+por RLS solo ve su acuerdo, tampoco pasa por portada. La familia no
+administradora ve la portada con las personas y sin importes, dicho con la
+honestidad de siempre.
 
 ## Errores y estados vacíos
 

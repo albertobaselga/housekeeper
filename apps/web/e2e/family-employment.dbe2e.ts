@@ -33,10 +33,21 @@ function dueDateLabel(iso: string): string {
   return `${day} ${months[month! - 1]} ${year}`;
 }
 
+/**
+ * Primero la persona: `/employment` con dos empleadas es la PORTADA del hogar
+ * (la cuenta total del mes y una tarjeta por persona). El flujo entra por ahí,
+ * como entraría una persona, y abre el expediente de Ana.
+ */
 async function gotoEmployment(page: Page): Promise<void> {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/employment`);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const fila = page
+    .locator('[data-lista="principal"] > div')
+    .filter({ hasText: 'Fixture Empleada Roble' })
+    .first();
+  await fila.getByRole('link', { name: 'Abrir su expediente' }).click();
+  await expect(page.getByRole('navigation', { name: 'Secciones del contrato' })).toBeVisible();
 }
 
 /** Navegación de sección: la barra de pestañas, como la usaría una persona. */
@@ -211,13 +222,26 @@ test('Alberto apunta una jornada a nombre de Ana y la cierra en el acto, con el 
   await expect(ledgerRow).toContainText('La apuntó la familia');
 });
 
-test('Alberto cambia de empleada y el expediente entero es el de la otra, pestaña a pestaña', async ({ page }) => {
+test('Alberto cambia de empleada por la portada y el expediente entero es el de la otra, pestaña a pestaña', async ({ page }) => {
   await gotoEmployment(page);
 
-  const chooser = page.getByRole('navigation', { name: 'Elegir de quién es el expediente' });
-  await expect(chooser.getByRole('link')).toHaveCount(2);
-  await chooser.getByRole('link', { name: 'Fixture Segunda Empleada Roble' }).click();
+  // Dentro del expediente, la barra fija dice de quién es y «Cambiar» vuelve
+  // a la portada del hogar: primero la persona, luego los detalles.
+  const personBar = page.locator('.person-bar');
+  await expect(personBar).toContainText('Fixture Empleada Roble');
+  await personBar.getByRole('link', { name: 'Cambiar' }).click();
+
+  // La portada: la cuenta total de la casa y una tarjeta por empleada con su
+  // gasto del mes.
+  await expect(page.locator('.summary-strip')).toContainText('Total de la casa');
+  const tarjetas = page.locator('[data-lista="principal"] > div');
+  await expect(tarjetas).toHaveCount(2);
+  await tarjetas
+    .filter({ hasText: 'Fixture Segunda Empleada Roble' })
+    .getByRole('link', { name: 'Abrir su expediente' })
+    .click();
   await page.waitForURL(new RegExp(`/employment\\?empleada=${AGREEMENT_SEGUNDA}$`));
+  await expect(page.locator('.person-bar')).toContainText('Fixture Segunda Empleada Roble');
 
   // Cambiar de pestaña no cambia de persona: la elección viaja en la barra.
   await gotoTab(page, 'Conceptos');

@@ -6,6 +6,7 @@ import {
   buildAccrual,
   buildAdvanceBalanceViews,
   buildAgreementOptionViews,
+  buildPortadaView,
   buildAgreementTermsView,
   buildAgreementVersionViews,
   buildExtraWorkTypeView,
@@ -25,6 +26,7 @@ import {
   type ApprovedExpenseRow,
   type CompensationBalanceRow,
   type EmploymentOverview,
+  type EmploymentPortadaView,
   type ExtraWorkTypeRow,
   type ManualAdjustmentRow,
   type PaymentRow,
@@ -568,5 +570,231 @@ export async function loadEmploymentOverview(
     });
   } catch (cause) {
     return unreadable(log, 'employment overview', cause);
+  }
+}
+
+/**
+ * La portada de Contrato: primero la persona, luego su expediente. Responde
+ * «¿cuánto nos cuesta la casa este mes y cómo va cada una?» con el devengo del
+ * mes de CADA acuerdo visible y lo que espera decisión, sin cargar historial
+ * de liquidaciones ni vacaciones de nadie. Las consultas van agrupadas por
+ * hogar (`= any(ids)`) y se reparten por acuerdo aquí: el número de consultas
+ * no crece con el número de empleadas.
+ *
+ * Quién ve qué lo decide la RLS, como en el resto del expediente: la familia
+ * no administradora recibe las personas pero ninguna versión salarial, así
+ * que sus devengos salen null y la portada dice «importes reservados».
+ */
+export async function loadEmploymentPortada(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool(),
+  now: Date = new Date()
+): Promise<EmploymentPortadaView | null> {
+  if (!pool) return null;
+  const period = currentPeriod(now);
+  const { first, last } = monthBounds(period);
+
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+      const agreementResult = await client.query<AgreementRow>(
+        `select agreement.id,
+                agreement.status::text as "status",
+                agreement.starts_on::text as "startsOn",
+                agreement.ends_on::text as "endsOn",
+                agreement.employee_membership_id as "employeeMembershipId",
+                profile.display_name as "employeeName"
+           from app.employment_agreements as agreement
+           left join app.household_memberships as membership
+             on membership.household_id = agreement.household_id
+            and membership.id = agreement.employee_membership_id
+           left join app.user_profiles as profile
+             on profile.user_id = membership.user_id
+          where agreement.household_id = $1
+          order by (agreement.status = 'active') desc, agreement.starts_on desc`,
+        [householdId]
+      );
+      const agreements = agreementResult.rows;
+      if (agreements.length === 0) return null;
+      const ids = agreements.map((row) => row.id);
+
+      const versions = await client.query<AgreementVersionRow & { agreementId: string }>(
+        `select agreement_id as "agreementId",
+                id,
+                version_number as "versionNumber",
+                effective_from::text as "effectiveFrom",
+                monthly_salary_cents as "monthlySalaryCents",
+                contracted_weekly_minutes as "contractedWeeklyMinutes",
+                annual_vacation_days as "annualVacationDays",
+                reason
+           from app.agreement_versions
+          where household_id = $1 and agreement_id = any($2::uuid[])
+          order by agreement_id, version_number`,
+        [householdId, ids]
+      );
+
+      const supplements = await client.query<RecurringSupplementRow & { agreementId: string }>(
+        `select agreement_id as "agreementId",
+                id,
+                agreement_version_id as "agreementVersionId",
+                code,
+                name,
+                amount_cents::text as "amountCents",
+                periodicity::text as "periodicity",
+                adds_to_pay as "addsToPay",
+                starts_on::text as "startsOn",
+                ends_on::text as "endsOn",
+                active
+           from app.recurring_supplements
+          where household_id = $1 and agreement_id = any($2::uuid[])
+          order by agreement_id, sort_order, code`,
+        [householdId, ids]
+      );
+
+      const extras = await client.query<ResolvedExtraWorkRow & { agreementId: string }>(
+        `select agreement_id as "agreementId",
+                id,
+                kind::text as "kind",
+                (select catalogued.name from app.extra_work_types as catalogued
+                  where catalogued.household_id = extra_work_events.household_id
+                    and catalogued.id = extra_work_events.extra_work_type_id) as "typeName",
+                worked_on::text as "workedOn",
+                duration_minutes as "durationMinutes",
+                note,
+                origin::text as "origin",
+                resolution::text as "resolution",
+                frozen_unit_rate_cents as "frozenUnitRateCents",
+                frozen_amount_cents as "frozenAmountCents",
+                balance_minutes as "balanceMinutes"
+           from app.extra_work_events
+          where household_id = $1 and agreement_id = any($2::uuid[])
+            and status = 'resolved'
+            and worked_on between $3 and $4
+          order by agreement_id, worked_on, requested_at`,
+        [householdId, ids, first, last]
+      );
+
+      const expenses = await client.query<ApprovedExpenseRow & { agreementId: string }>(
+        `select expense.agreement_id as "agreementId",
+                expense.id,
+                expense.incurred_on::text as "incurredOn",
+                expense.description,
+                expense.amount_cents as "amountCents"
+           from app.expenses as expense
+          where expense.household_id = $1 and expense.agreement_id = any($2::uuid[])
+            and expense.status = 'approved'
+            and not exists (
+              select 1 from app.settlement_lines as line
+               where line.household_id = expense.household_id
+                 and line.expense_id = expense.id
+            )
+          order by expense.agreement_id, expense.incurred_on`,
+        [householdId, ids]
+      );
+
+      const advances = await client.query<AdvanceRow & { agreementId: string }>(
+        `select advance.agreement_id as "agreementId",
+                advance.id,
+                advance.status::text as "status",
+                advance.issued_on::text as "issuedOn",
+                advance.principal_cents as "principalCents",
+                advance.repayment_cents as "repaymentCents",
+                balance.outstanding_cents as "outstandingCents"
+           from app.advances as advance
+           join app.advance_balances as balance
+             on balance.household_id = advance.household_id
+            and balance.advance_id = advance.id
+          where advance.household_id = $1 and advance.agreement_id = any($2::uuid[])
+          order by advance.agreement_id, advance.issued_on`,
+        [householdId, ids]
+      );
+
+      const adjustments = await client.query<ManualAdjustmentRow & { agreementId: string }>(
+        `select agreement_id as "agreementId",
+                id,
+                to_char(period_month, 'YYYY-MM') as "period",
+                to_char(requested_period_month, 'YYYY-MM') as "requestedPeriod",
+                label,
+                reason,
+                amount_cents::text as "amountCents",
+                adds_to_pay as "addsToPay",
+                deferral_note as "deferralNote",
+                status::text as "status",
+                void_reason as "voidReason"
+           from app.manual_adjustments
+          where household_id = $1 and agreement_id = any($2::uuid[])
+            and period_month = date_trunc('month', $3::date)::date
+          order by agreement_id, recorded_at`,
+        [householdId, ids, first]
+      );
+
+      // Lo que espera decisión, contado en la base: jornadas vivas y gastos
+      // pendientes. La portada solo necesita el número.
+      const pendingCounts = await client.query<{ agreementId: string; pending: string }>(
+        `select agreement_id as "agreementId", count(*)::text as "pending"
+           from (
+             select agreement_id from app.extra_work_events
+              where household_id = $1 and agreement_id = any($2::uuid[])
+                and status in ('requested', 'accepted', 'performed', 'performed_pending_resolution')
+             union all
+             select agreement_id from app.expenses
+              where household_id = $1 and agreement_id = any($2::uuid[])
+                and status = 'pending'
+           ) as pendiente
+          group by agreement_id`,
+        [householdId, ids]
+      );
+      const pendingByAgreement = new Map(
+        pendingCounts.rows.map((row) => [row.agreementId, Number(row.pending)])
+      );
+
+      const byAgreement = <T extends { agreementId: string }>(rows: readonly T[]) => {
+        const grouped = new Map<string, T[]>();
+        for (const row of rows) {
+          const bucket = grouped.get(row.agreementId);
+          if (bucket) bucket.push(row);
+          else grouped.set(row.agreementId, [row]);
+        }
+        return grouped;
+      };
+      const versionsBy = byAgreement(versions.rows);
+      const supplementsBy = byAgreement(supplements.rows);
+      const extrasBy = byAgreement(extras.rows);
+      const expensesBy = byAgreement(expenses.rows);
+      const advancesBy = byAgreement(advances.rows);
+      const adjustmentsBy = byAgreement(adjustments.rows);
+
+      const options = buildAgreementOptionViews(agreements);
+      return buildPortadaView({
+        period,
+        employees: agreements.map((agreement) => {
+          const own = versionsBy.get(agreement.id) ?? [];
+          // La misma elección que congela el motor al cerrar: la versión en
+          // vigor el PRIMER día del periodo manda sobre los complementos.
+          const inForce =
+            [...own].filter((row) => row.effectiveFrom <= first).at(-1) ?? null;
+          return {
+            agreementId: agreement.id,
+            employeeLabel:
+              options.find((option) => option.id === agreement.id)?.employeeLabel ?? 'La empleada',
+            active: agreement.status === 'active',
+            accrual: buildAccrual({
+              period,
+              versions: own,
+              extras: extrasBy.get(agreement.id) ?? [],
+              advances: advancesBy.get(agreement.id) ?? [],
+              expenses: expensesBy.get(agreement.id) ?? [],
+              supplements: (supplementsBy.get(agreement.id) ?? []).filter(
+                (row) => row.agreementVersionId === (inForce?.id ?? '')
+              ),
+              adjustments: adjustmentsBy.get(agreement.id) ?? []
+            }),
+            pendingCount: pendingByAgreement.get(agreement.id) ?? 0
+          };
+        })
+      });
+    });
+  } catch (cause) {
+    return unreadable(log, 'employment portada', cause);
   }
 }

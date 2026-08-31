@@ -1,6 +1,7 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import EmploymentPersonBar from '$lib/components/employment/EmploymentPersonBar.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
   import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
@@ -24,6 +25,9 @@
   const overview = $derived(data.overview);
 
   const agreement = $derived(overview?.hasEmploymentData ? overview.agreement : null);
+  const selectedOption = $derived(
+    overview?.agreements.find((option) => option.id === agreement?.id) ?? null
+  );
   const isOwnAgreement = $derived(
     agreement !== null && agreement.employeeMembershipId === context.membershipId
   );
@@ -54,6 +58,14 @@
     description="Jornadas extra, gastos, adelantos y ausencias: aquí se apuntan y aquí se deciden."
   />
 
+  {#if overview && overview.agreements.length > 1 && selectedOption}
+    <EmploymentPersonBar
+      householdId={overview.householdId}
+      employeeLabel={selectedOption.employeeLabel}
+      active={selectedOption.active}
+    />
+  {/if}
+
   <EmploymentTabs
     householdId={context.household.id}
     current="conceptos"
@@ -76,21 +88,8 @@
       <p>Cuando el hogar registre un contrato con la empleada, aquí se apuntarán sus conceptos.</p>
     </article>
   {:else}
-    {#if overview.agreements.length > 1}
-      <!-- La empleada elegida viaja en la URL, igual que en el resumen: cambiar
-           de persona repite solo este load y el enlace se puede compartir. -->
-      <nav class="chip-strip scroller" aria-label="Elegir de quién es el expediente">
-        {#each overview.agreements as option (option.id)}
-          <a
-            class="chip {option.id === agreement?.id ? 'active' : ''}"
-            href={`?empleada=${option.id}`}
-            aria-current={option.id === agreement?.id ? 'page' : undefined}
-            data-sveltekit-noscroll
-          >{option.employeeLabel}{option.active ? '' : ' (acuerdo terminado)'}</a>
-        {/each}
-      </nav>
-    {/if}
-
+    <!-- De quién es lo dice la barra de arriba; cambiar de persona se hace en
+         la portada de Contrato. -->
     <OutboxTriageCard householdId={overview.householdId} />
 
     {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra || canRegisterForEmployee)}

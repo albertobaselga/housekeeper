@@ -1,4 +1,8 @@
-import { employmentHrefBases, loadEmploymentOverview } from '$lib/server/employment.server';
+import {
+  employmentHrefBases,
+  loadEmploymentOverview,
+  loadEmploymentPortada
+} from '$lib/server/employment.server';
 import { demoOrUnavailable } from '$lib/server/data-source.server';
 import { getEmploymentFixture } from '$lib/server/fixtures.server';
 import type { PageServerLoad } from './$types';
@@ -21,8 +25,16 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
         employmentHrefBases(locals.user, params.householdId, selectedAgreementId)
       )
     : null;
-  if (overview) return { overview, employment: null };
+  // Primero la persona, luego su expediente: con varias empleadas y sin
+  // elección en la URL, la entrada es la portada del hogar (cuánto cuesta la
+  // casa este mes y cómo va cada una). Con una sola —o para la empleada, a
+  // quien la RLS solo le enseña la suya— se aterriza directo en el Resumen.
+  if (overview && !selectedAgreementId && overview.agreements.length > 1 && locals.user) {
+    const portada = await loadEmploymentPortada({ id: locals.user.id }, params.householdId);
+    if (portada) return { portada, overview: null, employment: null };
+  }
+  if (overview) return { portada: null, overview, employment: null };
   // Con base de datos configurada aquí no hay maqueta que servir: 503 honesto
   // y registrado (data-source.server.ts). Sin base, la demostración sigue.
-  return demoOrUnavailable(() => ({ overview: null, employment: getEmploymentFixture() }));
+  return demoOrUnavailable(() => ({ portada: null, overview: null, employment: getEmploymentFixture() }));
 };

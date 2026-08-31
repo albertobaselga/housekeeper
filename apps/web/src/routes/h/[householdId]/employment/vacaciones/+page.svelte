@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentPersonBar from '$lib/components/employment/EmploymentPersonBar.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
   import { can } from '$lib/auth/capabilities';
@@ -71,6 +72,14 @@
       : 'El historial de cada persona, año a año, con lo anulado a la vista.'}
   />
 
+  {#if data.employment && data.employment.agreements.length > 1 && employmentAgreement}
+    <EmploymentPersonBar
+      householdId={data.householdId}
+      employeeLabel={data.employment.agreements.find((option) => option.id === employmentAgreement?.id)?.employeeLabel ?? 'la empleada'}
+      active={data.employment.agreements.find((option) => option.id === employmentAgreement?.id)?.active ?? true}
+    />
+  {/if}
+
   <EmploymentTabs householdId={data.householdId} current="vacaciones" empleada={data.empleada} />
 
   {#if !overview}
@@ -96,23 +105,9 @@
       </p>
     {/if}
 
-    <!-- Con varias personas empleadas, la tarjeta de abajo ESCRIBE sobre una
-         de ellas: sin este selector, apuntar días desde un enlace sin
-         `?empleada=` caería en silencio sobre la primera. Misma tira que el
-         Resumen; con una sola persona no se pinta. -->
-    {#if data.employment && data.employment.agreements.length > 1}
-      <nav class="chip-strip scroller" aria-label="Elegir de quién es el expediente">
-        {#each data.employment.agreements as option (option.id)}
-          <a
-            class="chip {option.id === employmentAgreement?.id ? 'active' : ''}"
-            href={`?empleada=${encodeURIComponent(option.id)}`}
-            aria-current={option.id === employmentAgreement?.id ? 'page' : undefined}
-            data-sveltekit-noscroll
-          >{option.employeeLabel}{option.active ? '' : ' (acuerdo terminado)'}</a>
-        {/each}
-      </nav>
-    {/if}
-
+    <!-- La tarjeta de abajo ESCRIBE sobre la persona que dice la barra fija de
+         arriba: apuntar días nunca cae en silencio sobre otra. Cambiar de
+         persona se hace en la portada de Contrato. -->
     <!-- El año en curso, encima del historial: el saldo para cualquiera que
          pueda leerlo y el formulario de apuntar/anular solo para quien
          administra (la empleada lo ve en solo lectura, como siempre). La

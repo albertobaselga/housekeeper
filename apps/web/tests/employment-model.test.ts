@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { parseEuroInput } from '../src/lib/employment/commands';
 import {
   buildAccrual,
+  buildPortadaView,
   centsToEuroInput,
   buildAdvanceBalanceViews,
   buildAgreementOptionViews,
@@ -825,5 +826,57 @@ describe('trabajo y gastos pendientes de acción', () => {
     ]);
     expect(views[0]!.amountLabel).toBe('18,50 €');
     expect(views[0]!.incurredOnLabel).toBe('5 ago 2026');
+  });
+});
+
+describe('la portada del hogar', () => {
+  it('suma la casa en BigInt y dice null —no cero— para quien no tiene devengo', () => {
+    const accrual = buildAccrual({
+      period: '2026-08',
+      versions: VERSIONS,
+      extras: [],
+      advances: [],
+      expenses: [{ id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850' }]
+    });
+    const portada = buildPortadaView({
+      period: '2026-08',
+      employees: [
+        { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual, pendingCount: 2 },
+        // Su contrato aún no está en vigor este mes: buildAccrual devuelve null
+        // y la portada no puede inventarle un 0,00 €.
+        { agreementId: 'a2', employeeLabel: 'Bea', active: true, accrual: null, pendingCount: 0 }
+      ]
+    });
+
+    expect(portada.periodLabel).toBe('Agosto 2026');
+    expect(portada.salaryLabel).toBe('1.500,00 €');
+    expect(portada.reimbursementLabel).toBe('18,50 €');
+    expect(portada.totalLabel).toBe('1.518,50 €');
+    expect(portada.withReimbursements).toBe(true);
+    expect(portada.seesAmounts).toBe(true);
+
+    expect(portada.employees[0]).toMatchObject({
+      employeeLabel: 'Ana',
+      monthTotalLabel: '1.518,50 €',
+      pendingLabel: '2 asuntos por decidir'
+    });
+    expect(portada.employees[1]).toMatchObject({
+      employeeLabel: 'Bea',
+      monthTotalCents: null,
+      monthTotalLabel: null,
+      pendingLabel: 'Nada pendiente'
+    });
+  });
+
+  it('sin ninguna cifra visible (familia no administradora), lo dice con seesAmounts', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      employees: [
+        { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 1 }
+      ]
+    });
+    expect(portada.seesAmounts).toBe(false);
+    expect(portada.totalCents).toBe('0');
+    expect(portada.employees[0]!.pendingLabel).toBe('1 asunto por decidir');
   });
 });

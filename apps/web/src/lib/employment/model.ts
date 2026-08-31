@@ -771,6 +771,101 @@ export interface EmploymentOverview {
   };
 }
 
+/**
+ * Una empleada en la portada del hogar: su gasto del mes en curso y lo que
+ * espera decisión, para elegir a quién abrir. Los importes llegan ya
+ * formateados; `monthTotalLabel` es null cuando su contrato no está en vigor
+ * este mes o cuando la RLS no dejó ver los términos (y entonces la portada
+ * dice «importes reservados», no un cero falso).
+ */
+export interface PortadaEmployeeView {
+  agreementId: string;
+  employeeLabel: string;
+  active: boolean;
+  monthTotalCents: string | null;
+  monthTotalLabel: string | null;
+  pendingCount: number;
+  /** «Nada pendiente» / «1 asunto por decidir» / «N asuntos por decidir». */
+  pendingLabel: string;
+}
+
+/**
+ * La portada de Contrato cuando el hogar emplea a varias personas: la cuenta
+ * total de la casa este mes y una tarjeta por empleada. `seesAmounts` es
+ * false cuando NINGUNA cifra llegó (familia no administradora): la portada
+ * enseña entonces a las personas y dice que los importes están reservados.
+ */
+export interface EmploymentPortadaView {
+  period: string;
+  periodLabel: string;
+  seesAmounts: boolean;
+  totalCents: string;
+  totalLabel: string;
+  salaryCents: string;
+  salaryLabel: string;
+  reimbursementCents: string;
+  reimbursementLabel: string;
+  withReimbursements: boolean;
+  employees: PortadaEmployeeView[];
+}
+
+/**
+ * Suma la casa entera a partir del devengo de cada acuerdo, ya construido por
+ * `buildAccrual`. El dinero se suma en BigInt, nunca en Number, y un acuerdo
+ * sin devengo (contrato aún no en vigor, o términos que la RLS ocultó) suma
+ * cero y lo dice con un null, no con un 0,00 € inventado.
+ */
+export function buildPortadaView(input: {
+  period: string;
+  employees: readonly {
+    agreementId: string;
+    employeeLabel: string;
+    active: boolean;
+    accrual: AccrualView | null;
+    pendingCount: number;
+  }[];
+}): EmploymentPortadaView {
+  let salary = 0n;
+  let reimbursement = 0n;
+  let anyAmount = false;
+  const employees: PortadaEmployeeView[] = input.employees.map((employee) => {
+    const accrual = employee.accrual;
+    if (accrual) {
+      anyAmount = true;
+      salary += BigInt(accrual.salaryCents);
+      reimbursement += BigInt(accrual.reimbursementCents);
+    }
+    return {
+      agreementId: employee.agreementId,
+      employeeLabel: employee.employeeLabel,
+      active: employee.active,
+      monthTotalCents: accrual ? accrual.transferTotalCents : null,
+      monthTotalLabel: accrual ? accrual.transferTotalLabel : null,
+      pendingCount: employee.pendingCount,
+      pendingLabel:
+        employee.pendingCount === 0
+          ? 'Nada pendiente'
+          : employee.pendingCount === 1
+            ? '1 asunto por decidir'
+            : `${employee.pendingCount} asuntos por decidir`
+    };
+  });
+  const total = salary + reimbursement;
+  return {
+    period: input.period,
+    periodLabel: periodLabel(input.period),
+    seesAmounts: anyAmount,
+    totalCents: total.toString(),
+    totalLabel: formatCents(total.toString()),
+    salaryCents: salary.toString(),
+    salaryLabel: formatCents(salary.toString()),
+    reimbursementCents: reimbursement.toString(),
+    reimbursementLabel: formatCents(reimbursement.toString()),
+    withReimbursements: reimbursement !== 0n,
+    employees
+  };
+}
+
 // --- Mapeos puros ------------------------------------------------------------
 
 const EXTRA_WORK_LABELS: Record<ResolvedExtraWorkRow['kind'], string> = {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import EmploymentPersonBar from '$lib/components/employment/EmploymentPersonBar.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
@@ -19,6 +20,9 @@
 
   const overview = $derived(data.overview);
   const agreement = $derived(overview?.hasEmploymentData ? overview.agreement : null);
+  const selectedOption = $derived(
+    overview?.agreements.find((option) => option.id === agreement?.id) ?? null
+  );
   const isOwnAgreement = $derived(
     agreement !== null && agreement.employeeMembershipId === context.membershipId
   );
@@ -95,6 +99,14 @@
     description="Las cuentas de cada mes: qué se pagó, qué falta y su documento."
   />
 
+  {#if overview && overview.agreements.length > 1 && selectedOption}
+    <EmploymentPersonBar
+      householdId={overview.householdId}
+      employeeLabel={selectedOption.employeeLabel}
+      active={selectedOption.active}
+    />
+  {/if}
+
   <EmploymentTabs
     householdId={context.household.id}
     current="pagos"
@@ -117,19 +129,8 @@
       <p>Cuando el hogar registre un contrato con la empleada, aquí se verán sus pagos.</p>
     </article>
   {:else}
-    {#if overview.agreements.length > 1}
-      <nav class="chip-strip scroller" aria-label="Elegir de quién es el expediente">
-        {#each overview.agreements as option (option.id)}
-          <a
-            class="chip {option.id === agreement?.id ? 'active' : ''}"
-            href={`?empleada=${option.id}`}
-            aria-current={option.id === agreement?.id ? 'page' : undefined}
-            data-sveltekit-noscroll
-          >{option.employeeLabel}{option.active ? '' : ' (acuerdo terminado)'}</a>
-        {/each}
-      </nav>
-    {/if}
-
+    <!-- De quién es lo dice la barra de arriba; cambiar de persona se hace en
+         la portada de Contrato. -->
     <OutboxTriageCard householdId={overview.householdId} />
 
     {#if !seesAmounts}
