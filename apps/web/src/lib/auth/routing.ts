@@ -66,7 +66,16 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
 export const NESTED_ROUTE_CAPABILITY: Readonly<Record<string, Capability>> = {
   'employment/acuerdo': 'agreement.write',
   'employment/condiciones': 'agreement.read',
-  'employment/vacaciones': 'agreement.read'
+  'employment/vacaciones': 'agreement.read',
+  // · `employment/conceptos` — registrar y decidir extras, gastos y conceptos a
+  //   mano. Misma llave que la raíz del expediente (`settlement.read`): la
+  //   familia no administradora entra y ve lo pendiente en solo lectura, como
+  //   en el resumen; quién escribe lo deciden las capacidades finas y la RLS.
+  'employment/conceptos': 'settlement.read',
+  // · `employment/pagos` — las cuentas de cada mes con sus pagos y su
+  //   documento. Misma llave que la raíz; los importes los recorta la RLS
+  //   igual que en el resumen.
+  'employment/pagos': 'settlement.read'
 };
 
 export interface HouseholdRouteGuard {

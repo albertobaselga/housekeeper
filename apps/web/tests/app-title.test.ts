@@ -43,6 +43,8 @@ describe('título de la pestaña: una sola fuente', () => {
     expect(sectionLabelFor('/h/abc/employment')).toBe('Contrato');
     expect(sectionLabelFor('/h/abc/employment/acuerdo')).toBe('Condiciones del contrato');
     expect(sectionLabelFor('/h/abc/employment/condiciones')).toBe('Mis condiciones');
+    expect(sectionLabelFor('/h/abc/employment/conceptos')).toBe('Conceptos del mes');
+    expect(sectionLabelFor('/h/abc/employment/pagos')).toBe('Pagos');
     // Una nota de la guía hereda la sección; su propio título llega por `section`.
     expect(sectionLabelFor('/h/abc/wiki/lavadora')).toBe('Guía de la casa');
     expect(sectionLabelFor('/h/abc/wiki/progreso')).toBe('Avance de la guía');
