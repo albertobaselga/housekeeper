@@ -68,7 +68,7 @@ export function centsToDecimal(value: string): string {
 }
 
 /** Céntimos como etiqueta legible ASCII-segura para el PDF ("145330" → "1.453,30 EUR"). */
-function euroLabel(value: string): string {
+export function euroLabel(value: string): string {
   const cents = BigInt(value);
   const negative = cents < 0n;
   const abs = negative ? -cents : cents;
@@ -520,7 +520,7 @@ const MONTH_NAMES = [
 ] as const;
 
 /** `2026-08-01` → `Agosto 2026`. */
-function monthTitle(isoDate: string): string {
+export function monthTitle(isoDate: string): string {
   const name = MONTH_NAMES[Number(isoDate.slice(5, 7)) - 1];
   return name ? `${name} ${isoDate.slice(0, 4)}` : monthOf(isoDate);
 }
@@ -542,7 +542,7 @@ const WIN_ANSI_EXTRAS = '€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—
  * documento sale: perder un carácter es infinitamente mejor que perder el
  * documento, y el CSV lleva el texto íntegro en UTF-8 al lado.
  */
-function pdfSafe(text: string): string {
+export function pdfSafe(text: string): string {
   let out = '';
   for (const char of text) {
     const code = char.codePointAt(0) ?? 0;
