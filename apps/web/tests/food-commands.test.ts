@@ -18,7 +18,7 @@ import {
   shoppingAddPayloadSchema,
   shoppingSetCheckedPayloadSchema,
   shoppingSetLineCheckedPayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import {
   addShoppingItem,

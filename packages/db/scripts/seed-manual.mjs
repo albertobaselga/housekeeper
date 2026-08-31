@@ -35,7 +35,7 @@ import process from 'node:process';
 import pg from 'pg';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NAMESPACE = 'casa-clara:manual-convivencia-v0.1';
+const NAMESPACE = 'housekeeper:manual-convivencia-v0.1';
 
 /** uuid determinista (forma v4/variante RFC) a partir de una clave estable. */
 export function deterministicUuid(householdId, key) {

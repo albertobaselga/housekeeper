@@ -1,7 +1,7 @@
 {
   "ci": {
     "collect": {
-      "startServerCommand": "pnpm --filter @casa-clara/web build && env PORT=3000 node apps/web/build",
+      "startServerCommand": "pnpm --filter @housekeeper/web build && env PORT=3000 node apps/web/build",
       "startServerReadyPattern": "Listening on",
       "startServerReadyTimeout": 240000,
       "url": [

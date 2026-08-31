@@ -1,4 +1,4 @@
-import type { RoutineOverduePolicy, RoutineSchedule } from '@casa-clara/domain';
+import type { RoutineOverduePolicy, RoutineSchedule } from '@housekeeper/domain';
 
 /**
  * De columnas de `app.routines` a la regla del generador puro, para los dos
@@ -7,7 +7,7 @@ import type { RoutineOverduePolicy, RoutineSchedule } from '@casa-clara/domain';
  * —eran tres copias de la aritmética de recurrencia lo que la ola 0023 vino a
  * retirar, y no conviene estrenar dos copias de su lectura—.
  *
- * Ningún byte de esto llega al navegador: `@casa-clara/domain` entra por aquí,
+ * Ningún byte de esto llega al navegador: `@housekeeper/domain` entra por aquí,
  * que es código de servidor, y el presupuesto de arranque de Hoy no se entera.
  */
 

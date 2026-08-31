@@ -85,14 +85,17 @@ export APP_DB_PASSWORD='…'
 export WORKER_DB_PASSWORD='…'
 export AUTH_DB_PASSWORD='…'
 
-pnpm --filter @casa-clara/db bootstrap        # roles casa_clara_*, esquema casa_auth
-pnpm --filter @casa-clara/db migrate          # todas las migraciones, en orden
+pnpm --filter @housekeeper/db bootstrap        # roles casa_clara_*, esquema casa_auth
+pnpm --filter @housekeeper/db migrate          # todas las migraciones, en orden
 ```
 
 **El bootstrap va antes que las migraciones**, sin excepción: la 0001 ya concede
-sobre `casa_clara_app` y `casa_clara_worker`, así que esos roles tienen que
-existir. Los roles son **del clúster, no de la base**: si ya existían de otra
-instalación, el bootstrap solo les repone la contraseña.
+sobre `casa_clara_app` y `casa_clara_worker` (nombres legados del proyecto
+anterior; ver
+[docs/despliegue/identificadores-legado.md](identificadores-legado.md)), así
+que esos roles tienen que existir. Los roles son **del clúster, no de la
+base**: si ya existían de otra instalación, el bootstrap solo les repone la
+contraseña.
 
 **Qué se verifica.** El bootstrap imprime cuántos roles `casa_clara_*` hay y si
 el esquema `casa_auth` está. `migrate` imprime cada fichero aplicado y termina
@@ -111,10 +114,10 @@ export SEED_DATABASE_URL="$DATABASE_URL"      # el propietario de las migracione
 export BETTER_AUTH_SECRET='…'
 
 # Ensayo: dice qué haría y no escribe nada
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/fuera/del/repo/hogar.json --dry-run
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/fuera/del/repo/hogar.json --dry-run
 
 # De verdad. La salida trae las contraseñas: guárdala donde toque, no en pantalla
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/fuera/del/repo/hogar.json \
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/fuera/del/repo/hogar.json \
   > /ruta/fuera/del/repo/credenciales.txt
 chmod 600 /ruta/fuera/del/repo/credenciales.txt
 ```
@@ -179,8 +182,8 @@ persona ya tiene un acuerdo activo en este hogar» — eso no es un error, es el
 ### 3.b Desde el guion
 
 ```bash
-pnpm --filter @casa-clara/db agreement:seed --config /ruta/fuera/del/repo/hogar.json --dry-run
-pnpm --filter @casa-clara/db agreement:seed --config /ruta/fuera/del/repo/hogar.json
+pnpm --filter @housekeeper/db agreement:seed --config /ruta/fuera/del/repo/hogar.json --dry-run
+pnpm --filter @housekeeper/db agreement:seed --config /ruta/fuera/del/repo/hogar.json
 ```
 
 Escribe contrato, versión 1, catálogo y horario en una transacción. La versión 1
@@ -324,8 +327,8 @@ Vuelca la guía, las rutinas, el contacto del 112 y la plantilla de semana.
 ```bash
 HOUSEHOLD=$(psql "$DATABASE_URL" -Atc "select id from app.households where slug = 'casa-ejemplo'")
 
-pnpm --filter @casa-clara/db manual:import --household "$HOUSEHOLD" --dry-run
-pnpm --filter @casa-clara/db manual:import --household "$HOUSEHOLD"
+pnpm --filter @housekeeper/db manual:import --household "$HOUSEHOLD" --dry-run
+pnpm --filter @housekeeper/db manual:import --household "$HOUSEHOLD"
 ```
 
 **Qué se verifica.** El guion resume lo que hizo: apartados y notas de la guía,

@@ -1,4 +1,4 @@
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 

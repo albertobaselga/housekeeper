@@ -4,8 +4,8 @@ import { build, files, version } from '$service-worker';
 
 declare const self: ServiceWorkerGlobalScope;
 
-const STATIC_CACHE = `casa-clara-static-${version}`;
-const PAGE_CACHE = `casa-clara-pages-${version}`;
+const STATIC_CACHE = `housekeeper-static-${version}`;
+const PAGE_CACHE = `housekeeper-pages-${version}`;
 const PRECACHE = [...build, ...files];
 
 /**
@@ -14,7 +14,7 @@ const PRECACHE = [...build, ...files];
  * Lo usa el layout del hogar para dejar Emergencias disponible offline sin
  * exigir una visita previa (UX-P1-5 / I-03).
  */
-const WARM_HEADER = 'x-casa-clara-warm-page';
+const WARM_HEADER = 'x-housekeeper-warm-page';
 
 /**
  * ¿Puede esta respuesta sustituir en la caché a la que ya hay guardada?
@@ -77,11 +77,11 @@ self.addEventListener('push', (event) => {
       // Payload que no es JSON: no debería ocurrir nunca, pero callarse no es
       // una opción que este canal permita.
     }
-    await self.registration.showNotification(notice.title ?? 'Casa Clara', {
+    await self.registration.showNotification(notice.title ?? 'Hogar', {
       body: notice.body ?? 'Hay algo que mirar en la aplicación.',
       // El icono lo resuelve el navegador desde el manifiesto; no se declara
       // aquí para no tener dos sitios donde mantenerlo.
-      tag: notice.tag ?? 'casa-clara',
+      tag: notice.tag ?? 'housekeeper',
       // Sustituir en silencio: el mismo asunto avisado dos veces no vibra dos
       // veces. La escalada de la cuenta pendiente reutiliza su etiqueta a
       // propósito.
@@ -98,9 +98,9 @@ self.addEventListener('push', (event) => {
 /**
  * Tocar el aviso lleva a donde se atiende el hecho.
  *
- * Si ya hay una ventana de Casa Clara abierta se reutiliza en vez de abrir otra:
- * en un móvil, dos instancias de la misma aplicación es un estado del que cuesta
- * salir.
+ * Si ya hay una ventana de la aplicación abierta se reutiliza en vez de abrir
+ * otra: en un móvil, dos instancias de la misma aplicación es un estado del
+ * que cuesta salir.
  */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

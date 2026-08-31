@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 
 import { Pool } from "pg";
 
-import { createLogger, errorCode } from "@casa-clara/server/logging";
+import { createLogger, errorCode } from "@housekeeper/server/logging";
 
 import { loadWorkerConfig } from "./config.js";
 import { ensureIcsSyncScheduled } from "./ics.js";
@@ -38,12 +38,12 @@ const healthServer = createServer(async (request, response) => {
   if (request.url === "/metrics") {
     response.writeHead(200, { "content-type": "text/plain; version=0.0.4", "cache-control": "no-store" });
     response.end([
-      "# HELP casa_clara_worker_processed_jobs_total Jobs claimed by this worker.",
-      "# TYPE casa_clara_worker_processed_jobs_total counter",
-      `casa_clara_worker_processed_jobs_total ${processedJobs}`,
-      "# HELP casa_clara_worker_poll_failures_total Queue polling failures.",
-      "# TYPE casa_clara_worker_poll_failures_total counter",
-      `casa_clara_worker_poll_failures_total ${pollFailures}`,
+      "# HELP housekeeper_worker_processed_jobs_total Jobs claimed by this worker.",
+      "# TYPE housekeeper_worker_processed_jobs_total counter",
+      `housekeeper_worker_processed_jobs_total ${processedJobs}`,
+      "# HELP housekeeper_worker_poll_failures_total Queue polling failures.",
+      "# TYPE housekeeper_worker_poll_failures_total counter",
+      `housekeeper_worker_poll_failures_total ${pollFailures}`,
       "",
     ].join("\n"));
     return;

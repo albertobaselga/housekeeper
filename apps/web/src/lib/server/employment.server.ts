@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import {
   buildAccrual,

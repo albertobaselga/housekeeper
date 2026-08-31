@@ -1,13 +1,13 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
-import { settlementCommandPayloadSchema } from "@casa-clara/contracts/schemas";
+import type { UUID } from "@housekeeper/contracts";
+import { settlementCommandPayloadSchema } from "@housekeeper/contracts/schemas";
 import {
   calculateSettlement,
   type ManualAdjustmentInput,
   type SettledExtraWork,
   type MonetaryInput,
-} from "@casa-clara/domain";
+} from "@housekeeper/domain";
 
 import { canonicalSha256 } from "../canonical-json.js";
 import type { ActiveMembership } from "../database.js";

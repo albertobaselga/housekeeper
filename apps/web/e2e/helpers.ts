@@ -4,7 +4,7 @@ export const HOUSEHOLD = '10000000-0000-4000-8000-000000000001';
 
 /**
  * Identificadores fijos de la siembra propia de la batería e2e sobre Postgres
- * (prefijos aa… para no chocar con las fixtures 1…/2… de @casa-clara/db ni con
+ * (prefijos aa… para no chocar con las fixtures 1…/2… de @housekeeper/db ni con
  * la semilla 33… del editor de wiki). La siembra vive en db-global-setup.ts;
  * los specs .dbe2e.ts los usan para seleccionar entidades concretas.
  */
@@ -54,11 +54,11 @@ export const E2E_SEED = {
 } as const;
 
 export const ACCOUNT_EMAILS = {
-  admin: 'alberto.admin@casaclara.demo',
-  family: 'marta.familia@casaclara.demo',
-  employee: 'ana.empleada@casaclara.demo',
-  helper: 'lucia.apoyo@casaclara.demo',
-  viewer: 'diego.canguro@casaclara.demo'
+  admin: 'alberto.admin@housekeeper.demo',
+  family: 'marta.familia@housekeeper.demo',
+  employee: 'ana.empleada@housekeeper.demo',
+  helper: 'lucia.apoyo@housekeeper.demo',
+  viewer: 'diego.canguro@housekeeper.demo'
 } as const;
 
 /**

@@ -1,5 +1,5 @@
 {
-  "name": "casa-clara",
+  "name": "housekeeper",
   "version": "0.2.0",
   "private": true,
   "type": "module",
@@ -9,25 +9,25 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "backup:full": "pnpm --filter @casa-clara/worker backup:full",
+    "backup:full": "pnpm --filter @housekeeper/worker backup:full",
     "build": "pnpm -r --if-present build",
     "check": "pnpm -r --if-present check",
-    "db:migrate": "pnpm --filter @casa-clara/db migrate",
-    "dev": "pnpm --filter @casa-clara/web dev",
+    "db:migrate": "pnpm --filter @housekeeper/db migrate",
+    "dev": "pnpm --filter @housekeeper/web dev",
     "lint": "eslint .",
     "manual:publicar": "node scripts/construir-manual-publicable.mjs",
     "test": "pnpm -r --if-present test",
     "test:coverage": "pnpm -r --if-present test:coverage",
-    "test:db": "pnpm --filter @casa-clara/db test:db",
-    "test:a11y": "pnpm --filter @casa-clara/web test:a11y",
-    "test:e2e": "pnpm --filter @casa-clara/web test:e2e",
-    "test:e2e:db": "pnpm --filter @casa-clara/web test:e2e:db",
-    "test:import": "pnpm --filter @casa-clara/db test:import",
+    "test:db": "pnpm --filter @housekeeper/db test:db",
+    "test:a11y": "pnpm --filter @housekeeper/web test:a11y",
+    "test:e2e": "pnpm --filter @housekeeper/web test:e2e",
+    "test:e2e:db": "pnpm --filter @housekeeper/web test:e2e:db",
+    "test:import": "pnpm --filter @housekeeper/db test:import",
     "test:lighthouse": "lhci autorun --config=infra/quality/lighthouserc.json",
-    "test:rls": "pnpm --filter @casa-clara/db test:rls",
+    "test:rls": "pnpm --filter @housekeeper/db test:rls",
     "test:unit": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "verify:bundle": "pnpm --filter @casa-clara/web verify:bundle"
+    "verify:bundle": "pnpm --filter @housekeeper/web verify:bundle"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

@@ -15,7 +15,7 @@
   onMount(() => {
     if (!browser || !('serviceWorker' in navigator) || !navigator.onLine) return;
     const householdId = untrack(() => data.context.household.id);
-    const warmKey = `casa-clara-warmed-emergency:${householdId}`;
+    const warmKey = `housekeeper-warmed-emergency:${householdId}`;
     try {
       if (sessionStorage.getItem(warmKey)) return;
     } catch {
@@ -44,7 +44,7 @@
       .then((controlled) => {
         if (!controlled) return;
         return fetch(`/h/${householdId}/emergency`, {
-          headers: { 'x-casa-clara-warm-page': '1' },
+          headers: { 'x-housekeeper-warm-page': '1' },
           credentials: 'same-origin'
         }).then((response) => {
           if (!response.ok) return;

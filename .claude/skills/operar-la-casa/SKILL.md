@@ -1,11 +1,11 @@
 ---
 name: operar-la-casa
-description: Operar y mantener Casa Clara como administrador — dar de alta personas, contratos, rutinas, notas de la guía, contactos, menú, liquidaciones y avisos; instalar de cero en local o en Vercel + Supabase; migrar, respaldar, rotar secretos y diagnosticar. Úsala ante cualquier petición de administración («añade una hoja a la guía», «crea una rutina», «da de alta a una persona»), de instalación o de mantenimiento de esta aplicación.
+description: Operar y mantener Housekeeper como administrador — dar de alta personas, contratos, rutinas, notas de la guía, contactos, menú, liquidaciones y avisos; instalar de cero en local o en Vercel + Supabase; migrar, respaldar, rotar secretos y diagnosticar. Úsala ante cualquier petición de administración («añade una hoja a la guía», «crea una rutina», «da de alta a una persona»), de instalación o de mantenimiento de esta aplicación.
 ---
 
-# Operar Casa Clara
+# Operar Housekeeper
 
-Casa Clara gestiona un hogar real y la relación laboral con quien trabaja en él.
+Housekeeper gestiona un hogar real y la relación laboral con quien trabaja en él.
 **Está en producción sirviendo a una familia y a una empleada de verdad.** Un
 error aquí no rompe una pantalla: rompe el sueldo de alguien, o le impide
 registrar el trabajo que hizo.
@@ -134,10 +134,13 @@ Lo que más caro sale. El detalle de cada una, en las hojas.
    quien trabaja sin poder registrar ni una jornada, y **no se arregla hacia
    atrás**: una versión nueva sólo rige desde su fecha. Ensaya con `--dry-run`.
 
-2. **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`.** Si le
-   pones el rol propietario, Better Auth crea sus tablas en `public` en vez de
-   en `casa_auth`. El alta de cuentas **dice que ha ido bien e imprime las
-   contraseñas**, y luego no entra nadie: 401 para todo el mundo. Verificado.
+2. **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`** (nombre
+   legado del proyecto anterior; ver
+   [docs/despliegue/identificadores-legado.md](../../../docs/despliegue/identificadores-legado.md)).
+   Si le pones el rol propietario, Better Auth crea sus tablas en `public` en
+   vez de en `casa_auth`. El alta de cuentas **dice que ha ido bien e imprime
+   las contraseñas**, y luego no entra nadie: 401 para todo el mundo.
+   Verificado.
 
 3. **Sin `SNAPSHOT_SIGNING_KEY_B64` la aplicación responde 200 y parece sana.**
    Cada instancia firma con una clave efímera propia, así que el modo sin

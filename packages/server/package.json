@@ -1,5 +1,5 @@
 {
-  "name": "@casa-clara/server",
+  "name": "@housekeeper/server",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@casa-clara/contracts": "workspace:*",
-    "@casa-clara/domain": "workspace:*",
+    "@housekeeper/contracts": "workspace:*",
+    "@housekeeper/domain": "workspace:*",
     "pg": "8.22.0"
   },
   "devDependencies": {

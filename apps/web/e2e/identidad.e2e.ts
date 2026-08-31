@@ -2,9 +2,11 @@ import { expect, test } from '@playwright/test';
 
 import { HOUSEHOLD, loginAs } from './helpers';
 
-// Qué nombre anuncia la aplicación, y cuándo. «Casa Clara» es el nombre del
-// proyecto: no debe aparecer en ninguna de las dos situaciones. Sin sesión
-// manda el producto genérico; con sesión, el hogar al que se ha entrado.
+// Qué nombre anuncia la aplicación, y cuándo. Ni «Casa Clara» (el nombre
+// anterior del proyecto) ni «Housekeeper» (el actual) deben aparecer en
+// ninguna de las dos situaciones: el nombre del proyecto nunca se muestra.
+// Sin sesión manda el producto genérico; con sesión, el hogar al que se ha
+// entrado.
 //
 // La batería fixture corre sin base de datos, así que el hogar es el sintético
 // («Casa Roble»). La misma comprobación contra Postgres vive en
@@ -17,12 +19,14 @@ test('sin sesión, la pestaña y la cabecera dicen el producto, no una casa', as
   await expect(page).toHaveTitle(GENERICO);
   await expect(page.locator('.login-brand')).toContainText(GENERICO);
   await expect(page.locator('body')).not.toContainText('Casa Clara');
+  await expect(page.locator('body')).not.toContainText(/Housekeeper/i);
 });
 
 test('sin conexión también se anuncia en genérico', async ({ page }) => {
   await page.goto('/offline');
   await expect(page).toHaveTitle(`Sin conexión · ${GENERICO}`);
   await expect(page.locator('body')).not.toContainText('Casa Clara');
+  await expect(page.locator('body')).not.toContainText(/Housekeeper/i);
 });
 
 test('con sesión, la pestaña y la cabecera dicen el hogar en cada sección', async ({ page }) => {

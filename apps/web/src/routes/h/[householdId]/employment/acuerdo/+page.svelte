@@ -5,7 +5,7 @@
     weekdayName,
     type AgreementSchedule,
     type Weekday
-  } from '@casa-clara/domain';
+  } from '@housekeeper/domain';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import StaffHireForm from '$lib/components/employment/StaffHireForm.svelte';
@@ -143,7 +143,7 @@
    * Lo que sumaría a la semana el horario que se está escribiendo, comparado
    * con la jornada contratada del mismo formulario.
    *
-   * Usa el MISMO motor que el servidor y las pruebas (`@casa-clara/domain`): si
+   * Usa el MISMO motor que el servidor y las pruebas (`@housekeeper/domain`): si
    * este aviso se calculara aquí con aritmética propia, la pantalla y lo
    * guardado podrían decir dos cosas distintas del mismo horario.
    *

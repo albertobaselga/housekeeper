@@ -1,4 +1,4 @@
-import { occurrencesBetween, type RoutineOverduePolicy, type RoutineSchedule } from '@casa-clara/domain';
+import { occurrencesBetween, type RoutineOverduePolicy, type RoutineSchedule } from '@housekeeper/domain';
 
 import { addDays, isIsoDate, mondayOf } from '$lib/food/dates';
 

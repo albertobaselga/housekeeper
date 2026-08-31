@@ -29,7 +29,7 @@ describe('health and privacy-safe metrics', () => {
 
   it('emits Prometheus metrics without household or user labels', () => {
     const metrics = renderWebMetrics();
-    expect(metrics).toContain('casa_clara_web_up 1');
+    expect(metrics).toContain('housekeeper_web_up 1');
     expect(metrics).not.toMatch(/household|membership|user_id/);
   });
 });

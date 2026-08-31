@@ -7,7 +7,7 @@
   import { createCommandEnvelope, createOutboxRecord } from '$lib/offline/schema';
   import { refreshSyncStatus } from '$lib/offline/sync';
   import { OptimisticActions } from '$lib/offline/optimistic';
-  import { cadencePhrase, spanishDateLabel } from '@casa-clara/domain';
+  import { cadencePhrase, spanishDateLabel } from '@housekeeper/domain';
   import {
     CADENCE_CHOICES,
     INTERVAL_UNIT_VALUES,

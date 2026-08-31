@@ -8,14 +8,14 @@ Anexo D. Todo idempotente: repetir el comando no duplica nada.
 ## Comando único
 
 ```bash
-DATABASE_URL='postgresql://casa_admin@127.0.0.1:54329/casaclara_docs' \
-  pnpm --filter @casa-clara/db manual:import -- \
+DATABASE_URL='postgresql://casa_admin@127.0.0.1:54329/housekeeper_docs' \
+  pnpm --filter @housekeeper/db manual:import -- \
   --household 30000000-0000-4000-8000-000000000001
 ```
 
 - `DATABASE_URL`: rol propietario de las migraciones (o admin del cluster);
   el importador y la siembra usan `set local row_security = off`, igual que
-  las fixtures. El uuid de ejemplo es el hogar demo `casa-clara`.
+  las fixtures. El uuid de ejemplo es el hogar demo `casa-ejemplo`.
 - `--household`: hogar destino. El actor se resuelve solo (primer
   `family_admin` activo); `--membership <uuid>` lo fija a mano.
 - `--dry-run`: ensaya TODO (importación y siembra) con rollback y informa de
@@ -25,12 +25,12 @@ DATABASE_URL='postgresql://casa_admin@127.0.0.1:54329/casaclara_docs' \
   esta opción se usa el corpus commiteado en `packages/db/content/manual`
   (el `.docx` no se versiona en el repo).
 
-Contra la demo (`casaclara_docs`, puerto 4381) conviene la pasada de ensayo
+Contra la demo (`housekeeper_docs`, puerto 4381) conviene la pasada de ensayo
 primero y revisar el informe:
 
 ```bash
-DATABASE_URL='postgresql://casa_admin@127.0.0.1:54329/casaclara_docs' \
-  pnpm --filter @casa-clara/db manual:import -- \
+DATABASE_URL='postgresql://casa_admin@127.0.0.1:54329/housekeeper_docs' \
+  pnpm --filter @housekeeper/db manual:import -- \
   --household 30000000-0000-4000-8000-000000000001 --dry-run
 ```
 
@@ -61,7 +61,7 @@ registro de incidencias → descartado por decisión del propietario).
 
 ## Verificación
 
-- Suite: `TEST_DATABASE_URL=postgresql://… pnpm --filter @casa-clara/db test:import`
+- Suite: `TEST_DATABASE_URL=postgresql://… pnpm --filter @housekeeper/db test:import`
   (corpus real validado + importación + siembra, 17 casos).
 - Visual: portada de la Guía con los 7 apartados y las fijadas, una ficha
   con tabla (p. ej. «Rutina diaria de referencia»), el índice de pendientes

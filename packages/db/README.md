@@ -1,10 +1,10 @@
-# @casa-clara/db
+# @housekeeper/db
 
-Esquema PostgreSQL multi-tenant de Casa Clara: migraciones, fixtures sintéticas de dos hogares y pruebas de invariantes y de la matriz RLS.
+Esquema PostgreSQL multi-tenant de Housekeeper: migraciones, fixtures sintéticas de dos hogares y pruebas de invariantes y de la matriz RLS.
 
 ## Comandos
 
-- `pnpm bootstrap`: crea los roles de ejecución, el esquema `casa_auth` de Better Auth y los envoltorios de extensión que hagan falta en `DATABASE_URL`. **Se ejecuta una vez por base y siempre antes de `migrate`** (0001 ya concede sobre `casa_clara_app` y `casa_clara_worker`). Con Docker Compose lo dispara solo `infra/postgres/00-create-roles.sh`; en Postgres gestionado hay que invocarlo a mano. Lee `APP_DB_PASSWORD`, `WORKER_DB_PASSWORD` y `AUTH_DB_PASSWORD`.
+- `pnpm bootstrap`: crea los roles de ejecución, el esquema `casa_auth` de Better Auth y los envoltorios de extensión que hagan falta en `DATABASE_URL`. **Se ejecuta una vez por base y siempre antes de `migrate`** (0001 ya concede sobre `casa_clara_app` y `casa_clara_worker`, nombres legados del proyecto anterior; ver [docs/despliegue/identificadores-legado.md](../../docs/despliegue/identificadores-legado.md)). Con Docker Compose lo dispara solo `infra/postgres/00-create-roles.sh`; en Postgres gestionado hay que invocarlo a mano. Lee `APP_DB_PASSWORD`, `WORKER_DB_PASSWORD` y `AUTH_DB_PASSWORD`.
 - `pnpm migrate` (o `pnpm db:migrate` desde la raíz): aplica las migraciones pendientes de `migrations/` a `DATABASE_URL`. El runner registra cada archivo en `public.schema_migrations` con su SHA-256; reejecutarlo no causa cambios y editar una migración ya aplicada aborta con error — escribe una migración nueva.
 - `pnpm test` (raíz `test:db`): parte de esquema vacío en `TEST_DATABASE_URL` (o `DATABASE_URL`), aplica migraciones reales y fixtures, y ejecuta `tests/*.sql` con salida TAP.
 - `pnpm test:rls` (raíz `test:rls`): solo la matriz negativa RLS.

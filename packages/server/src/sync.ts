@@ -7,8 +7,8 @@ import {
   type CommandEnvelopeV1,
   type SyncResultV1,
   type UUID,
-} from "@casa-clara/contracts";
-import { commandEnvelopeSchema } from "@casa-clara/contracts/schemas";
+} from "@housekeeper/contracts";
+import { commandEnvelopeSchema } from "@housekeeper/contracts/schemas";
 
 import {
   AuthorizationError,

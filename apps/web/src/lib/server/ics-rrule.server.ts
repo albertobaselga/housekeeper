@@ -1,4 +1,4 @@
-import { invariant, type RoutineRule } from '@casa-clara/domain';
+import { invariant, type RoutineRule } from '@housekeeper/domain';
 
 /**
  * Traducción de la cadencia de una rutina al vocabulario de repetición de la
@@ -6,7 +6,7 @@ import { invariant, type RoutineRule } from '@casa-clara/domain';
  *
  * El modelo de patrones es la verdad y RRULE es SOLO un formato de salida
  * (§2.1): aquí no se decide nada de recurrencia, se dice en otro idioma lo que
- * ya decidió `@casa-clara/domain`. Por eso la función puede devolver `null`.
+ * ya decidió `@housekeeper/domain`. Por eso la función puede devolver `null`.
  *
  * LA REGLA ES «O FIEL O NADA». Si la RRULE no reprodujera EXACTAMENTE las
  * mismas fechas que `occurrencesBetween`, no se emite: el llamante vuelve a

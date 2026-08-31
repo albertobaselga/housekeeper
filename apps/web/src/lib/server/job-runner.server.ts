@@ -9,7 +9,7 @@
  * haya. Los comandos exactos están en `docs/runbooks/planificador-cola.md`.
  *
  * Lo que NO hay aquí es lógica de trabajos: el catálogo de manejadores y el
- * reclamo de la cola son los mismos de `apps/worker` (`@casa-clara/worker/jobs`).
+ * reclamo de la cola son los mismos de `apps/worker` (`@housekeeper/worker/jobs`).
  * Este módulo aporta tres cosas que el demonio no necesitaba:
  *
  *   1. **Autenticación.** Un secreto compartido por cabecera, comparado en
@@ -41,15 +41,24 @@ import {
   reclaimStaleJobs,
   runOneJob,
   type JobHandler
-} from '@casa-clara/worker/jobs';
-import { createLogger, errorCode } from '@casa-clara/server';
+} from '@housekeeper/worker/jobs';
+import { createLogger, errorCode } from '@housekeeper/server';
 
 import { createStorageBackend, type StorageBackend } from './attachment-deps.server';
 
 const log = createLogger('web:jobs');
 
 /** Cabecera con el secreto compartido que trae `pg_net`. */
-export const JOB_RUNNER_TOKEN_HEADER = 'x-casa-clara-job-token';
+export const JOB_RUNNER_TOKEN_HEADER = 'x-housekeeper-job-token';
+
+/**
+ * Cabecera legada, de cuando el proyecto se llamaba «Casa Clara». Se sigue
+ * ACEPTANDO para siempre jamás hasta una migración operativa aparte: el
+ * `pg_cron` ya programado en producción manda esta cabecera y no se puede
+ * repuntar sin tocar el SQL del planificador (ver
+ * docs/despliegue/identificadores-legado.md).
+ */
+export const LEGACY_JOB_RUNNER_TOKEN_HEADER = 'x-casa-clara-job-token';
 
 /**
  * Presupuesto por omisión, en milisegundos. El plan gratuito de Vercel corta a
@@ -274,7 +283,11 @@ export async function runJobDrainRequest(
     log.error('job runner not configured', { status: 503 });
     return jsonResponse(503, { error: 'job_runner_unavailable' });
   }
-  if (!tokenMatches(request.headers.get(JOB_RUNNER_TOKEN_HEADER), config.token)) {
+  // Se acepta la cabecera nueva Y la legada (nunca las dos leídas a la vez: la
+  // que no venga es simplemente null y tokenMatches la rechaza igual).
+  const presentedToken =
+    request.headers.get(JOB_RUNNER_TOKEN_HEADER) ?? request.headers.get(LEGACY_JOB_RUNNER_TOKEN_HEADER);
+  if (!tokenMatches(presentedToken, config.token)) {
     // Sin detalle: quien no trae el secreto no aprende nada de la respuesta.
     log.warn('job runner rejected an unauthenticated call', { status: 401 });
     return jsonResponse(401, { error: 'unauthorized' });

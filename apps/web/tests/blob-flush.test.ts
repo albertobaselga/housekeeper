@@ -12,7 +12,7 @@ import { flushBlobs, performSyncFlush, type BlobUploadMapping } from '../src/lib
 import { FIXTURE_HOUSEHOLD as HOUSEHOLD, envelopeFixture } from './helpers';
 
 function databaseName(label: string): string {
-  return `casa-clara-blobs-${label}-${crypto.randomUUID()}`;
+  return `housekeeper-blobs-${label}-${crypto.randomUUID()}`;
 }
 
 function blobRecord(id: string, createdAt: string): OfflineBlobRecord {

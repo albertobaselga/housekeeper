@@ -1,4 +1,4 @@
-title = "Casa Clara secret scanning"
+title = "Housekeeper secret scanning"
 
 [extend]
 useDefault = true

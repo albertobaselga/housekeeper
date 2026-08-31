@@ -30,10 +30,10 @@ describe('lo incoherente muere en la build, que es donde no cuesta el acceso a n
     const verdict = inspectBuildEnvironment({
       ...VERCEL_PRODUCTION,
       ...REAL,
-      CASA_CLARA_FIXTURE_LOGIN: 'true'
+      HOUSEKEEPER_FIXTURE_LOGIN: 'true'
     });
     expect(verdict.level).toBe('fail');
-    expect(verdict.lines.join('\n')).toContain('CASA_CLARA_FIXTURE_LOGIN');
+    expect(verdict.lines.join('\n')).toContain('HOUSEKEEPER_FIXTURE_LOGIN');
   });
 
   it('ALLOW_SYNTHETIC_DATA_ONLY en producción, aunque valga "false"', () => {
@@ -50,9 +50,15 @@ describe('lo incoherente muere en la build, que es donde no cuesta el acceso a n
     }
   });
 
-  it('un valor inventado en CASA_CLARA_FIXTURE_LOGIN revienta en vez de adivinar', () => {
-    expect(() => inspectBuildEnvironment({ ...REAL, CASA_CLARA_FIXTURE_LOGIN: 'quizá' })).toThrow(
-      /CASA_CLARA_FIXTURE_LOGIN/
+  it('un valor inventado en HOUSEKEEPER_FIXTURE_LOGIN revienta en vez de adivinar', () => {
+    expect(() => inspectBuildEnvironment({ ...REAL, HOUSEKEEPER_FIXTURE_LOGIN: 'quizá' })).toThrow(
+      /HOUSEKEEPER_FIXTURE_LOGIN/
+    );
+  });
+
+  it('la variable renombrada revienta en voz alta en vez de leerse como «sin declarar»', () => {
+    expect(() => inspectBuildEnvironment({ ...REAL, CASA_CLARA_FIXTURE_LOGIN: 'true' })).toThrow(
+      /CASA_CLARA_FIXTURE_LOGIN ya no existe; renombrada a HOUSEKEEPER_FIXTURE_LOGIN/
     );
   });
 });
@@ -67,7 +73,7 @@ describe('lo vacío avisa, pero deja construir', () => {
   it('pero calla en una build de maqueta, donde no tener base es lo normal', () => {
     // Avisar en cada `pnpm build` de las suites sería ruido, y el ruido enseña
     // a no leer los avisos.
-    const verdict = inspectBuildEnvironment({ CASA_CLARA_FIXTURE_LOGIN: 'true' });
+    const verdict = inspectBuildEnvironment({ HOUSEKEEPER_FIXTURE_LOGIN: 'true' });
     expect(verdict.lines.join('\n')).not.toContain('Sin DATABASE_URL');
   });
 
@@ -90,14 +96,14 @@ describe('lo completo calla', () => {
 
   it('el modo local sin base pasa en verde: es como corren las suites de maqueta', () => {
     // Ni VERCEL ni base de datos: `pnpm build` de siempre.
-    expect(inspectBuildEnvironment({ CASA_CLARA_FIXTURE_LOGIN: 'true' }).level).toBe('ok');
+    expect(inspectBuildEnvironment({ HOUSEKEEPER_FIXTURE_LOGIN: 'true' }).level).toBe('ok');
   });
 
   it('la batería e2e con base de datos, fuera de la plataforma, pasa en verde', () => {
     // playwright.db.config.ts: base real de pruebas + selector pedido a mano.
     const verdict = inspectBuildEnvironment({
       DATABASE_URL: REAL.DATABASE_URL,
-      CASA_CLARA_FIXTURE_LOGIN: 'true'
+      HOUSEKEEPER_FIXTURE_LOGIN: 'true'
     });
     expect(verdict.level).not.toBe('fail');
   });

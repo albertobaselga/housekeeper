@@ -8,13 +8,13 @@
  *
  * La regla, y por qué está en este orden:
  *
- * 1. `CASA_CLARA_FIXTURE_LOGIN=true` → dentro. Es la ÚNICA forma de meter el
+ * 1. `HOUSEKEEPER_FIXTURE_LOGIN=true` → dentro. Es la ÚNICA forma de meter el
  *    selector en un paquete construido, y hay exactamente dos consumidores
  *    legítimos: las dos configuraciones de Playwright.
- * 2. `CASA_CLARA_FIXTURE_LOGIN=false` → fuera, incluso en el servidor de
+ * 2. `HOUSEKEEPER_FIXTURE_LOGIN=false` → fuera, incluso en el servidor de
  *    desarrollo. Sirve para comprobar en local cómo se comporta el paquete de
  *    producción.
- * 3. Cualquier otro valor → error. Un `CASA_CLARA_FIXTURE_LOGIN=1` que se
+ * 3. Cualquier otro valor → error. Un `HOUSEKEEPER_FIXTURE_LOGIN=1` que se
  *    interpretase como «falso» sería un fallo silencioso justo en la variable
  *    que no admite fallos silenciosos; y uno que se interpretase como «cierto»
  *    sería peor.
@@ -26,17 +26,25 @@
  * maqueta— sigue arrancando con las cinco cuentas de siempre sin que nadie
  * tenga que exportar nada.
  *
+ * `CASA_CLARA_FIXTURE_LOGIN` era el nombre anterior (renombrado con el
+ * proyecto). Declararla hoy es casi seguro un despliegue con el nombre viejo
+ * que dejaría el selector fuera en silencio, así que se rechaza en voz alta en
+ * vez de ignorarla.
+ *
  * @param {Readonly<Record<string, string | undefined>>} env
  * @param {'build' | 'serve'} command  El `command` que Vite pasa a defineConfig.
  * @returns {boolean}
  */
 export function resolveFixtureLogin(env, command) {
-  const declared = (env.CASA_CLARA_FIXTURE_LOGIN ?? '').trim().toLowerCase();
+  if ((env.CASA_CLARA_FIXTURE_LOGIN ?? '').trim() !== '') {
+    throw new Error('CASA_CLARA_FIXTURE_LOGIN ya no existe; renombrada a HOUSEKEEPER_FIXTURE_LOGIN');
+  }
+  const declared = (env.HOUSEKEEPER_FIXTURE_LOGIN ?? '').trim().toLowerCase();
   if (declared === 'true') return true;
   if (declared === 'false') return false;
   if (declared !== '') {
     throw new Error(
-      `CASA_CLARA_FIXTURE_LOGIN="${env.CASA_CLARA_FIXTURE_LOGIN}" no es un valor válido; usa "true" o "false"`
+      `HOUSEKEEPER_FIXTURE_LOGIN="${env.HOUSEKEEPER_FIXTURE_LOGIN}" no es un valor válido; usa "true" o "false"`
     );
   }
   return command !== 'build';

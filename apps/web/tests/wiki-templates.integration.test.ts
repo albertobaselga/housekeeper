@@ -9,10 +9,10 @@ import { loadWikiHome } from '../src/lib/server/wiki.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_wikitpl_login';
+const APP_LOGIN = 'it_housekeeper_wikitpl_login';
 // Base propia (patrón de las suites de wiki/food): las suites que recrean el
 // esquema en paralelo no pueden compartir instancia.
-const DB_NAME = 'casaclara_wikitpl_it';
+const DB_NAME = 'housekeeper_wikitpl_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const SPACE_LIVE = '40000000-0000-4000-8000-000000000001';

@@ -1,4 +1,4 @@
-import type { AggregateType, CommandEnvelopeV1, CriticalSnapshotV1 } from '@casa-clara/contracts';
+import type { AggregateType, CommandEnvelopeV1, CriticalSnapshotV1 } from '@housekeeper/contracts';
 
 export type { CommandEnvelopeV1, CriticalSnapshotV1 };
 
@@ -24,7 +24,7 @@ export function createCommandEnvelope(input: {
   };
 }
 
-export const OFFLINE_DB_NAME = 'casa-clara-web';
+export const OFFLINE_DB_NAME = 'housekeeper-web';
 export const OFFLINE_DB_VERSION = 1;
 
 export const OFFLINE_STORES = {

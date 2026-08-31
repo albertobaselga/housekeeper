@@ -29,10 +29,10 @@ import { FIXTURE_HOUSEHOLD } from './helpers';
 // no solo que la fila cambió de estado.
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const WORKER_LOGIN = 'it_casa_clara_jobrun_worker_login';
+const WORKER_LOGIN = 'it_housekeeper_jobrun_worker_login';
 // Base propia: las demás suites recrean el esquema en paralelo y esta cuenta
 // filas de la cola, que no admite vecinos.
-const JOBS_DB = 'casaclara_jobrun_it';
+const JOBS_DB = 'housekeeper_jobrun_it';
 
 const TOKEN = 'secreto-de-prueba-32-bytes-largo-0';
 const PRUNE_JOB = 'maintenance.prune_discovery';
@@ -142,7 +142,7 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       // drenaje vacía todo lo demás igual.
       environment: {},
       storage: {
-        bucket: 'casaclara-test',
+        bucket: 'housekeeper-test',
         putObject: noStorage,
         getObject: noStorage,
         getObjectStream: noStorage
@@ -176,6 +176,22 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
 
     // La cola sigue intacta: ni un trabajo reclamado.
     expect(await jobStates(PRUNE_JOB)).toEqual([{ status: 'queued', attempts: 0 }]);
+  });
+
+  it('la cabecera legada `x-casa-clara-job-token` se sigue aceptando: la manda el pg_cron ya desplegado', async () => {
+    // El planificador de producción quedó programado con el nombre anterior
+    // del proyecto y cambiarlo es una migración operativa aparte (ver
+    // docs/despliegue/identificadores-legado.md), no algo que dependa de este
+    // renombrado. Se prueba con un trabajo propio para no interferir con el
+    // resto de esta batería.
+    const legacyPrune = await enqueuePrune();
+    const legacyRequest = new Request('https://casa.ejemplo.test/api/v1/jobs/run', {
+      method: 'POST',
+      headers: { 'x-casa-clara-job-token': TOKEN }
+    });
+    const response = await runJobDrainRequest(legacyRequest, { config, pool: workerPool });
+    expect(response.status).toBe(200);
+    expect(await jobById(legacyPrune)).toEqual({ status: 'completed', attempts: 1 });
   });
 
   it('sin configuración completa responde 503 y deja la cola quieta', async () => {
@@ -320,7 +336,7 @@ describe('secreto compartido y configuración del drenaje', () => {
       WORKER_DATABASE_URL: 'postgresql://casa_clara_worker_login@db.invalid:6543/postgres',
       JOB_RUNNER_TOKEN: TOKEN,
       S3_ENDPOINT: 'https://s3.invalid',
-      S3_PRIVATE_BUCKET: 'casaclara',
+      S3_PRIVATE_BUCKET: 'housekeeper',
       S3_ACCESS_KEY_ID: 'id',
       S3_SECRET_ACCESS_KEY: 'secret'
     };
@@ -328,7 +344,7 @@ describe('secreto compartido y configuración del drenaje', () => {
       token: TOKEN,
       budgetMs: 8_000,
       maxAttempts: 5,
-      storage: { bucket: 'casaclara' }
+      storage: { bucket: 'housekeeper' }
     });
 
     for (const missing of Object.keys(complete)) {
@@ -348,6 +364,9 @@ describe('secreto compartido y configuración del drenaje', () => {
       SUPABASE_URL: 'https://proyecto.supabase.invalid',
       SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_de_prueba'
     };
+    // Sin bucket declarado, cae al valor por omisión real de producción
+    // (supabase-storage.server.ts): 'casaclara', el nombre legado del
+    // proyecto anterior (ver docs/despliegue/identificadores-legado.md).
     expect(loadJobRunnerConfig(supabase)).toMatchObject({ storage: { bucket: 'casaclara' } });
     // Y sin ninguno de los dos caminos sigue sin arrancar: un drenaje sin
     // almacén mandaría los recibos a `dead` en silencio.
@@ -365,7 +384,7 @@ describe('secreto compartido y configuración del drenaje', () => {
       WORKER_DATABASE_URL: 'postgresql://casa_clara_worker_login@db.invalid:6543/postgres',
       JOB_RUNNER_TOKEN: TOKEN,
       S3_ENDPOINT: 'https://s3.invalid',
-      S3_PRIVATE_BUCKET: 'casaclara',
+      S3_PRIVATE_BUCKET: 'housekeeper',
       S3_ACCESS_KEY_ID: 'id',
       S3_SECRET_ACCESS_KEY: 'secret'
     };
@@ -390,7 +409,7 @@ describe('secreto compartido y configuración del drenaje', () => {
       WORKER_DATABASE_URL: 'postgresql://casa_clara_worker_login@db.invalid:6543/postgres',
       JOB_RUNNER_TOKEN: TOKEN,
       S3_ENDPOINT: 'https://s3.invalid',
-      S3_PRIVATE_BUCKET: 'casaclara',
+      S3_PRIVATE_BUCKET: 'housekeeper',
       S3_ACCESS_KEY_ID: 'id',
       S3_SECRET_ACCESS_KEY: 'secret'
     };

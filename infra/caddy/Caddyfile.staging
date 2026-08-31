@@ -6,11 +6,11 @@
 	respond /healthz 200
 }
 
-http://{$STAGING_HOST:staging.casaclara.test}:8081 {
-	redir https://{$STAGING_HOST:staging.casaclara.test}:8443{uri} permanent
+http://{$STAGING_HOST:staging.housekeeper.test}:8081 {
+	redir https://{$STAGING_HOST:staging.housekeeper.test}:8443{uri} permanent
 }
 
-https://{$STAGING_HOST:staging.casaclara.test}:8443 {
+https://{$STAGING_HOST:staging.housekeeper.test}:8443 {
 	tls internal
 	encode zstd gzip
 	respond /api/metrics 404

@@ -349,7 +349,7 @@ Los destinatarios se resuelven **en el instante del envío**, no en el del encol
 
 **Tres obstáculos del camino Vercel, todos verificados y todos silenciosos:**
 
-1. **La web no puede leer la cola.** `casa_clara_app` tiene `USAGE` sobre `app` pero **no sobre `app_private`** (`0001_identity_and_context.sql:19-20`), y `job_queue` solo tiene grant para `casa_clara_worker` (`0005_rls.sql:386-387`). El endpoint drenador necesita **un segundo pool** con un rol de login miembro de `casa_clara_worker` (ambos roles del repo son `NOLOGIN`: el rol de login se crea en el despliegue). Eso mete credenciales de esquema privado en el mismo despliegue que sirve las páginas: mitigación obligatoria es un secreto de cabecera propio y **no reutilizar jamás el pool de la aplicación**.
+1. **La web no puede leer la cola.** `casa_clara_app` (nombre legado del proyecto anterior; ver [docs/despliegue/identificadores-legado.md](despliegue/identificadores-legado.md)) tiene `USAGE` sobre `app` pero **no sobre `app_private`** (`0001_identity_and_context.sql:19-20`), y `job_queue` solo tiene grant para `casa_clara_worker` (`0005_rls.sql:386-387`). El endpoint drenador necesita **un segundo pool** con un rol de login miembro de `casa_clara_worker` (ambos roles del repo son `NOLOGIN`: el rol de login se crea en el despliegue). Eso mete credenciales de esquema privado en el mismo despliegue que sirve las páginas: mitigación obligatoria es un secreto de cabecera propio y **no reutilizar jamás el pool de la aplicación**.
 
 2. **No hay barrendero de jobs colgados.** `claimNextJob` solo mira `status = 'queued'` (`queue.ts:41-46`) y deja el job en `running` con `locked_at`. Si la función de Vercel se corta a mitad —y con tope de 60 s y cron cada minuto, **se cortará**—, ese job queda `running` para siempre. En un demonio de larga vida es improbable; aquí es una certeza estadística.
 
@@ -401,7 +401,7 @@ Los destinatarios se resuelven **en el instante del envío**, no en el del encol
 
 **Justo antes del diálogo del sistema** (una línea, en la misma tarjeta):
 
-> Tu teléfono te va a preguntar ahora si permites los avisos de Casa Clara. Dile que sí.
+> Tu teléfono te va a preguntar ahora si permites los avisos. Dile que sí.
 
 **Al activar:**
 
@@ -522,7 +522,7 @@ Con tres personas, la cadena «Compartir → Añadir a pantalla de inicio → ab
 | **El JWT de Apple** | Trampa de estreno | El claim `sub` debe ser un `mailto:` o `https:` limpio; Apple devuelve `403 BadJwtToken` con espacios, corchetes angulares o dominios inválidos. **Falla solo en iPhone**, lo que lo hace difícil de diagnosticar |
 | **Fallo silencioso** | Siempre | **Es el riesgo de mantenimiento nº 1.** Cuando un dispositivo deja de recibir, nadie se entera. Por eso `last_success_at` en la tabla, y una línea en Tu cuenta: *«Este dispositivo no recibe avisos desde el 3 de marzo»* |
 
-**La consecuencia de diseño, otra vez y en voz alta:** el push **no es un canal de confianza**. Nada con consecuencia laboral —un plazo de disputa, la autoconfirmación de un parte, el vencimiento de un pago— puede depender de que el aviso llegara. Y **Casa Clara no es un sistema de emergencia**: el web push no garantiza entrega ni latencia. El 112 y el teléfono lo son, y el 112 ya está fijo y sin depender de nada en `emergency/+page.svelte`.
+**La consecuencia de diseño, otra vez y en voz alta:** el push **no es un canal de confianza**. Nada con consecuencia laboral —un plazo de disputa, la autoconfirmación de un parte, el vencimiento de un pago— puede depender de que el aviso llegara. Y **Housekeeper no es un sistema de emergencia**: el web push no garantiza entrega ni latencia. El 112 y el teléfono lo son, y el 112 ya está fijo y sin depender de nada en `emergency/+page.svelte`.
 
 ---
 

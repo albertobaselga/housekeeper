@@ -14,8 +14,8 @@ import { FIXTURE_HOUSEHOLD } from './helpers';
 // quien decide es RLS, no este código.
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_receipts_login';
-const RECEIPTS_DB = 'casaclara_off_receipts_it';
+const APP_LOGIN = 'it_housekeeper_receipts_login';
+const RECEIPTS_DB = 'housekeeper_off_receipts_it';
 
 /** Gasto de farmacia de la fixture, ya reembolsado en la cuenta de marzo. */
 const EXPENSE_WITH_RECEIPT = '12a00000-0000-4000-8000-000000000001';

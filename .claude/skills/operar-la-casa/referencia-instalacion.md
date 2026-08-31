@@ -13,7 +13,9 @@ ella.
 Node **24.18.0** (fijado en `.nvmrc`, `.node-version` y `engines`) y pnpm
 **10.17.1**. Para todo lo que toque base de datos, un PostgreSQL **18** en el que
 puedas crear bases y roles: las migraciones crean los roles de grupo
-`casa_clara_app` y `casa_clara_worker`.
+`casa_clara_app` y `casa_clara_worker` (nombres legados del proyecto anterior;
+ver
+[docs/despliegue/identificadores-legado.md](../../../docs/despliegue/identificadores-legado.md)).
 
 ```bash
 corepack enable
@@ -39,17 +41,17 @@ export LD_LIBRARY_PATH="$PG_HOME/usr/lib/x86_64-linux-gnu"
 
 "$PGBIN/initdb" -D "$PGDATA" -U casa_admin
 "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p 54329 -k /tmp/ccpg-socket" -l "$PGDATA/log" start
-"$PGBIN/createdb" -h 127.0.0.1 -p 54329 -U casa_admin casaclara_dev
+"$PGBIN/createdb" -h 127.0.0.1 -p 54329 -U casa_admin housekeeper_dev
 ```
 
 Y el esquema, **en este orden**:
 
 ```bash
-export DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/housekeeper_dev"
 export APP_DB_PASSWORD='…' WORKER_DB_PASSWORD='…' AUTH_DB_PASSWORD='…'
 
-pnpm --filter @casa-clara/db bootstrap    # roles casa_clara_*, esquema casa_auth
-pnpm --filter @casa-clara/db migrate      # las 31 migraciones, en orden
+pnpm --filter @housekeeper/db bootstrap    # roles casa_clara_*, esquema casa_auth
+pnpm --filter @housekeeper/db migrate      # las 31 migraciones, en orden
 ```
 
 **El bootstrap va antes que las migraciones, sin excepción**: la 0001 ya concede
@@ -65,8 +67,8 @@ imprime `Applied 31 migration(s).` y repetirlo dice
 ### Arrancar contra esa base
 
 ```bash
-export DATABASE_URL='postgresql://casa_clara_app_login:…@127.0.0.1:54329/casaclara_dev'
-export DATABASE_AUTH_URL='postgresql://casa_clara_auth_login:…@127.0.0.1:54329/casaclara_dev'
+export DATABASE_URL='postgresql://casa_clara_app_login:…@127.0.0.1:54329/housekeeper_dev'
+export DATABASE_AUTH_URL='postgresql://casa_clara_auth_login:…@127.0.0.1:54329/housekeeper_dev'
 export BETTER_AUTH_SECRET='…al menos 32 bytes aleatorios…'
 export BETTER_AUTH_URL='http://localhost:5173'
 pnpm dev
@@ -135,8 +137,8 @@ export DATABASE_AUTH_URL='postgresql://casa_clara_auth_login:…@…/…'
 export SEED_DATABASE_URL="$DATABASE_URL"     # el propietario de las migraciones
 export BETTER_AUTH_SECRET='…'
 
-pnpm --filter @casa-clara/web seed:accounts --config /fuera/del/repo/hogar.json --dry-run
-pnpm --filter @casa-clara/web seed:accounts --config /fuera/del/repo/hogar.json \
+pnpm --filter @housekeeper/web seed:accounts --config /fuera/del/repo/hogar.json --dry-run
+pnpm --filter @housekeeper/web seed:accounts --config /fuera/del/repo/hogar.json \
   > /fuera/del/repo/credenciales.txt
 chmod 600 /fuera/del/repo/credenciales.txt
 ```
@@ -145,7 +147,7 @@ Imprime el **identificador del hogar** —apúntalo, hace falta en el paso 4— 
 contraseñas generadas, **una sola vez**.
 
 Si lanzas el guion con `pnpm`, el fichero se lleva también las dos líneas de
-cabecera que pnpm escribe (`> @casa-clara/web@0.1.0 seed:accounts …`). No
+cabecera que pnpm escribe (`> @housekeeper/web@0.1.0 seed:accounts …`). No
 estorban, pero no te confundas: las contraseñas están más abajo.
 
 > **La trampa que más cara sale, y no está en ningún runbook.**
@@ -171,8 +173,8 @@ Ver [referencia-operaciones.md § Contratos](referencia-operaciones.md#contratos
 Lo esencial: **nunca sin catálogo de trabajo extra**, y ensaya con `--dry-run`.
 
 ```bash
-pnpm --filter @casa-clara/db agreement:seed --config /fuera/del/repo/hogar.json --dry-run
-pnpm --filter @casa-clara/db agreement:seed --config /fuera/del/repo/hogar.json
+pnpm --filter @housekeeper/db agreement:seed --config /fuera/del/repo/hogar.json --dry-run
+pnpm --filter @housekeeper/db agreement:seed --config /fuera/del/repo/hogar.json
 ```
 
 Si el horario no cuadra con `contractedWeeklyMinutes`, imprime un `AVISO` con las
@@ -182,8 +184,8 @@ dos cifras y **guarda igual**. No lo ignores.
 
 ```bash
 HOUSEHOLD=$(psql "$DATABASE_URL" -Atc "select id from app.households where slug = 'casa-ejemplo'")
-pnpm --filter @casa-clara/db manual:import --household "$HOUSEHOLD" --dry-run
-pnpm --filter @casa-clara/db manual:import --household "$HOUSEHOLD"
+pnpm --filter @housekeeper/db manual:import --household "$HOUSEHOLD" --dry-run
+pnpm --filter @housekeeper/db manual:import --household "$HOUSEHOLD"
 ```
 
 Idempotente por contenido. Verificado: vuelca 7 apartados, 52 notas, 5 rutinas y
@@ -280,7 +282,7 @@ llegó a producción sin ellas:
 | Variable | Por qué |
 |---|---|
 | `ALLOW_SYNTHETIC_DATA_ONLY` | Declara «aquí no hay datos reales». Con `VERCEL_ENV=production` **la aplicación no arranca**, y la build la rechaza por existir — ni siquiera a `"false"`: una variable presente en el panel es una que alguien puede voltear un martes |
-| `CASA_CLARA_FIXTURE_LOGIN` | Mete el selector de cuentas sintéticas **dentro del paquete**. Sus dos únicos consumidores legítimos son `playwright.config.ts` y `playwright.db.config.ts` |
+| `HOUSEKEEPER_FIXTURE_LOGIN` | Mete el selector de cuentas sintéticas **dentro del paquete**. Sus dos únicos consumidores legítimos son `playwright.config.ts` y `playwright.db.config.ts` |
 | `SMTP_HOST`, `SMTP_FROM`, `SMTP_PORT` | **Ya no existen** (migración 0029): la aplicación no manda correo a nadie. Si siguen en el panel de un despliegue anterior, **se borran**: hacen creer que hay un canal de aviso que no existe |
 | `BACKUP_DATABASE_URL` | Es de la máquina de quien administra. **Nunca** en Vercel ni en el worker |
 
@@ -319,7 +321,7 @@ BASE=https://casa.ejemplo.es
       `SNAPSHOT_SIGNING_KEY_B64` puesta, un snapshot pedido antes de un
       despliegue sigue validando después. Sin ella responde 200 igual: el 200 no
       prueba nada.
-- [ ] **La cola drena.** `curl -si -X POST $BASE/api/v1/jobs/run -H "x-casa-clara-job-token: $JOB_RUNNER_TOKEN"`
+- [ ] **La cola drena.** `curl -si -X POST $BASE/api/v1/jobs/run -H "x-housekeeper-job-token: $JOB_RUNNER_TOKEN"`
       → 200 con `{"ran":…,"remaining":…,"stoppedBy":"empty",…}`. Sin la cabecera,
       401. Y el efecto real: **cierra un mes y comprueba que el PDF aparece en
       menos de cinco minutos**.

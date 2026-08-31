@@ -1,6 +1,6 @@
 # Personal y contratos: varias empleadas de verdad
 
-Qué hace falta para que en Casa Clara pueda trabajar más de una persona, para que
+Qué hace falta para que en Housekeeper pueda trabajar más de una persona, para que
 la administración vea de un vistazo **quién trabaja hoy en la casa y quién
 trabajó antes** con sus contratos, y para que **el alta de una cuenta se haga
 desde la aplicación** en lugar de un guion que lee un JSON de fuera del

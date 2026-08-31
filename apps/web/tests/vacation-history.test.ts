@@ -109,7 +109,7 @@ describe('historial de vacaciones de una persona', () => {
     expect(view.years[0]?.headline).toBe(
       'En 2026 ha disfrutado 42 días y el contrato reconoce 30 días: hay 12 días de más.'
     );
-    expect(view.years[0]?.excessNote).toContain('Casa Clara no lo corrige sola');
+    expect(view.years[0]?.excessNote).toContain('La aplicación no lo corrige sola');
     expect(view.years[0]?.headline).not.toMatch(/%/);
   });
 

@@ -4,7 +4,7 @@ import type {
   WikiPageEditPayloadV1,
   WikiPageSetStatePayloadV1,
   WikiSpaceCreatePayloadV1
-} from '@casa-clara/contracts';
+} from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import { queueCommand, type QueueOutcome } from '$lib/offline/queue-command';

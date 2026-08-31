@@ -1,8 +1,8 @@
 import type { Pool } from 'pg';
 
 import type { DemoUser, HouseholdMembership, HouseholdSummary } from '$lib/auth/types';
-import { createLogger } from '@casa-clara/server';
-import { isRole } from '@casa-clara/contracts/capabilities';
+import { createLogger } from '@housekeeper/server';
+import { isRole } from '@housekeeper/contracts/capabilities';
 
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';

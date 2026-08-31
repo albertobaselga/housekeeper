@@ -10,10 +10,10 @@ import { resolveAppUser } from '../src/lib/server/app-user.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_appuser_login';
+const APP_LOGIN = 'it_housekeeper_appuser_login';
 // Base propia: cada suite de integración recrea el esquema entero y no puede
 // compartir instancia con las demás (patrón de access.integration.test.ts).
-const APPUSER_DB = 'casaclara_appuser_it';
+const APPUSER_DB = 'housekeeper_appuser_it';
 
 /** Segundo hogar de las fixtures sintéticas (packages/db/fixtures). */
 const OLIVO_HOUSEHOLD = '20000000-0000-4000-8000-000000000001';

@@ -18,8 +18,8 @@ import { lookup } from 'node:dns/promises';
 import type { Pool } from 'pg';
 
 import { env } from '$env/dynamic/private';
-import { createLogger } from '@casa-clara/server';
-import { isForbiddenAddress } from '@casa-clara/worker/net';
+import { createLogger } from '@housekeeper/server';
+import { isForbiddenAddress } from '@housekeeper/worker/net';
 
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';

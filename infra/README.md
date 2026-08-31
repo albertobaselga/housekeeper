@@ -8,8 +8,8 @@ Esta carpeta define dos entornos sin datos reales ni secretos versionados. No es
 |---|---|---|
 | Caddy | `caddy:2.11.2-alpine` | `/healthz` |
 | PostgreSQL | `postgres:18.4-alpine` con checksums | `pg_isready` |
-| Web | build de `@casa-clara/web`, puerto 3000 | `WEB_HEALTH_PATH` (por defecto `/api/health`) |
-| Worker | build de `@casa-clara/worker`, puerto 3001 | `/health` |
+| Web | build de `@housekeeper/web`, puerto 3000 | `WEB_HEALTH_PATH` (por defecto `/api/health`) |
+| Worker | build de `@housekeeper/worker`, puerto 3001 | `/health` |
 | MinIO | release fechada, bucket privado | `/minio/health/live` |
 | ClamAV | `1.4.5` | ping de `clamd` |
 
@@ -22,6 +22,8 @@ Los filtros de workspace se pueden cambiar con `WEB_WORKSPACE_FILTER` y `WORKER_
 ## Local
 
 Los valores por defecto son identificadores sintéticos y no deben reutilizarse fuera de la máquina de desarrollo.
+
+El nombre de proyecto de Compose pasó de `casaclara-local` a `housekeeper-local`: los volúmenes creados bajo el nombre anterior (`casaclara-local_postgres_data`, `casaclara-local_minio_data`…) quedan huérfanos. Si tenías datos locales que conservar, migra el volumen a mano o vuelve a levantar el entorno desde cero.
 
 ```bash
 docker compose -f infra/compose.local.yml config --quiet
@@ -47,7 +49,7 @@ docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml con
 docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml up --build --wait
 ```
 
-Añadir `127.0.0.1 staging.casaclara.test` al hosts local. Caddy usa una CA interna para este entorno; no se debe instalar su raíz como confianza global fuera del equipo de pruebas. Staging establece `ALLOW_SYNTHETIC_DATA_ONLY=true`; importar datos reales constituye un incidente.
+Añadir `127.0.0.1 staging.housekeeper.test` al hosts local. Caddy usa una CA interna para este entorno; no se debe instalar su raíz como confianza global fuera del equipo de pruebas. Staging establece `ALLOW_SYNTHETIC_DATA_ONLY=true`; importar datos reales constituye un incidente.
 
 ## Backups bajo demanda
 

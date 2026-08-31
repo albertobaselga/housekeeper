@@ -32,7 +32,7 @@ Para dar de alta las cuentas sintéticas de staging, con un JSON de personas fic
 docker compose --env-file infra/env/staging.env -f infra/compose.staging.yml \
   run --rm -e SEED_DATABASE_URL="postgresql://…propietario-de-migraciones…" \
   -v /ruta/fuera/del/repo/staging-sintetico.json:/tmp/hogar.json:ro \
-  web pnpm --filter @casa-clara/web seed:accounts --config /tmp/hogar.json
+  web pnpm --filter @housekeeper/web seed:accounts --config /tmp/hogar.json
 ```
 
 El guion imprime las contraseñas generadas una sola vez. En staging pueden anotarse en el registro de la prueba; en producción no salen de la conversación en persona.

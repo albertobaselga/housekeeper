@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { contactCommandHandlers, processSyncBatch, withAuthorizedTransaction } from '@casa-clara/server';
+import { contactCommandHandlers, processSyncBatch, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { archiveContact, upsertContact } from '../src/lib/contacts/commands';
 import {
@@ -23,10 +23,10 @@ const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 // proceso, así que declararla aquí es parte de la prueba: heredarla del
 // entorno de quien la lance hacía que el resultado dependiera de su shell.
 vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: 'postgres://prueba/afirmada' } }));
-const APP_LOGIN = 'it_casa_clara_contacts_login';
+const APP_LOGIN = 'it_housekeeper_contacts_login';
 // Base de datos propia (patrón de la suite de comida): las otras suites
 // recrean el esquema entero en paralelo y ninguna puede compartir instancia.
-const CONTACTS_DB = 'casaclara_contacts_it';
+const CONTACTS_DB = 'housekeeper_contacts_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 

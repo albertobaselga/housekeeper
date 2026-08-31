@@ -85,8 +85,10 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    ejecutar su SQL a mano una vez (bloqueante B-3), con dos ajustes:
    - el esquema de Better Auth se llama `casa_auth`, no `auth` (en Supabase
      `auth` es de GoTrue) — bloqueante B-4;
-   - añadir `grant casa_clara_app, casa_clara_worker to postgres;` para poder
-     ejecutar la suite RLS (B-5).
+   - añadir `grant casa_clara_app, casa_clara_worker to postgres;` (nombres
+     legados del proyecto anterior; ver
+     [docs/despliegue/identificadores-legado.md](identificadores-legado.md))
+     para poder ejecutar la suite RLS (B-5).
 2. **Migraciones.**
 
    ```bash
@@ -257,7 +259,7 @@ red privada de la organización.
 ```bash
 fly proxy 3001:3001 -a casaclara-worker
 curl -s localhost:3001/health   # {"status":"ok","lastSuccessfulPollAt":…}
-curl -s localhost:3001/metrics  # casa_clara_worker_processed_jobs_total …
+curl -s localhost:3001/metrics  # housekeeper_worker_processed_jobs_total …
 ```
 
 ### 4.2 Con Docker Compose en cualquier host
@@ -277,7 +279,7 @@ Vercel y no puede entrar en la red privada del host del worker, así que el
 antivirus tiene que ser alcanzable desde internet — pero clamd desnudo, jamás.
 
 Delante va `infra/clamav/gateway.mjs`: escucha en **TLS**, exige como primera
-línea `CASACLARA <token>` (comparación en tiempo constante) y a partir de ahí
+línea `HOUSEKEEPER <token>` (comparación en tiempo constante) y a partir de ahí
 hace de tubería sin tocar un byte del diálogo INSTREAM. clamd escucha solo en
 `127.0.0.1`.
 
@@ -358,7 +360,7 @@ aviso de rutina de verdad.
    dependencias `workspace:*`:
    - *Root Directory*: la raíz del repositorio (**no** `apps/web`).
    - *Install Command*: `pnpm install --frozen-lockfile`
-   - *Build Command*: `pnpm --filter @casa-clara/web build`
+   - *Build Command*: `pnpm --filter @housekeeper/web build`
    - *Output Directory*: `apps/web/.vercel/output` (lo detecta el adaptador).
 
    El adaptador se elige solo: `svelte.config.js` mira `VERCEL`, que la
@@ -392,7 +394,7 @@ aviso de rutina de verdad.
    borran: nadie las lee, y una variable sin lector solo sirve para hacer creer
    que hay un canal que no existe.
 
-   **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `CASA_CLARA_FIXTURE_LOGIN`: su
+   **NO definir** `ALLOW_SYNTHETIC_DATA_ONLY` ni `HOUSEKEEPER_FIXTURE_LOGIN`: su
    ausencia es el estado seguro, y ahora está además impuesta. Definir
    cualquiera de las dos en una build de producción la detiene, con el
    despliegue anterior sirviendo mientras tanto.
@@ -431,7 +433,7 @@ aviso de rutina de verdad.
 | Justificantes | **Este sí se pasaba**: se proxeaban materializados y llegan a 10 MiB. Ahora van en flujo, donde el límite de 4,5 MB no aplica |
 | Tamaño de la función | **8,9 MB** con `split: false` (todas las rutas comparten una función y el resto son enlaces simbólicos), frente a los 250 MB del límite |
 
-Y se comprobó lo que no se rompe: `pnpm --filter @casa-clara/web build` sigue
+Y se comprobó lo que no se rompe: `pnpm --filter @housekeeper/web build` sigue
 produciendo `build/` con adapter-node por omisión, y `DEPLOY_TARGET=vercel`
 produce `.vercel/output` con las 34 rutas y una sola función.
 
@@ -465,7 +467,7 @@ Una vez creado el hogar:
    nada, se reimporta). Ensayo primero, que no escribe nada:
 
    ```bash
-   DATABASE_URL="$DIRECTA" pnpm --filter @casa-clara/db manual:import -- \
+   DATABASE_URL="$DIRECTA" pnpm --filter @housekeeper/db manual:import -- \
      --household <uuid> --dry-run
    ```
 

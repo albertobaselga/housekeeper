@@ -1,5 +1,5 @@
 {
-  "name": "@casa-clara/db",
+  "name": "@housekeeper/db",
   "version": "0.1.0",
   "private": true,
   "type": "module",

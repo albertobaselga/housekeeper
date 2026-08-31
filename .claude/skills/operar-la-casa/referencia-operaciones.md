@@ -72,8 +72,10 @@ marcha**: repetirlo es inofensivo.
 
 **(c) Qué NO hacer.**
 
-- **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`**, cuyo
-  `search_path` es `casa_auth`. Con el rol propietario, Better Auth crea sus
+- **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`** (nombre
+  legado del proyecto anterior; ver
+  [docs/despliegue/identificadores-legado.md](../../../docs/despliegue/identificadores-legado.md)),
+  cuyo `search_path` es `casa_auth`. Con el rol propietario, Better Auth crea sus
   tablas en `public`: **el guion dice que ha ido bien e imprime las contraseñas,
   y luego nadie puede entrar** (401 para todos). Comprobado. Se detecta así:
 

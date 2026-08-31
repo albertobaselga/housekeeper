@@ -16,7 +16,7 @@ import { deriveSyncState } from '../src/lib/offline/sync-state';
 import { FIXTURE_HOUSEHOLD as HOUSEHOLD, envelopeFixture, snapshotFixture } from './helpers';
 
 function databaseName(label: string): string {
-  return `casa-clara-test-${label}-${crypto.randomUUID()}`;
+  return `housekeeper-test-${label}-${crypto.randomUUID()}`;
 }
 
 describe('offline database', () => {

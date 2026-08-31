@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { occurrencesBetween, type RoutineRule } from '@casa-clara/domain';
+import { occurrencesBetween, type RoutineRule } from '@housekeeper/domain';
 
 import { GET } from '../src/routes/api/v1/ics/[token]/+server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
@@ -35,8 +35,8 @@ import { expandRrule } from './rrule-expand';
  * llevaba desde entonces SALTÁNDOSE ENTERA. Ahora se provisiona su propia base,
  * como hacen hoy/snapshot/wiki, y se le dice a la ruta dónde está.
  */
-const ICS_DB = 'casaclara_ics_it';
-const APP_LOGIN = 'it_casa_clara_ics_login';
+const ICS_DB = 'housekeeper_ics_it';
+const APP_LOGIN = 'it_housekeeper_ics_login';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
@@ -47,8 +47,8 @@ const FEED_DATABASE_URL = vi.hoisted(() => {
   const base = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!base) return '';
   const url = new URL(base);
-  url.pathname = '/casaclara_ics_it';
-  url.username = 'it_casa_clara_ics_login';
+  url.pathname = '/housekeeper_ics_it';
+  url.username = 'it_housekeeper_ics_login';
   url.password = 'integration-only';
   return url.toString();
 });
@@ -223,7 +223,7 @@ describe.runIf(Boolean(adminUrl))('feed ICS emitido desde Postgres', () => {
     const semanales = eventos(cuerpo).filter((evento) => evento.summary.includes('Cocina a fondo'));
     expect(semanales).toHaveLength(1);
     const [evento] = semanales;
-    expect(evento?.uid).toBe(`${ROUTINE_SEMANAL}@casaclara`);
+    expect(evento?.uid).toBe(`${ROUTINE_SEMANAL}@housekeeper`);
     expect(evento?.rrule).toBe('FREQ=WEEKLY;BYDAY=MO,TH;WKST=MO');
   });
 

@@ -21,8 +21,8 @@ import { FIXTURE_HOUSEHOLD } from './helpers';
 // paralelo en vez de turnarse.
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_identity_login';
-const IDENTITY_DB = 'casaclara_identity_it';
+const APP_LOGIN = 'it_housekeeper_identity_login';
+const IDENTITY_DB = 'housekeeper_identity_it';
 
 const SECOND_HOUSEHOLD = '20000000-0000-4000-8000-000000000001';
 const ADMIN_USER = 'fixture:roble:admin';

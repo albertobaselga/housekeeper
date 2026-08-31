@@ -15,7 +15,7 @@ const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 // y aserta clusters en roble sobre la misma base compartida, y cualquier
 // consulta nueva allí alteraría sus totales.
 const OLIVO_HOUSEHOLD = "20000000-0000-4000-8000-000000000001";
-const APP_LOGIN = "it_casa_clara_app_login";
+const APP_LOGIN = "it_housekeeper_app_login";
 
 const OLIVO_ADMIN: AuthenticatedPrincipal = { userId: "fixture:olivo:admin" };
 

@@ -63,9 +63,13 @@ implementación de los trabajos, ni un proveedor más que administrar.
 ## 1. El secreto compartido
 
 El endpoint no tiene sesión: su única puerta es un secreto que viaja en la
-cabecera `x-casa-clara-job-token` y que el servidor compara **en tiempo
+cabecera `x-housekeeper-job-token` y que el servidor compara **en tiempo
 constante** (sha-256 de ambos lados y `timingSafeEqual`, así que ni la longitud
-se filtra).
+se filtra). Una instalación con el planificador ya programado bajo el nombre
+legado sigue funcionando: el servidor también acepta la cabecera
+`x-casa-clara-job-token` (nombre legado del proyecto anterior; ver
+[docs/despliegue/identificadores-legado.md](../despliegue/identificadores-legado.md))
+sin que haga falta reprogramar la tarea de cron.
 
 ```bash
 openssl rand -hex 32
@@ -186,7 +190,7 @@ select cron.schedule(
              where name = 'casa_clara_job_runner_url'),
     headers := jsonb_build_object(
       'content-type', 'application/json',
-      'x-casa-clara-job-token',
+      'x-housekeeper-job-token',
       (select decrypted_secret from vault.decrypted_secrets
         where name = 'casa_clara_job_runner_token')
     ),
@@ -206,7 +210,7 @@ Si esa tabla crece más de lo que te apetece mirar, una limpieza semanal:
 
 ```sql
 select cron.schedule(
-  'casa-clara-purga-respuestas-pgnet',
+  'housekeeper-purga-respuestas-pgnet',
   '17 4 * * 0',
   $$delete from net._http_response where created < now() - interval '3 days'$$
 );
@@ -248,7 +252,7 @@ programar, sin tocar el código.
 ```sql
 -- 1. La tarea existe y está activa.
 select jobid, jobname, schedule, active, username
-  from cron.job where jobname like 'casa-clara-%';
+  from cron.job where jobname like 'casa-clara-%' or jobname like 'housekeeper-%';
 
 -- 2. Las últimas ejecuciones del planificador (esto solo dice que el SQL del
 --    cron corrió, no lo que contestó la web).
@@ -286,7 +290,7 @@ Prueba manual del extremo a extremo, desde tu máquina:
 
 ```bash
 curl -si -X POST https://casa.ejemplo.es/api/v1/jobs/run \
-  -H "x-casa-clara-job-token: $JOB_RUNNER_TOKEN"
+  -H "x-housekeeper-job-token: $JOB_RUNNER_TOKEN"
 # 200 y el JSON de arriba. Sin la cabecera: 401 {"error":"unauthorized"}.
 ```
 
@@ -324,7 +328,7 @@ worker como demonio en un host propio):
 
 ```sql
 select cron.unschedule('casa-clara-drenaje-cola');
-select cron.unschedule('casa-clara-purga-respuestas-pgnet');
+select cron.unschedule('housekeeper-purga-respuestas-pgnet');
 ```
 
 Los dos ejecutores pueden convivir sin coordinarse: el reclamo usa

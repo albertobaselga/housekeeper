@@ -7,7 +7,7 @@ import {
   contactArchivePayloadSchema,
   contactCommandPayloadSchema,
   contactUpsertPayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import { archiveContact, upsertContact } from '../src/lib/contacts/commands';
 

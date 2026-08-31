@@ -14,7 +14,7 @@ import {
   type SettledExtraWork,
   type SettlementLine,
   type Weekday
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 
 /**
  * Modelo de lectura del expediente laboral. Todas las funciones son puras y
@@ -1071,7 +1071,7 @@ export function scheduleMismatchLabel(
 /**
  * El horario de una versión, resuelto y redactado.
  *
- * La frase y los minutos salen del motor puro (`@casa-clara/domain`), no de
+ * La frase y los minutos salen del motor puro (`@housekeeper/domain`), no de
  * aquí: son las mismas reglas que aplican el guion de alta y las pruebas, y
  * reescribirlas en la capa de vista sería tener dos horarios distintos según
  * quién los mire.

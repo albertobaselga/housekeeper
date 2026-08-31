@@ -18,9 +18,9 @@ import { forgetOwnDevice, listOwnDevices, saveOwnDevice } from '../src/lib/serve
  */
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_push_login';
+const APP_LOGIN = 'it_housekeeper_push_login';
 // Base propia: las demás suites recrean el esquema entero en paralelo.
-const PUSH_DB = 'casaclara_push_it';
+const PUSH_DB = 'housekeeper_push_it';
 
 const ADMIN_USER = { id: 'fixture:roble:admin' };
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };

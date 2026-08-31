@@ -3,8 +3,8 @@ import { createHash } from 'node:crypto';
 import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 
-import { cadenceClause } from '@casa-clara/domain';
-import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { cadenceClause } from '@housekeeper/domain';
+import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { CONTACT_KINDS, CONTACT_KIND_LABELS, type ContactKind } from '$lib/contacts/kinds';
 import { mondayOf, weekDays, dayLabel } from '$lib/food/dates';

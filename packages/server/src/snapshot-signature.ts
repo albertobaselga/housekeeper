@@ -1,6 +1,6 @@
 import { sign, verify } from "node:crypto";
 
-import type { CriticalSnapshotV1 } from "@casa-clara/contracts";
+import type { CriticalSnapshotV1 } from "@housekeeper/contracts";
 
 import { canonicalJson } from "./canonical-json.js";
 

@@ -1,4 +1,4 @@
-import { paymentRecordPayloadSchema } from "@casa-clara/contracts/schemas";
+import { paymentRecordPayloadSchema } from "@housekeeper/contracts/schemas";
 
 import { CommandRejectedError, type CommandHandler } from "../sync.js";
 

@@ -39,7 +39,7 @@ navegador (es su función); la privada firma cada envío y **no sale del servido
 jamás**.
 
 ```bash
-pnpm --filter @casa-clara/worker exec web-push generate-vapid-keys --json
+pnpm --filter @housekeeper/worker exec web-push generate-vapid-keys --json
 ```
 
 Sale algo así, y **no se parece a ningún valor real de esta casa** —es un ejemplo

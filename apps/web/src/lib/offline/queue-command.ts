@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { listOutbox, queueOutbox } from './idb';
 import { createOutboxRecord, type OutboxPendingBlob } from './schema';

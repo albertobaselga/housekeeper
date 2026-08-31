@@ -1,4 +1,4 @@
-# El esquema de Casa Clara en Supabase
+# El esquema de Housekeeper en Supabase
 
 > Qué cambia respecto al despliegue autogestionado con Docker Compose, qué
 > garantías de aislamiento se mantienen y con qué pruebas se demuestran.
@@ -7,7 +7,7 @@
 > [`plan-vercel-supabase.md`](plan-vercel-supabase.md) §3.1, más una
 > incompatibilidad que aquella auditoría no había detectado (§4 de este
 > documento). Nada de lo que sigue está deducido: todo se ejecuta en la sonda
-> `pnpm --filter @casa-clara/db probe:supabase`.
+> `pnpm --filter @housekeeper/db probe:supabase`.
 
 ---
 
@@ -20,17 +20,19 @@ esquema — nunca por el pooler, porque el runner usa `pg_advisory_lock` de sesi
 export DATABASE_URL='postgresql://postgres:…@db.<ref>.supabase.co:5432/postgres'
 export APP_DB_PASSWORD=… WORKER_DB_PASSWORD=… AUTH_DB_PASSWORD=…
 
-pnpm --filter @casa-clara/db bootstrap   # roles, casa_auth y compatibilidad de extensiones
-pnpm --filter @casa-clara/db migrate     # las 18 migraciones
-pnpm --filter @casa-clara/db test:db     # opcional: las 5 suites SQL/RLS contra el proyecto real
+pnpm --filter @housekeeper/db bootstrap   # roles, casa_auth y compatibilidad de extensiones
+pnpm --filter @housekeeper/db migrate     # las 18 migraciones
+pnpm --filter @housekeeper/db test:db     # opcional: las 5 suites SQL/RLS contra el proyecto real
 ```
 
-El orden importa: `0001` ya concede sobre `casa_clara_app` y `casa_clara_worker`,
-así que esos roles tienen que existir antes de la primera migración.
+El orden importa: `0001` ya concede sobre `casa_clara_app` y `casa_clara_worker`
+(nombres legados del proyecto anterior; ver
+[docs/despliegue/identificadores-legado.md](identificadores-legado.md)), así
+que esos roles tienen que existir antes de la primera migración.
 
 En Docker Compose no hay que hacer nada distinto de siempre: el mismo
 `bootstrap.sql` lo aplica `infra/postgres/00-create-roles.sh` desde
-`docker-entrypoint-initdb.d`, y compose lo monta en `/opt/casa-clara/bootstrap.sql`.
+`docker-entrypoint-initdb.d`, y compose lo monta en `/opt/housekeeper/bootstrap.sql`.
 
 ---
 
@@ -204,7 +206,7 @@ reconstruirlos**. La sonda lo comprueba con un texto acentuado.
 
 ## 6. La sonda
 
-`packages/db/scripts/probe-supabase.mjs` (`pnpm --filter @casa-clara/db
+`packages/db/scripts/probe-supabase.mjs` (`pnpm --filter @housekeeper/db
 probe:supabase`) reproduce en el Postgres local las tres condiciones que separan
 un proyecto Supabase recién creado del despliegue autogestionado:
 
@@ -222,7 +224,7 @@ dar un verde vacío.
 
 ```bash
 PROBE_ADMIN_URL='postgresql://casa_admin@127.0.0.1:54329/postgres' \
-  pnpm --filter @casa-clara/db probe:supabase
+  pnpm --filter @housekeeper/db probe:supabase
 ```
 
 Con `--keep` conserva la base para inspeccionarla. Los roles de grupo son

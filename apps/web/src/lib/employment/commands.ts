@@ -15,7 +15,7 @@ import type {
   SettlementReceiptConfirmPayloadV1,
   VacationRecordPayloadV1,
   VacationVoidPayloadV1
-} from '@casa-clara/contracts';
+} from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import { queueCommand, type QueueOutcome } from '$lib/offline/queue-command';

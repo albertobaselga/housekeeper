@@ -35,7 +35,7 @@ test.beforeAll(async () => {
       INSERT INTO app.storage_objects (
         id, household_id, bucket, object_key, media_type, byte_size, sha256, created_by_membership_id
       ) VALUES (
-        '${STORAGE_OBJECT}', '${HOUSEHOLD}', 'casa-clara-e2e', '${HOUSEHOLD}/attachments/ticket-e2e.jpg',
+        '${STORAGE_OBJECT}', '${HOUSEHOLD}', 'housekeeper-e2e', '${HOUSEHOLD}/attachments/ticket-e2e.jpg',
         'image/jpeg', 1024, '${'a'.repeat(64)}', '${E2E_SEED.memberships.employee}'
       ) ON CONFLICT DO NOTHING;
 
