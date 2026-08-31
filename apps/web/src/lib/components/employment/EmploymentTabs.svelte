@@ -70,7 +70,9 @@
      línea de marco. */
   .employment-tabs {
     display: flex;
-    gap: var(--space-1);
+    /* 8 px entre dianas contiguas: es el mínimo del sistema (A3 de la suite
+       de densidad), no una preferencia. */
+    gap: var(--space-2);
     margin-bottom: var(--space-4);
     border-bottom: 1px solid var(--line);
     overflow-x: auto;

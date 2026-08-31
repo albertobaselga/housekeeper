@@ -90,31 +90,9 @@ test('anular deja el periodo tachado con su motivo y devuelve los días al saldo
   await expect(card.getByText('7 de 30 días disfrutados · quedan 23')).toBeVisible();
 });
 
-test('Ana ve su saldo y sus periodos, pero no puede apuntar ni anular nada', async ({ page }) => {
-  await gotoEmployment(page, 'employee');
-
-  const card = vacationsCard(page);
-  await expect(card).toBeVisible();
-  // El mismo saldo que ve la familia: es su expediente.
-  await expect(card.getByText('7 de 30 días disfrutados · quedan 23')).toBeVisible();
-  await expect(card.locator('.ledger-list > div').filter({ hasText: 'Semana de noviembre E2E' })).toBeVisible();
-  await expect(
-    card.locator('.ledger-list > div').filter({ hasText: 'Anulado: Al final no se cogieron E2E' })
-  ).toBeVisible();
-
-  // Ni formulario ni botón de anular: no es que estén deshabilitados, es que no
-  // existen para ella. La política de la base dice lo mismo.
-  await expect(card.locator('form.action-form')).toHaveCount(0);
-  await expect(card.getByRole('button', { name: 'Apuntar vacaciones' })).toHaveCount(0);
-  await expect(card.getByRole('button', { name: 'Anular' })).toHaveCount(0);
-
-  // El derecho pactado se lee en el historial del acuerdo, que ahora vive en
-  // su pestaña de Condiciones, no en un rótulo suelto.
-  await page.goto(`/h/${HOUSEHOLD}/employment/condiciones`);
-  const versionsCard = page.locator('article.card').filter({ hasText: 'Tu contrato, versión a versión' });
-  await expect(versionsCard).toContainText('30 días naturales al año de vacaciones');
-});
-
+// Este test va ANTES de que Ana visite su página de vacaciones: mirar es lo
+// que apaga el aviso, y desde el rediseño en pestañas su tarjeta del año
+// también vive allí, así que cualquier visita anterior lo consumiría.
 test('Ana entra en Hoy, se entera de las vacaciones nuevas y el aviso se apaga al mirarlas', async ({
   page
 }) => {
@@ -143,6 +121,31 @@ test('Ana entra en Hoy, se entera de las vacaciones nuevas y el aviso se apaga a
   // Nada que descartar a mano: mirar es lo que apaga el aviso.
   await page.goto(`/h/${HOUSEHOLD}/today`);
   await expect(page.getByText('Te han apuntado vacaciones')).toHaveCount(0);
+});
+
+test('Ana ve su saldo y sus periodos, pero no puede apuntar ni anular nada', async ({ page }) => {
+  await gotoEmployment(page, 'employee');
+
+  const card = vacationsCard(page);
+  await expect(card).toBeVisible();
+  // El mismo saldo que ve la familia: es su expediente.
+  await expect(card.getByText('7 de 30 días disfrutados · quedan 23')).toBeVisible();
+  await expect(card.locator('.ledger-list > div').filter({ hasText: 'Semana de noviembre E2E' })).toBeVisible();
+  await expect(
+    card.locator('.ledger-list > div').filter({ hasText: 'Anulado: Al final no se cogieron E2E' })
+  ).toBeVisible();
+
+  // Ni formulario ni botón de anular: no es que estén deshabilitados, es que no
+  // existen para ella. La política de la base dice lo mismo.
+  await expect(card.locator('form.action-form')).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Apuntar vacaciones' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Anular' })).toHaveCount(0);
+
+  // El derecho pactado se lee en el historial del acuerdo, que ahora vive en
+  // su pestaña de Condiciones, no en un rótulo suelto.
+  await page.goto(`/h/${HOUSEHOLD}/employment/condiciones`);
+  const versionsCard = page.locator('article.card').filter({ hasText: 'Tu contrato, versión a versión' });
+  await expect(versionsCard).toContainText('30 días naturales al año de vacaciones');
 });
 
 test('Alberto abre el historial y están las dos personas del hogar, no solo la primera', async ({
