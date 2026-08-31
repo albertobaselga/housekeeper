@@ -2,24 +2,19 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
-  import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
-  import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
-  import ManualAdjustmentsCard from '$lib/components/employment/ManualAdjustmentsCard.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
-  import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
-  import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
-  import { openSettlement } from '$lib/employment/commands';
-  import { currentPeriod } from '$lib/employment/model';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const context = useAppContext();
 
-  // Patrón wiki (P2-1): apertura de liquidación optimista con invalidate
-  // selectivo ('cc:employment'); las tarjetas hijas llevan su propia instancia.
+  // Patrón wiki (P2-1): invalidate selectivo ('cc:employment'). El Resumen ya
+  // no escribe nada por sí mismo —registrar y decidir viven en Conceptos, y
+  // abrir la cuenta en Pagos—, pero el triaje del outbox sigue necesitando el
+  // estado de acciones.
   const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:employment' });
   const actionStatus = optimistic.status;
   $effect(() => optimistic.start());
@@ -33,30 +28,9 @@
     agreement !== null && agreement.employeeMembershipId === context.membershipId
   );
 
-  const canRegisterExtra = $derived(isOwnAgreement && can(context.role, 'work.register.self'));
-  // Apuntar trabajo a nombre de otra persona es cosa de quien administra: misma
-  // capacidad con la que ya acepta y decide compensaciones. El servidor lo
-  // vuelve a comprobar por rol; esto solo decide qué se dibuja.
-  const canRegisterForEmployee = $derived(agreement !== null && can(context.role, 'work.confirm'));
-  // Quién es la persona del expediente que se está mirando. Si la RLS no dejó
-  // ver su perfil (solo quien administra los ve), el modelo ya puso una
-  // etiqueta neutra en su lugar.
-  const selectedEmployeeLabel = $derived(
-    overview?.agreements.find((option) => option.id === agreement?.id)?.employeeLabel ??
-      'la empleada'
-  );
-  const canSubmitExpense = $derived(isOwnAgreement && can(context.role, 'expense.create.self'));
-  const canConfirmReceipt = $derived(isOwnAgreement && can(context.role, 'payment.confirm.self'));
-  const canConfirmWork = $derived(agreement !== null && can(context.role, 'work.confirm'));
   // La exportación del expediente es exclusivamente de la propia empleada y
   // solo existe sobre datos reales de Postgres (mismo gating que las acciones).
   const canDownloadExport = $derived(isOwnAgreement && context.role === 'employee_live_in');
-  const canCloseSettlement = $derived(agreement !== null && can(context.role, 'settlement.close'));
-  const canRecordPayment = $derived(agreement !== null && can(context.role, 'payment.register'));
-  // Los días los apunta la familia administradora (no hay flujo de solicitud);
-  // la empleada ve su saldo y sus periodos sin poder escribir, respaldado por
-  // la política `vacation_periods_admin_write`.
-  const canRecordVacation = $derived(agreement !== null && can(context.role, 'leave.approve'));
 
   // P1-6 (revisión UX v3): RLS solo enseña importes (versiones del acuerdo,
   // devengo, liquidaciones, saldos) a quien administra y a la propia empleada.
@@ -67,102 +41,16 @@
     can(context.role, 'settlement.close') || can(context.role, 'payment.confirm.self')
   );
 
-  // Jerarquía por rol: quien decide (la familia) ve las tarjetas con
-  // decisiones pendientes arriba del expediente; la empleada conserva su orden
-  // (la cuenta del mes primero).
-  const pendingFirst = $derived(canConfirmWork || canCloseSettlement);
-
-  function monthEnd(period: string): string {
-    const [year, month] = period.split('-').map(Number);
-    const lastDay = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
-    return `${period}-${String(lastDay).padStart(2, '0')}`;
-  }
-
-  const openableAccrual = $derived(
-    overview?.hasEmploymentData &&
-      canCloseSettlement &&
-      overview.accrual !== null &&
-      !overview.settlements.some(
-        (settlement) => settlement.periodStart.slice(0, 7) === overview.accrual!.period
-      )
-      ? overview.accrual
-      : null
+  // El enlace a Conceptos conserva a la persona elegida, como las pestañas.
+  const conceptosHref = $derived(
+    overview
+      ? `/h/${overview.householdId}/employment/conceptos${agreement ? `?empleada=${agreement.id}` : ''}`
+      : ''
   );
-
-  // Chip optimista: la apertura se da por enviada al instante; los datos
-  // frescos retiran el formulario (openableAccrual pasa a null) y, si el
-  // servidor la rechaza, el formulario vuelve con la causa en la nota.
-  let openSent = $state(false);
-  // Vencimiento elegido por la familia: nunca antes del fin del periodo y, por
-  // defecto, el propio fin de mes.
-  const openPeriodEnd = $derived(openableAccrual ? monthEnd(openableAccrual.period) : '');
-  let openDueOn = $state('');
-  $effect(() => {
-    if (openPeriodEnd && !openDueOn) openDueOn = openPeriodEnd;
-  });
-
-  function openCurrentSettlement(): void {
-    if (!overview || !agreement || !openableAccrual || openSent) return;
-    const dueOn = openDueOn && openDueOn >= openPeriodEnd ? openDueOn : openPeriodEnd;
-    void optimistic.run(
-      openSettlement({
-        householdId: overview.householdId,
-        agreementId: agreement.id,
-        periodStart: `${openableAccrual.period}-01`,
-        periodEnd: openPeriodEnd,
-        dueOn
-      }),
-      {
-        apply: () => {
-          openSent = true;
-        },
-        revert: () => {
-          openSent = false;
-        },
-        settle: () => {
-          openSent = false;
-        }
-      }
-    );
-  }
+  const lastSettlement = $derived(overview?.settlements[0] ?? null);
 </script>
 
 <div class="page-wrap">
-  <!-- «Empezar la cuenta del mes» ABRE UNA LIQUIDACIÓN y era el control más
-       prominente de la pantalla, encima del resumen y con un campo de fecha
-       delante: a 320 px la primera pantalla no contenía ninguna cifra, solo
-       título, subtítulo, un campo de fecha y un botón. La acción irreversible
-       no es lo primero que se toca. Baja debajo del resumen y en peso
-       secundario. -->
-  {#snippet openSettlementForm()}
-    {#if openableAccrual && !openSent}
-      <details class="card open-settlement">
-      <summary>Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}</summary>
-      <form
-        class="open-settlement-form"
-        onsubmit={(event) => {
-          event.preventDefault();
-          openCurrentSettlement();
-        }}
-      >
-        <label>¿Cuándo vence el pago?
-          <input type="date" bind:value={openDueOn} min={openPeriodEnd} required />
-        </label>
-        <p class="field-hint">
-          Al empezar la cuenta, {openableAccrual.periodLabel.toLocaleLowerCase('es')} se cierra a
-          revisión y deja de sumar solo.
-        </p>
-        <div class="action-row">
-          <button class="button secondary" type="submit">
-            Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
-          </button>
-        </div>
-      </form>
-      </details>
-    {:else if openSent}
-      <p class="note success" role="status">Apertura enviada</p>
-    {/if}
-  {/snippet}
   <!-- Un solo nombre para la sección, ahora «Contrato» por decisión del
        propietario. Sigue valiendo la regla de P2-3 (revisión UX v3): un nombre,
        el mismo en la barra lateral, en la hoja «Más» y aquí. El h1 dice además
@@ -233,38 +121,39 @@
 
       <OutboxTriageCard householdId={overview.householdId} />
 
-      {#snippet pendingDecisionCards()}
-        {#if agreement && (overview.pendingExtras.length > 0 || canRegisterExtra || canRegisterForEmployee)}
-          <ExtraWorkPendingCard
-            householdId={overview.householdId}
-            agreementId={agreement.id}
-            extras={overview.pendingExtras}
-            types={overview.registrableTypes}
-            ownMembershipId={context.membershipId}
-            canRegister={canRegisterExtra}
-            canRegisterForEmployee={canRegisterForEmployee}
-            employeeLabel={selectedEmployeeLabel}
-            canConfirm={canConfirmWork}
-          />
-        {/if}
-
-        <!-- P3-6: la tarjeta de gastos no desaparece para quien decide cuando
-             no hay pendientes; conserva su estado vacío como las demás. -->
-        {#if agreement && (overview.pendingExpenses.length > 0 || canSubmitExpense || canCloseSettlement)}
-          <ExpensesPendingCard
-            householdId={overview.householdId}
-            agreementId={agreement.id}
-            expenses={overview.pendingExpenses}
-            canSubmit={canSubmitExpense}
-            canResolve={canCloseSettlement}
-          />
-        {/if}
-      {/snippet}
+      <!-- Lo que espera una decisión vive en Conceptos; el Resumen solo lo
+           cuenta. Así el mes y sus cifras no comparten pantalla con
+           formularios, y quien decide llega en un toque. -->
+      {#if overview.pendingExtras.length > 0 || overview.pendingExpenses.length > 0}
+        <article class="card">
+          <div class="section-heading">
+            <div><p class="eyebrow">Por decidir</p><h2>Lo que espera en Conceptos</h2></div>
+          </div>
+          <div class="ledger-list">
+            {#if overview.pendingExtras.length > 0}
+              <div>
+                <span>
+                  <strong>{overview.pendingExtras.length === 1 ? 'Una jornada extra' : `${overview.pendingExtras.length} jornadas extra`}</strong>
+                  <small>Registradas y sin resolver del todo.</small>
+                </span>
+                <a class="button secondary small-button" href={conceptosHref}>Ir a Conceptos</a>
+              </div>
+            {/if}
+            {#if overview.pendingExpenses.length > 0}
+              <div>
+                <span>
+                  <strong>{overview.pendingExpenses.length === 1 ? 'Un gasto' : `${overview.pendingExpenses.length} gastos`}</strong>
+                  <small>Presentados y sin decidir.</small>
+                </span>
+                <a class="button secondary small-button" href={conceptosHref}>Ir a Conceptos</a>
+              </div>
+            {/if}
+          </div>
+        </article>
+      {/if}
 
       <div class="content-grid employment-grid">
         <div class="stack">
-          {#if pendingFirst}{@render pendingDecisionCards()}{/if}
-
           {#if seesAmounts}
             <article class="card ledger-card">
               <div class="section-heading">
@@ -312,35 +201,21 @@
               {/if}
               <p class="audit-note">Cada importe dice de dónde sale y se calcula con la tarifa acordada en la fecha en que se trabajó.</p>
             </article>
-          {/if}
 
-          <!-- Vacaciones del año en curso: saldo, lo apuntado y el formulario
-               de la familia. Va con el resto del expediente porque quien mira
-               «cuántos días quedan» está mirando lo pactado, no la nómina. -->
-          <!-- Conceptos apuntados a mano: va pegado a la cuenta del mes porque
-               es donde acaban sus importes. La empleada lo ve en solo lectura
-               (la RLS de 0022 le enseña sus filas); apunta y anula quien
-               administra, que es quien cierra la cuenta. -->
-          {#if agreement && seesAmounts}
-            <ManualAdjustmentsCard
-              householdId={overview.householdId}
-              agreementId={agreement.id}
-              adjustments={overview.manualAdjustments}
-              currentPeriod={overview.accrual?.period ?? currentPeriod()}
-              canRecord={canCloseSettlement}
-            />
+            <!-- La última cuenta, en una línea: el historial entero, con sus
+                 pagos y su documento, vive en la pestaña Pagos. -->
+            {#if lastSettlement}
+              <article class="card">
+                <div class="section-heading">
+                  <div><p class="eyebrow">Última cuenta</p><h2>{lastSettlement.periodLabel}</h2></div>
+                  <span class="status-chip {lastSettlement.fullyPaid && lastSettlement.receiptConfirmed ? 'success' : 'warning'}">{lastSettlement.paymentStateLabel}</span>
+                </div>
+                <div class="action-row">
+                  <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/pagos${agreement ? `?empleada=${agreement.id}` : ''}`}>Ver los pagos</a>
+                </div>
+              </article>
+            {/if}
           {/if}
-
-          {#if agreement && overview.vacations}
-            <VacationsCard
-              householdId={overview.householdId}
-              agreementId={agreement.id}
-              vacations={overview.vacations}
-              canRecord={canRecordVacation}
-            />
-          {/if}
-
-          {#if !pendingFirst}{@render pendingDecisionCards()}{/if}
 
           {#if !seesAmounts}
             <!-- Ausencia por permiso, no por falta de datos: nada de «Todavía
@@ -350,125 +225,10 @@
               <h2>Importes reservados</h2>
               <p>
                 Los importes y las cuentas de cada mes solo los ven quien administra el hogar y la
-                empleada. Tú puedes revisar las jornadas y los gastos pendientes de esta página.
+                empleada. Tú puedes revisar las jornadas y los gastos pendientes en
+                <a href={conceptosHref}>Conceptos</a>.
               </p>
             </article>
-          {/if}
-
-          {#if seesAmounts}
-          <!--
-            Dos rutas propias, no dos secciones más: cada una vive en su trozo
-            de JavaScript y así ni el editor de condiciones ni la vista de
-            contrato engordan el grafo inicial de Hoy.
-          -->
-          <nav class="action-row">
-            {#if isOwnAgreement}
-              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/condiciones`}>Ver mis condiciones</a>
-            {/if}
-            {#if canCloseSettlement}
-              <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/acuerdo`}>Administrar el contrato</a>
-            {/if}
-          </nav>
-          <article class="card">
-            <div class="section-heading">
-              <!-- Con varias personas empleadas, «Contrato» a secas no dice de
-                   quién: el nombre elegido va en el epígrafe. -->
-              <div><p class="eyebrow">{overview.agreements.length > 1 ? `Contrato de ${selectedEmployeeLabel}` : 'Contrato'}</p><h2>Versiones y cambios de salario</h2></div>
-              {#if overview.agreement}
-                <span class="status-chip {overview.agreement.status === 'active' ? 'success' : 'warning'}">{overview.agreement.status === 'active' ? 'Activo' : 'Finalizado'}</span>
-              {/if}
-            </div>
-            <div class="ledger-list">
-              {#each overview.versions as version (version.id)}
-                <div id={`version-${version.id}`}>
-                  <span>
-                    <strong>v{version.versionNumber} · desde el {version.effectiveFromLabel}</strong>
-                    <!--
-                      Los conceptos vienen del catálogo YA filtrado por la RLS:
-                      lo que no aplica a quien mira no llegó hasta aquí, así que
-                      no hay nada que esconder en la plantilla.
-                    -->
-                    <small>{version.reason} · {version.vacationDaysLabel} de vacaciones{#each version.concepts as concept (concept.id)}{#if concept.rateLabel} · {concept.name} {concept.rateLabel}{/if}{/each}{#each version.supplements as supplement (supplement.id)}{#if supplement.amountLabel} · {supplement.name} {supplement.amountLabel}{supplement.addsToPay ? '' : ' (lo paga la casa)'}{/if}{/each}</small>
-                  </span>
-                  <span>
-                    <strong>{version.salaryLabel}</strong>
-                    <small>
-                      {#if version.state === 'vigente'}Vigente{:else if version.state === 'futura'}Entra en vigor{:else}Histórica{/if}
-                      {#if version.salaryDiffLabel}&nbsp;· {version.salaryDiffLabel}{/if}
-                      {#if version.vacationDiffLabel}&nbsp;· {version.vacationDiffLabel} de vacaciones{/if}
-                    </small>
-                  </span>
-                </div>
-              {:else}
-                <div><span><strong>Sin versiones visibles</strong><small>Los términos salariales solo los ven quien administra y la empleada.</small></span></div>
-              {/each}
-            </div>
-          </article>
-
-          <article class="card">
-            <div class="section-heading">
-              <div><p class="eyebrow">Cuentas de cada mes</p><h2>Historial con pagos y confirmación</h2></div>
-            </div>
-            {#each overview.settlements as settlement (settlement.id)}
-              <div class="section-heading">
-                <div><h3>{settlement.periodLabel}</h3></div>
-                <span class="status-chip {settlement.fullyPaid && settlement.receiptConfirmed ? 'success' : 'warning'}">{settlement.paymentStateLabel}</span>
-              </div>
-              <div class="ledger-list">
-                {#each settlement.lines as line (line.lineNumber)}
-                  <div>
-                    <span>
-                      <strong>{line.concept}</strong>
-                      <small>
-                        {#if line.href}<a href={line.href}>{line.occurredOnLabel}</a>{:else}{line.occurredOnLabel}{/if}
-                        {#if line.receiptExpenseId}
-                          ·
-                          <a
-                            href={`/api/v1/households/${context.household.id}/receipts/${line.receiptExpenseId}`}
-                            target="_blank"
-                            rel="noopener"
-                          >Ver el justificante</a>
-                        {/if}
-                      </small>
-                    </span>
-                    <strong>{line.amountLabel}</strong>
-                  </div>
-                {/each}
-                {#each settlement.payments as payment (payment.id)}
-                  <div>
-                    <span>
-                      <strong>Pago · {payment.methodLabel}</strong>
-                      <small>{payment.valueOnLabel}{payment.reference ? ` · ${payment.reference}` : ''}</small>
-                    </span>
-                    <strong>{payment.amountLabel}</strong>
-                  </div>
-                {/each}
-                <div>
-                  <span><strong>Pagado / pendiente</strong><small>{settlement.statusLabel} · vence el {settlement.dueOnLabel}</small></span>
-                  <strong>{settlement.paidLabel} / {settlement.pendingLabel}</strong>
-                </div>
-              </div>
-              <!-- P1-8: la fila suma el total adeudado del mes, no lo enviado;
-                   «Total transferido» mentía cuando aún no había ningún pago. -->
-              <div class="ledger-total"><span>Total a pagar</span><strong>{settlement.transferTotalLabel}</strong></div>
-              <p class="audit-note">
-                {#if settlement.receiptConfirmed}
-                  Cobro confirmado por la empleada{settlement.receiptNote ? `: ${settlement.receiptNote}` : '.'}
-                {:else}
-                  La empleada aún no ha confirmado el cobro.
-                {/if}
-              </p>
-              <SettlementActions
-                householdId={overview.householdId}
-                {settlement}
-                canClose={canCloseSettlement}
-                canRecordPayment={canRecordPayment}
-                canConfirmReceipt={canConfirmReceipt}
-              />
-            {:else}
-              <p class="audit-note">Todavía no hay cuentas de meses empezadas ni cerradas.</p>
-            {/each}
-          </article>
           {/if}
         </div>
 
@@ -522,10 +282,6 @@
           {/if}
         </aside>
       </div>
-
-      <!-- Cerrar el mes es lo último que se hace y no se puede deshacer: va
-           después de todo lo que hay que decidir, nunca abriendo la pantalla. -->
-      {#if seesAmounts}{@render openSettlementForm()}{/if}
     {/if}
   {:else if data.employment}
     <section class="summary-strip" aria-label="Resumen de liquidación">
