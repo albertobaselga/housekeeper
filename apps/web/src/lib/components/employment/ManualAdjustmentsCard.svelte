@@ -48,18 +48,22 @@
   /**
    * Atajos de precarga, no rutas de escritura nuevas: «Adelanto» y «Ausencia»
    * rellenan ESTE formulario (etiqueta, sentido y motivo orientativo) y acaban
-   * en el mismo comando `recordManualAdjustment`. El importe queda por
-   * escribir y todo es editable: la precarga es un empujón, no una jaula.
-   * Los anticipos con cuota (`app.advances`) siguen siendo de solo lectura en
-   * los saldos del Resumen; este atajo apunta un descuento del mes.
+   * en el mismo comando `recordManualAdjustment`. Son acciones de un toque, no
+   * conmutadores: no guardan estado propio ni marcan nada como «pulsado». El
+   * importe NUNCA se toca —borrar lo tecleado por precargar un texto sería
+   * perder trabajo— y todo queda editable: la precarga es un empujón, no una
+   * jaula. Los anticipos con cuota (`app.advances`) siguen siendo de solo
+   * lectura en los saldos del Resumen; este atajo apunta un descuento del mes.
    */
-  type Preset = 'adelanto' | 'ausencia' | 'otro';
-  let preset = $state<Preset>('otro');
+  const PRESET_TEXTS = [
+    'Adelanto entregado',
+    'Entregado a cuenta, se descuenta de este mes',
+    'Ausencia no retribuida',
+    'Día no trabajado sin sueldo, hablado con ella'
+  ];
 
-  function applyPreset(choice: Preset): void {
-    preset = choice;
+  function applyPreset(choice: 'adelanto' | 'ausencia' | 'otro'): void {
     formError = null;
-    amount = '';
     if (choice === 'adelanto') {
       label = 'Adelanto entregado';
       reason = 'Entregado a cuenta, se descuenta de este mes';
@@ -71,8 +75,9 @@
       direction = 'subtracts';
       addsToPay = true;
     } else {
-      label = '';
-      reason = '';
+      // «Otro» limpia SOLO lo que puso un atajo: lo tecleado a mano se queda.
+      if (PRESET_TEXTS.includes(label)) label = '';
+      if (PRESET_TEXTS.includes(reason)) reason = '';
       direction = 'adds';
       addsToPay = true;
     }
@@ -88,11 +93,16 @@
   };
   let drafts = $state<Draft[]>([]);
   // El borrador se retira cuando los datos frescos traen un concepto con la
-  // misma etiqueta: es lo único que la fila optimista y la real comparten con
-  // seguridad, porque el MES puede no coincidir (si el pedido estaba cerrado,
-  // el servidor lo imputa al siguiente y lo dice en la fila que llega).
+  // misma etiqueta E importe: con los atajos, la etiqueta sola dejó de ser
+  // distintiva («Adelanto entregado» dos meses seguidos es el caso normal) y
+  // compararla a secas retiraba el borrador nada más crearlo. El MES no entra
+  // en la comparación a propósito: si el pedido estaba cerrado, el servidor lo
+  // imputa al siguiente y lo dice en la fila que llega.
   const pendingDrafts = $derived(
-    drafts.filter((draft) => !adjustments.some((row) => row.label === draft.label))
+    drafts.filter(
+      (draft) =>
+        !adjustments.some((row) => row.label === draft.label && row.amountLabel === draft.amountLabel)
+    )
   );
 
   const MESSAGE_OVERRIDES = {
@@ -147,6 +157,11 @@
         label = '';
         reason = '';
         amount = '';
+        // El sentido no se hereda de un apunte al siguiente: tras un adelanto
+        // (resta), teclear una gratificación sin tocar el desplegable NO puede
+        // enviarla restando.
+        direction = 'adds';
+        addsToPay = true;
       },
       revert: removeDraft,
       settle: removeDraft,
@@ -278,27 +293,13 @@
   {#if canRecord}
     <form class="action-form" onsubmit={record}>
       <h3>Apuntar un concepto</h3>
-      <!-- Los tres casos de cada mes, a un toque. Son botones de relleno: lo
-           que precargan se ve y se puede corregir antes de enviar. -->
-      <div class="action-row" role="group" aria-label="Qué tipo de concepto">
-        <button
-          class="button secondary small-button"
-          type="button"
-          aria-pressed={preset === 'adelanto'}
-          onclick={() => applyPreset('adelanto')}
-        >Adelanto</button>
-        <button
-          class="button secondary small-button"
-          type="button"
-          aria-pressed={preset === 'ausencia'}
-          onclick={() => applyPreset('ausencia')}
-        >Ausencia</button>
-        <button
-          class="button secondary small-button"
-          type="button"
-          aria-pressed={preset === 'otro'}
-          onclick={() => applyPreset('otro')}
-        >Otro concepto</button>
+      <!-- Los tres casos de cada mes, a un toque. Son botones de relleno de
+           un solo gesto —sin estado «pulsado» que luego mienta cuando se
+           edite a mano—: lo que precargan se ve y se corrige antes de enviar. -->
+      <div class="action-row" role="group" aria-label="Rellenar el concepto como">
+        <button class="button secondary small-button" type="button" onclick={() => applyPreset('adelanto')}>Adelanto</button>
+        <button class="button secondary small-button" type="button" onclick={() => applyPreset('ausencia')}>Ausencia</button>
+        <button class="button secondary small-button" type="button" onclick={() => applyPreset('otro')}>Otro concepto</button>
       </div>
       <label>Cómo se llama en la cuenta
         <input

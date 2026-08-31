@@ -97,6 +97,26 @@ describe.runIf(Boolean(adminUrl))('documento de pago por liquidación bajo RLS',
       for (const fixture of (await readdir(fixturesDir)).filter((f) => f.endsWith('.sql')).sort()) {
         await admin.query(await readFile(path.join(fixturesDir, fixture), 'utf8'));
       }
+      // Un pago ANULADO sembrado a propósito: el documento no puede imprimirlo
+      // como pago real mientras los totales (que salen de la vista filtrada)
+      // lo excluyen — serían filas que no suman lo que el propio papel dice.
+      await admin.query('begin');
+      await admin.query('set local row_security = off');
+      await admin.query(
+        `insert into app.payments
+           (id, household_id, settlement_id, employee_membership_id, amount_cents,
+            method, status, value_on, reference, recorded_by_membership_id, recorded_at,
+            voided_by_membership_id, voided_at, void_reason)
+         values
+           ('12d00000-0000-4000-8000-00000000000f', $1, $2,
+            '11000000-0000-4000-8000-000000000003', 50000,
+            'bank_transfer', 'voided', '2025-03-30', 'ANULADO-IT',
+            '11000000-0000-4000-8000-000000000001', '2025-03-30T10:00:00Z',
+            '11000000-0000-4000-8000-000000000001', '2025-03-30T11:00:00Z',
+            'Referencia equivocada (siembra IT)')`,
+        [FIXTURE_HOUSEHOLD, MARCH_SETTLEMENT]
+      );
+      await admin.query('commit');
       await admin.query(`drop role if exists ${APP_LOGIN}`);
       await admin.query(
         `create role ${APP_LOGIN} login password 'integration-only' nosuperuser nobypassrls in role casa_clara_app`
@@ -140,7 +160,13 @@ describe.runIf(Boolean(adminUrl))('documento de pago por liquidación bajo RLS',
     expect(text).toContain('Transferencia');
     expect(text).toContain('Fixture part one');
     expect(text).toContain('Fixture part two');
+    // El pago anulado NO sale: imprimirlo como real contradiría los totales,
+    // que la vista de pagos ya excluye.
+    expect(text).not.toContain('ANULADO-IT');
     expect(text).toContain('cobro confirmado');
+    // El instante de generación va entero y con su Z: una fecha pelada
+    // mentiría un día a cada lado de la medianoche de Madrid.
+    expect(text).toContain('generado 2026-08-07T10:00:00.000Z');
     // La marca de siempre: esto no es un recibo oficial.
     expect(text).toContain('Documento dom');
   });

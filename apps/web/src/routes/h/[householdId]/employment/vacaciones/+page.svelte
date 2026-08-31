@@ -96,11 +96,27 @@
       </p>
     {/if}
 
+    <!-- Con varias personas empleadas, la tarjeta de abajo ESCRIBE sobre una
+         de ellas: sin este selector, apuntar días desde un enlace sin
+         `?empleada=` caería en silencio sobre la primera. Misma tira que el
+         Resumen; con una sola persona no se pinta. -->
+    {#if data.employment && data.employment.agreements.length > 1}
+      <nav class="chip-strip scroller" aria-label="Elegir de quién es el expediente">
+        {#each data.employment.agreements as option (option.id)}
+          <a
+            class="chip {option.id === employmentAgreement?.id ? 'active' : ''}"
+            href={`?empleada=${encodeURIComponent(option.id)}`}
+            aria-current={option.id === employmentAgreement?.id ? 'page' : undefined}
+            data-sveltekit-noscroll
+          >{option.employeeLabel}{option.active ? '' : ' (acuerdo terminado)'}</a>
+        {/each}
+      </nav>
+    {/if}
+
     <!-- El año en curso, encima del historial: el saldo para cualquiera que
          pueda leerlo y el formulario de apuntar/anular solo para quien
          administra (la empleada lo ve en solo lectura, como siempre). La
-         persona es la elegida en las pestañas y el saldo se refresca solo al
-         apuntar. -->
+         persona es la elegida arriba y el saldo se refresca solo al apuntar. -->
     {#if employmentAgreement && data.employment?.vacations}
       <VacationsCard
         householdId={data.householdId}

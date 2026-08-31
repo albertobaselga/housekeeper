@@ -3,7 +3,10 @@ import { randomBytes } from 'node:crypto';
 import type { Pool } from 'pg';
 
 import type { AgreementCreateInputV1 } from '@casa-clara/contracts';
+import { agreementTermsInputSchema } from '@casa-clara/contracts/schemas';
 import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+
+import { parseEuroInput } from '$lib/employment/commands';
 
 import { explain, insertAgreementWithFirstVersion } from './agreement-terms.server';
 import { AUTH_MEMBER_ROLE, type AuthInstance } from './auth-core';
@@ -232,4 +235,91 @@ export async function hireHouseholdMember(
     }
     return { ok: false, message: explain(cause) };
   }
+}
+
+/**
+ * El alta leída de un formulario, compartida por las DOS pantallas que la
+ * ofrecen (Personal y la pestaña Contrato). El componente del formulario ya
+ * es uno solo; si esta lectura viviera copiada en cada action, un campo nuevo
+ * se leería en la pantalla que alguien recordara y se perdería en la otra.
+ * Devuelve un resultado plano; convertirlo en `fail(400, …)` es cosa de cada
+ * ruta.
+ */
+export interface HireFormDraft {
+  displayName: string;
+  username: string;
+  email: string;
+  role: string;
+}
+
+export type HireFromFormResult =
+  | { ok: true; hired: { name: string; username: string; password: string; withAgreement: boolean } }
+  | { ok: false; message: string; draft: HireFormDraft };
+
+export async function hireFromForm(
+  user: { id: string },
+  householdId: string,
+  form: FormData,
+  headers: Headers
+): Promise<HireFromFormResult> {
+  const text = (name: string): string => String(form.get(name) ?? '').trim();
+
+  const draft: HireFormDraft = {
+    displayName: text('displayName'),
+    username: text('username').toLowerCase(),
+    email: text('email').toLowerCase(),
+    role: text('role')
+  };
+
+  let agreement: HireInput['agreement'] = null;
+  if (form.get('withAgreement') === 'on') {
+    const salary = parseEuroInput(text('monthlySalary'));
+    if (salary === null) {
+      return { ok: false, message: 'El salario mensual no es un importe válido.', draft };
+    }
+    const startsOn = text('startsOn');
+    const parsed = agreementTermsInputSchema.safeParse({
+      // La primera versión entra en vigor el día que empieza el contrato: en
+      // un alta no hay historia previa que respetar, y pedir dos fechas para
+      // decir lo mismo solo invita a teclear una mal.
+      effectiveFrom: startsOn,
+      monthlySalaryCents: salary,
+      contractedWeeklyMinutes: Number.parseInt(text('contractedWeeklyMinutes'), 10),
+      annualVacationDays: Number.parseInt(text('annualVacationDays'), 10),
+      reason: text('reason') || 'Alta desde la aplicación',
+      // El catálogo de trabajo extra y los complementos se pactan después, en
+      // el acuerdo, apilando una versión. Aquí se registra lo básico.
+      extraWorkTypes: [],
+      supplements: []
+    });
+    if (!parsed.success) {
+      return {
+        ok: false,
+        message: parsed.error.issues[0]?.message ?? 'Revisa las condiciones del contrato.',
+        draft
+      };
+    }
+    agreement = { startsOn, terms: parsed.data as never };
+  }
+
+  const result = await hireHouseholdMember(
+    user,
+    householdId,
+    { ...draft, role: draft.role as HireableRole, agreement },
+    headers
+  );
+  if (!result.ok) return { ok: false, message: result.message, draft };
+
+  // La contraseña viaja UNA vez, a la pantalla de quien acaba de darla de
+  // alta, para leerla en voz alta. No se guarda en ninguna parte y no vuelve
+  // a poder verse: si se pierde, se repone desde Ajustes.
+  return {
+    ok: true,
+    hired: {
+      name: result.name,
+      username: result.username,
+      password: result.password,
+      withAgreement: result.agreementId !== null
+    }
+  };
 }

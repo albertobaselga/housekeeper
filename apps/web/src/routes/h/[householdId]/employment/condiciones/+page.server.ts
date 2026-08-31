@@ -14,8 +14,18 @@ import type { PageServerLoad } from './$types';
  */
 export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
   depends('cc:employment');
+  // La empleada elegida viaja por toda la sección y aquí también decide de
+  // quién son los términos: las pestañas la propagan, y sin pasarla al
+  // cargador un salto `#version-…` de la segunda aterrizaría en la primera.
+  const empleada = url.searchParams.get('empleada');
   const overview = locals.user
-    ? await loadEmploymentOverview({ id: locals.user.id }, params.householdId)
+    ? await loadEmploymentOverview(
+        { id: locals.user.id },
+        params.householdId,
+        undefined,
+        undefined,
+        empleada
+      )
     : null;
   return {
     householdId: params.householdId,
@@ -24,6 +34,6 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
     // El historial de versiones que el Resumen ya no enseña: aquí, con la voz
     // de quien lee su propio contrato. La RLS ya recortó lo que no toca.
     versions: overview?.versions ?? [],
-    empleada: url.searchParams.get('empleada')
+    empleada
   };
 };

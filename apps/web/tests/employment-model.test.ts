@@ -620,16 +620,18 @@ describe('liquidaciones y saldos', () => {
   });
 
   it('con bases, cada origen enlaza a la pestaña donde vive', () => {
-    // Con la sección en pestañas, el origen de una línea ya no está en la
-    // misma página: la jornada y el gasto viven en Conceptos, el anticipo en
-    // los saldos del Resumen y la versión donde quien mira lee su contrato.
+    // Con la sección en pestañas, el origen de una línea ya no está siempre en
+    // la misma página. Ojo con jornadas y gastos: los de la CUENTA ya están
+    // resueltos y Conceptos solo pinta pendientes, así que su sitio es la
+    // propia línea del Resumen. Los conceptos a mano sí viven enteros en
+    // Conceptos, y la versión, donde quien mira lee su contrato.
     const bases = {
       conceptos: '/h/H/employment/conceptos',
       resumen: '/h/H/employment',
       contrato: '/h/H/employment/acuerdo'
     };
-    expect(sourceAnchor('jornadas-extra', 'e1', bases)).toBe('/h/H/employment/conceptos#extra-e1');
-    expect(sourceAnchor('gastos', 'g1', bases)).toBe('/h/H/employment/conceptos#gasto-g1');
+    expect(sourceAnchor('jornadas-extra', 'e1', bases)).toBe('/h/H/employment#extra-e1');
+    expect(sourceAnchor('gastos', 'g1', bases)).toBe('/h/H/employment#gasto-g1');
     expect(sourceAnchor('ajustes', 'c1', bases)).toBe('/h/H/employment/conceptos#concepto-c1');
     expect(sourceAnchor('anticipos', 'a1', bases)).toBe('/h/H/employment#anticipo-a1');
     expect(sourceAnchor('agreement-version', 'v1', bases)).toBe('/h/H/employment/acuerdo#version-v1');

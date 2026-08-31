@@ -632,11 +632,20 @@
       <div><p class="eyebrow">Alta</p><h2>Nuevo contrato</h2></div>
     </div>
     {#if admin.candidates.length === 0}
-      <p>
-        No hay ninguna empleada interna sin contrato activo. Si entra alguien nuevo en la
-        casa, dala de alta aquí debajo (acceso y contrato en un acto); el hogar admite
-        varios contratos vivos a la vez, uno por persona.
-      </p>
+      {#if data.canHire}
+        <p>
+          No hay ninguna empleada interna sin contrato activo. Si entra alguien nuevo en la
+          casa, dala de alta aquí debajo (acceso y contrato en un acto); el hogar admite
+          varios contratos vivos a la vez, uno por persona.
+        </p>
+      {:else}
+        <!-- Sin identidad configurada el formulario de abajo no existe: la
+             frase no puede prometerlo. Camino de siempre: el acceso en Ajustes. -->
+        <p>
+          No hay ninguna empleada interna sin contrato activo. Da de alta primero su acceso
+          en Ajustes; el hogar admite varios contratos vivos a la vez, uno por persona.
+        </p>
+      {/if}
     {:else}
       <div class="action-row">
         <button
@@ -801,6 +810,7 @@
       hired={form?.hired ?? null}
       hireError={form?.hireError ?? null}
       draft={form?.draft ?? null}
+      enElAcuerdo={true}
     />
   {/if}
 {/if}

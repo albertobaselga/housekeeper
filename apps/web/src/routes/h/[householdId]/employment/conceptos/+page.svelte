@@ -104,6 +104,7 @@
         canRegisterForEmployee={canRegisterForEmployee}
         employeeLabel={selectedEmployeeLabel}
         canConfirm={canConfirmWork}
+        principal={true}
       />
     {/if}
 

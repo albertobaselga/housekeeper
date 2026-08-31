@@ -5,6 +5,8 @@ import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
 
 import {
   buildSupplementView,
+  PAYMENT_METHOD_LABELS,
+  SETTLEMENT_STATUS_LABELS,
   type AgreementVersionRow,
   type PaymentRow,
   type RecurringSupplementRow,
@@ -33,20 +35,6 @@ export interface SettlementDocument {
   pdf: Uint8Array;
   filename: string;
 }
-
-const PAYMENT_METHOD: Record<string, string> = {
-  bank_transfer: 'Transferencia',
-  cash: 'Efectivo',
-  bizum: 'Bizum',
-  mixed: 'Mixto',
-  other: 'Otro'
-};
-
-const SETTLEMENT_STATUS: Record<string, string> = {
-  open: 'abierta',
-  closed: 'cerrada',
-  void: 'anulada'
-};
 
 interface NotedConcept {
   concept: string;
@@ -124,7 +112,8 @@ async function renderSettlementPdf(input: DocumentInput): Promise<Uint8Array> {
   };
 
   const { settlement } = input;
-  const state = SETTLEMENT_STATUS[settlement.status] ?? settlement.status;
+  // El mismo diccionario que la pantalla, en minúscula porque va dentro de frase.
+  const state = (SETTLEMENT_STATUS_LABELS[settlement.status] ?? settlement.status).toLocaleLowerCase('es');
   const collected = settlement.receiptConfirmedAt ? 'cobro confirmado' : 'cobro sin confirmar';
 
   // Membrete: la casa que emite el documento, no el nombre del proyecto.
@@ -228,7 +217,7 @@ async function renderSettlementPdf(input: DocumentInput): Promise<Uint8Array> {
     for (const payment of input.payments) {
       ensure(15);
       money(
-        `${PAYMENT_METHOD[payment.method] ?? payment.method} · ${payment.valueOn}${payment.reference ? ` · ${payment.reference}` : ''}`,
+        `${PAYMENT_METHOD_LABELS[payment.method] ?? payment.method} · ${payment.valueOn}${payment.reference ? ` · ${payment.reference}` : ''}`,
         euroLabel(payment.amountCents),
         { x: 56, size: 9 }
       );
@@ -238,19 +227,25 @@ async function renderSettlementPdf(input: DocumentInput): Promise<Uint8Array> {
 
   y -= 8;
   ensure(15);
+  // Sin recortar el instante a fecha: `confirmed_at` es un timestamptz que
+  // Postgres serializa en la zona de la sesión, y quedarse con los diez
+  // primeros caracteres puede decir «el día anterior» para una confirmación
+  // de madrugada. El hecho (confirmado o no) es lo que este documento afirma.
   write(
     settlement.receiptConfirmedAt
-      ? `Cobro confirmado por la empleada el ${settlement.receiptConfirmedAt.slice(0, 10)}${settlement.receiptNote ? ` · ${settlement.receiptNote}` : ''}`
+      ? `Cobro confirmado por la empleada${settlement.receiptNote ? ` · ${settlement.receiptNote}` : '.'}`
       : 'La empleada aún no ha confirmado el cobro.',
     { x: 56, size: 9 }
   );
 
-  // Pie en cada página, después de saber cuántas hay.
+  // Pie en cada página, después de saber cuántas hay. El instante va entero y
+  // con su Z, como en el expediente: una fecha pelada mentiría una hora al día
+  // de cada lado de la medianoche de Madrid.
   const pages = document.getPages();
   for (const [index, sheet] of pages.entries()) {
     sheet.drawText(
       pdfSafe(
-        `Documento doméstico no oficial · generado el ${input.generatedAt.toISOString().slice(0, 10)} · página ${index + 1} de ${pages.length}`
+        `Documento doméstico no oficial · generado ${input.generatedAt.toISOString()} · página ${index + 1} de ${pages.length}`
       ),
       { x: LEFT, y: 52, size: 8, font: regular, color: rgb(0.35, 0.35, 0.35) }
     );
@@ -349,6 +344,7 @@ export async function buildSettlementDocument(
                 reference
            from app.payments
           where household_id = $1 and settlement_id = $2
+            and status = 'recorded'
           order by value_on, recorded_at, id`,
         [householdId, settlementId]
       );

@@ -9,12 +9,15 @@
     householdId,
     hired = null,
     hireError = null,
-    draft = null
+    draft = null,
+    enElAcuerdo = false
   }: {
     householdId: string;
     hired: { name: string; username: string; password: string; withAgreement: boolean } | null;
     hireError: string | null;
     draft: { displayName?: string; username?: string; email?: string } | null;
+    /** En la propia pantalla del acuerdo, la nota no puede mandar «a otra parte». */
+    enElAcuerdo?: boolean;
   } = $props();
 </script>
 
@@ -113,11 +116,18 @@
     <label for="hire-reason">Por qué se pacta así
       <input id="hire-reason" name="reason" type="text" value="Alta desde la aplicación" maxlength="500" />
     </label>
-    <p class="audit-note">
-      El trabajo extra y los complementos se pactan luego en
-      <a href={`/h/${householdId}/employment/acuerdo`}>El acuerdo</a>, apilando una versión: lo
-      pactado no se reescribe nunca.
-    </p>
+    {#if enElAcuerdo}
+      <p class="audit-note">
+        El trabajo extra y los complementos se pactan luego aquí mismo, apilando una versión
+        sobre el contrato recién creado: lo pactado no se reescribe nunca.
+      </p>
+    {:else}
+      <p class="audit-note">
+        El trabajo extra y los complementos se pactan luego en
+        <a href={`/h/${householdId}/employment/acuerdo`}>El acuerdo</a>, apilando una versión: lo
+        pactado no se reescribe nunca.
+      </p>
+    {/if}
 
     <div class="menu-slot-actions">
       <button class="button primary" type="submit">Crear la cuenta</button>

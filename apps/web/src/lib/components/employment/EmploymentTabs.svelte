@@ -53,11 +53,14 @@
      pantalla sin serlo. -->
 <nav class="employment-tabs" aria-label="Secciones del contrato">
   {#each tabs as tab (tab.key)}
+    <!-- Sin noscroll: cada pestaña es OTRA página con otra longitud, y llegar
+         a mitad de una pantalla nueva conservando el scroll de la anterior
+         deja el titular y la barra fuera de la vista. El noscroll es para los
+         chips de persona, que re-renderizan la misma página. -->
     <a
       href={`${tab.href}${query}`}
       class:active={tab.key === current}
       aria-current={tab.key === current ? 'page' : undefined}
-      data-sveltekit-noscroll
     >{tab.label}</a>
   {/each}
 </nav>

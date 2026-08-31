@@ -1,24 +1,17 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import ActionStatus from '$lib/components/ActionStatus.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
-  import { OptimisticActions } from '$lib/offline/optimistic';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const context = useAppContext();
 
-  // Patrón wiki (P2-1): invalidate selectivo ('cc:employment'). El Resumen ya
-  // no escribe nada por sí mismo —registrar y decidir viven en Conceptos, y
-  // abrir la cuenta en Pagos—, pero el triaje del outbox sigue necesitando el
-  // estado de acciones.
-  const optimistic = new OptimisticActions({ householdId: context.household.id, invalidateToken: 'cc:employment' });
-  const actionStatus = optimistic.status;
-  $effect(() => optimistic.start());
-
+  // El Resumen ya no escribe nada por sí mismo: registrar y decidir viven en
+  // Conceptos y abrir la cuenta en Pagos, así que aquí no hay acciones
+  // optimistas que orquestar. El triaje del outbox se gobierna solo.
   const overview = $derived(data.overview);
 
   // Las acciones de escritura solo existen sobre datos reales de Postgres; en
@@ -41,10 +34,12 @@
     can(context.role, 'settlement.close') || can(context.role, 'payment.confirm.self')
   );
 
-  // El enlace a Conceptos conserva a la persona elegida, como las pestañas.
+  // El enlace a Conceptos conserva a la persona elegida, como las pestañas, y
+  // con el MISMO escapado: tres productores de la misma URL no pueden
+  // discrepar en cómo la escriben.
   const conceptosHref = $derived(
     overview
-      ? `/h/${overview.householdId}/employment/conceptos${agreement ? `?empleada=${agreement.id}` : ''}`
+      ? `/h/${overview.householdId}/employment/conceptos${agreement ? `?empleada=${encodeURIComponent(agreement.id)}` : ''}`
       : ''
   );
   const lastSettlement = $derived(overview?.settlements[0] ?? null);
@@ -66,8 +61,6 @@
     current="resumen"
     empleada={agreement?.id ?? null}
   />
-
-  <ActionStatus status={actionStatus} />
 
   {#if overview}
     {#if !overview.hasEmploymentData}
@@ -211,7 +204,7 @@
                   <span class="status-chip {lastSettlement.fullyPaid && lastSettlement.receiptConfirmed ? 'success' : 'warning'}">{lastSettlement.paymentStateLabel}</span>
                 </div>
                 <div class="action-row">
-                  <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/pagos${agreement ? `?empleada=${agreement.id}` : ''}`}>Ver los pagos</a>
+                  <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/pagos${agreement ? `?empleada=${encodeURIComponent(agreement.id)}` : ''}`}>Ver los pagos</a>
                 </div>
               </article>
             {/if}

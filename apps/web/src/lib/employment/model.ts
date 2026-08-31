@@ -801,7 +801,10 @@ const BALANCE_TYPE_LABELS: Record<string, string> = {
   worked_rest_day: 'Descanso compensatorio'
 };
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
+// Exportados a propósito: el documento de pago en PDF imprime los MISMOS
+// nombres que la pantalla, y una tercera copia de esta tabla ya divergió una
+// vez (la del exportador solo conocía dos métodos).
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: 'Transferencia',
   cash: 'Efectivo',
   bizum: 'Bizum',
@@ -809,7 +812,7 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   other: 'Otro'
 };
 
-const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+export const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
   open: 'Abierta',
   closed: 'Cerrada',
   void: 'Anulada'
@@ -844,12 +847,18 @@ export function sourceAnchor(
   switch (sourceType) {
     case 'agreement-version':
       return `${bases?.contrato ?? ''}#version-${sourceId}`;
+    // Una jornada o un gasto de la CUENTA ya está resuelto, y Conceptos solo
+    // pinta pendientes: su sitio es la propia línea del Resumen, que lleva el
+    // ancla. Los pendientes llegan a Conceptos por los avisos de Hoy, no por
+    // aquí.
     case 'jornadas-extra':
-      return `${bases?.conceptos ?? ''}#extra-${sourceId}`;
+      return `${bases?.resumen ?? ''}#extra-${sourceId}`;
     case 'anticipos':
       return `${bases?.resumen ?? ''}#anticipo-${sourceId}`;
     case 'gastos':
-      return `${bases?.conceptos ?? ''}#gasto-${sourceId}`;
+      return `${bases?.resumen ?? ''}#gasto-${sourceId}`;
+    // Los conceptos a mano sí viven enteros en Conceptos: la tarjeta lista
+    // también los ya apuntados, con su ancla `concepto-…`.
     case 'ajustes':
       return `${bases?.conceptos ?? ''}#concepto-${sourceId}`;
     default:

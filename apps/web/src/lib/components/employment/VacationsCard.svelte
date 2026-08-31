@@ -139,8 +139,11 @@
   {/if}
 
   <div class="ledger-list">
+    <!-- Sin id por fila: el ancla `vacaciones-<id>` canónica la pinta el
+         historial año a año de la propia página de Vacaciones, y dos ids
+         iguales en el mismo documento dejan a uno de los dos inalcanzable. -->
     {#each vacations.periods as period (period.id)}
-      <div id={`vacaciones-${period.id}`}>
+      <div>
         <span>
           <strong>{period.rangeLabel}</strong>
           <small>

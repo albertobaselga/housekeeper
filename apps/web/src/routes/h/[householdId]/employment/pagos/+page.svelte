@@ -181,7 +181,7 @@
             <div><h3>{settlement.periodLabel}</h3></div>
             <span class="status-chip {settlement.fullyPaid && settlement.receiptConfirmed ? 'success' : 'warning'}">{settlement.paymentStateLabel}</span>
           </div>
-          <div class="ledger-list">
+          <div class="ledger-list" data-lista={settlement.id === overview.settlements[0]?.id ? 'principal' : undefined}>
             {#each settlement.lines as line (line.lineNumber)}
               <div>
                 <span>
@@ -224,15 +224,21 @@
             {/if}
           </p>
           <!-- El documento de pago con todos los conceptos, generado al momento
-               con los mismos datos que esta tarjeta. Quien no debe verlo no ve
-               este enlace, y el servidor responde 404 igualmente. -->
-          <div class="action-row">
-            <a
-              class="button secondary small-button"
-              href={`/api/v1/households/${overview.householdId}/settlements/${settlement.id}/documento`}
-              download={`pago-${settlement.periodLabel.toLocaleLowerCase('es').replaceAll(' ', '-')}.pdf`}
-            >Descargar el documento de pago (PDF)</a>
-          </div>
+               con los mismos datos que esta tarjeta. Solo para cuentas ya
+               cerradas: la abierta aún no tiene líneas congeladas y su
+               documento no diría ningún importe. El nombre del fichero lo pone
+               el servidor (content-disposition); el atributo va sin valor para
+               no prometer otro. Quien no debe verlo no ve este enlace, y el
+               servidor responde 404 igualmente. -->
+          {#if settlement.status !== 'open'}
+            <div class="action-row">
+              <a
+                class="button secondary small-button"
+                href={`/api/v1/households/${overview.householdId}/settlements/${settlement.id}/documento`}
+                download
+              >Descargar el documento de pago (PDF)</a>
+            </div>
+          {/if}
           <SettlementActions
             householdId={overview.householdId}
             {settlement}
