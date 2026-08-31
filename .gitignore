@@ -46,8 +46,15 @@ dist/
 # `.claude/skills/` es la excepción: las skills SÍ se versionan, porque son
 # procedimiento del repositorio y no espacio de trabajo de nadie. El resto de
 # `.claude/` (worktrees, ajustes locales, sesiones) sigue fuera.
+# Los patrones van con `**/`: los ayudantes escriben su estado también en
+# subdirectorios (apps/web/.omc, apps/web/.claude…), y anclarlos a la raíz
+# dejó colarse una sesión entera en un commit.
 .claude/*
 !.claude/skills/
+**/.claude/*
+**/.omc/
+ace-pitfalls-playbook.md
+ace-strategies-playbook.md
 .codex/
 .agents/
 scratchpad/
