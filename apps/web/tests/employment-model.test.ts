@@ -618,6 +618,23 @@ describe('liquidaciones y saldos', () => {
     expect(sourceAnchor('agreement-version', 'x')).toBe('#version-x');
     expect(sourceAnchor('desconocido', 'x')).toBeNull();
   });
+
+  it('con bases, cada origen enlaza a la pestaña donde vive', () => {
+    // Con la sección en pestañas, el origen de una línea ya no está en la
+    // misma página: la jornada y el gasto viven en Conceptos, el anticipo en
+    // los saldos del Resumen y la versión donde quien mira lee su contrato.
+    const bases = {
+      conceptos: '/h/H/employment/conceptos',
+      resumen: '/h/H/employment',
+      contrato: '/h/H/employment/acuerdo'
+    };
+    expect(sourceAnchor('jornadas-extra', 'e1', bases)).toBe('/h/H/employment/conceptos#extra-e1');
+    expect(sourceAnchor('gastos', 'g1', bases)).toBe('/h/H/employment/conceptos#gasto-g1');
+    expect(sourceAnchor('ajustes', 'c1', bases)).toBe('/h/H/employment/conceptos#concepto-c1');
+    expect(sourceAnchor('anticipos', 'a1', bases)).toBe('/h/H/employment#anticipo-a1');
+    expect(sourceAnchor('agreement-version', 'v1', bases)).toBe('/h/H/employment/acuerdo#version-v1');
+    expect(sourceAnchor('desconocido', 'x', bases)).toBeNull();
+  });
 });
 
 describe('conceptos apuntados a mano en la cuenta del mes', () => {

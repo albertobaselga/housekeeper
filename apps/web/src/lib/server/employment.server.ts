@@ -36,12 +36,39 @@ import {
   type ScheduleRow,
   type SettlementLineRow,
   type SettlementRow,
+  type SourceHrefBases,
   type VacationPeriodRow
 } from '$lib/employment/model';
+import { can } from '$lib/auth/capabilities';
+import { membershipIn } from '$lib/auth/membership';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:employment');
+
+/**
+ * Las bases de los orígenes para quien mira: la jornada y el gasto viven en
+ * Conceptos, el anticipo en los saldos del Resumen y las versiones donde cada
+ * cual lee su contrato (el acuerdo si lo pacta, sus condiciones si no). La
+ * empleada elegida viaja en cada base para que el salto no cambie de persona.
+ */
+export function employmentHrefBases(
+  user: Parameters<typeof membershipIn>[0],
+  householdId: string,
+  empleada: string | null = null
+): SourceHrefBases {
+  const base = `/h/${householdId}/employment`;
+  const query = empleada ? `?empleada=${encodeURIComponent(empleada)}` : '';
+  // Algún llamante (y las pruebas de averías) trae un usuario con solo el id:
+  // sin membresías nadie administra, y la base inocua es la de condiciones.
+  const role = user && Array.isArray(user.memberships) ? membershipIn(user, householdId)?.role : undefined;
+  const contrato = can(role, 'agreement.write') ? `${base}/acuerdo` : `${base}/condiciones`;
+  return {
+    conceptos: `${base}/conceptos${query}`,
+    resumen: `${base}${query}`,
+    contrato: `${contrato}${query}`
+  };
+}
 
 function monthBounds(period: string): { first: string; last: string } {
   const [year, month] = period.split('-').map(Number);
@@ -71,7 +98,11 @@ export async function loadEmploymentOverview(
   householdId: string,
   pool: Pool | null = getDatabasePool(),
   now: Date = new Date(),
-  selectedAgreementId: string | null = null
+  selectedAgreementId: string | null = null,
+  // Con la sección en pestañas, el origen de cada línea vive en otra ruta: las
+  // bases las pone la página, que sabe quién mira. Sin ellas (pruebas, y
+  // llamadas que no pintan líneas) los orígenes quedan como fragmento.
+  hrefBases: SourceHrefBases | undefined = undefined
 ): Promise<EmploymentOverview | null> {
   if (!pool) return null;
   const period = currentPeriod(now);
@@ -501,13 +532,15 @@ export async function loadEmploymentOverview(
           supplements: supplements.rows.filter(
             (row) => row.agreementVersionId === (versionInForce?.id ?? '')
           ),
-          adjustments: manualAdjustments.rows.filter((row) => row.period === period)
+          adjustments: manualAdjustments.rows.filter((row) => row.period === period),
+          hrefBases
         }),
         settlements: buildSettlementViews(
           settlements.rows,
           lineRows,
           paymentRows,
-          new Set(receiptExpenseIds)
+          new Set(receiptExpenseIds),
+          hrefBases
         ),
         pendingExtras: buildPendingExtraViews(pendingExtras.rows),
         pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows),

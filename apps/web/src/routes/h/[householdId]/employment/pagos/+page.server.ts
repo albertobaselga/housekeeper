@@ -1,4 +1,4 @@
-import { loadEmploymentOverview } from '$lib/server/employment.server';
+import { employmentHrefBases, loadEmploymentOverview } from '$lib/server/employment.server';
 import { demoOrUnavailable } from '$lib/server/data-source.server';
 import type { PageServerLoad } from './$types';
 
@@ -13,7 +13,8 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
         params.householdId,
         undefined,
         undefined,
-        selectedAgreementId
+        selectedAgreementId,
+        employmentHrefBases(locals.user, params.householdId, selectedAgreementId)
       )
     : null;
   if (overview) return { overview };

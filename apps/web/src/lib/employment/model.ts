@@ -816,22 +816,42 @@ const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
 };
 
 /**
- * Ancla navegable hacia la entidad de origen dentro de la propia página del
- * expediente. Hueco conocido: aún no existen rutas de detalle por entidad, así
- * que el origen enlaza a la sección donde la entidad está pintada.
+ * Dónde vive cada origen ahora que la sección va en pestañas. Las rellena el
+ * servidor, que sabe el hogar y quién mira: `contrato` es el acuerdo para
+ * quien administra y las condiciones para la empleada, porque cada cual lee
+ * las versiones en su propia pestaña.
  */
-export function sourceAnchor(sourceType: string, sourceId: string): string | null {
+export interface SourceHrefBases {
+  /** Ruta de la pestaña Conceptos (jornadas, gastos y conceptos a mano). */
+  conceptos: string;
+  /** Ruta del Resumen: los anticipos viven en sus saldos. */
+  resumen: string;
+  /** Donde quien mira lee las versiones del contrato. */
+  contrato: string;
+}
+
+/**
+ * Ancla navegable hacia la entidad de origen. Sin `bases` es un fragmento en
+ * la misma página (lo que era cuando todo vivía en una); con `bases`, la ruta
+ * de la pestaña donde la entidad está pintada, con el ancla detrás. Hueco
+ * conocido: aún no existen rutas de detalle por entidad.
+ */
+export function sourceAnchor(
+  sourceType: string,
+  sourceId: string,
+  bases?: SourceHrefBases
+): string | null {
   switch (sourceType) {
     case 'agreement-version':
-      return `#version-${sourceId}`;
+      return `${bases?.contrato ?? ''}#version-${sourceId}`;
     case 'jornadas-extra':
-      return `#extra-${sourceId}`;
+      return `${bases?.conceptos ?? ''}#extra-${sourceId}`;
     case 'anticipos':
-      return `#anticipo-${sourceId}`;
+      return `${bases?.resumen ?? ''}#anticipo-${sourceId}`;
     case 'gastos':
-      return `#gasto-${sourceId}`;
+      return `${bases?.conceptos ?? ''}#gasto-${sourceId}`;
     case 'ajustes':
-      return `#concepto-${sourceId}`;
+      return `${bases?.conceptos ?? ''}#concepto-${sourceId}`;
     default:
       return null;
   }
@@ -1201,6 +1221,8 @@ export interface AccrualFacts {
    * eso es exactamente lo que significa «que se contabilicen el mes que toque».
    */
   adjustments?: readonly ManualAdjustmentRow[];
+  /** Sin bases, los orígenes enlazan como fragmento en la misma página. */
+  hrefBases?: SourceHrefBases;
 }
 
 /**
@@ -1304,7 +1326,7 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
       sourceType: line.sourceType,
       sourceId: line.sourceId,
-      href: sourceAnchor(line.sourceType, line.sourceId),
+      href: sourceAnchor(line.sourceType, line.sourceId, facts.hrefBases),
       originLabel: origin === undefined ? null : extraWorkOriginLabel(origin)
     };
   });
@@ -1367,9 +1389,12 @@ export function buildManualAdjustmentViews(
     }));
 }
 
-export function settlementLineHref(row: SettlementLineRow): string | null {
-  if (row.agreementVersionId) return sourceAnchor('agreement-version', row.agreementVersionId);
-  if (row.advanceId) return sourceAnchor('anticipos', row.advanceId);
+export function settlementLineHref(
+  row: SettlementLineRow,
+  bases?: SourceHrefBases
+): string | null {
+  if (row.agreementVersionId) return sourceAnchor('agreement-version', row.agreementVersionId, bases);
+  if (row.advanceId) return sourceAnchor('anticipos', row.advanceId, bases);
   return null;
 }
 
@@ -1387,7 +1412,8 @@ export function buildSettlementViews(
   lines: readonly SettlementLineRow[],
   payments: readonly PaymentRow[],
   /** Gastos de estas líneas que tienen justificante guardado (lectura RLS). */
-  expensesWithReceipt: ReadonlySet<string> = new Set()
+  expensesWithReceipt: ReadonlySet<string> = new Set(),
+  hrefBases?: SourceHrefBases
 ): SettlementView[] {
   return settlements.map((row) => {
     const ownLines = lines
@@ -1402,7 +1428,7 @@ export function buildSettlementViews(
         concept: line.concept,
         amountCents: line.amountCents,
         amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
-        href: settlementLineHref(line),
+        href: settlementLineHref(line, hrefBases),
         receiptExpenseId:
           line.expenseId && expensesWithReceipt.has(line.expenseId) ? line.expenseId : null
       }));
