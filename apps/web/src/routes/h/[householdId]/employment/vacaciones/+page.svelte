@@ -96,10 +96,12 @@
       </p>
     {/if}
 
-    <!-- Apuntar y anular días, encima del historial: quien administra lo hace
-         aquí, sobre la empleada elegida en las pestañas. El saldo del año sale
-         del expediente y se refresca solo al apuntar. -->
-    {#if canRecordVacation && employmentAgreement && data.employment?.vacations}
+    <!-- El año en curso, encima del historial: el saldo para cualquiera que
+         pueda leerlo y el formulario de apuntar/anular solo para quien
+         administra (la empleada lo ve en solo lectura, como siempre). La
+         persona es la elegida en las pestañas y el saldo se refresca solo al
+         apuntar. -->
+    {#if employmentAgreement && data.employment?.vacations}
       <VacationsCard
         householdId={data.householdId}
         agreementId={employmentAgreement.id}

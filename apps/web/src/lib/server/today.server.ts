@@ -339,10 +339,17 @@ export interface TodayDecisionFacts {
  * Destino que resuelve el asunto, con la persona a la que pertenece. El hogar
  * puede emplear a varias y el expediente enseña el de una: sin decir cuál, el
  * enlace de una decisión de la segunda aterrizaría en el de la primera y su
- * ancla no existiría ahí.
+ * ancla no existiría ahí. Con la sección en pestañas, cada decisión aterriza
+ * además en la SUYA: las jornadas y los gastos en Conceptos, las cuentas en
+ * Pagos.
  */
-function employmentHref(base: string, agreementId: string, anchor = ''): string {
-  return `${base}/employment?empleada=${agreementId}${anchor}`;
+function employmentHref(
+  base: string,
+  section: 'conceptos' | 'pagos',
+  agreementId: string,
+  anchor = ''
+): string {
+  return `${base}/employment/${section}?empleada=${agreementId}${anchor}`;
 }
 
 function extraDetail(extra: TodayExtraRow): string {
@@ -376,7 +383,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `extra-${extra.id}`,
           title: 'Jornada extra solicitada',
           detail: extraDetail(extra),
-          href: employmentHref(base, extra.agreementId, `#extra-${extra.id}`),
+          href: employmentHref(base, 'conceptos', extra.agreementId, `#extra-${extra.id}`),
           cta: 'Revisar',
           inline: { kind: 'accept_extra', id: extra.id }
         });
@@ -385,7 +392,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `extra-${extra.id}`,
           title: 'Jornada extra hecha: falta decidir la compensación',
           detail: extraDetail(extra),
-          href: employmentHref(base, extra.agreementId, `#extra-${extra.id}`),
+          href: employmentHref(base, 'conceptos', extra.agreementId, `#extra-${extra.id}`),
           cta: 'Decidir'
         });
       }
@@ -398,7 +405,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
         key: `gasto-${expense.id}`,
         title: 'Gasto pendiente de aprobar',
         detail: `${expense.description} · ${formatCents(expense.amountCents)} · ${dateLabel(expense.incurredOn)}`,
-        href: employmentHref(base, expense.agreementId, `#gasto-${expense.id}`),
+        href: employmentHref(base, 'conceptos', expense.agreementId, `#gasto-${expense.id}`),
         cta: 'Revisar'
       });
     }
@@ -429,7 +436,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `liquidacion-${settlement.id}`,
           title: `Cuenta de ${periodLabel(settlement.periodStart.slice(0, 7)).toLocaleLowerCase('es')} pendiente de pago`,
           detail: `Pendiente ${formatCents(settlement.pendingCents)} · vence el ${dateLabel(settlement.dueOn)}`,
-          href: employmentHref(base, settlement.agreementId),
+          href: employmentHref(base, 'pagos', settlement.agreementId),
           cta: 'Registrar pago'
         });
       }
@@ -458,7 +465,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `extra-${extra.id}`,
           title: 'Jornada aceptada: márcala cuando la realices',
           detail: extraDetail(extra),
-          href: employmentHref(base, extra.agreementId, `#extra-${extra.id}`),
+          href: employmentHref(base, 'conceptos', extra.agreementId, `#extra-${extra.id}`),
           cta: 'Marcar realizada'
         });
       }
@@ -474,7 +481,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
           key: `cobro-${settlement.id}`,
           title: `Cobro de ${periodLabel(settlement.periodStart.slice(0, 7)).toLocaleLowerCase('es')} por confirmar`,
           detail: `${formatCents(settlement.paidCents)} pagados · confirma que lo has recibido`,
-          href: employmentHref(base, settlement.agreementId),
+          href: employmentHref(base, 'pagos', settlement.agreementId),
           cta: 'Confirmar cobro'
         });
       }

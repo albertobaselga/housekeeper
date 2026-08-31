@@ -61,7 +61,7 @@ test('Ana hace la foto sin conexión y el gasto llega con su justificante enlaza
     })
   );
 
-  await page.goto(`/h/${HOUSEHOLD}/employment`);
+  await page.goto(`/h/${HOUSEHOLD}/employment/conceptos`);
   const form = page.locator('form.action-form').filter({ hasText: 'Añadir gasto' });
   await expect(form).toBeVisible();
 
@@ -127,7 +127,7 @@ test('Ana hace la foto sin conexión y el gasto llega con su justificante enlaza
 
 test('Alberto ve el justificante del gasto reembolsado en la cuenta de marzo ya pagada', async ({ page }) => {
   await loginAs(page, 'admin');
-  await page.goto(`/h/${HOUSEHOLD}/employment`);
+  await page.goto(`/h/${HOUSEHOLD}/employment/pagos`);
 
   const pharmacyLine = page.locator('.ledger-list > div').filter({ hasText: 'Fixture pharmacy reimbursement' });
   await expect(pharmacyLine).toBeVisible();

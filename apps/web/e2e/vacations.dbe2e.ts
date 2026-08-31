@@ -23,7 +23,9 @@ function vacationsCard(page: Page) {
 
 async function gotoEmployment(page: Page, account: 'admin' | 'employee'): Promise<void> {
   await loginAs(page, account);
-  await page.goto(`/h/${HOUSEHOLD}/employment`);
+  // La tarjeta del año vive en su pestaña: saldo, apuntar días e historial
+  // comparten pantalla desde el rediseño en pestañas.
+  await page.goto(`/h/${HOUSEHOLD}/employment/vacaciones`);
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
@@ -106,8 +108,10 @@ test('Ana ve su saldo y sus periodos, pero no puede apuntar ni anular nada', asy
   await expect(card.getByRole('button', { name: 'Apuntar vacaciones' })).toHaveCount(0);
   await expect(card.getByRole('button', { name: 'Anular' })).toHaveCount(0);
 
-  // El derecho pactado se lee en el historial del acuerdo, no en un rótulo suelto.
-  const versionsCard = page.locator('article.card').filter({ hasText: 'Versiones y cambios de salario' });
+  // El derecho pactado se lee en el historial del acuerdo, que ahora vive en
+  // su pestaña de Condiciones, no en un rótulo suelto.
+  await page.goto(`/h/${HOUSEHOLD}/employment/condiciones`);
+  const versionsCard = page.locator('article.card').filter({ hasText: 'Tu contrato, versión a versión' });
   await expect(versionsCard).toContainText('30 días naturales al año de vacaciones');
 });
 

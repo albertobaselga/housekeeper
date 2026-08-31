@@ -109,8 +109,10 @@ describe('buildTodayDecisions por rol', () => {
     ]);
 
     const requested = items[0]!;
+    // Con la sección en pestañas, la decisión aterriza donde se decide: las
+    // jornadas y los gastos en Conceptos, las cuentas en Pagos.
     expect(requested.href).toBe(
-      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#extra-e-requested`
+      `/h/${FIXTURE_HOUSEHOLD}/employment/conceptos?empleada=${AGREEMENT}#extra-e-requested`
     );
     // Ola D-5: la jornada solicitada se acepta desde Hoy sin perder el enlace.
     expect(requested.inline).toEqual({ kind: 'accept_extra', id: 'e-requested' });
@@ -123,7 +125,7 @@ describe('buildTodayDecisions por rol', () => {
 
     const gasto = items[2]!;
     expect(gasto.href).toBe(
-      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#gasto-g-1`
+      `/h/${FIXTURE_HOUSEHOLD}/employment/conceptos?empleada=${AGREEMENT}#gasto-g-1`
     );
     expect(gasto.detail).toContain('21,75');
 
@@ -136,7 +138,7 @@ describe('buildTodayDecisions por rol', () => {
     const settlement = items[4]!;
     expect(settlement.title).toContain('julio');
     expect(settlement.detail).toContain('1.383,30');
-    expect(settlement.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}`);
+    expect(settlement.href).toBe(`/h/${FIXTURE_HOUSEHOLD}/employment/pagos?empleada=${AGREEMENT}`);
   });
 
   it('un único hueco sin confirmar se describe con su comida y fecha', () => {
