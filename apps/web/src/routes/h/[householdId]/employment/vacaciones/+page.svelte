@@ -1,16 +1,41 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
+  import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
+  import { can } from '$lib/auth/capabilities';
+  import { useAppContext } from '$lib/auth/context';
   import { markVacationsSeen } from '$lib/vacations/mark-seen';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
+  const context = useAppContext();
 
   const overview = $derived(data.overview);
   // Su propio contrato, si lo tiene. Es lo que decide la voz de la pantalla:
   // quien administra lee un historial de otras personas, ella lee el suyo. El
   // orden (la propia primero) ya lo trae el servidor.
   const own = $derived(overview?.people.find((person) => person.own) ?? null);
+
+  // Los días los apunta la familia administradora (política
+  // `vacation_periods_admin_write`); con la tarjeta aquí, el saldo, el
+  // formulario y el historial comparten pantalla.
+  const employmentAgreement = $derived(
+    data.employment?.hasEmploymentData ? data.employment.agreement : null
+  );
+  const canRecordVacation = $derived(
+    employmentAgreement !== null && can(context.role, 'leave.approve')
+  );
+
+  // Con `?empleada=`, su historial va primero; el resto conserva el orden del
+  // servidor (la propia primero para la empleada).
+  const people = $derived(
+    overview
+      ? [...overview.people].sort(
+          (a, b) =>
+            Number(b.agreementId === data.empleada) - Number(a.agreementId === data.empleada)
+        )
+      : []
+  );
 
   /**
    * Dar por vistas las novedades es efecto de MIRAR, no de pulsar nada.
@@ -71,7 +96,20 @@
       </p>
     {/if}
 
-    {#each overview.people as person (person.agreementId)}
+    <!-- Apuntar y anular días, encima del historial: quien administra lo hace
+         aquí, sobre la empleada elegida en las pestañas. El saldo del año sale
+         del expediente y se refresca solo al apuntar. -->
+    {#if canRecordVacation && employmentAgreement && data.employment?.vacations}
+      <VacationsCard
+        householdId={data.householdId}
+        agreementId={employmentAgreement.id}
+        vacations={data.employment.vacations}
+        canRecord={canRecordVacation}
+        allYearsLink={false}
+      />
+    {/if}
+
+    {#each people as person (person.agreementId)}
       <article class="card">
         <div class="section-heading">
           <div>
