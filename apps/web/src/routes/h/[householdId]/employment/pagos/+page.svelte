@@ -1,6 +1,7 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import SettlementActions from '$lib/components/employment/SettlementActions.svelte';
   import { can } from '$lib/auth/capabilities';
@@ -92,6 +93,12 @@
     eyebrow="Contrato"
     title="Pagos"
     description="Las cuentas de cada mes: qué se pagó, qué falta y su documento."
+  />
+
+  <EmploymentTabs
+    householdId={context.household.id}
+    current="pagos"
+    empleada={agreement?.id ?? null}
   />
 
   <ActionStatus status={actionStatus} />

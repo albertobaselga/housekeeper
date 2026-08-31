@@ -7,6 +7,7 @@
     type Weekday
   } from '@casa-clara/domain';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import { PAYER_CHOICES, type PayerChoice } from '$lib/employment/payer';
   import { centsToEuroInput, scheduleMismatchLabel } from '$lib/employment/model';
   import type {
@@ -414,6 +415,8 @@
   title="Condiciones del contrato"
   description="Cada cambio crea una versión nueva. Lo ya pactado no se reescribe nunca."
 />
+
+<EmploymentTabs householdId={data.householdId} current="contrato" empleada={data.empleada} />
 
 {#if !admin}
   <article class="card">

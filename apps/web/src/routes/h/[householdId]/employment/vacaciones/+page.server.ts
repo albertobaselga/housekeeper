@@ -17,10 +17,12 @@ import type { PageServerLoad } from './$types';
  * vacaciones que nadie llegó a abrir. Esa marca la manda la propia página,
  * cuando de verdad está delante.
  */
-export const load: PageServerLoad = async ({ locals, params, depends }) => {
+export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
   depends('cc:vacations');
   const overview = locals.user
     ? await loadVacationOverview({ id: locals.user.id }, params.householdId)
     : null;
-  return { overview };
+  // La empleada elegida viaja en la URL por toda la sección: aquí solo decide
+  // el orden (la elegida primero) y el enlace de vuelta de las pestañas.
+  return { overview, householdId: params.householdId, empleada: url.searchParams.get('empleada') };
 };

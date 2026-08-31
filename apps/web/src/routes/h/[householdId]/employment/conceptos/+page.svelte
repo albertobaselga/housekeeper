@@ -1,6 +1,7 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
   import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
   import ManualAdjustmentsCard from '$lib/components/employment/ManualAdjustmentsCard.svelte';
@@ -51,6 +52,12 @@
     eyebrow="Contrato"
     title="Conceptos del mes"
     description="Jornadas extra, gastos, adelantos y ausencias: aquí se apuntan y aquí se deciden."
+  />
+
+  <EmploymentTabs
+    householdId={context.household.id}
+    current="conceptos"
+    empleada={agreement?.id ?? null}
   />
 
   <ActionStatus status={actionStatus} />

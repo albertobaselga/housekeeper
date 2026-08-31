@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -16,6 +17,8 @@
     title="Mis condiciones"
     description="Lo que está pactado ahora mismo, tal y como se aplica a tu pago."
   />
+
+  <EmploymentTabs householdId={data.householdId} current="contrato" empleada={data.empleada} />
 
   {#if !terms}
     <article class="card">

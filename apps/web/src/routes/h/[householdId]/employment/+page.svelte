@@ -1,6 +1,7 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import ExpensesPendingCard from '$lib/components/employment/ExpensesPendingCard.svelte';
   import ExtraWorkPendingCard from '$lib/components/employment/ExtraWorkPendingCard.svelte';
   import ManualAdjustmentsCard from '$lib/components/employment/ManualAdjustmentsCard.svelte';
@@ -170,6 +171,12 @@
     eyebrow="Condiciones, nómina y gastos"
     title={overview?.accrual ? `Contrato · ${overview.accrual.periodLabel.toLocaleLowerCase('es')}` : 'Contrato'}
     description="Importes claros, confirmaciones separadas y un historial que se entiende."
+  />
+
+  <EmploymentTabs
+    householdId={context.household.id}
+    current="resumen"
+    empleada={agreement?.id ?? null}
   />
 
   <ActionStatus status={actionStatus} />

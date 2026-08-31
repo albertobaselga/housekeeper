@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import { markVacationsSeen } from '$lib/vacations/mark-seen';
   import type { PageData } from './$types';
 
@@ -44,6 +45,8 @@
       ? 'Los días que has disfrutado, los que están por venir y los que te quedan.'
       : 'El historial de cada persona, año a año, con lo anulado a la vista.'}
   />
+
+  <EmploymentTabs householdId={data.householdId} current="vacaciones" empleada={data.empleada} />
 
   {#if !overview}
     <article class="card">

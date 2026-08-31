@@ -28,14 +28,14 @@ import type { Actions, PageServerLoad } from './$types';
  * JavaScript inicial: es una ruta propia, con su propio trozo, que Hoy no
  * importa nunca.
  */
-export const load: PageServerLoad = async ({ locals, params, depends }) => {
+export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
   depends('cc:agreement-terms');
   const admin = locals.user
     ? await loadAgreementAdmin({ id: locals.user.id }, params.householdId)
     : null;
   // `admin === null` significa las dos cosas a la vez —sin base de datos o sin
   // ser quien administra— y la página dice esa verdad sin distinguirlas.
-  return { admin };
+  return { admin, householdId: params.householdId, empleada: url.searchParams.get('empleada') };
 };
 
 /** Un campo de texto del formulario, sin espacios de cortesía. */
