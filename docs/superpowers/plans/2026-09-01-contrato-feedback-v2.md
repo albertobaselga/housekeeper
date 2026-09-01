@@ -303,6 +303,19 @@ ficheros no basta si la unidad que se rompe es un contrato entre módulos.
 
 ## Cabos sueltos anotados durante la ejecución
 
+- **Dos relojes distintos para la misma pregunta, en producción.** Las funciones
+  de la migración `0007` sellan el día con `current_date` —la zona del servidor
+  de base de datos, UTC— en `wiki_page_reads.read_on` y en el registro de huecos
+  de búsqueda, mientras la casa decide qué día es hoy en `Europe/Madrid`. Escritor
+  y lector coinciden, así que **nada está roto**: es una imprecisión, no un fallo.
+  Una nota leída a las 00:30 de Madrid se cuenta en el día anterior, lo que sesga
+  un par de horas «lo más leído en 30 días» y la ventana de huecos.
+  **Se deja fuera a propósito**: arreglarlo exige una migración que reescriba
+  funciones `SECURITY DEFINER`, que es exactamente donde esta casa se quemó con la
+  0032 —imposible de aplicar en producción, y en silencio—. Por una mejora
+  estadística no compensa meter ese riesgo al final de una entrega grande. Cuando
+  se haga, que se haga sola y con su ensayo en el banco con forma de producción.
+  El giro correcto ya está en el repositorio: `(now() at time zone 'Europe/Madrid')::date`.
 - **La densidad de Pagos aguanta con dos cuentas, no con tres.** La batería A6
   exige `min(3, total)` filas visibles en la primera pantalla. A 320×568 quedan
   277 px de lista y una tercera fila pediría 291. No es maquillable: la fila mide
