@@ -202,7 +202,16 @@ describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layou
     } finally {
       await cluster.end();
     }
-  }, 30_000);
+    // El mismo presupuesto que el `beforeAll`, y por la misma razón. `drop
+    // database … with (force)` espera a que el clúster le deje: con la suite
+    // entera en paralelo hay una decena de ficheros creando y borrando su
+    // propia base a la vez, y esa espera no es gradual sino un bloqueo hasta
+    // que la de al lado termina. Medido en tres pasadas de la suite completa
+    // sobre este clúster: 193 ms, 19,2 s y 32,6 s — conectar y soltar el rol
+    // fueron siempre ~4 ms, así que el único que espera es el `drop database`.
+    // Con 30 s, la suite entera se caía en verde por el teardown en dos de cada
+    // tres pasadas: 729 pruebas pasadas y el fichero en rojo.
+  }, 120_000);
 
   it('true SOLO para la administración con concesión viva; false para el resto', async () => {
     expect(await financeAccessGranted(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool)).toBe(true);
