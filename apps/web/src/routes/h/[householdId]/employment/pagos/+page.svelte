@@ -125,7 +125,10 @@
     description="Las cuentas de cada mes: qué se pagó, qué falta y su documento."
   />
 
-  {#if overview && overview.agreements.length > 1 && selectedOption}
+  <!-- El mismo predicado que decide la portada, no el recuento de acuerdos: la
+       portada ya existe siempre, y contar filas dejaba a la casa de una sola
+       empleada con estas cuentas y ningún camino de vuelta a ella. -->
+  {#if overview && context.role !== 'employee_live_in' && selectedOption}
     <EmploymentPersonBar
       householdId={overview.householdId}
       employeeLabel={selectedOption.employeeLabel}
@@ -201,11 +204,13 @@
         <div class="section-heading">
           <div><p class="eyebrow">Cuentas de cada mes</p><h2>Historial con pagos y confirmación</h2></div>
         </div>
-        <p class="card-footnote">
-          Cada mes tiene su cuenta: se empieza, se cierra —ahí los importes quedan fijados— y se
-          paga. Toca un mes para ver su detalle.
-        </p>
-        <!-- El plegado es LIBRE, no un acordeón: sin `name` se pueden tener dos
+        <!-- Aquí había un pie explicando el ciclo de una cuenta —se empieza, se
+             cierra, se paga—. Medía 96 px a 320, empujaba la primera fila fuera
+             de la primera pantalla y decía tres veces lo que ya dicen, cada una
+             en su sitio, la frase de empezar la cuenta, la de cerrar el mes y la
+             de registrar el pago. Que la fila se pulsa lo dice su subrayado.
+
+             El plegado es LIBRE, no un acordeón: sin `name` se pueden tener dos
              meses abiertos a la vez, que es lo que se hace al comparar una
              discrepancia entre dos cuentas. -->
         <div class="fila-lista" data-lista="principal">
