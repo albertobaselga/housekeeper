@@ -21,14 +21,14 @@
 - Toda spec nueva cableada a un job de `.github/workflows/ci.yml` (lo exige `scripts/ci/assert-suite-coverage.py`).
 - CSS solo con tokens de `apps/web/src/app.css`; pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server`. Esta fase no añade NINGUNA.
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts`.
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts`.
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo lecturas + importación multipart.
 - TDD: test que falla → implementación mínima → verde → commit. Commits frecuentes.
 - Suites de BD en secuencia; Postgres local 18.4 en Docker; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con confirmación explícita de Alberto.
 - Gates: `pnpm lint`, `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm test:db`, `pnpm test:rls` en verde al cerrar cada tarea que los afecte.
 
 **Notas de fase (léelas antes de cualquier tarea):**
-- Esta fase consume el esquema `0034_finance.sql` (fase 1) y `packages/server/src/finance/dedup-hash.ts` de fase 2 con firma `computeDedupHash(row: { bankRef: string; opDate: string; amountCents: bigint; concept: string; balanceCents: bigint | null; dedupRef: string | null }): string`.
+- Esta fase consume el esquema `0036_finance.sql` (fase 1) y `packages/server/src/finance/dedup-hash.ts` de fase 2 con firma `computeDedupHash(row: { bankRef: string; opDate: string; amountCents: bigint; concept: string; balanceCents: bigint | null; dedupRef: string | null }): string`.
 - CI: los `.test.mjs` de `packages/db/scripts/` los descubre `packages/db/vitest.config.mjs` (`include: ['scripts/**/*.test.mjs']`, `fileParallelism: false`) y los ejecuta el job `database` de `ci.yml` con `scripts/ci/run-tests-nonempty.sh pnpm test:import` (línea 115 del workflow). **Ojo con el mito de `runIf`**: `packages/db` NO expone script `test`, así que `pnpm test` (`pnpm -r --if-present test`) del job `unit` no ejecuta nada de este paquete; `describe.runIf(Boolean(process.env.TEST_DATABASE_URL))` sirve para poder correr `pnpm test:import` en local sin Postgres, no para saltar el job `unit`. Consecuencia práctica: `migrar-home-finance.test.mjs` (que no necesita base) también corre solo en el job `database`, y eso es aceptable. No hay que tocar `ci.yml`: el inventario de `assert-suite-coverage.py` excluye `packages/{domain,contracts,db}` a propósito (comentario de las líneas 310-318 del workflow) porque su evidencia sale de `run-tests-nonempty.sh` en los jobs `unit` y `database`.
 - Postgres local para las tareas 5–7 (una sola vez):
 
@@ -53,7 +53,7 @@ export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/
 - Consumes: `computeDedupHash` (fase 2, `packages/server/src/finance/dedup-hash.ts`).
 - Produces: `export const rutaDedupHash: URL`; `export async function importarModuloTs(url): Promise<Record<string, unknown>>`.
 
-**Contexto:** los TS del monorepo importan con extensión `.js` (`packages/domain/src/index.ts`: `export * from "./errors.js"`). El type stripping de Node 24 no reescribe especificadores, así que `node` a pelo falla; `module.registerHooks` con reintento `.js→.ts` lo resuelve (verificado con Node v24.15.0 sobre la cadena de `@casa-clara/domain`). El hook exige `import()` dinámico: los import estáticos se resuelven antes de evaluar el módulo que instala el hook.
+**Contexto:** los TS del monorepo importan con extensión `.js` (`packages/domain/src/index.ts`: `export * from "./errors.js"`). El type stripping de Node 24 no reescribe especificadores, así que `node` a pelo falla; `module.registerHooks` con reintento `.js→.ts` lo resuelve (verificado con Node v24.15.0 sobre la cadena de `@housekeeper/domain`). El hook exige `import()` dinámico: los import estáticos se resuelven antes de evaluar el módulo que instala el hook.
 
 - [ ] **Step 1: Test que falla** — crear `packages/db/scripts/cargar-ts.test.mjs`:
 
@@ -83,7 +83,7 @@ describe('cargar-ts', () => {
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/db exec vitest run scripts/cargar-ts.test.mjs
+pnpm --filter @housekeeper/db exec vitest run scripts/cargar-ts.test.mjs
 ```
 
 Esperado: FAIL, `Cannot find module … scripts/cargar-ts.mjs`.
@@ -241,7 +241,7 @@ describe('home-finance-sintetica', () => {
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/db exec vitest run scripts/home-finance-sintetica.test.mjs
+pnpm --filter @housekeeper/db exec vitest run scripts/home-finance-sintetica.test.mjs
 ```
 
 Esperado: FAIL, `Cannot find module … home-finance-sintetica.mjs`.
@@ -321,7 +321,7 @@ export const CUENTAS = [
   { id: 1, name: 'Cuenta Común', bank: 'caixabank', kind: 'comun', owner: 'familia', bank_ref: '00490001512345678901', owner_aliases: ['FAMILIA PRUEBA'], transfer_refs: [] },
   { id: 2, name: 'Cuenta Padre', bank: 'deutsche_bank', kind: 'personal', owner: 'padre', bank_ref: 'ES9100190020961234567890', owner_aliases: ['PADRE PRUEBA'], transfer_refs: [] },
   { id: 3, name: 'Tarjeta Amex', bank: 'amex', kind: 'personal', owner: 'padre', bank_ref: 'AMEX-SINTETICA-1001', owner_aliases: [], transfer_refs: [] },
-  // Cuentas virtuales del origen: bank fuera del vocabulario del destino (→ NULL en 0034).
+  // Cuentas virtuales del origen: bank fuera del vocabulario del destino (→ NULL en 0036).
   { id: 4, name: 'Efectivo', bank: 'efectivo', kind: 'comun', owner: 'familia', bank_ref: 'EFECTIVO', owner_aliases: [], transfer_refs: [] },
   { id: 5, name: 'Fondo Sintético Indexado', bank: 'inversion', kind: 'inversion', owner: 'familia', bank_ref: 'INV-SINTETICO', owner_aliases: [], transfer_refs: ['REF-FONDO-01'] }
 ];
@@ -553,7 +553,7 @@ describe('leerOrigen', () => {
       expect(primera.recurrence_manual).toBe(false);
       expect(origen.transactions.find((t) => t.id === 2).recurrence_manual).toBe(true);
       expect(typeof primera.raw).toBe('string'); // JSON verbatim, sin reserializar
-      // raw es nullable en el origen y NOT NULL en 0034: leerOrigen lo coalesce a '{}'.
+      // raw es nullable en el origen y NOT NULL en 0036: leerOrigen lo coalesce a '{}'.
       expect(origen.transactions.find((t) => t.id === 2).raw).toBe('{}');
       expect(origen.rules).toHaveLength(TOTALES.rules); // la inactiva también: filtra migrar()
       expect(origen.rules.find((r) => r.id === 3).active).toBe(false);
@@ -566,7 +566,7 @@ describe('leerOrigen', () => {
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/db exec vitest run scripts/migrar-home-finance.test.mjs
+pnpm --filter @housekeeper/db exec vitest run scripts/migrar-home-finance.test.mjs
 ```
 
 Esperado: FAIL, `Cannot find module … migrar-home-finance.mjs`.
@@ -574,7 +574,7 @@ Esperado: FAIL, `Cannot find module … migrar-home-finance.mjs`.
 - [ ] **Step 3: Implementación** — crear `packages/db/scripts/migrar-home-finance.mjs`:
 
 ```js
-// ETL única de home-finance (SQLite) → casa-clara (Postgres, esquema 0034).
+// ETL única de home-finance (SQLite) → casa-clara (Postgres, esquema 0036).
 // Runbook: docs/runbooks/migracion-home-finance.md. Se ejecuta con `node` a
 // pelo por conexión DIRECTA (5432) del propietario, como las migraciones.
 // PASO 0 innegociable: copia de seguridad datada del .db FUERA de ambos repos.
@@ -677,7 +677,7 @@ export function leerOrigen(rutaSqlite) {
         .map((f) => ({ ...f, id: n(f.id), category_id: n(f.category_id), priority: n(f.priority), active: f.active === 1n })),
       importBatches: todo('SELECT id, filename, bank, imported_at, new_count, dup_count FROM import_batches ORDER BY id')
         .map((f) => ({ ...f, id: n(f.id), new_count: n(f.new_count), dup_count: n(f.dup_count) })),
-      // `raw` es nullable en el origen (models.py:74) y en 0034 la columna es
+      // `raw` es nullable en el origen (models.py:74) y en 0036 la columna es
       // `jsonb NOT NULL DEFAULT '{}'` con CHECK de objeto: se coalesce AQUÍ, una
       // sola vez, igual que owner_aliases/transfer_refs (resolución canónica 8).
       transactions: todo(`SELECT id, account_id, batch_id, op_date, value_date, concept, provider,
@@ -733,7 +733,7 @@ git commit -m "feat(db): ETL home-finance — argumentos, copia de seguridad y l
 
 **Dos separaciones que esta tarea fija (y de las que dependen las tareas 5 y 6):**
 - **Comparar ≠ auditar.** `compararResumenes` solo responde «¿lo que hay en destino es lo mismo que había en origen?». El invariante «cada grupo de transferencia neteaa 0» (spec §9.3) NO se comprueba ahí: el origen tiene patas huérfanas legítimas (`transfers.py::orphan_legs`) y bloquear por eso haría fallar una migración fiel. Ese invariante se informa como aviso, sin bloquear.
-- **Validar ≠ reventar.** `validarOrigen` comprueba ANTES de abrir la transacción los invariantes que 0034 impone y el origen no garantiza (una sola raíz `transferencia`, árbol de 2 niveles, `concept` ≤ 500, vocabularios de `status`/`kind`/`rule_type`/`origin`/`bank`), para que el fallo sea una lista legible en el informe y no un error crudo de `pg` a mitad de escritura.
+- **Validar ≠ reventar.** `validarOrigen` comprueba ANTES de abrir la transacción los invariantes que 0036 impone y el origen no garantiza (una sola raíz `transferencia`, árbol de 2 niveles, `concept` ≤ 500, vocabularios de `status`/`kind`/`rule_type`/`origin`/`bank`), para que el fallo sea una lista legible en el informe y no un error crudo de `pg` a mitad de escritura.
 
 - [ ] **Step 1: Tests que fallan** — añadir al final de `migrar-home-finance.test.mjs` (y a sus imports: `avisosOrigen, compararResumenes, renderInforme, resumenOrigen, validarOrigen, verificarHashes` desde `./migrar-home-finance.mjs`, y `GRUPO_HUERFANO, GRUPO_TRASPASO, SUMAS_CUENTA_MES` desde `./home-finance-sintetica.mjs`):
 
@@ -806,7 +806,7 @@ describe('validarOrigen', () => {
     origen.transactions[0].concept = 'X'.repeat(501);
     origen.accounts[0].bank = 'bancoinventado';
     expect(validarOrigen(origen)).toEqual([
-      '2 categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0034).',
+      '2 categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0036).',
       '1 transacción(es) con concept de más de 500 caracteres (ids: 1); el destino lo limita con CHECK.',
       'Cuenta 1 («Cuenta Común») con bank «bancoinventado» fuera del vocabulario del origen (caixabank, deutsche_bank, openbank, amex, efectivo, inversion, manual).'
     ]);
@@ -864,7 +864,7 @@ describe('avisosOrigen y renderInforme', () => {
 - [ ] **Step 3: Implementación** — añadir a `migrar-home-finance.mjs`:
 
 ```js
-/** Tablas destino cuyo conteo verifica el informe (0034, sin la de grants). */
+/** Tablas destino cuyo conteo verifica el informe (0036, sin la de grants). */
 export const TABLAS_DESTINO = [
   'finance_accounts', 'finance_categories', 'finance_rules', 'finance_import_batches',
   'finance_transactions', 'finance_provider_aliases', 'finance_events',
@@ -937,7 +937,7 @@ export function avisosOrigen(origen) {
  *  `validarOrigen` (tarea 4) y el mapeo de bancos de `migrar()` (tarea 5). */
 export const BANCOS_CUENTA_ORIGEN = {
   caixabank: 'caixabank', deutsche_bank: 'deutsche_bank', openbank: 'openbank', amex: 'amex',
-  // Cuentas virtuales del origen: en 0034 `finance_accounts.bank` es NULL
+  // Cuentas virtuales del origen: en 0036 `finance_accounts.bank` es NULL
   // (resolución canónica 6 del doc de interfaces).
   efectivo: null, inversion: null, manual: null
 };
@@ -948,19 +948,19 @@ export const CLASES_CATEGORIA_DESTINO = ['gasto', 'ingreso', 'transferencia'];
 export const TIPOS_REGLA_DESTINO = ['proveedor_exacto', 'concepto_contiene', 'codigo_norma43'];
 export const ORIGENES_REGLA_DESTINO = ['manual', 'agente'];
 
-/** Invariantes que 0034 impone y el origen NO garantiza, comprobados ANTES de
+/** Invariantes que 0036 impone y el origen NO garantiza, comprobados ANTES de
  *  abrir la transacción: mejor una lista legible en el informe que un error
  *  crudo de `pg` a mitad de escritura. Orden de las comprobaciones fijo. */
 export function validarOrigen(origen) {
   const problemas = [];
   const raices = origen.categories.filter((c) => c.parent_id === null && c.kind === 'transferencia');
   if (raices.length !== 1) {
-    problemas.push(`${raices.length} categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0034).`);
+    problemas.push(`${raices.length} categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0036).`);
   }
   const porId = new Map(origen.categories.map((c) => [c.id, c]));
   const nietas = origen.categories.filter((c) => c.parent_id !== null && (porId.get(c.parent_id)?.parent_id ?? null) !== null);
   if (nietas.length > 0) {
-    problemas.push(`${nietas.length} categoría(s) de tercer nivel (ids: ${nietas.map((c) => c.id).join(', ')}); el destino solo admite árbol de 2 niveles (trigger de 0034).`);
+    problemas.push(`${nietas.length} categoría(s) de tercer nivel (ids: ${nietas.map((c) => c.id).join(', ')}); el destino solo admite árbol de 2 niveles (trigger de 0036).`);
   }
   const largos = origen.transactions.filter((t) => t.concept.length > 500);
   if (largos.length > 0) {
@@ -1125,7 +1125,7 @@ git commit -m "feat(db): ETL home-finance — resúmenes, validación del origen
 - Test: `packages/db/scripts/migrar-home-finance.pg.test.mjs` (crear)
 
 **Interfaces:**
-- Consumes: esquema `0034_finance.sql` (fase 1: tablas `app.finance_*`, PK `(household_id, id)`, `currency_code CHECK='EUR'`, `raw jsonb NOT NULL DEFAULT '{}'`, `finance_accounts.bank` NULL o uno de los cuatro bancos reales y `finance_import_batches.bank` con `'manual'` admitido — resoluciones canónicas 6 y 8); `applyMigrations(client, opts)` de `packages/db/scripts/migrate.mjs`; Tasks 2–4. **Antes de escribir el test, abre `packages/db/migrations/0034_finance.sql` en el worktree y comprueba esos tres CHECK**: si la fase 1 los dejó de otra forma, es defecto suyo y hay que reportarlo, no parchear el ETL.
+- Consumes: esquema `0036_finance.sql` (fase 1: tablas `app.finance_*`, PK `(household_id, id)`, `currency_code CHECK='EUR'`, `raw jsonb NOT NULL DEFAULT '{}'`, `finance_accounts.bank` NULL o uno de los cuatro bancos reales y `finance_import_batches.bank` con `'manual'` admitido — resoluciones canónicas 6 y 8); `applyMigrations(client, opts)` de `packages/db/scripts/migrate.mjs`; Tasks 2–4. **Antes de escribir el test, abre `packages/db/migrations/0036_finance.sql` en el worktree y comprueba esos tres CHECK**: si la fase 1 los dejó de otra forma, es defecto suyo y hay que reportarlo, no parchear el ETL.
 - Produces: `migrar(client, householdId, origen): Promise<void>` (dentro de una transacción abierta por quien llama); `resumenDestino(client, householdId)` (misma forma que `resumenOrigen`).
 
 **Reglas de mapeo (spec §5 y §9):** enteros→uuid con `randomUUID()` y mapas de correspondencia; `owner`→`owner_label`; JSON→`jsonb` verbatim; fechas TEXT→`date`; `dedup_hash`, `transfer_group_id`, estados y prefijos preservados byte a byte; `provider_norm` = `normText(provider)` (o NULL si vacío); solo reglas `active`; céntimos como `String(bigint)` en los parámetros; `currency_code='EUR'` explícito; padres de categoría antes que hijas; **`bank` de cuenta traducido** con `BANCOS_CUENTA_ORIGEN` (Task 4): `efectivo`/`inversion`/`manual` → `NULL`, valor no contemplado → error claro (resolución canónica 6); **`bank` de lote** pasa tal cual (el destino admite además `'manual'`); `raw` ya llega coalescido a `'{}'` desde `leerOrigen` (resolución canónica 8).
@@ -1247,7 +1247,7 @@ describe.runIf(Boolean(adminUrl))('migrar() contra Postgres real', () => {
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/db exec vitest run scripts/migrar-home-finance.pg.test.mjs
+pnpm --filter @housekeeper/db exec vitest run scripts/migrar-home-finance.pg.test.mjs
 ```
 
 Esperado: FAIL, `does not provide an export named 'migrar'`.
@@ -1338,7 +1338,7 @@ export async function migrar(client, householdId, origen) {
         t.code_common, t.code_own, t.category_id === null ? null : mapas.categorias.get(t.category_id),
         t.status, t.transfer_group_id, t.dedup_hash, t.recurrence, t.recurrence_manual,
         // `leerOrigen` ya coalesce raw a '{}'; el ?? es la red por si migrar()
-        // recibe un origen construido a mano (la columna es NOT NULL en 0034).
+        // recibe un origen construido a mano (la columna es NOT NULL en 0036).
         t.bank_category, t.raw ?? '{}']);
   }
   for (const a of origen.providerAliases) {
@@ -1422,7 +1422,7 @@ git commit -m "feat(db): ETL home-finance — escritura en Postgres con mapeo en
 
 **Interfaces:**
 - Consumes: todo lo anterior.
-- Produces: CLI `node scripts/migrar-home-finance.mjs --sqlite … --database-url … --household <slug> [--backup-dir …] [--dry-run] [--verify-only] [--force-empty-check]`. `--sqlite` y `--database-url` son OBLIGATORIOS y el guion NO lee `DATABASE_URL` del entorno (resolución canónica 12). Códigos de salida: 0 verificación OK; 1 fallo de verificación o aborto de guarda (hogar inexistente, hogar ya poblado, origen inválido, hashes discrepantes); 2 error de uso (argumentos que faltan, sobran o se excluyen, y `--backup-dir` dentro de un repo git: ahí no se puede escribir el informe). Además: `emitirInforme(opciones, contexto): Promise<string>`. Alias pnpm: `pnpm --filter @casa-clara/db migrar:home-finance -- <flags>`.
+- Produces: CLI `node scripts/migrar-home-finance.mjs --sqlite … --database-url … --household <slug> [--backup-dir …] [--dry-run] [--verify-only] [--force-empty-check]`. `--sqlite` y `--database-url` son OBLIGATORIOS y el guion NO lee `DATABASE_URL` del entorno (resolución canónica 12). Códigos de salida: 0 verificación OK; 1 fallo de verificación o aborto de guarda (hogar inexistente, hogar ya poblado, origen inválido, hashes discrepantes); 2 error de uso (argumentos que faltan, sobran o se excluyen, y `--backup-dir` dentro de un repo git: ahí no se puede escribir el informe). Además: `emitirInforme(opciones, contexto): Promise<string>`. Alias pnpm: `pnpm --filter @housekeeper/db migrar:home-finance -- <flags>`.
 
 **Semántica (spec §9):** toda ejecución que escribe empieza por la copia de seguridad datada (PASO 0); una sola transacción; el origen se valida con `validarOrigen` ANTES de tocar nada; si el hogar ya tiene datos de finanzas aborta salvo `--force-empty-check`; si la verificación cruzada de hashes falla NO se escribe nada; `--dry-run` = migrar + verificar + ROLLBACK; `--verify-only` = comparar origen contra lo ya migrado sin escribir.
 
@@ -1550,7 +1550,7 @@ describe.runIf(Boolean(adminUrl))('CLI migrar-home-finance', () => {
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_etl"
-pnpm --filter @casa-clara/db exec vitest run scripts/migrar-home-finance.pg.test.mjs
+pnpm --filter @housekeeper/db exec vitest run scripts/migrar-home-finance.pg.test.mjs
 ```
 
 Esperado: FAIL — el subproceso importa el guion, que no tiene bloque de ejecución directa, sale con status 0 sin hacer nada y las aserciones de status/salida fallan.
@@ -1701,7 +1701,7 @@ Y en `packages/db/package.json`, dentro de `"scripts"` (el fichero está en orde
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/db test:import
+pnpm --filter @housekeeper/db test:import
 ```
 
 Esperado: PASS (suites nuevas + wiki + migrate-with-history, en secuencia).
@@ -1802,10 +1802,10 @@ docker exec casaclara-it-pg createdb -U ci_admin casaclara_ensayo
 export DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_ensayo"
 ```
 
-2. Esquema completo (0001–0034; los roles de grupo los crea la 0001):
+2. Esquema completo (0001–0036; los roles de grupo los crea la 0001):
 
 ```bash
-pnpm --filter @casa-clara/db migrate
+pnpm --filter @housekeeper/db migrate
 ```
 
 3. Hogar del ensayo (o sigue `docs/despliegue/alta-de-hogar.md` si vas a hacer
@@ -1820,13 +1820,13 @@ docker exec -i casaclara-it-pg psql -U ci_admin -d casaclara_ensayo -c \
 4. ETL en seco, luego real, luego verificación:
 
 ```bash
-pnpm --filter @casa-clara/db migrar:home-finance -- \
+pnpm --filter @housekeeper/db migrar:home-finance -- \
   --sqlite ~/copias-home-finance/finanzas-sintetica.db \
   --database-url "$DATABASE_URL" --household hogar-ensayo --dry-run
-pnpm --filter @casa-clara/db migrar:home-finance -- \
+pnpm --filter @housekeeper/db migrar:home-finance -- \
   --sqlite ~/copias-home-finance/finanzas-sintetica.db \
   --database-url "$DATABASE_URL" --household hogar-ensayo
-pnpm --filter @casa-clara/db migrar:home-finance -- \
+pnpm --filter @housekeeper/db migrar:home-finance -- \
   --sqlite ~/copias-home-finance/finanzas-sintetica.db \
   --database-url "$DATABASE_URL" --household hogar-ensayo --verify-only
 ```
@@ -1886,7 +1886,7 @@ export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_etl"
 pnpm lint
 pnpm typecheck
-pnpm --filter @casa-clara/db test:import
+pnpm --filter @housekeeper/db test:import
 # test:db recrea el esquema: se le pasa SU base, no la del ETL (run-sql-tests.mjs
 # prefiere TEST_DATABASE_URL sobre DATABASE_URL, así que hay que sobreescribirla).
 TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_ci_integration" pnpm test:db

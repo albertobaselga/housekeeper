@@ -14,7 +14,7 @@ activación por cuenta, migrar sus datos a producción y retirar el sistema anti
 
 | # | Plan | Entrega |
 |---|---|---|
-| 1 | `2026-08-31-modulo-finanzas-fase-1-cimientos.md` | Capacidad, esquema 0034 + RLS + suite 030, concesiones + Ajustes, routing/nav/esqueletos |
+| 1 | `2026-08-31-modulo-finanzas-fase-1-cimientos.md` | Capacidad, esquema 0036 + RLS + suite 030, concesiones + Ajustes, routing/nav/esqueletos |
 | 2 | `2026-08-31-modulo-finanzas-fase-2-dominio-parsers.md` | `domain/finance` completo, 4 parsers, `computeDedupHash`, pipeline unificado |
 | 3 | `2026-08-31-modulo-finanzas-fase-3-etl.md` | `migrar-home-finance.mjs`, informe de verificación, runbook de ensayo local |
 | 4 | `2026-08-31-modulo-finanzas-fase-4-ui-lectura.md` | FilterBar, Dashboard, Movimientos (lectura), DetailPanel, endpoints GET, gráficas SVG |

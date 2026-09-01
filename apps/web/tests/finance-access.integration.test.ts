@@ -305,7 +305,7 @@ describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layou
 
   it('una concesión REVOCADA no cuenta: la fila vuelve a decir que está apagada', async () => {
     // Revocar no borra la fila, le pone `revoked_at` (el histórico se conserva,
-    // migración 0034: la tabla no tiene DELETE). Así que el primer refresco tras
+    // migración 0036: la tabla no tiene DELETE). Así que el primer refresco tras
     // CUALQUIER desactivación pasa por aquí, y si la lectura no descartara las
     // concesiones muertas la tarjeta diría «Activado» a una cuenta a la que el
     // layout ya le ha retirado el módulo. No es un caso raro: es el camino

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Dejar vivo el doble cerrojo del módulo Finanzas: capacidad `finance.access`, esquema `0034_finance.sql` con RLS, fixtures y matriz negativa `030`, `requireFinanceAdmin`, comandos de concesión, routing + navegación + 7 páginas esqueleto y la tarjeta «Finanzas» en Ajustes.
+**Goal:** Dejar vivo el doble cerrojo del módulo Finanzas: capacidad `finance.access`, esquema `0036_finance.sql` con RLS, fixtures y matriz negativa `030`, `requireFinanceAdmin`, comandos de concesión, routing + navegación + 7 páginas esqueleto y la tarjeta «Finanzas» en Ajustes.
 
 **Architecture:** El acceso a finanzas exige dos requisitos simultáneos: rol `family_admin` (capacidad en la matriz de contracts) Y concesión viva en `app.finance_module_grants`, impuestos en la base por `app.finance_enabled()` dentro de TODAS las políticas RLS de `finance_*`. El servidor replica el cerrojo con `requireFinanceAdmin` y el layout de SvelteKit retira `finance.access` de las capacidades entregadas cuando no hay concesión, de modo que guard de rutas, AppShell y UI funcionan sin mecanismos nuevos.
 
@@ -21,7 +21,7 @@
 - Toda spec nueva (unit/e2e/a11y/dbe2e/SQL) cableada a un job de `.github/workflows/ci.yml` (lo exige `scripts/ci/assert-suite-coverage.py`).
 - CSS solo con tokens de `apps/web/src/app.css` (vigila `apps/web/scripts/lint-css-tokens.mjs`); pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server` (jamás en cliente). Esta fase NO la necesita.
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo para lecturas y para la importación multipart.
 - TDD: test que falla → implementación mínima → verde → commit. Commits frecuentes.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6.
@@ -68,7 +68,7 @@ La matriz de capacidades vive en `packages/contracts/src/capabilities.ts` (subm�
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web exec vitest run tests/capabilities.test.ts
+pnpm --filter @housekeeper/web exec vitest run tests/capabilities.test.ts
 ```
 
 Salida esperada: `FAIL tests/capabilities.test.ts` con `AssertionError: expected [ 'access.manage', … ] to deeply equal …` (la lista real no contiene `finance.access`).
@@ -85,8 +85,8 @@ No toques `roleCapabilities`: `family_admin` la hereda de `allCapabilities` y ni
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/contracts test
-pnpm --filter @casa-clara/web exec vitest run tests/capabilities.test.ts
+pnpm --filter @housekeeper/contracts test
+pnpm --filter @housekeeper/web exec vitest run tests/capabilities.test.ts
 ```
 
 Ambos en verde (`Test Files … passed`).
@@ -166,7 +166,7 @@ describe("comandos de finanzas (fase 1: concesión)", () => {
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/contracts test
+pnpm --filter @housekeeper/contracts test
 ```
 
 Salida esperada: fallo de compilación/ejecución `SyntaxError: … does not provide an export named 'financeCommandPayloadSchema'`.
@@ -199,7 +199,7 @@ export const financeCommandPayloadSchema = z.discriminatedUnion("kind", [
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/contracts test && pnpm --filter @casa-clara/contracts typecheck
+pnpm --filter @housekeeper/contracts test && pnpm --filter @housekeeper/contracts typecheck
 ```
 
 - [ ] **Step 5: Commit.**
@@ -211,14 +211,14 @@ git commit -m "feat(contracts): sobres de comandos finance.grant/revoke.write"
 
 ---
 
-### Task 3: Migración `0034_finance.sql` — esquema y cerrojo
+### Task 3: Migración `0036_finance.sql` — esquema y cerrojo
 
-Un solo fichero `BEGIN;…COMMIT;`, siguiente número libre (0034). Patrones a calcar del repo: tabla con RLS+GRANT+auditoría de `packages/db/migrations/0013_contacts.sql`; bucles `DO … FOREACH` de RLS y auditoría de `0005_rls.sql` (líneas 32-48) y `0004_audit_and_jobs.sql` (líneas 263-284); trigger-reja de `0030_personal_y_altas.sql` (`enforce_password_flag_transition`). El runner (`migrate.mjs` + `0018_rls_force_compat.sql`) ya gestiona FORCE en Supabase: la migración pone `ENABLE + FORCE` sin condicionales, como 0032. El test rojo es la primera versión de `tests/030_finance_rls.sql` (bloque estructural); la matriz de filas llega en la Task 4. Nota: el nombre `030_finance_rls.sql` convive con `030_menu_week_templates.sql` — el runner ordena por nombre y ejecuta ambos; el nombre lo fija el doc de interfaces.
+Un solo fichero `BEGIN;…COMMIT;`, siguiente número libre (0036). Patrones a calcar del repo: tabla con RLS+GRANT+auditoría de `packages/db/migrations/0013_contacts.sql`; bucles `DO … FOREACH` de RLS y auditoría de `0005_rls.sql` (líneas 32-48) y `0004_audit_and_jobs.sql` (líneas 263-284); trigger-reja de `0030_personal_y_altas.sql` (`enforce_password_flag_transition`). El runner (`migrate.mjs` + `0018_rls_force_compat.sql`) ya gestiona FORCE en Supabase: la migración pone `ENABLE + FORCE` sin condicionales, como 0032. El test rojo es la primera versión de `tests/030_finance_rls.sql` (bloque estructural); la matriz de filas llega en la Task 4. Nota: el nombre `030_finance_rls.sql` convive con `030_menu_week_templates.sql` — el runner ordena por nombre y ejecuta ambos; el nombre lo fija el doc de interfaces.
 
 **Divergencia registrada con la spec §4 (deliberada):** la matriz negativa de finanzas NO se añade dentro de `tests/020_rls_matrix.sql`, sino que vive en su propio fichero `tests/030_finance_rls.sql`. El motivo: la suite necesita encender y apagar el módulo (conceder, revocar, sembrar) sin perturbar los conteos de la matriz general, y así se puede cablear por nombre a `pnpm test:rls` junto a `020` (Task 4, Step 5). El doc de interfaces ya fija ese nombre.
 
 **Files:**
-- Create: `packages/db/migrations/0034_finance.sql`
+- Create: `packages/db/migrations/0036_finance.sql`
 - Test (create): `packages/db/tests/030_finance_rls.sql`
 
 **Interfaces:**
@@ -267,7 +267,7 @@ BEGIN
   END IF;
 
   -- Árbol de categorías blindado (spec §5), y la migración es append-only: si
-  -- estas dos rejas no entran en 0034, corregirlas cuesta un 0035.
+  -- estas dos rejas no entran en 0036, corregirlas cuesta un 0037.
   IF NOT EXISTS (
     SELECT 1
       FROM pg_catalog.pg_index AS index_row
@@ -346,7 +346,7 @@ pnpm test:db
 
 Salida esperada: `not ok N - tests/030_finance_rls.sql` con `# missing finance table app.finance_module_grants`.
 
-- [ ] **Step 3: Escribir la primera mitad de la migración (concesiones, cerrojo, tablas y semilla).** Crea `packages/db/migrations/0034_finance.sql`:
+- [ ] **Step 3: Escribir la primera mitad de la migración (concesiones, cerrojo, tablas y semilla).** Crea `packages/db/migrations/0036_finance.sql`:
 
 ```sql
 BEGIN;
@@ -748,7 +748,7 @@ COMMIT;
 
 - [ ] **Step 4: Ejecutar y ver el fallo avanzar.** Mismo comando del Step 2. Salida esperada: `not ok N - tests/030_finance_rls.sql` con `# app.finance_module_grants lacks ENABLE ROW LEVEL SECURITY` (las tablas ya existen; faltan RLS, grants y auditoría).
 
-- [ ] **Step 5: Completar la migración (RLS, grants y auditoría).** ANTES del `COMMIT;` final de `0034_finance.sql`, añade:
+- [ ] **Step 5: Completar la migración (RLS, grants y auditoría).** ANTES del `COMMIT;` final de `0036_finance.sql`, añade:
 
 ```sql
 -- ── 5. RLS: doble cerrojo en todo, salvo las concesiones ────────────────────
@@ -852,8 +852,8 @@ Salida esperada: `ok N - tests/030_finance_rls.sql` y TODAS las demás en `ok` �
 - [ ] **Step 7: Commit.**
 
 ```bash
-git add packages/db/migrations/0034_finance.sql packages/db/tests/030_finance_rls.sql
-git commit -m "feat(db): migración 0034 — esquema de finanzas con doble cerrojo RLS"
+git add packages/db/migrations/0036_finance.sql packages/db/tests/030_finance_rls.sql
+git commit -m "feat(db): migración 0036 — esquema de finanzas con doble cerrojo RLS"
 ```
 
 ---
@@ -876,7 +876,7 @@ Los tres runners de fixtures del repo (`packages/db/scripts/run-sql-tests.mjs`, 
 - Modify: `packages/db/package.json` (script `test:rls`)
 
 **Interfaces:**
-- Consumes: esquema 0034; hogares/membresías de `fixtures/001_two_households.sql` (roble `10000000-…-0001`, admin roble `11000000-…-0001`, family `…-0002`, employee `…-0003`, helper `…-0004`, viewer `…-0005`; olivo `20000000-…-0001`, admin olivo `21000000-…-0001`).
+- Consumes: esquema 0036; hogares/membresías de `fixtures/001_two_households.sql` (roble `10000000-…-0001`, admin roble `11000000-…-0001`, family `…-0002`, employee `…-0003`, helper `…-0004`, viewer `…-0005`; olivo `20000000-…-0001`, admin olivo `21000000-…-0001`).
 - Produces: datos sintéticos de finanzas en ambos hogares + concesión viva SOLO para el admin de roble (`f1900000-0000-4000-8000-000000000001`); suite `tests/030_finance_rls.sql` completa —matriz de los seis papeles, rejas del árbol de categorías (raíz duplicada y tercer nivel), concesión a membresía revocada y semilla idempotente de `app.seed_finance_categories()`—, ejecutada por `pnpm test:db` y `pnpm test:rls`.
 
 - [ ] **Step 1: Escribir la matriz que falla.** Añade AL FINAL de `packages/db/tests/030_finance_rls.sql`:
@@ -1346,7 +1346,7 @@ Dos reglas que esta tarea deja escritas para las fases siguientes:
 - Test (create): `packages/server/src/finance-grants.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `financeCommandPayloadSchema` (`@casa-clara/contracts/schemas`), `hasCapability` (`@casa-clara/contracts/capabilities`), `ActiveMembership`/`withAuthorizedTransaction` (`./database.js`), `CommandRejectedError`/`CommandHandler`/`CommandHandlers`/`processSyncBatch` (`./sync.js`), `app.finance_enabled()` y `app.seed_finance_categories()` (0034).
+- Consumes: `financeCommandPayloadSchema` (`@housekeeper/contracts/schemas`), `hasCapability` (`@housekeeper/contracts/capabilities`), `ActiveMembership`/`withAuthorizedTransaction` (`./database.js`), `CommandRejectedError`/`CommandHandler`/`CommandHandlers`/`processSyncBatch` (`./sync.js`), `app.finance_enabled()` y `app.seed_finance_categories()` (0036).
 - Produces: `export async function requireFinanceAdmin(client: PoolClient, membership: ActiveMembership): Promise<void>` (lanza `CommandRejectedError("not_allowed")` sin rol, `CommandRejectedError("finance_not_granted")` sin concesión viva); `export const financeCommandHandlers: CommandHandlers` con la clave `finance`.
 
 - [ ] **Step 1: Escribir el test que falla.** Crea `packages/server/src/finance-grants.integration.test.ts`:
@@ -1361,8 +1361,8 @@ import {
   API_VERSION,
   type CommandAckV1,
   type CommandEnvelopeV1,
-} from "@casa-clara/contracts";
-import { financeCommandPayloadSchema } from "@casa-clara/contracts/schemas";
+} from "@housekeeper/contracts";
+import { financeCommandPayloadSchema } from "@housekeeper/contracts/schemas";
 
 import { financeCommandHandlers, requireFinanceAdmin } from "./commands/finance.js";
 import { withAuthorizedTransaction, type AuthenticatedPrincipal } from "./database.js";
@@ -1546,7 +1546,7 @@ describe("la puerta del agregado finance", () => {
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
-pnpm --filter @casa-clara/server exec vitest run src/finance-grants.integration.test.ts
+pnpm --filter @housekeeper/server exec vitest run src/finance-grants.integration.test.ts
 ```
 
 Salida esperada: `Error: Failed to load … Cannot find module './commands/finance.js'` (o equivalente de resolución).
@@ -1556,9 +1556,9 @@ Salida esperada: `Error: Failed to load … Cannot find module './commands/finan
 ```ts
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
-import { hasCapability } from "@casa-clara/contracts/capabilities";
-import { financeCommandPayloadSchema } from "@casa-clara/contracts/schemas";
+import type { UUID } from "@housekeeper/contracts";
+import { hasCapability } from "@housekeeper/contracts/capabilities";
+import { financeCommandPayloadSchema } from "@housekeeper/contracts/schemas";
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler, type CommandHandlers } from "../sync.js";
@@ -1613,7 +1613,7 @@ async function grantFinance(
     throw new CommandRejectedError("membership_not_found", "La membresía no existe o está revocada");
   }
   if (row.role !== "family_admin") {
-    // El disparador finance_module_grants_target_guard (0034) respalda esta
+    // El disparador finance_module_grants_target_guard (0036) respalda esta
     // regla en la base; aquí se rechaza con un código legible antes de chocar.
     throw new CommandRejectedError(
       "grant_target_not_admin",
@@ -1706,17 +1706,17 @@ export * from "./commands/finance.js";
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
-pnpm --filter @casa-clara/server exec vitest run src/finance-grants.integration.test.ts
-pnpm --filter @casa-clara/server typecheck
+pnpm --filter @housekeeper/server exec vitest run src/finance-grants.integration.test.ts
+pnpm --filter @housekeeper/server typecheck
 ```
 
 Esperado: `Test Files 1 passed`, `Tests 4 passed` (las tres de la base más la que congela los dos kinds del agregado).
 
-- [ ] **Step 5: Registrar el dispatcher en la ruta de sync.** En `apps/web/src/routes/api/v1/sync/+server.ts`: añade `financeCommandHandlers,` a la lista de imports de `'@casa-clara/server'` (orden alfabético, tras `employmentCommandHandlers`) y añade `...financeCommandHandlers,` dentro del objeto `handlers` (tras `...accessCommandHandlers,`). Verifica:
+- [ ] **Step 5: Registrar el dispatcher en la ruta de sync.** En `apps/web/src/routes/api/v1/sync/+server.ts`: añade `financeCommandHandlers,` a la lista de imports de `'@housekeeper/server'` (orden alfabético, tras `employmentCommandHandlers`) y añade `...financeCommandHandlers,` dentro del objeto `handlers` (tras `...accessCommandHandlers,`). Verifica:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web typecheck
+pnpm --filter @housekeeper/web typecheck
 ```
 
 - [ ] **Step 6: Commit.**
@@ -1781,7 +1781,7 @@ En `apps/web/tests/app-title.test.ts`, dentro del `it('toda sección estable tie
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web exec vitest run tests/routing.test.ts tests/app-title.test.ts
+pnpm --filter @housekeeper/web exec vitest run tests/routing.test.ts tests/app-title.test.ts
 ```
 
 Esperado: ambos ficheros en `FAIL` (lista de módulos sin `finanzas`; etiquetas sin definir).
@@ -1850,8 +1850,8 @@ En `apps/web/src/lib/components/NavIcon.svelte`, en el objeto `paths`, tras `emp
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web exec vitest run tests/routing.test.ts tests/app-title.test.ts tests/capabilities.test.ts
-pnpm --filter @casa-clara/web check
+pnpm --filter @housekeeper/web exec vitest run tests/routing.test.ts tests/app-title.test.ts tests/capabilities.test.ts
+pnpm --filter @housekeeper/web check
 ```
 
 Aviso para los gates de navegación de la Task 10 (Step 4): sin base de datos, `financeAccessGranted` devuelve `true` (modo maqueta), así que la entrada «Finanzas» aparece en TODA la suite e2e y a11y de la administración. Si `mobile-nav.e2e.ts` o `mobile-densidad.dbe2e.ts` se quejan, el arreglo vuelve AQUÍ (al orden de esta tarea), nunca a la aserción del test.
@@ -1875,7 +1875,7 @@ git commit -m "feat(web): alta coordinada de Finanzas en routing, títulos, nave
 - Test (create): `apps/web/tests/finance-access.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `withAuthorizedTransaction`, `AuthorizationError`, `createLogger`, `errorCode` (`@casa-clara/server`); `getDatabasePool` (`$lib/server/db.server`); `fixturesAllowed` (`$lib/server/data-source.server`); `app.finance_enabled()`.
+- Consumes: `withAuthorizedTransaction`, `AuthorizationError`, `createLogger`, `errorCode` (`@housekeeper/server`); `getDatabasePool` (`$lib/server/db.server`); `fixturesAllowed` (`$lib/server/data-source.server`); `app.finance_enabled()`.
 - Produces: `export async function financeAccessGranted(user: { id: string }, householdId: string, pool?: Pool | null): Promise<boolean>`.
 
 - [ ] **Step 1: Escribir el test que falla.** Crea `apps/web/tests/finance-access.integration.test.ts`:
@@ -1977,7 +1977,7 @@ describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layou
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
-pnpm --filter @casa-clara/web exec vitest run tests/finance-access.integration.test.ts
+pnpm --filter @housekeeper/web exec vitest run tests/finance-access.integration.test.ts
 ```
 
 Esperado: fallo de resolución `Cannot find module '../src/lib/server/finance-access.server'`.
@@ -1987,7 +1987,7 @@ Esperado: fallo de resolución `Cannot find module '../src/lib/server/finance-ac
 ```ts
 import type { Pool } from 'pg';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { fixturesAllowed } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -2054,7 +2054,7 @@ Ejecuta el comando del Step 2: verde (`Tests 2 passed`).
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web typecheck && pnpm --filter @casa-clara/web check
+pnpm --filter @housekeeper/web typecheck && pnpm --filter @housekeeper/web check
 ```
 
 - [ ] **Step 6: Commit.**
@@ -2106,7 +2106,7 @@ Ejecutar (mismo comando de la Task 7 Step 2); esperado: `Cannot find module '../
 ```ts
 import type { Pool } from 'pg';
 
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -2212,7 +2212,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web check && pnpm lint
+pnpm --filter @housekeeper/web check && pnpm lint
 ```
 
 Esperado: svelte-check sin errores (las 7 rutas compilan) y el linter de tokens CSS sin quejas (no hay CSS nuevo).
@@ -2241,7 +2241,7 @@ La concesión por admin vive en los Ajustes GENERALES (spec §4), junto a la sec
 - Test (modify): `apps/web/tests/finance-access.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `createCommandEnvelope` (`$lib/offline/schema`), `financeCommandPayloadSchema` (`@casa-clara/contracts/schemas`), `OptimisticActions` (`$lib/offline/optimistic`), token de invalidación `cc:settings` (ya declarado en el load de Ajustes).
+- Consumes: `createCommandEnvelope` (`$lib/offline/schema`), `financeCommandPayloadSchema` (`@housekeeper/contracts/schemas`), `OptimisticActions` (`$lib/offline/optimistic`), token de invalidación `cc:settings` (ya declarado en el load de Ajustes).
 - Produces: `grantFinanceAccess(input: { householdId: string; membershipId: string }, options?): CommandEnvelopeV1<FinanceGrantPayload>`; `revokeFinanceAccess(…): CommandEnvelopeV1<FinanceRevokePayload>`; `loadFinanceGrantOverview(user, householdId, pool?): Promise<FinanceGrantOverview | null>` con `FinanceGrantView { membershipId; name; granted; isSelf }`.
 
 - [ ] **Step 1: Test de constructores que falla.** Crea `apps/web/tests/finance-commands.test.ts`:
@@ -2256,7 +2256,7 @@ import {
   financeCommandPayloadSchema,
   financeGrantPayloadSchema,
   financeRevokePayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import { grantFinanceAccess, revokeFinanceAccess } from '../src/lib/finance/commands';
 
@@ -2294,19 +2294,19 @@ Ejecutar y ver fallar (`Cannot find module '../src/lib/finance/commands'`):
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web exec vitest run tests/finance-commands.test.ts
+pnpm --filter @housekeeper/web exec vitest run tests/finance-commands.test.ts
 ```
 
 - [ ] **Step 2: Implementar los constructores.** Crea `apps/web/src/lib/finance/commands.ts`:
 
 ```ts
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 
 /**
  * Constructores puros de los envelopes de concesión de Finanzas (spec §4).
- * Producen los payloads CONGELADOS de @casa-clara/contracts/schemas
+ * Producen los payloads CONGELADOS de @housekeeper/contracts/schemas
  * (financeGrantPayloadSchema / financeRevokePayloadSchema); la validación zod
  * vive en los tests y en el servidor, nunca en el bundle del navegador.
  * Patrón calcado de $lib/access/commands.ts.
@@ -2537,8 +2537,8 @@ Verde: repetir la suite de integración.
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
-pnpm --filter @casa-clara/web exec vitest run tests/finance-commands.test.ts tests/finance-access.integration.test.ts
-pnpm --filter @casa-clara/web check
+pnpm --filter @housekeeper/web exec vitest run tests/finance-commands.test.ts tests/finance-access.integration.test.ts
+pnpm --filter @housekeeper/web check
 ```
 
 - [ ] **Step 8: Commit.**
@@ -2583,8 +2583,8 @@ pnpm test
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm test:db && pnpm test:rls
-pnpm --filter @casa-clara/server test
-pnpm --filter @casa-clara/web test
+pnpm --filter @housekeeper/server test
+pnpm --filter @housekeeper/web test
 ```
 
 - [ ] **Step 4: Navegador — e2e, accesibilidad y e2e con base.** Esta fase toca justo lo que estas tres suites vigilan: la composición de la navegación (AppShell + NavIcon + los dos órdenes), el marcado nuevo dentro de `{#if access}` en Ajustes, siete rutas nuevas, y una fixture (`002_finance.sql`) que ahora cargan TODOS los runners de dbe2e, encendiendo Finanzas a la administración del roble en cada ejecución. La spec §12 exige la rama verde en todos los gates de CI, y estos tres jobs existen en `.github/workflows/ci.yml`.
@@ -2608,7 +2608,7 @@ Un fallo aquí NO se arregla tocando la aserción: si se queja la barra de naveg
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-pnpm --filter @casa-clara/web build && pnpm --filter @casa-clara/web verify:bundle
+pnpm --filter @housekeeper/web build && pnpm --filter @housekeeper/web verify:bundle
 ```
 
 Esperado: la construcción pasa y `verify-today-bundle.mjs` confirma que la matriz de capacidades sigue fuera del grafo inicial de Hoy.

@@ -4,7 +4,7 @@
 
 **Goal:** Todas las escrituras del módulo Finanzas: comandos `finance.*` restantes con acuse veraz, edición en Movimientos, páginas Revisión / Eventos / Importar / Ajustes del módulo y la importación multipart de extractos.
 
-**Architecture:** Los handlers de comandos viven en `packages/server/src/commands/finance.ts` (payloads Zod en `@casa-clara/contracts`, discriminados por `kind`, despachados por el `aggregateType: "finance"` ya registrado en `/api/v1/sync`); la importación es la única escritura REST (multipart, sin estado entre peticiones) y reutiliza los parsers y el pipeline de la fase 2. El cliente encola todo por `queueCommand`/`OptimisticActions` con el token de invalidación `cc:finance`.
+**Architecture:** Los handlers de comandos viven en `packages/server/src/commands/finance.ts` (payloads Zod en `@housekeeper/contracts`, discriminados por `kind`, despachados por el `aggregateType: "finance"` ya registrado en `/api/v1/sync`); la importación es la única escritura REST (multipart, sin estado entre peticiones) y reutiliza los parsers y el pipeline de la fase 2. El cliente encola todo por `queueCommand`/`OptimisticActions` con el token de invalidación `cc:finance`.
 
 **Tech Stack:** SvelteKit + Svelte 5 (runas), Zod 4, pg sobre Postgres 18.4 local con RLS, vitest, Playwright (batería `*.dbe2e.ts`).
 
@@ -21,7 +21,7 @@
 - Toda spec nueva (unit/e2e/a11y/dbe2e/SQL) cableada a un job de `.github/workflows/ci.yml` (lo exige `scripts/ci/assert-suite-coverage.py`).
 - CSS solo con tokens de `apps/web/src/app.css` (vigila `apps/web/scripts/lint-css-tokens.mjs`); pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server` (jamás en cliente).
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo para lecturas y para la importación multipart.
 - TDD: test que falla → implementación mínima → verde → commit. Commits frecuentes.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con confirmación explícita de Alberto.
@@ -29,7 +29,7 @@
 
 **Nota de coexistencia con la fase 1 (aplica a las tareas 1, 2, 6, 7 y 10–13):** la fase 1 dejó en `packages/contracts` el valor `"finance"` en el enum de `aggregateType`; en `packages/server/src/commands/finance.ts` el helper `requireFinanceAdmin` y el manejo de `finance.grant.write`/`finance.revoke.write` (con su registro en sync); y en `apps/web` los ficheros `src/lib/finance/commands.ts` (`grantFinanceAccess`/`revokeFinanceAccess`) y `tests/finance-commands.test.ts`. **Ninguna lógica de la fase 1 se borra ni se reescribe**: la Task 2 solo MUEVE el cuerpo de grant/revoke a una función con nombre para poder anteponerle el dispatcher, y las tareas 7 y 10–13 AÑADEN al final de ficheros que ya existen. Donde un paso diga «si ya existe X», compruébalo con el `grep` indicado y aplica solo la rama que corresponda.
 
-**Nota de fronteras (fases 4 y 6):** los símbolos del dominio de finanzas se importan SIEMPRE por el subpath `@casa-clara/domain/finance` (la raíz no los reexporta); la SQL de lectura vive en `packages/server/src/finance/queries.ts` o en `apps/web/src/lib/server/finance.server.ts`, nunca dentro de un `+page.server.ts`; y los ficheros compartidos que esta fase MODIFICA en vez de crear son `apps/web/src/lib/finance/commands.ts`, `apps/web/tests/finance-commands.test.ts`, `packages/server/src/finance/queries.ts`, `apps/web/src/lib/server/finance.server.ts`, `apps/web/src/lib/server/fixtures.server.ts` y `apps/web/src/lib/components/finance/LedgerTable.svelte`. Esta fase SÍ crea `apps/web/e2e/finanzas-importar.dbe2e.ts` (la fase 7 solo le añade casos).
+**Nota de fronteras (fases 4 y 6):** los símbolos del dominio de finanzas se importan SIEMPRE por el subpath `@housekeeper/domain/finance` (la raíz no los reexporta); la SQL de lectura vive en `packages/server/src/finance/queries.ts` o en `apps/web/src/lib/server/finance.server.ts`, nunca dentro de un `+page.server.ts`; y los ficheros compartidos que esta fase MODIFICA en vez de crear son `apps/web/src/lib/finance/commands.ts`, `apps/web/tests/finance-commands.test.ts`, `packages/server/src/finance/queries.ts`, `apps/web/src/lib/server/finance.server.ts`, `apps/web/src/lib/server/fixtures.server.ts` y `apps/web/src/lib/components/finance/LedgerTable.svelte`. Esta fase SÍ crea `apps/web/e2e/finanzas-importar.dbe2e.ts` (la fase 7 solo le añade casos).
 
 **Nota de CI:** ningún fichero de esta fase necesita tocar `.github/workflows/ci.yml`: los tests nuevos caen dentro de globs ya cableados (`packages/contracts` y `apps/web` corren con `pnpm -r test`; `packages/server::src/*.test.ts`, `apps/web::tests/*.test.ts` y `apps/web/e2e::*.dbe2e.ts` están inventariados por `assert-suite-coverage.py`).
 
@@ -45,9 +45,9 @@
 **Interfaces:**
 - Consumes: `uuidSchema`, `isoDateSchema`, `moneyCentsSchema` (ya en `schemas.ts`); tipo `UUID`, `MoneyCents`, `ISODate` (ya en `index.ts`); los nombres de `kind` EXACTOS del doc de interfaces.
 - Produces (los consumen las tareas 2–13):
-  - `financeWritePayloadSchema` — `z.discriminatedUnion("kind", […22 esquemas])`, exportado de `@casa-clara/contracts/schemas`.
+  - `financeWritePayloadSchema` — `z.discriminatedUnion("kind", […22 esquemas])`, exportado de `@housekeeper/contracts/schemas`.
   - Un esquema exportado por comando: `financeAccountUpdatePayloadSchema`, `financeCategoryCreatePayloadSchema`, `financeCategoryUpdatePayloadSchema`, `financeCategoryDeletePayloadSchema`, `financeCategoryAssignConceptPayloadSchema`, `financeRuleCreatePayloadSchema`, `financeRuleDeletePayloadSchema`, `financeTransactionUpdatePayloadSchema`, `financeTransactionsBulkPayloadSchema`, `financeAssignConceptRecurrencePayloadSchema`, `financeManualCreatePayloadSchema`, `financeManualDeletePayloadSchema`, `financeTransactionInvestPayloadSchema`, `financeTransfersLinkPayloadSchema`, `financeTransfersUnlinkPayloadSchema`, `financeEventCreatePayloadSchema`, `financeEventUpdatePayloadSchema`, `financeEventDeletePayloadSchema`, `financeEventAssignTransactionsPayloadSchema`, `financeEventAssignConceptPayloadSchema`, `financeAliasUpdatePayloadSchema`, `financeImportUndoPayloadSchema`.
-  - Tipos TS: `FinanceWritePayloadV1` (unión) y una interfaz por payload (mismo nombre con sufijo `PayloadV1`), exportados de `@casa-clara/contracts`.
+  - Tipos TS: `FinanceWritePayloadV1` (unión) y una interfaz por payload (mismo nombre con sufijo `PayloadV1`), exportados de `@housekeeper/contracts`.
 - Nombres de campo CANÓNICOS (esta tarea es la productora del contrato; la fase 6 los replica tal cual, resoluciones 5 del doc de interfaces):
   - `finance.transactions.bulk` → `{ kind, transactionIds, categoryId?, status? }`. Nunca `txIds`; `status` es opcional (se puede cambiar solo la categoría en bloque) y NO existen `addEventId` ni `recurrence` aquí.
   - `finance.transaction.invest` → `{ kind, transactionId, accountId }`. Nunca `txId`.
@@ -156,7 +156,7 @@ describe("payloads de escritura de finanzas", () => {
 - [ ] **Step 3: Ejecuta y ve el fallo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/contracts test finance-commands
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/contracts test finance-commands
 ```
 
 Expected: FAIL — error de resolución: `financeTransactionUpdatePayloadSchema` (etc.) no está exportado de `./schemas.js`.
@@ -481,7 +481,7 @@ export type FinanceWritePayloadV1 =
 - [ ] **Step 6: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/contracts test finance-commands && pnpm --filter @casa-clara/contracts typecheck
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/contracts test finance-commands && pnpm --filter @housekeeper/contracts typecheck
 ```
 
 Expected: PASS (6 tests) y typecheck sin errores.
@@ -519,7 +519,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { API_VERSION, type CommandAckV1, type CommandEnvelopeV1 } from "@casa-clara/contracts";
+import { API_VERSION, type CommandAckV1, type CommandEnvelopeV1 } from "@housekeeper/contracts";
 
 import { financeCommandHandler } from "./commands/finance.js";
 import { withAuthorizedTransaction, type AuthenticatedPrincipal } from "./database.js";
@@ -729,7 +729,7 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
 - [ ] **Step 2: Ejecuta y ve el fallo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-review
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-review
 ```
 
 Expected: FAIL — o bien `financeCommandHandler` no exportado, o bien los ack llegan `rejected` con `invalid_payload` porque el kind no está manejado.
@@ -782,13 +782,13 @@ import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
 
-import type { CommandEnvelopeV1, UUID } from "@casa-clara/contracts";
-import { financeWritePayloadSchema } from "@casa-clara/contracts/schemas";
+import type { CommandEnvelopeV1, UUID } from "@housekeeper/contracts";
+import { financeWritePayloadSchema } from "@housekeeper/contracts/schemas";
 import type {
   FinanceAssignConceptRecurrencePayloadV1,
   FinanceTransactionUpdatePayloadV1,
   FinanceTransactionsBulkPayloadV1,
-} from "@casa-clara/contracts";
+} from "@housekeeper/contracts";
 
 import type { ActiveMembership } from "../database.js";
 import { runPostImportPipeline } from "../finance/pipeline.js";
@@ -1081,7 +1081,7 @@ Expected: una línea en cada uno. Si alguno viniera vacío (la fase 1 no lo dej�
 - [ ] **Step 5: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-review && pnpm --filter @casa-clara/server typecheck
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-review && pnpm --filter @housekeeper/server typecheck
 ```
 
 Expected: PASS (7 tests).
@@ -1102,7 +1102,7 @@ git commit -m "feat(finanzas): dispatcher de comandos y escritura de revisión c
 - Test: `packages/server/src/finance-ledger.integration.test.ts`
 
 **Interfaces:**
-- Consumes (Task 2, mismo fichero): `requireFinanceTransaction`, `requireFinanceCategory`, `transferCategoryId`, `financeNormText`, el `switch` de `financeCommandHandler`; `runPostImportPipeline` (fase 2); `cashCounterlegFor(expense: FinanceTxView, opts: { cashAccountId: string; efectivoCategoryId: string }): CashCounterleg | null` de `@casa-clara/domain/finance` (fase 2; el subpath es obligatorio — la raíz `@casa-clara/domain` no reexporta finanzas); tipos `FinanceManualCreatePayloadV1`, `FinanceManualDeletePayloadV1`, `FinanceTransactionInvestPayloadV1`, `FinanceTransfersLinkPayloadV1`, `FinanceTransfersUnlinkPayloadV1` (Task 1).
+- Consumes (Task 2, mismo fichero): `requireFinanceTransaction`, `requireFinanceCategory`, `transferCategoryId`, `financeNormText`, el `switch` de `financeCommandHandler`; `runPostImportPipeline` (fase 2); `cashCounterlegFor(expense: FinanceTxView, opts: { cashAccountId: string; efectivoCategoryId: string }): CashCounterleg | null` de `@housekeeper/domain/finance` (fase 2; el subpath es obligatorio — la raíz `@housekeeper/domain` no reexporta finanzas); tipos `FinanceManualCreatePayloadV1`, `FinanceManualDeletePayloadV1`, `FinanceTransactionInvestPayloadV1`, `FinanceTransfersLinkPayloadV1`, `FinanceTransfersUnlinkPayloadV1` (Task 1).
 - Produces: los `case` `finance.transaction.manual.create`, `finance.transaction.manual.delete`, `finance.transaction.invest`, `finance.transfers.link`, `finance.transfers.unlink` dentro del dispatcher, más los helpers `cashAccountId` y `cashCategoryId` del mismo fichero. Deviación deliberada respecto al origen (documentada en el propio código): el manual exige `accountId` (la UI preselecciona «Efectivo» si existe) y NO existe el lote «manual» — un movimiento manual es `batch_id IS NULL` + prefijo `manual-`.
 - **Único productor de la contrapartida de efectivo:** este comando. La fase 2 expone `cashCounterlegFor` declarándola «la consume `finance.transaction.manual.create` de fase 5», y el paso «efectivo» de `runPostImportPipeline` solo recategoriza retiradas de cajero: no inserta ninguna fila `cashpair-`. Por eso `createManualTransaction` la llama explícitamente; sin esto, la doble entrada del efectivo no existiría y el código `finance_cashpair_leg` sería inalcanzable.
 
@@ -1293,17 +1293,17 @@ Casos (`it(...)`, en este orden):
 - [ ] **Step 2: Ejecuta y ve el fallo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-ledger
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-ledger
 ```
 
 Expected: FAIL — ack `rejected` con `invalid_payload` («Comando de finanzas aún no implementado»).
 
 - [ ] **Step 3: Implementación — funciones y `case` en `commands/finance.ts`**
 
-Añade arriba, junto a los imports que dejó la Task 2 (subpath obligatorio: la raíz `@casa-clara/domain` no reexporta finanzas):
+Añade arriba, junto a los imports que dejó la Task 2 (subpath obligatorio: la raíz `@housekeeper/domain` no reexporta finanzas):
 
 ```ts
-import { cashCounterlegFor } from "@casa-clara/domain/finance";
+import { cashCounterlegFor } from "@housekeeper/domain/finance";
 ```
 
 Y el resto al final del fichero:
@@ -1325,7 +1325,7 @@ async function requireFinanceAccount(
 
 /**
  * Cuenta «Efectivo» del hogar. Se identifica por el nombre normalizado y por
- * `bank IS NULL`, NUNCA por `bank = 'efectivo'`: el CHECK de 0034 solo admite
+ * `bank IS NULL`, NUNCA por `bank = 'efectivo'`: el CHECK de 0036 solo admite
  * los cuatro bancos reales y deja NULL para las cuentas sin banco.
  */
 async function cashAccountId(client: PoolClient, householdId: UUID): Promise<UUID | null> {
@@ -1623,12 +1623,12 @@ Y en el `switch` del dispatcher, antes del `default`:
       return unlinkTransfers(client, envelope.householdId, payload);
 ```
 
-(añade los imports de tipos de estos payloads al import de `@casa-clara/contracts`).
+(añade los imports de tipos de estos payloads al import de `@housekeeper/contracts`).
 
 - [ ] **Step 4: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-ledger && pnpm --filter @casa-clara/server typecheck
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-ledger && pnpm --filter @housekeeper/server typecheck
 ```
 
 Expected: PASS (6 tests).
@@ -1747,7 +1747,7 @@ con el helper:
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-events
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-events
 ```
 
 Expected: FAIL — ack `rejected`/`invalid_payload` en los kinds de eventos.
@@ -1976,12 +1976,12 @@ async function updateProviderAlias(
       return updateProviderAlias(client, envelope.householdId, payload);
 ```
 
-(añade los imports de tipos correspondientes). Nota: si la migración 0034 no llamó `event_id` a la columna de `finance_event_rules`, ajusta el nombre al de `packages/db/migrations/0034_finance.sql` (compruébalo con `grep -n "finance_event_rules" -A 12 packages/db/migrations/0034_finance.sql`).
+(añade los imports de tipos correspondientes). Nota: si la migración 0036 no llamó `event_id` a la columna de `finance_event_rules`, ajusta el nombre al de `packages/db/migrations/0036_finance.sql` (compruébalo con `grep -n "finance_event_rules" -A 12 packages/db/migrations/0036_finance.sql`).
 
 - [ ] **Step 4: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-events && pnpm --filter @casa-clara/server typecheck
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-events && pnpm --filter @housekeeper/server typecheck
 ```
 
 Expected: PASS (6 tests).
@@ -2091,7 +2091,7 @@ git commit -m "feat(finanzas): eventos, reglas de evento y alias de proveedores"
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-settings
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-settings
 ```
 
 Expected: FAIL — `invalid_payload` («aún no implementado») en los kinds de ajustes.
@@ -2291,7 +2291,7 @@ Tras esto el `default` del switch queda inalcanzable para kinds válidos: déjal
 - [ ] **Step 4: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-settings && pnpm --filter @casa-clara/server typecheck && pnpm --filter @casa-clara/server test finance
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/server test finance-settings && pnpm --filter @housekeeper/server typecheck && pnpm --filter @housekeeper/server test finance
 ```
 
 Expected: PASS — la última orden ejecuta las cuatro suites `finance-*` juntas y todas quedan verdes.
@@ -2314,7 +2314,7 @@ git commit -m "feat(finanzas): comandos de ajustes del módulo y deshacer import
 - Test: `apps/web/tests/finance-imports.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `parseStatement(bytes: Uint8Array, filename: string): ParsedStatement` y `FinanceParserError` (fase 2, exportados de `@casa-clara/server`; si `grep -n "finance/parsers" packages/server/src/index.ts` no muestra el export, añade `export * from "./finance/parsers/index.js";` y `export * from "./finance/dedup-hash.js";` y `export * from "./finance/pipeline.js";`); `computeDedupHash(row): string` (fase 2); `runPostImportPipeline` (fase 2); `requireFinanceAdmin`, `financeNormText`, `withAuthorizedTransaction`, `AuthorizationError`, `CommandRejectedError` de `@casa-clara/server`; tipos `ParsedStatement`/`ParsedRow`/`FinanceBank` del subpath `@casa-clara/domain/finance` (la raíz `@casa-clara/domain` NO reexporta finanzas: resolución 1 del doc de interfaces); `requireFinanceRequest(locals, url): { user, householdId, pool }` de `$lib/server/finance.server` (fase 4), que es la guarda ÚNICA de toda la familia `/api/v1/finance/*`.
+- Consumes: `parseStatement(bytes: Uint8Array, filename: string): ParsedStatement` y `FinanceParserError` (fase 2, exportados de `@housekeeper/server`; si `grep -n "finance/parsers" packages/server/src/index.ts` no muestra el export, añade `export * from "./finance/parsers/index.js";` y `export * from "./finance/dedup-hash.js";` y `export * from "./finance/pipeline.js";`); `computeDedupHash(row): string` (fase 2); `runPostImportPipeline` (fase 2); `requireFinanceAdmin`, `financeNormText`, `withAuthorizedTransaction`, `AuthorizationError`, `CommandRejectedError` de `@housekeeper/server`; tipos `ParsedStatement`/`ParsedRow`/`FinanceBank` del subpath `@housekeeper/domain/finance` (la raíz `@housekeeper/domain` NO reexporta finanzas: resolución 1 del doc de interfaces); `requireFinanceRequest(locals, url): { user, householdId, pool }` de `$lib/server/finance.server` (fase 4), que es la guarda ÚNICA de toda la familia `/api/v1/finance/*`.
 - Produces (los consume la Task 12):
   - `previewImport(user: { id: string }, householdId: string, bytes: Uint8Array, filename: string, pool?: Pool | null): Promise<ImportPreviewResult>` con `ImportPreviewResult = { bank: FinanceBank; newCount: number; dupCount: number; unknownRefs: string[]; sample: Array<{ opDate: string; concept: string; provider: string | null; amountCents: string }> }`.
   - `confirmImport(user: { id: string }, householdId: string, bytes: Uint8Array, filename: string, newAccounts: NewAccountInput[], pool?: Pool | null): Promise<ImportConfirmResult>` con `NewAccountInput = { bankRef: string; name: string; kind: "comun" | "personal" | "inversion"; ownerLabel: string }` e `ImportConfirmResult = { batchId: string | null; newCount: number; dupCount: number }`.
@@ -2333,8 +2333,8 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { API_VERSION, type CommandEnvelopeV1 } from '@casa-clara/contracts';
-import { financeCommandHandler, processSyncBatch, withAuthorizedTransaction } from '@casa-clara/server';
+import { API_VERSION, type CommandEnvelopeV1 } from '@housekeeper/contracts';
+import { financeCommandHandler, processSyncBatch, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { confirmImport, previewImport } from '../src/lib/server/finance-imports.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
@@ -2476,7 +2476,7 @@ describe.runIf(Boolean(adminUrl))('ciclo importar → confirmar → deshacer sob
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/web test finance-imports
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/web test finance-imports
 ```
 
 Expected: FAIL — `finance-imports.server` no existe.
@@ -2486,8 +2486,8 @@ Expected: FAIL — `finance-imports.server` no existe.
 ```ts
 import type { Pool } from 'pg';
 
-// Subpath obligatorio: la raíz `@casa-clara/domain` no reexporta finanzas.
-import type { FinanceBank, ParsedRow } from '@casa-clara/domain/finance';
+// Subpath obligatorio: la raíz `@housekeeper/domain` no reexporta finanzas.
+import type { FinanceBank, ParsedRow } from '@housekeeper/domain/finance';
 import {
   computeDedupHash,
   financeNormText,
@@ -2495,7 +2495,7 @@ import {
   requireFinanceAdmin,
   runPostImportPipeline,
   withAuthorizedTransaction
-} from '@casa-clara/server';
+} from '@housekeeper/server';
 
 import { getDatabasePool } from './db.server';
 
@@ -2700,7 +2700,7 @@ Las dos rutas usan la MISMA guarda que las lecturas GET de la fase 4 (`requireFi
 ```ts
 import { error, json } from '@sveltejs/kit';
 
-import { AuthorizationError, CommandRejectedError, FinanceParserError } from '@casa-clara/server';
+import { AuthorizationError, CommandRejectedError, FinanceParserError } from '@housekeeper/server';
 
 import { previewImport } from '$lib/server/finance-imports.server';
 import { requireFinanceRequest } from '$lib/server/finance.server';
@@ -2741,7 +2741,7 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 import { error, json } from '@sveltejs/kit';
 import { z } from 'zod';
 
-import { AuthorizationError, CommandRejectedError, FinanceParserError } from '@casa-clara/server';
+import { AuthorizationError, CommandRejectedError, FinanceParserError } from '@housekeeper/server';
 
 import { ImportUncoveredAccountsError, confirmImport } from '$lib/server/finance-imports.server';
 import { requireFinanceRequest } from '$lib/server/finance.server';
@@ -2793,7 +2793,7 @@ const confirmPayloadSchema = z.object({
 - [ ] **Step 5: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/web test finance-imports && pnpm --filter @casa-clara/web check
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @housekeeper/web test finance-imports && pnpm --filter @housekeeper/web check
 ```
 
 Expected: PASS (4 tests) y `svelte-check` sin errores.
@@ -2830,7 +2830,7 @@ git commit -m "feat(finanzas): importación multipart sin estado con ciclo proba
 ```ts
 import { describe, expect, it } from 'vitest';
 
-import { commandEnvelopeSchema, financeWritePayloadSchema } from '@casa-clara/contracts/schemas';
+import { commandEnvelopeSchema, financeWritePayloadSchema } from '@housekeeper/contracts/schemas';
 
 import { financeCommand } from '../src/lib/finance/commands';
 import { canLinkSelection } from '../src/lib/finance/link-transfers';
@@ -2880,17 +2880,17 @@ describe('manualAmountCents', () => {
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test finance-commands
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test finance-commands
 ```
 
 Expected: FAIL — módulos `$lib/finance/commands` etc. inexistentes.
 
 - [ ] **Step 3: Implementación**
 
-`apps/web/src/lib/finance/commands.ts` — el fichero ya existe desde la fase 1 con `grantFinanceAccess` y `revokeFinanceAccess`. AÑADE lo siguiente al final (y completa la línea de import de `@casa-clara/contracts` con los tipos que falten): las dos funciones de concesión se quedan tal cual, porque `settings/+page.svelte` las importa de aquí.
+`apps/web/src/lib/finance/commands.ts` — el fichero ya existe desde la fase 1 con `grantFinanceAccess` y `revokeFinanceAccess`. AÑADE lo siguiente al final (y completa la línea de import de `@housekeeper/contracts` con los tipos que falten): las dos funciones de concesión se quedan tal cual, porque `settings/+page.svelte` las importa de aquí.
 
 ```ts
-import type { CommandEnvelopeV1, FinanceWritePayloadV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1, FinanceWritePayloadV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 
@@ -2996,7 +2996,7 @@ En `apps/web/src/lib/offline/error-codes.ts`, añade un bloque al diccionario (t
 - [ ] **Step 4: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test finance-commands && pnpm --filter @casa-clara/web test error-codes
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test finance-commands && pnpm --filter @housekeeper/web test error-codes
 ```
 
 Expected: PASS ambos (el segundo confirma que el diccionario sigue bien formado).
@@ -3090,7 +3090,7 @@ describe('etiquetas accesibles de los componentes de edición', () => {
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test finance-category-options
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test finance-category-options
 ```
 
 Expected: FAIL — módulo `category-options` inexistente y los tres componentes sin fichero.
@@ -3418,7 +3418,7 @@ Svelte 5 con runas, patrón de props de `PageHeader.svelte`:
 - [ ] **Step 5: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test finance-category-options
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test finance-category-options
 ```
 
 Expected: PASS (4 tests: la agrupación y las tres afirmaciones de etiquetas).
@@ -3426,7 +3426,7 @@ Expected: PASS (4 tests: la agrupación y las tres afirmaciones de etiquetas).
 - [ ] **Step 6: Comprobación estática y lint de tokens**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && node apps/web/scripts/lint-css-tokens.mjs
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && node apps/web/scripts/lint-css-tokens.mjs
 ```
 
 Expected: sin errores.
@@ -3481,7 +3481,7 @@ y en el `select` de `readFinanceTransactions`, junto a `tx.bank_category as "ban
 - [ ] **Step 2: Comprueba que sigue compilando**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server typecheck && pnpm --filter @casa-clara/web check
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server typecheck && pnpm --filter @housekeeper/web check
 ```
 
 Expected: sin errores.
@@ -3491,7 +3491,7 @@ Expected: sin errores.
 En el `<script>` de la página (respetando lo que dejó la fase 4, que ya declara `let { data } = $props();` y `const movimientos = $derived(data.movimientos);`), añade:
 
 ```ts
-  import type { FinanceTxDto } from '@casa-clara/server';
+  import type { FinanceTxDto } from '@housekeeper/server';
 
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import ManualForm from '$lib/components/finance/ManualForm.svelte';
@@ -3614,7 +3614,7 @@ En el `<script>` de `LedgerTable.svelte`, sustituye la desestructuración de pro
 
 ```svelte
 <script lang="ts">
-  import type { FinanceTxDto } from '@casa-clara/server';
+  import type { FinanceTxDto } from '@housekeeper/server';
   import { dateLabel, formatCents } from '$lib/finance/format';
   import type { FinanceCategoryOptionSource } from '$lib/finance/category-options';
   import CategorySelect from './CategorySelect.svelte';
@@ -3766,7 +3766,7 @@ con estilo local `.seleccion-bar { display: flex; flex-wrap: wrap; align-items: 
 - [ ] **Step 6: Verde estático**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server typecheck && pnpm --filter @casa-clara/web check && node apps/web/scripts/lint-css-tokens.mjs && pnpm lint
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server typecheck && pnpm --filter @housekeeper/web check && node apps/web/scripts/lint-css-tokens.mjs && pnpm lint
 ```
 
 Expected: sin errores (en particular, el Dashboard de la fase 4 sigue compilando con el `LedgerTable` sin props de edición).
@@ -3793,7 +3793,7 @@ git commit -m "feat(finanzas): edición inline, manuales y transferencias en Mov
 - Create/Modify: `apps/web/src/routes/h/[householdId]/finanzas/revision/+page.server.ts` y `+page.svelte` (sustituyen al esqueleto de fase 1/4)
 
 **Interfaces:**
-- Consumes: `financeCommand` (Task 7), `CategorySelect`/`RecurrenceChip` (Task 8), `OptimisticActions`/`ActionStatus`, `withAuthorizedTransaction`/`createLogger`/`AuthorizationError` de `@casa-clara/server`, `demoOrUnavailable`/`demoOnly`/`unreadable` de `$lib/server/data-source.server`, `getDatabasePool` de `$lib/server/db.server`, `formatCents(value: string | bigint, options?: { signed?: boolean }): string` de `$lib/finance/format` (fase 4), `useAppContext` de `$lib/auth/context`; kinds `finance.transaction.update`, `finance.transactions.bulk`.
+- Consumes: `financeCommand` (Task 7), `CategorySelect`/`RecurrenceChip` (Task 8), `OptimisticActions`/`ActionStatus`, `withAuthorizedTransaction`/`createLogger`/`AuthorizationError` de `@housekeeper/server`, `demoOrUnavailable`/`demoOnly`/`unreadable` de `$lib/server/data-source.server`, `getDatabasePool` de `$lib/server/db.server`, `formatCents(value: string | bigint, options?: { signed?: boolean }): string` de `$lib/finance/format` (fase 4), `useAppContext` de `$lib/auth/context`; kinds `finance.transaction.update`, `finance.transactions.bulk`.
 - Produces: `data.pendingReviewCount: number` en el layout de finanzas (badge `.revision-badge`); `loadFinanceRevision`/`FinanceRevisionData` en `$lib/server/finance.server`; `getFinanceRevisionFixture` en `$lib/server/fixtures.server`; página Revisión completa.
 
 **Dónde va cada cosa (patrón de la casa, el mismo de la fase 4):** la SQL de lectura vive en `$lib/server/finance.server.ts` (o en `packages/server/src/finance/queries.ts` si además la comparte un endpoint REST); las maquetas viven en `fixtures.server.ts` envueltas en `demoOnly`, que es el guardián que impide inventarse una casa cuando hay base de datos; y el `+page.server.ts` se queda en tres líneas. Nada de SQL ni de datos demo dentro de una ruta. Ojo también con el idioma: `unreadable(...)` DEVUELVE `null` o lanza 503 — se escribe `return unreadable(log, scope, cause);`, nunca `unreadable(...); return { x: null };`.
@@ -3882,7 +3882,7 @@ test('el admin con concesión confirma un pendiente desde Revisión', async ({ p
 - [ ] **Step 3: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-revision.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @housekeeper/web test:e2e:db finanzas-revision.dbe2e.ts
 ```
 
 `E2E_DATABASE_URL` se exporta SIEMPRE de forma explícita: el valor por omisión del `package.json` apunta al puerto 54329, que en esta máquina ocupa otra aplicación.
@@ -3894,7 +3894,7 @@ Expected: FAIL — la página esqueleto no tiene tabla ni badge.
 `+layout.server.ts` del módulo (si la fase 4 ya lo creó, AÑADE `pendingReviewCount` a su retorno con esta misma consulta):
 
 ```ts
-import { createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { getDatabasePool } from '$lib/server/db.server';
 import type { LayoutServerLoad } from './$types';
@@ -4242,7 +4242,7 @@ export const load: PageServerLoad = async ({ depends, locals, params, url }) => 
 - [ ] **Step 6: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-revision.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @housekeeper/web test:e2e:db finanzas-revision.dbe2e.ts
 ```
 
 Expected: check sin errores y el dbe2e PASS.
@@ -4539,7 +4539,7 @@ export const load: PageServerLoad = async ({ depends, locals, params, url }) => 
 - [ ] **Step 3: Verde estático**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && node apps/web/scripts/lint-css-tokens.mjs
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && node apps/web/scripts/lint-css-tokens.mjs
 ```
 
 Expected: sin errores.
@@ -4613,7 +4613,7 @@ test('importar: previsualizar, dar de alta la cuenta, confirmar y deshacer', asy
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-importar.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @housekeeper/web test:e2e:db finanzas-importar.dbe2e.ts
 ```
 
 Expected: FAIL — la página esqueleto no tiene `input[type="file"]`.
@@ -4897,7 +4897,7 @@ export const load: PageServerLoad = async ({ depends, locals, params }) => {
 - [ ] **Step 5: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-importar.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @housekeeper/web test:e2e:db finanzas-importar.dbe2e.ts
 ```
 
 Expected: check sin errores y el dbe2e PASS.
@@ -5249,13 +5249,13 @@ export const load: PageServerLoad = async ({ depends, locals, params }) => {
 - [ ] **Step 3: Verde estático y gates de cierre de fase**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && node apps/web/scripts/lint-css-tokens.mjs && node apps/web/scripts/verify-today-bundle.mjs
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && node apps/web/scripts/lint-css-tokens.mjs && node apps/web/scripts/verify-today-bundle.mjs
 ```
 
 Expected: sin errores (finanzas no toca el grafo inicial de Hoy). Después, los gates completos de la rama:
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm check && pnpm test && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:db && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:rls && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm check && pnpm test && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:db && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:rls && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @housekeeper/web test:e2e:db
 ```
 
 Expected: todo verde.

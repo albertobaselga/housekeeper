@@ -57,7 +57,7 @@ async function grantFinance(
     throw new CommandRejectedError("membership_not_found", "La membresía no existe o está revocada");
   }
   if (row.role !== "family_admin") {
-    // El disparador finance_module_grants_target_guard (0034) respalda esta
+    // El disparador finance_module_grants_target_guard (0036) respalda esta
     // regla en la base; aquí se rechaza con un código legible antes de chocar.
     throw new CommandRejectedError(
       "grant_target_not_admin",

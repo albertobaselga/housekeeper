@@ -21,7 +21,7 @@
 - Toda spec nueva (unit/e2e/a11y/dbe2e/SQL) cableada a un job de `.github/workflows/ci.yml` (lo exige `scripts/ci/assert-suite-coverage.py`).
 - CSS solo con tokens de `apps/web/src/app.css` (vigila `apps/web/scripts/lint-css-tokens.mjs`); pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server` (jamás en cliente).
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo para lecturas y para la importación multipart.
 - TDD: test que falla → implementación mínima → verde → commit. Commits frecuentes.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con confirmación explícita de Alberto.
@@ -45,15 +45,15 @@
 - Produces:
   - Todos los tipos canónicos (`FinanceBank`, `FinanceAccountKind`, `FinanceCategoryKind`, `FinanceTransactionStatus`, `FinanceRuleType`, `FinanceRecurrence`, `ParsedRow`, `ParsedStatement`, `FinanceTxView`) y los auxiliares (`FinanceAccountView`, `FinanceCategoryView`, `FinanceRuleView`, `FinanceEventRuleView`, `FinanceProviderAliasView`, `TransferProposal`, `InvestmentMirrorProposal`, `CashProposal`, `RecurrenceVerdict`, `EventAssignmentProposal`, `RangeSummary`, `SummaryOptions`).
   - `normText(s: string): string` · `normalizeConcept(concept: string): string` · `dayDiffIso(a: string, b: string): number`.
-  - Subpath `@casa-clara/domain/finance` → `packages/domain/src/finance/index.ts`.
+  - Subpath `@housekeeper/domain/finance` → `packages/domain/src/finance/index.ts`.
 
 Referencia Python: `/home/abf/github/home-finance/backend/app/money.py` (`norm_text`, `normalize_concept`). Imita el estilo de test de `packages/domain/src/money.test.ts` (describe/it en español, `expect` con valores exactos).
 
 Dos extensiones deliberadas sobre el doc de interfaces (añadir campos NO es renombrar; el port fiel los necesita): `FinanceTxView` gana `codeCommon`, `codeOwn` y `categoryKind` (los usan reglas `codigo_norma43`, la señal 03/05 de recurrencia y los filtros por kind de KPIs/transferencias; las fases 4–6 los rellenan desde SQL con un join a `finance_categories`); `ParsedRow` gana `bankCategory` (columna «Categoría» de Amex → columna `bank_category`). El Step 5 de esta tarea deja constancia de ambas en el doc de interfaces, que es la autoridad para lo que cruza fases.
 
-Dos alineamientos con el modelo de datos de la fase 1 (resolución canónica 6 del doc de interfaces): `FinanceAccountView.bank` es `FinanceBank | null` —`NULL` para las cuentas sin banco (Efectivo, inversión, manuales), porque el CHECK de `0034_finance.sql` solo admite los cuatro bancos reales—, de modo que el dominio identifica la cuenta de inversión por `kind === "inversion"` y la de efectivo por un `cashAccountId` explícito, NUNCA por `bank`; y `FinanceEventRuleView.providerNorm` es `string | null`, porque `app.finance_event_rules.provider_norm` es NULLABLE (`CHECK (provider_norm IS NOT NULL OR category_id IS NOT NULL)`) y las reglas por categoría llegan con `null`.
+Dos alineamientos con el modelo de datos de la fase 1 (resolución canónica 6 del doc de interfaces): `FinanceAccountView.bank` es `FinanceBank | null` —`NULL` para las cuentas sin banco (Efectivo, inversión, manuales), porque el CHECK de `0036_finance.sql` solo admite los cuatro bancos reales—, de modo que el dominio identifica la cuenta de inversión por `kind === "inversion"` y la de efectivo por un `cashAccountId` explícito, NUNCA por `bank`; y `FinanceEventRuleView.providerNorm` es `string | null`, porque `app.finance_event_rules.provider_norm` es NULLABLE (`CHECK (provider_norm IS NOT NULL OR category_id IS NOT NULL)`) y las reglas por categoría llegan con `null`.
 
-El subpath es la ÚNICA puerta del dominio de finanzas (resolución canónica 1): `packages/domain/src/index.ts` NO se toca y NO reexporta nada de `./finance/` (presupuesto de bundle); todas las fases importan de `@casa-clara/domain/finance`.
+El subpath es la ÚNICA puerta del dominio de finanzas (resolución canónica 1): `packages/domain/src/index.ts` NO se toca y NO reexporta nada de `./finance/` (presupuesto de bundle); todas las fases importan de `@housekeeper/domain/finance`.
 
 - [ ] **Step 1: Test que falla de `normText`/`normalizeConcept`/`dayDiffIso`.** Escribe `packages/domain/src/finance/text.test.ts`:
 
@@ -90,7 +90,7 @@ describe("dayDiffIso", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/text.test.ts` — salida esperada: `Error: Failed to load ... src/finance/index.js` (el módulo no existe).
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/text.test.ts` — salida esperada: `Error: Failed to load ... src/finance/index.js` (el módulo no existe).
 - [ ] **Step 3: Implementación.** Crea `packages/domain/src/finance/text.ts`:
 
 ```ts
@@ -304,7 +304,7 @@ En `packages/domain/package.json` añade el subpath (mismo patrón que `"./capab
   },
 ```
 
-- [ ] **Step 4: Verde.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/text.test.ts && pnpm --filter @casa-clara/domain typecheck`
+- [ ] **Step 4: Verde.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/text.test.ts && pnpm --filter @housekeeper/domain typecheck`
 - [ ] **Step 5: Deja constancia de las extensiones en el doc de interfaces.** Abre `docs/superpowers/plans/2026-08-31-modulo-finanzas-interfaces.md`, bloque «Tipos canónicos», y comprueba que refleja lo que de verdad cruza fronteras de fase. Si falta algo, añádelo (son AÑADIDOS, nunca renombres; no toques ningún otro bloque del documento):
   - `FinanceTxView`: `codeCommon: string | null`, `codeOwn: string | null`, `categoryKind: FinanceCategoryKind | null`, con la nota «las lecturas SQL de las fases 4–6 deben incluir el `left join app.finance_categories` para poblar `categoryKind`».
   - `ParsedRow`: `bankCategory: string | null` (columna «Categoría» de Amex → `bank_category`).
@@ -368,7 +368,7 @@ describe("dedupKey (cadena canónica de money.py::dedup_hash)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/dedup.test.ts` — falla: `dedupKey` no existe.
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/dedup.test.ts` — falla: `dedupKey` no existe.
 - [ ] **Step 3: Implementación (dominio).** `packages/domain/src/finance/dedup.ts`:
 
 ```ts
@@ -427,13 +427,13 @@ describe("computeDedupHash (sha256 de la cadena canónica)", () => {
 });
 ```
 
-- [ ] **Step 6: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/dedup-hash.test.ts` — falla: módulo inexistente.
+- [ ] **Step 6: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/dedup-hash.test.ts` — falla: módulo inexistente.
 - [ ] **Step 7: Implementación (servidor).** `packages/server/src/finance/dedup-hash.ts`:
 
 ```ts
 import { createHash } from "node:crypto";
 
-import { dedupKey } from "@casa-clara/domain/finance";
+import { dedupKey } from "@housekeeper/domain/finance";
 
 /** sha256 hex de la cadena canónica del dominio (compatible con los hashes migrados). */
 export function computeDedupHash(row: Parameters<typeof dedupKey>[0]): string {
@@ -443,7 +443,7 @@ export function computeDedupHash(row: Parameters<typeof dedupKey>[0]): string {
 
 Añade a `packages/server/src/index.ts`, tras la línea `export * from "./database.js";`: `export * from "./finance/dedup-hash.js";`.
 
-- [ ] **Step 8: Verde.** Repite Step 6 y `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server typecheck`.
+- [ ] **Step 8: Verde.** Repite Step 6 y `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server typecheck`.
 - [ ] **Step 9: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain packages/server && git commit -m "feat(finanzas): clave de dedup canónica y sha256 compatible con el origen"`
 
 ---
@@ -569,7 +569,7 @@ describe("normalizeProvider (entrada genérica canónica)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/provider-norm.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/provider-norm.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/provider-norm.ts`:
 
 ```ts
@@ -758,7 +758,7 @@ describe("matchRule (port de rules_engine.py)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/rules.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/rules.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/rules.ts`:
 
 ```ts
@@ -895,7 +895,7 @@ describe("detectTransferPairs (port de transfers.py::detect_transfers)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/transfers.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/transfers.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/transfers.ts`:
 
 ```ts
@@ -1076,7 +1076,7 @@ describe("reconcileAmex (port de amex.py::reconcile_amex_payments)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/amex.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/amex.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/amex.ts`:
 
 ```ts
@@ -1225,7 +1225,7 @@ describe("detectInvestmentContributions (port de investments.py)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/investments.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/investments.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/investments.ts`:
 
 ```ts
@@ -1365,7 +1365,7 @@ describe("cashCounterlegFor (port de cash.py::create_cash_counterleg)", () => {
 });
 ```
 
-- [ ] **Step 5: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/cash.test.ts`
+- [ ] **Step 5: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/cash.test.ts`
 - [ ] **Step 6: Implementación.** `packages/domain/src/finance/cash.ts`:
 
 ```ts
@@ -1446,7 +1446,7 @@ export function cashCounterlegFor(
 
 Añade `export * from "./cash.js";` al barrel.
 
-- [ ] **Step 7: Verde ambos.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/investments.test.ts src/finance/cash.test.ts`
+- [ ] **Step 7: Verde ambos.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/investments.test.ts src/finance/cash.test.ts`
 - [ ] **Step 8: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): espejos de inversión y doble entrada de efectivo"`
 
 ---
@@ -1539,7 +1539,7 @@ describe("assessRecurrence", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/recurrence.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/recurrence.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/recurrence.ts`:
 
 ```ts
@@ -1710,7 +1710,7 @@ describe("matchEventRules (port de event_rules.py)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/event-rules.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/event-rules.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/event-rules.ts`:
 
 ```ts
@@ -1800,7 +1800,7 @@ Añade `export * from "./event-rules.js";` al barrel.
 
 **Interfaces:**
 - Consumes: `dayDiffIso`; tipos `FinanceTxView`, `FinanceAccountView`, `SummaryOptions`, `RangeSummary`.
-- Produces: canónica `computeRangeSummary(txs: readonly FinanceTxView[], opts: SummaryOptions): RangeSummary` (recibe TODAS las transacciones del hogar: el filtrado de rango/cuentas/eventos es interno, hace falta para el periodo anterior, los cruces y `pendingCount` global); exportada `prevRange(from: string, to: string): { from: string; to: string }` — la ventana del periodo anterior tiene UNA sola implementación: la fase 4 la importa de `@casa-clara/domain/finance` en `queries.ts` y no la reescribe.
+- Produces: canónica `computeRangeSummary(txs: readonly FinanceTxView[], opts: SummaryOptions): RangeSummary` (recibe TODAS las transacciones del hogar: el filtrado de rango/cuentas/eventos es interno, hace falta para el periodo anterior, los cruces y `pendingCount` global); exportada `prevRange(from: string, to: string): { from: string; to: string }` — la ventana del periodo anterior tiene UNA sola implementación: la fase 4 la importa de `@housekeeper/domain/finance` en `queries.ts` y no la reescribe.
 
 Referencia Python: `/home/abf/github/home-finance/backend/app/reports.py` (`_txs`, `_kind_for`, `_totals`, `_by_recurrence`, `_investment_legs`, `_crossing_transfer_legs`, `_prev_range`, `range_summary`). Fidelidad: se excluyen las patas con categoría kind `transferencia`; kind por categoría con fallback por signo; las aportaciones recibidas de fuera del filtro suman a ingresos (y los traspasos salientes NO son gasto); inversión = patas positivas en cuentas kind `inversion`, filtradas por la cuenta del CARGO; tasas sobre el ingreso total (neta = ahorro/ingresos; bruta = (ingresos+gastos recurrentes)/ingresos; inversión = inversión/ingresos; a 1 decimal, null si ingresos 0); FCF = ahorro − inversión, ops = FCF + inversión; `pendingCount` global (sin rango) con estados pendiente/sugerida_regla/sugerida_agente; periodo anterior alineado a meses de calendario si el rango es un bloque exacto de meses, si no por número de días. `prev.prev` es null.
 
@@ -1914,7 +1914,7 @@ describe("computeRangeSummary (port de reports.range_summary)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/kpis.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/kpis.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/kpis.ts`:
 
 ```ts
@@ -2276,7 +2276,7 @@ describe("parseDims", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/pivot.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/pivot.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/pivot.ts` (port de `pivotTree.ts` a bigint; conserva los comentarios de intención del original):
 
 ```ts
@@ -2670,7 +2670,7 @@ export function parseDims(raw: string | null): PivotDimension[] {
 
 Añade `export * from "./pivot.js";` al barrel.
 
-- [ ] **Step 4: Verde + typecheck.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/pivot.test.ts && pnpm --filter @casa-clara/domain typecheck`
+- [ ] **Step 4: Verde + typecheck.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/domain test src/finance/pivot.test.ts && pnpm --filter @housekeeper/domain typecheck`
 - [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): árbol del pivot con secciones y dupev portado a bigint"`
 
 ---
@@ -2683,7 +2683,7 @@ Añade `export * from "./pivot.js";` al barrel.
 - Test: `packages/server/src/finance/parsers/sheetjs-smoke.test.ts`, `packages/server/src/finance/parsers/detect.test.ts`, `packages/server/src/finance/parsers/shared.test.ts`
 
 **Interfaces:**
-- Consumes: tipo `FinanceBank` de `@casa-clara/domain/finance`.
+- Consumes: tipo `FinanceBank` de `@housekeeper/domain/finance`.
 - Produces:
   - Canónica: `detectBank(bytes: Uint8Array, filename: string): FinanceBank | null` (en `parsers/index.ts`).
   - Locales en `shared.ts`: `FinanceParserError` (clase con `row: number`, mensaje `Fila N: …`), `toCents(value: unknown): bigint | null`, `balanceCentsOf(value: unknown, row: number): bigint | null`, `parseDateEs(s: string, row: number): string` (ISO), `buildRaw(headers: readonly unknown[], values: readonly unknown[]): Record<string, string>` y la constante `AMEX_SHEET`.
@@ -2693,7 +2693,7 @@ Añade `export * from "./pivot.js";` al barrel.
 
 Referencia Python: `/home/abf/github/home-finance/backend/app/importer.py::detect_bank` y `/home/abf/github/home-finance/backend/app/parsers/base.py`. Las muestras son SIEMPRE sintéticas y se GENERAN por código (nunca ficheros binarios en git): CaixaBank/Deutsche como `.xls` BIFF8 con `XLSX.write({ bookType: "biff8" })`, Amex como `.xlsx`, OpenBank como plantilla HTML codificada iso-8859-1. Los tests NUNCA hacen skip (sin `describe.runIf`).
 
-- [ ] **Step 1: Dependencia.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server add xlsx@0.18.5` (verifica que SOLO cambia `packages/server/package.json` y el lockfile).
+- [ ] **Step 1: Dependencia.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server add xlsx@0.18.5` (verifica que SOLO cambia `packages/server/package.json` y el lockfile).
 - [ ] **Step 2: Humo de SheetJS ANTES de construir sobre él.** Las Tasks 12–15 dependen de dos supuestos que hay que comprobar ya (xlsx 0.18.5 es CJS de origen y aquí se consume desde un paquete ESM con `module: NodeNext`): que el namespace expone `read`/`write`, y que un `.xls` BIFF8 escrito y releído conserva las cadenas con acentos. Crea `packages/server/src/finance/parsers/sheetjs-smoke.test.ts`:
 
 ```ts
@@ -2720,7 +2720,7 @@ describe("SheetJS en ESM/NodeNext (humo previo a los parsers)", () => {
 });
 ```
 
-  Ejecuta `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/sheetjs-smoke.test.ts`. Si el namespace no expone `read`, cambia a `import XLSX from "xlsx"` (hay `esModuleInterop: true`) en este test y en TODOS los ficheros de las Tasks 12–15 antes de seguir; si el round-trip pierde acentos, para y replantea el formato de las muestras (`xlsx` en vez de `biff8`) antes de escribir un parser.
+  Ejecuta `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/parsers/sheetjs-smoke.test.ts`. Si el namespace no expone `read`, cambia a `import XLSX from "xlsx"` (hay `esModuleInterop: true`) en este test y en TODOS los ficheros de las Tasks 12–15 antes de seguir; si el round-trip pierde acentos, para y replantea el formato de las muestras (`xlsx` en vez de `biff8`) antes de escribir un parser.
 
 - [ ] **Step 3: Test que falla (helpers).** `packages/server/src/finance/parsers/shared.test.ts`:
 
@@ -2779,7 +2779,7 @@ describe("buildRaw (port de base.py::build_raw)", () => {
 });
 ```
 
-- [ ] **Step 4: Verlo fallar y implementar `shared.ts`.** Corre `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/shared.test.ts` (falla) y crea `packages/server/src/finance/parsers/shared.ts`:
+- [ ] **Step 4: Verlo fallar y implementar `shared.ts`.** Corre `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/parsers/shared.test.ts` (falla) y crea `packages/server/src/finance/parsers/shared.ts`:
 
 ```ts
 /** Nombre EXACTO de la hoja que solo trae el export de Amex. Vive aquí (y no en
@@ -2983,12 +2983,12 @@ describe("detectBank (port de importer.detect_bank, siempre por contenido)", () 
 });
 ```
 
-- [ ] **Step 7: Verlo fallar e implementar `parsers/index.ts`.** Corre `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/detect.test.ts` (falla) y crea `packages/server/src/finance/parsers/index.ts`:
+- [ ] **Step 7: Verlo fallar e implementar `parsers/index.ts`.** Corre `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/parsers/detect.test.ts` (falla) y crea `packages/server/src/finance/parsers/index.ts`:
 
 ```ts
 import * as XLSX from "xlsx";
 
-import type { FinanceBank } from "@casa-clara/domain/finance";
+import type { FinanceBank } from "@housekeeper/domain/finance";
 
 import { AMEX_SHEET, FinanceParserError } from "./shared.js";
 
@@ -3050,7 +3050,7 @@ Verifica verde.
 - Test: `packages/server/src/finance/parsers/caixabank.test.ts`
 
 **Interfaces:**
-- Consumes: `toCents`, `parseDateEs`, `buildRaw`, `FinanceParserError` (`./shared.js`); `normalizeBankProvider`, `CARD_PREFIX_RX` (`@casa-clara/domain/finance`); tipo `ParsedRow`; builder `caixabankSampleXls()` (`./synthetic-samples.js`).
+- Consumes: `toCents`, `parseDateEs`, `buildRaw`, `FinanceParserError` (`./shared.js`); `normalizeBankProvider`, `CARD_PREFIX_RX` (`@housekeeper/domain/finance`); tipo `ParsedRow`; builder `caixabankSampleXls()` (`./synthetic-samples.js`).
 - Produces: `parseCaixabank(bytes: Uint8Array): ParsedRow[]`.
 
 Referencia Python: `/home/abf/github/home-finance/backend/app/parsers/caixabank.py`. Fidelidad: la tabla empieza donde la col 1 vale «Número de cuenta» y termina en la primera fila con col 1 en blanco (puede empezar OTRA tabla después); CCC de 20 dígitos por fila (espacios fuera, si no `FinanceParserError`); importe = ingreso (col 6) o −gasto (col 7), error si ambos vacíos; saldo = col 8 o −col 9; códigos en cols 10/11; concepto = cols 12,13 + complementarios 14..23 no vacíos unidos con « | »; provider extraído de los complementarios (regla tarjeta 11/12 con `CARD_PREFIX_RX`, corte en doble espacio) y saneado con `normalizeBankProvider`.
@@ -3101,13 +3101,13 @@ describe("parseCaixabank (muestra sintética, sin skip)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/caixabank.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/parsers/caixabank.test.ts`
 - [ ] **Step 3: Implementación.** `packages/server/src/finance/parsers/caixabank.ts`:
 
 ```ts
 import * as XLSX from "xlsx";
 
-import { CARD_PREFIX_RX, normalizeBankProvider, type ParsedRow } from "@casa-clara/domain/finance";
+import { CARD_PREFIX_RX, normalizeBankProvider, type ParsedRow } from "@housekeeper/domain/finance";
 
 import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
 
@@ -3214,7 +3214,7 @@ export function parseCaixabank(bytes: Uint8Array): ParsedRow[] {
 - Test: `packages/server/src/finance/parsers/deutschebank.test.ts`, `packages/server/src/finance/parsers/openbank.test.ts`
 
 **Interfaces:**
-- Consumes: helpers de `./shared.js`; `normalizeBankProvider` (`@casa-clara/domain/finance`); builders `deutscheSampleXls()`, `openbankSampleHtml()`, `caixabankSampleXls()`.
+- Consumes: helpers de `./shared.js`; `normalizeBankProvider` (`@housekeeper/domain/finance`); builders `deutscheSampleXls()`, `openbankSampleHtml()`, `caixabankSampleXls()`.
 - Produces: `parseDeutsche(bytes: Uint8Array): ParsedRow[]` · `parseOpenbank(bytes: Uint8Array): ParsedRow[]`.
 
 Referencias Python: `parsers/deutschebank.py` (IBAN en la fila «Cuenta:», cabecera con col 1 = `date` y `amount` presente; prefijos `RECIBO\s+`→"", `NOM\.EX-\d+\s+A\s+`→"NOMINA ", `TRANSFERENCIA\s+(A FAVOR DE\s+|DE\s+)?`→"") y `parsers/openbank.py` (HTML iso-8859-1 aplanado a filas de celdas de texto; `<br>`→espacio; celdas separadoras vacías fuera; cuenta en la fila «Número de Cuenta»; filas de datos = ≥5 celdas con fecha dd/mm/yyyy; provider de `TRANSFERENCIA [INMEDIATA] A FAVOR DE|DE …` cortado en «, CONCEPTO», «Openbank» para `LIQUIDACION…`; el saneado por banco NO se aplica en OpenBank, igual que en el origen).
@@ -3291,13 +3291,13 @@ describe("parseOpenbank (HTML iso-8859-1 sintético, sin skip)", () => {
 
 El caso del saldo ilegible existe porque el saldo viaja a la cadena canónica de dedup (un `null` se serializa como `"None"`): convertirlo en silencio produciría un hash distinto del que generó el backend Python y rompería la verificación cruzada de la fase 3.
 
-- [ ] **Step 2: Verlos fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/deutschebank.test.ts src/finance/parsers/openbank.test.ts`
+- [ ] **Step 2: Verlos fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/parsers/deutschebank.test.ts src/finance/parsers/openbank.test.ts`
 - [ ] **Step 3: Implementación Deutsche.** `packages/server/src/finance/parsers/deutschebank.ts`:
 
 ```ts
 import * as XLSX from "xlsx";
 
-import { normalizeBankProvider, type ParsedRow } from "@casa-clara/domain/finance";
+import { normalizeBankProvider, type ParsedRow } from "@housekeeper/domain/finance";
 
 import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
 
@@ -3380,7 +3380,7 @@ export function parseDeutsche(bytes: Uint8Array): ParsedRow[] {
 - [ ] **Step 4: Implementación OpenBank.** `packages/server/src/finance/parsers/openbank.ts`:
 
 ```ts
-import type { ParsedRow } from "@casa-clara/domain/finance";
+import type { ParsedRow } from "@housekeeper/domain/finance";
 
 import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
 
@@ -3533,13 +3533,13 @@ describe("parseStatement (despacho por banco detectado)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlos fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/amex.test.ts src/finance/parsers/statement.test.ts`
+- [ ] **Step 2: Verlos fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/parsers/amex.test.ts src/finance/parsers/statement.test.ts`
 - [ ] **Step 3: Implementación Amex.** `packages/server/src/finance/parsers/amex.ts`:
 
 ```ts
 import * as XLSX from "xlsx";
 
-import type { ParsedRow } from "@casa-clara/domain/finance";
+import type { ParsedRow } from "@housekeeper/domain/finance";
 
 // AMEX_SHEET viene de `shared.js`, nunca de `./index.js`: importarla del barrel
 // crearía un ciclo index ↔ amex (index importa parseAmex de este fichero).
@@ -3622,7 +3622,7 @@ export function parseAmex(bytes: Uint8Array): ParsedRow[] {
 ```ts
 // `FinanceParserError` y `AMEX_SHEET` ya vienen de "./shared.js" en la cabecera
 // del fichero (Task 12): no los importes otra vez.
-import type { ParsedRow, ParsedStatement } from "@casa-clara/domain/finance";
+import type { ParsedRow, ParsedStatement } from "@housekeeper/domain/finance";
 
 import { parseAmex } from "./amex.js";
 import { parseCaixabank } from "./caixabank.js";
@@ -3652,7 +3652,7 @@ export function parseStatement(bytes: Uint8Array, filename: string): ParsedState
 
 (Mueve los `import` junto a los existentes de la cabecera del fichero para cumplir el lint.) En `packages/server/src/index.ts` añade, junto al export de dedup-hash: `export * from "./finance/parsers/index.js";`.
 
-- [ ] **Step 5: Verde + typecheck.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers && pnpm --filter @casa-clara/server typecheck`
+- [ ] **Step 5: Verde + typecheck.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/parsers && pnpm --filter @housekeeper/server typecheck`
 - [ ] **Step 6: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/server && git commit -m "feat(finanzas): parser de amex y despacho parseStatement por contenido"`
 
 ---
@@ -3665,7 +3665,7 @@ export function parseStatement(bytes: Uint8Array, filename: string): ParsedState
 - Test: `packages/server/src/finance/pipeline.test.ts`
 
 **Interfaces:**
-- Consumes (del dominio, `@casa-clara/domain/finance`): `matchRule`, `paypalVendor`, `normText`, `reconcileAmex`, `detectInvestmentContributions`, `detectTransferPairs`, `detectCashMovements`, `assessRecurrence`, `matchEventRules` y los tipos `FinanceTxView`, `FinanceAccountView`, `FinanceCategoryView`, `FinanceRuleView`, `FinanceEventRuleView`, `FinanceProviderAliasView`, `TransferProposal`; `PoolClient` de `pg`; `randomUUID` de `node:crypto`. Columnas SQL según el doc de interfaces §Esquema.
+- Consumes (del dominio, `@housekeeper/domain/finance`): `matchRule`, `paypalVendor`, `normText`, `reconcileAmex`, `detectInvestmentContributions`, `detectTransferPairs`, `detectCashMovements`, `assessRecurrence`, `matchEventRules` y los tipos `FinanceTxView`, `FinanceAccountView`, `FinanceCategoryView`, `FinanceRuleView`, `FinanceEventRuleView`, `FinanceProviderAliasView`, `TransferProposal`; `PoolClient` de `pg`; `randomUUID` de `node:crypto`. Columnas SQL según el doc de interfaces §Esquema.
 - Produces:
   - Canónica: `runPostImportPipeline(client: PoolClient, householdId: string): Promise<PipelineReport>` — orden FIJO: reglas → alias PayPal → Amex → inversiones → transferencias → efectivo → recurrencia → reglas de evento.
   - Locales (testables sin BD; el test dbe2e real llega en fases 5/7): `PIPELINE_ORDER: readonly PipelineStepName[]`, `type PipelineStepName`, `interface PipelineReport { steps: { name: PipelineStepName; affected: number }[] }`, `interface PipelineState { txs: FinanceTxView[]; accounts: FinanceAccountView[]; categories: FinanceCategoryView[]; rules: FinanceRuleView[]; eventRules: FinanceEventRuleView[]; aliases: FinanceProviderAliasView[]; txEvents: { txId: string; eventId: string }[] }`, `interface PipelineChanges { updatedTxs: Map<string, { categoryId: string | null; status: FinanceTxView["status"]; transferGroupId: string | null; recurrence: FinanceTxView["recurrence"] }>; insertedTxs: NewPipelineTx[]; insertedAliases: FinanceProviderAliasView[]; insertedCategories: FinanceCategoryView[]; insertedTxEvents: { txId: string; eventId: string }[] }`, `interface NewPipelineTx { id: string; accountId: string; sourceTxId: string; opDate: string; concept: string; provider: string; providerNorm: string; amountCents: bigint; categoryId: string; status: "confirmada"; transferGroupId: string; dedupHash: string }`, `runPipelineSteps(state: PipelineState, newId: () => string): { report: PipelineReport; changes: PipelineChanges }`.
@@ -3685,7 +3685,7 @@ import type {
   FinanceBank,
   FinanceCategoryView,
   FinanceTxView,
-} from "@casa-clara/domain/finance";
+} from "@housekeeper/domain/finance";
 
 import {
   PIPELINE_ORDER,
@@ -3854,7 +3854,7 @@ describe("runPostImportPipeline: carga y persistencia SQL (cliente simulado)", (
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/pipeline.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/pipeline.test.ts`
 - [ ] **Step 3: Implementación.** `packages/server/src/finance/pipeline.ts`:
 
 ```ts
@@ -3881,7 +3881,7 @@ import {
   type FinanceTransactionStatus,
   type FinanceTxView,
   type TransferProposal,
-} from "@casa-clara/domain/finance";
+} from "@housekeeper/domain/finance";
 
 /** Orden FIJO del pipeline post-import (api.py:337-345 del origen; spec §6/§13).
  * En el origen estaba duplicado en api.py y cli.py: aquí una sola verdad. */
@@ -4327,6 +4327,6 @@ export async function runPostImportPipeline(
 
 Añade a `packages/server/src/index.ts`: `export * from "./finance/pipeline.js";` (junto a los otros exports de finance).
 
-- [ ] **Step 4: Verde.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/pipeline.test.ts && pnpm --filter @casa-clara/server typecheck`
+- [ ] **Step 4: Verde.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/pipeline.test.ts && pnpm --filter @housekeeper/server typecheck`
 - [ ] **Step 5: Gates completos de la fase.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm test` — todo verde; si algo falla, corrige antes de commitear.
 - [ ] **Step 6: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/server && git commit -m "feat(finanzas): pipeline post-import unificado con orden fijo de ocho pasos"`

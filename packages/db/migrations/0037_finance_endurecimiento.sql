@@ -2,7 +2,7 @@ BEGIN;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Endurecimiento del módulo «Finanzas»: los dos agujeros que la revisión de la
--- 0034 encontró en la base. La 0034 no se edita —ya está aplicada y sellada por
+-- 0036 encontró en la base. La 0036 no se edita —ya está aplicada y sellada por
 -- SHA-256, y el runner aborta si su hash cambia—, así que las correcciones
 -- entran aquí.
 --
@@ -56,7 +56,7 @@ CREATE POLICY audit_events_finance_lock ON app.audit_events
 
 -- ── 2. La reja del árbol mira también hacia abajo y hacia sí misma ───────────
 --
--- La versión de la 0034 comprobaba el padre del padre que se asigna a la fila,
+-- La versión de la 0036 comprobaba el padre del padre que se asigna a la fila,
 -- pero nunca si la fila que se mueve YA TIENE hijas, ni que no se apuntara a sí
 -- misma. Por UPDATE se colaban dos cosas:
 --
@@ -73,7 +73,7 @@ CREATE POLICY audit_events_finance_lock ON app.audit_events
 --
 -- Un ciclo de dos (A → B → A) ya quedaba bloqueado por la comprobación del
 -- abuelo. El trigger no se recrea: sigue siendo el mismo
--- `finance_categories_depth_guard` de la 0034, con el cuerpo reemplazado.
+-- `finance_categories_depth_guard` de la 0036, con el cuerpo reemplazado.
 CREATE OR REPLACE FUNCTION app.enforce_finance_category_depth()
 RETURNS trigger
 LANGUAGE plpgsql

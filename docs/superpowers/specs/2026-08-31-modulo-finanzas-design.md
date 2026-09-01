@@ -98,9 +98,9 @@ hogares roble y olivo; suplantación de contexto falla 42501. Las fixtures
 (`fixtures/001_two_households.sql` o fichero nuevo de finanzas) añaden datos sintéticos de
 finanzas a ambos hogares y concesión solo a un admin de roble.
 
-## 5. Modelo de datos: migración `0034_finance.sql`
+## 5. Modelo de datos: migración `0036_finance.sql`
 
-Un solo fichero `BEGIN;…COMMIT;` append-only, siguiente número libre (0034). Nueve tablas
+Un solo fichero `BEGIN;…COMMIT;` append-only, siguiente número libre (0036). Nueve tablas
 espejo del origen más la de concesiones, todas en el esquema `app`, con `household_id`,
 clave compuesta `(household_id, id)` donde aplica, `ENABLE + FORCE ROW LEVEL SECURITY`,
 `GRANT` explícito a `casa_clara_app`, y trigger de auditoría (`app_private.write_audit_event`):
@@ -286,7 +286,7 @@ Guion `packages/db/scripts/migrar-home-finance.mjs` (en el repo; los datos jamá
 3. **Informe de verificación** (obligatorio, se imprime y se guarda en local): conteos por
    tabla origen=destino; suma de `amount_cents` por cuenta y por mes idénticas; nº de
    grupos de transferencia y suma 0 por grupo; distribución de estados; min/max de fechas.
-4. **Ensayo**: contra el Postgres 18.4 local en Docker (migraciones 0001–0034 + ETL +
+4. **Ensayo**: contra el Postgres 18.4 local en Docker (migraciones 0001–0036 + ETL +
    informe + smoke de la UI con ese hogar).
 5. **Producción**: `pnpm db:migrate` en Supabase → ETL → informe → activar concesión a la
    cuenta de Alberto → comprobación visual de las 7 pantallas contra los números del
@@ -332,7 +332,7 @@ Guion `packages/db/scripts/migrar-home-finance.mjs` (en el repo; los datos jamá
 
 ## 12. Fases de implementación
 
-1. **Cimientos** — contracts (capacidad + tipos de comando), migración `0034`, RLS +
+1. **Cimientos** — contracts (capacidad + tipos de comando), migración `0036`, RLS +
    fixtures + matriz negativa, `requireFinanceAdmin`, routing + nav + página esqueleto,
    tarjeta de concesiones en Ajustes.
 2. **Dominio y parsers** — `domain/finance` completo con tests; parsers + pipeline en
@@ -355,7 +355,7 @@ subagentes según el plan de implementación (documento aparte, skill writing-pl
 | Riesgo | Mitigación |
 |---|---|
 | Única copia de la BD origen en esta máquina | Copia de seguridad datada ANTES de cualquier otra cosa (fase 3, paso 1). |
-| Producción viva con familia real | Ensayo completo en Postgres local; migración `0034` probada contra base con datos; ETL con `--dry-run` e informe obligatorio. |
+| Producción viva con familia real | Ensayo completo en Postgres local; migración `0036` probada contra base con datos; ETL con `--dry-run` e informe obligatorio. |
 | Fuga de acceso a datos financieros | Doble cerrojo en RLS + matriz negativa con casos explícitos + revisión de seguridad en fase 7. |
 | Parsers TS divergen del comportamiento Python | Muestras sintéticas por banco con resultados esperados extraídos del comportamiento real del origen; verificación cruzada durante el ETL (los datos migrados YA pasaron por los parsers Python: los hashes deben coincidir con los que produce el TS sobre las mismas cadenas). |
 | Pivot complejo (DnD) con regresiones | Portar también sus tests (`pivotTree`, selección, dnd); barra de acciones como camino equivalente verificado por e2e. |

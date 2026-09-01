@@ -22,7 +22,7 @@
 - Toda spec nueva (unit/e2e/a11y/dbe2e/SQL) cableada a un job de `.github/workflows/ci.yml` (lo exige `scripts/ci/assert-suite-coverage.py`).
 - CSS solo con tokens de `apps/web/src/app.css` (vigila `apps/web/scripts/lint-css-tokens.mjs`); pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server` (jamás en cliente).
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo para lecturas y para la importación multipart.
 - TDD: test que falla → implementación mínima → verde → commit. Commits frecuentes.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con confirmación explícita de Alberto.
@@ -51,7 +51,7 @@ Contexto: `critical.a11y.ts` ya cubre login, Hoy, Emergencias y la hoja «Más»
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
   cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
-  pnpm --filter @casa-clara/web exec playwright install chromium
+  pnpm --filter @housekeeper/web exec playwright install chromium
   pnpm test:a11y
   ```
   Salida esperada: `4 passed` (las cuatro pruebas existentes). Si algo falla aquí, arréglalo ANTES de seguir: no es de esta tarea.
@@ -403,7 +403,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
   export TEST_DATABASE_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u'
-  pnpm --filter @casa-clara/server test
+  pnpm --filter @housekeeper/server test
   python3 scripts/ci/assert-suite-coverage.py \
     --label 'suites de vitest del server' \
     --specs 'packages/server::src/**/*.test.ts' \
@@ -433,7 +433,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 **Files:**
 - Modify: `apps/web/scripts/verify-today-bundle.mjs`
 - Modify (solo si el Step 5 lo exige): los `apps/web/src/lib/components/finance/*.svelte` que animen sin bloque `prefers-reduced-motion`
-- Test: `pnpm --filter @casa-clara/web verify:bundle` y `pnpm test:lighthouse`
+- Test: `pnpm --filter @housekeeper/web verify:bundle` y `pnpm test:lighthouse`
 
 **Interfaces:**
 - Consumes: `apps/web/src/lib/finance/filters.ts` (módulo cliente de finanzas, fase 4) y `apps/web/src/lib/components/finance/LedgerTable.svelte` (componente representativo, fase 4) como los dos ids vigilados; la lista `FORBIDDEN_IN_INITIAL_GRAPH` de `verify-today-bundle.mjs`; `infra/quality/lighthouserc.json` (LCP ≤ 2000 ms, TBT ≤ 200 ms, script ≤ 122880 bytes, a11y = 1).
@@ -455,7 +455,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - [ ] **Step 2: Construye y averigua los ids exactos en el mapa de trozos** (la forma del id es la que compara la guarda tras `normalize`). Vigilamos dos módulos representativos: uno de lógica y uno de componente, porque las dos rutas de fuga son distintas:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-  pnpm --filter @casa-clara/web build
+  pnpm --filter @housekeeper/web build
   grep -o '"[^"]*finance/filters[^"]*"' apps/web/.svelte-kit/casa-clara-module-map.json | head -1
   grep -o '"[^"]*components/finance/LedgerTable[^"]*"' apps/web/.svelte-kit/casa-clara-module-map.json | head -1
   ```
@@ -481,7 +481,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   ```
 - [ ] **Step 4: Verde del presupuesto.**
   ```bash
-  pnpm --filter @casa-clara/web verify:bundle
+  pnpm --filter @housekeeper/web verify:bundle
   ```
   Salida esperada: `Today initial graph: N files, M bytes (K de margen sobre 120000); WikiEditor remains route-lazy.` sin excepción. Si la regla nueva dispara, la propia excepción nombra los bytes y el porqué: arregla la fuga (Step 1) y repite.
 - [ ] **Step 5: `prefers-reduced-motion` respetado en todo lo que se mueve** (spec §8: es un presupuesto más, y la auditoría axe de la Task 1 no lo cubre). Lo que se mueve en este módulo son el toast con Deshacer y el fantasma del arrastrar-y-soltar del pivot (fase 6) y las transiciones de las gráficas (fase 4):
@@ -521,7 +521,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - Test: los comandos de verificación del propio documento (cada uno con su salida esperada)
 
 **Interfaces:**
-- Consumes: `app.finance_enabled()` y las políticas RLS de `0034_finance.sql`; `requireFinanceAdmin` de `packages/server/src/commands/finance.ts`; los helpers que lo aplican en la web —`financeRead` de `apps/web/src/lib/server/finance.server.ts` (fase 4) y `previewImport`/`confirmImport` de `apps/web/src/lib/server/finance-imports.server.ts` (fase 5)—; los endpoints `GET/POST /api/v1/finance/*`; suites `pnpm test:db` (tests/010: ninguna tabla sin RLS) y `pnpm test:rls` (020 + `tests/030_finance_rls.sql`).
+- Consumes: `app.finance_enabled()` y las políticas RLS de `0036_finance.sql`; `requireFinanceAdmin` de `packages/server/src/commands/finance.ts`; los helpers que lo aplican en la web —`financeRead` de `apps/web/src/lib/server/finance.server.ts` (fase 4) y `previewImport`/`confirmImport` de `apps/web/src/lib/server/finance-imports.server.ts` (fase 5)—; los endpoints `GET/POST /api/v1/finance/*`; suites `pnpm test:db` (tests/010: ninguna tabla sin RLS) y `pnpm test:rls` (020 + `tests/030_finance_rls.sql`).
 - Produces: la revisión de seguridad de la spec §10, como checklist ejecutada y fechada (patrón de documento: `docs/security/security-baseline.md`, secciones cortas con controles verificables).
 
 - [ ] **Step 1: Ejecuta las cinco comprobaciones y guarda las salidas.** Desde la raíz del worktree, con las variables exportadas (sin `TEST_DATABASE_URL`, `run-sql-tests.mjs` aborta con «TEST_DATABASE_URL or DATABASE_URL is required»):
@@ -722,12 +722,12 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - Test: greps de verificación al final de la tarea
 
 **Interfaces:**
-- Consumes: `docs/despliegue/runbook-despliegue.md` (§2 «Aplicar el esquema», §7 «Humo posterior al despliegue»); migración `0034_finance.sql`; runbook de migración de la fase 3 (`docs/runbooks/migracion-home-finance.md`, interfaces §Resoluciones canónicas 13); `packages/db/scripts/run-sql-tests.mjs`, que ejecuta todos los `packages/db/tests/*.sql`; códigos canónicos de acceso (403 en ruta declarada sin capacidad).
+- Consumes: `docs/despliegue/runbook-despliegue.md` (§2 «Aplicar el esquema», §7 «Humo posterior al despliegue»); migración `0036_finance.sql`; runbook de migración de la fase 3 (`docs/runbooks/migracion-home-finance.md`, interfaces §Resoluciones canónicas 13); `packages/db/scripts/run-sql-tests.mjs`, que ejecuta todos los `packages/db/tests/*.sql`; códigos canónicos de acceso (403 en ruta declarada sin capacidad).
 - Produces: runbook de despliegue actualizado (alcance de la fase: criterios de salida de migraciones y de suites SQL sin números falsos, humo con finanzas, sin variables nuevas, enlace correcto al runbook de la migración).
 
 - [ ] **Step 1: Actualiza el criterio de salida de las migraciones.** En §2, paso 2, sustituye la línea `Criterio de salida: **17/17 migraciones aplicadas**. Repetir el comando debe` por un criterio **sin número fijo** — la numeración de `packages/db/migrations/` tiene huecos (no existen 0019 ni 0024), así que cualquier cifra escrita a mano envejece mal y hace parar un despliegue sano:
   ```markdown
-  Criterio de salida: la última migración aplicada es `0034_finance.sql` y el runner
+  Criterio de salida: la última migración aplicada es `0036_finance.sql` y el runner
   no deja ninguna pendiente (imprime el recuento al terminar; la numeración tiene
   huecos históricos, así que el número total no es el del último fichero).
   Repetir el comando debe
@@ -742,7 +742,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   ```markdown
   5. **Finanzas no añade variables de entorno**: SheetJS vive solo en el servidor y
      los extractos no se persisten, así que no hay bucket ni clave nuevos. Lo único
-     que trae la 0034 es el esquema y su RLS de doble cerrojo. La carga de los datos
+     que trae la 0036 es el esquema y su RLS de doble cerrojo. La carga de los datos
      históricos es una migración única aparte, con su propio runbook:
      [`../runbooks/migracion-home-finance.md`](../runbooks/migracion-home-finance.md) —
      **no se ejecuta sin confirmación explícita del propietario**.
@@ -755,10 +755,10 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   ```
 - [ ] **Step 5: Verifica y commit.** El segundo grep tiene que salir vacío: el nombre canónico del runbook es `migracion-home-finance.md` y un enlace a `migrar-…` quedaría roto para siempre dentro de documentación permanente.
   ```bash
-  grep -n "0034_finance.sql\|migracion-home-finance\|tarjeta Finanzas\|packages/db/tests" docs/despliegue/runbook-despliegue.md
+  grep -n "0036_finance.sql\|migracion-home-finance\|tarjeta Finanzas\|packages/db/tests" docs/despliegue/runbook-despliegue.md
   grep -n "migrar-home-finance\|17/17\|5/5 suites" docs/despliegue/runbook-despliegue.md   # esperado: vacío
   git add docs/despliegue/runbook-despliegue.md
-  git commit -m "docs(despliegue): el runbook cuenta con la 0034 y el humo de finanzas"
+  git commit -m "docs(despliegue): el runbook cuenta con la 0036 y el humo de finanzas"
   ```
 
 ---
@@ -775,7 +775,11 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 
 **Los datos migrados son reales.** Viven en el Docker local y en el informe local, nunca en git, nunca en fixtures, nunca en un test. Cualquier fichero que este ensayo produzca se guarda fuera del árbol de ambos repos.
 
-- [ ] **Step 0 (PUERTA, añadido tras la fase 1): la cadena 0001→0034 aplica con un propietario NOBYPASSRLS.** El ensayo normal corre como `ci_admin`, que es superusuario del contenedor y **puentea la RLS**, así que no reproduce Supabase y puede esconder un fallo que solo aparece en producción. Al implementar la migración 0034, el ejecutor de la fase 1 informó de que `0032_push_subscriptions.sql` podría no aplicarse bajo propietario sin BYPASSRLS: su función `app_private.push_delivery_recorded` es `LANGUAGE sql` con `SET row_security = off` y se planifica ya en el `CREATE`, dentro de la misma transacción que 230 líneas antes puso `FORCE` sobre `push_subscriptions` — donde `0018_rls_force_compat.sql` no puede intervenir → `42501`. Si eso es cierto, la cadena se detiene **antes** de 0034 y la migración de producción fallaría a mitad. Compruébalo AQUÍ, en local:
+- [ ] **Step 0 (PUERTA): la cadena entera aplica con un propietario NOBYPASSRLS.** El ensayo normal corre como `ci_admin`, que es superusuario del contenedor y **puentea la RLS**, así que no reproduce Supabase y puede esconder un fallo que solo aparece en producción.
+
+  **Historia, para que sepas qué buscas.** Al implementar la migración de finanzas, el ejecutor de la fase 1 detectó que `0032_push_subscriptions.sql` no podía aplicarse bajo un propietario sin BYPASSRLS: su función `app_private.push_delivery_recorded` es `LANGUAGE sql` con `SET row_security = off`, y el validador planifica el cuerpo ya en el `CREATE`, dentro de la misma transacción que 240 líneas antes puso `FORCE` sobre `push_subscriptions` — donde `0018_rls_force_compat.sql` no puede intervenir, porque el runner la ejecuta ENTRE ficheros → `42501`. **Alberto ya lo arregló en `main` (`ebe6f78`)**, editando la propia `0032` (legítimo: nunca había podido aplicarse, así que no estaba aplicada en ningún sitio). Y el mismo patrón reapareció en otra migración suya, corregido en `3f7b432` («el FORCE de la 0035 va después de su función, como en la 0032»).
+
+  Esta puerta se queda igualmente, y por dos razones: comprueba que **nuestras** `0036` y `0037` no repiten ese patrón, y verifica de una vez que la cadena **completa** aplica en las condiciones reales de Supabase antes de tocar producción. Compruébalo AQUÍ, en local:
 
   ```bash
   cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
@@ -785,13 +789,14 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   # Propietario sin BYPASSRLS, como en Supabase:
   docker exec casaclara-it-pg psql -U ci_admin -d casaclara_nobypass -c \
     "create role cc_owner login password 'solo-local' nobypassrls createrole; alter database casaclara_nobypass owner to cc_owner;"
-  DATABASE_URL="postgresql://cc_owner:solo-local@127.0.0.1:5439/casaclara_nobypass" pnpm --filter @casa-clara/db bootstrap
+  DATABASE_URL="postgresql://cc_owner:solo-local@127.0.0.1:5439/casaclara_nobypass" pnpm --filter @housekeeper/db bootstrap
   DATABASE_URL="postgresql://cc_owner:solo-local@127.0.0.1:5439/casaclara_nobypass" pnpm db:migrate
   ```
 
-  **Criterio:** la cadena aplica las 34 migraciones y termina sin error.
-  - Si termina en verde: el aviso no se materializa, anótalo en el informe y sigue con el Step 1.
-  - Si muere en `0032` con `42501`: está confirmado. **NO se edita `0032`** (es append-only y ya está aplicada en producción si el módulo de avisos funciona allí). Antes de nada, comprueba el estado REAL de producción —`select name from public.schema_migrations order by name` contra Supabase en solo lectura— porque si `0032` ya consta aplicada allí, el problema no afecta a la migración de producción y basta con dejarlo documentado. Si no consta, escribe una migración `0036_push_delivery_recorded_plpgsql.sql` (el número `0035` ya lo ocupa `0035_finance_endurecimiento.sql`, de la fase 1) que sustituya esa función por una equivalente en `plpgsql` (que no planifica el cuerpo en el `CREATE`), con su prueba, y repite este Step 0 hasta verde. Ninguna tarea de producción (13, 14, 15) puede empezar con este paso en rojo.
+  **Criterio:** la cadena aplica **todas** las migraciones hasta la `0037` y termina sin error.
+  - Si termina en verde: la puerta se cumple. Anótalo en el informe con la lista de migraciones aplicadas y sigue con el Step 1.
+  - Si muere con `42501` en cualquier migración: **para y avisa antes de escribir nada**. El arreglo depende de dónde muera. Si es en una migración **ya aplicada en producción**, no se edita: se corrige con una migración nueva —el siguiente número libre, que hoy sería `0038`— que sustituya la función por una equivalente en `plpgsql` (que no planifica el cuerpo en el `CREATE`). Si es en una de las **nuestras** (`0036` o `0037`), que nunca han salido de local, se corrige en el sitio y se recrean las bases de prueba. Para saber cuál es el caso, comprueba antes el estado REAL de producción: `select name from public.schema_migrations order by name` contra Supabase **en solo lectura**.
+  - **Ninguna tarea de producción (13, 14, 15) puede empezar con este paso en rojo.**
 - [ ] **Step 1: Localiza y lee ENTERO el runbook de la fase 3.**
   ```bash
   cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
@@ -826,7 +831,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   DATABASE_URL="$ENSAYO_URL" pnpm db:migrate
   DATABASE_URL="$ENSAYO_URL" pnpm db:migrate   # idempotencia: la segunda aplica 0
   ```
-  Salida esperada: la primera pasada aplica todas las migraciones pendientes y la última es `0034_finance.sql`; la segunda pasada aplica 0. **No cuentes migraciones a mano**: la numeración de `packages/db/migrations/` tiene huecos (no existen 0019 ni 0024), así que el recuento no coincide con el número del último fichero — el que manda es el que imprime el runner.
+  Salida esperada: la primera pasada aplica todas las migraciones pendientes y la última es `0036_finance.sql`; la segunda pasada aplica 0. **No cuentes migraciones a mano**: la numeración de `packages/db/migrations/` tiene huecos (no existen 0019 ni 0024), así que el recuento no coincide con el número del último fichero — el que manda es el que imprime el runner.
 - [ ] **Step 4: Alta del hogar de ensayo.** El runbook de la fase 3 lo hace por SQL directo contra la base de ensayo (para el humo de la UI con cuentas de verdad, sigue en cambio `docs/despliegue/alta-de-hogar.md`, como dice el propio runbook). El clúster es el compartido, así que el contenedor es `casaclara-it-pg` y el usuario `ci_admin` — **nunca un contenedor `pg-ensayo-finanzas` ni un usuario `ensayo`, que no existen en esta máquina**:
   ```bash
   docker exec -i casaclara-it-pg psql -U ci_admin -d casaclara_ensayo -c \
@@ -854,7 +859,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - [ ] **Step 6: Humo de la UI con ese hogar.** Monta la web contra la base de ensayo (es el paso de smoke del runbook de la fase 3, que remite a `.claude/skills/operar-la-casa/referencia-instalacion.md`) y recórrela con el navegador:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-  DATABASE_URL="$ENSAYO_URL" pnpm --filter @casa-clara/web build
+  DATABASE_URL="$ENSAYO_URL" pnpm --filter @housekeeper/web build
   DATABASE_URL="$ENSAYO_URL" PORT=4173 node apps/web/build   # deja este proceso corriendo
   ```
   En otra terminal, entra en `http://127.0.0.1:4173`, concede Finanzas al admin del ensayo desde Ajustes → tarjeta **Finanzas**, y recorre las 7 pantallas (`finanzas`, `analitica`, `movimientos`, `revision`, `eventos`, `importar`, `ajustes`). Comprueba que Dashboard, Movimientos y Analítica cuadran con los números del informe del Step 5 (ingresos, gastos, ahorro y conteo de movimientos del semestre). Al terminar, para el servidor con Ctrl-C.
@@ -894,7 +899,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   pnpm test:import
   pnpm test:db
   pnpm test:rls
-  pnpm --filter @casa-clara/web build && pnpm --filter @casa-clara/web verify:bundle
+  pnpm --filter @housekeeper/web build && pnpm --filter @housekeeper/web verify:bundle
   pnpm test:e2e
   pnpm test:a11y
   pnpm test:e2e:db
@@ -907,14 +912,14 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 
 ---
 
-### Task 13: PRODUCCIÓN — migración 0034 y ETL real en Supabase — **REQUIERE CONFIRMACIÓN EXPLÍCITA DE ALBERTO ANTES DE EJECUTAR**
+### Task 13: PRODUCCIÓN — migración 0036 y ETL real en Supabase — **REQUIERE CONFIRMACIÓN EXPLÍCITA DE ALBERTO ANTES DE EJECUTAR**
 
 **Files:**
 - Test: el informe de verificación del ETL contra producción (local, fuera del repo); sin cambios de código
 
 **Interfaces:**
 - Consumes: conexión directa 5432 de Supabase con rol propietario (patrón §2 de `docs/despliegue/runbook-despliegue.md`: el runner de migraciones toma un advisory lock de sesión que el pooler no conserva); `pnpm db:migrate`; `packages/db/scripts/migrar-home-finance.mjs` (mismo contrato CLI canónico que en el ensayo: `--sqlite` y `--database-url` obligatorios, `--backup-dir` para el informe); runbook `docs/runbooks/migracion-home-finance.md`; la copia datada del origen del día (`$COPIA`, Paso 0 del runbook).
-- Produces: esquema 0034 vivo en producción y los 1.111 movimientos históricos migrados y verificados (spec §9.5).
+- Produces: esquema 0036 vivo en producción y los 1.111 movimientos históricos migrados y verificados (spec §9.5).
 
 **Cada step de esta tarea requiere la confirmación previa de Alberto para la tarea entera; si algo sale distinto de lo esperado, PARAR y consultar antes de continuar. Ninguna credencial se escribe en ningún fichero del repo.**
 
@@ -940,7 +945,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   DATABASE_URL="$DIRECTA" pnpm db:migrate
   DATABASE_URL="$DIRECTA" pnpm db:migrate   # repetir debe aplicar 0
   ```
-  Criterio de salida: la última aplicada es `0034_finance.sql` y no queda ninguna pendiente; la segunda pasada aplica 0. No cuentes migraciones a mano: la numeración tiene huecos (no existen 0019 ni 0024) y el recuento lo imprime el runner.
+  Criterio de salida: la última aplicada es `0036_finance.sql` y no queda ninguna pendiente; la segunda pasada aplica 0. No cuentes migraciones a mano: la numeración tiene huecos (no existen 0019 ni 0024) y el recuento lo imprime el runner.
 - [ ] **Step 3 (requiere confirmación de Alberto): ETL real, ensayado primero en seco.** Mismo contrato CLI que en el ensayo (`--sqlite` y `--database-url` obligatorios; el guion no lee `DATABASE_URL` del entorno), con la copia del Step 1 como origen:
   ```bash
   node packages/db/scripts/migrar-home-finance.mjs \

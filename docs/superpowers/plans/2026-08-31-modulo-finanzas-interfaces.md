@@ -21,7 +21,7 @@ que no aparece es decisión local de cada fase siguiendo los patrones del repo.
 - CSS solo con tokens de `apps/web/src/app.css` (vigila `apps/web/scripts/lint-css-tokens.mjs`);
   pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server` (jamás en cliente).
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts`
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts`
   (vigila `apps/web/scripts/verify-today-bundle.mjs`).
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo para lecturas
   y para la importación multipart.
@@ -29,10 +29,20 @@ que no aparece es decisión local de cada fase siguiendo los patrones del repo.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para
   db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con
   confirmación explícita de Alberto.
+- **El proyecto se llama Housekeeper** (antes Casa Clara): los paquetes son `@housekeeper/*`.
+  ⚠️ Los **roles de base de datos NO se renombraron** y siguen siendo `casa_clara_app`,
+  `casa_clara_worker` y `casa_clara_app_login` (viven en migraciones ya aplicadas): no los toques.
+- **Numeración de migraciones**: `main` ocupó `0034_close_due_notice.sql` y
+  `0035_settlement_receipt_document.sql`, así que las nuestras son **`0036_finance.sql`** y
+  **`0037_finance_endurecimiento.sql`**. El siguiente número libre es el `0038`.
 - **Clúster de pruebas de esta máquina**: contenedor `casaclara-it-pg` (`postgres:18.4-alpine`)
-  en `127.0.0.1:5439`, usuario `ci_admin`, contraseña `ci-only-password`. Bases ya creadas:
-  `casaclara_ci_integration`, `casaclara_dev`, `casaclara_wt_u`, `casaclara_e2e`,
-  `casaclara_etl`, `casaclara_ensayo`. Arranque: `docker start casaclara-it-pg`.
+  en `127.0.0.1:5439`, usuario `ci_admin`, contraseña `ci-only-password`.
+  ⚠️ **El contenedor y sus bases son efímeros**: algo en esta máquina los ha borrado a mitad de
+  una ejecución al menos una vez. **No des por hecho que existen**: compruébalo al empezar y
+  recréalo si hace falta —
+  `docker run -d --name casaclara-it-pg -e POSTGRES_USER=ci_admin -e POSTGRES_PASSWORD=ci-only-password -e POSTGRES_DB=casaclara_ci_integration -p 5439:5432 postgres:18.4-alpine`—
+  y crea con `createdb` la base desechable que vayas a usar. Nunca uses `casaclara_dev` para las
+  baterías de navegador: su preparación hace `DROP SCHEMA app CASCADE` sobre la base indicada.
   ⚠️ **Prohibido el puerto 54329**, aunque lo documenten el README y los valores por omisión de
   `apps/web/package.json`: en esta máquina lo ocupa la base de datos embebida de **Paperclip**
   (`/home/abf/.paperclip/instances/default/db`), otra aplicación. Migrar o escribir ahí
@@ -51,7 +61,7 @@ que no aparece es decisión local de cada fase siguiendo los patrones del repo.
   `expense.*`/`payment.*` (seguir el patrón existente, mismo fichero/carpeta).
 
 ### packages/db
-- `migrations/0034_finance.sql` (crear): tablas de §5 de la spec + función
+- `migrations/0036_finance.sql` (crear): tablas de §5 de la spec + función
   `app.finance_enabled()` + políticas RLS + grants a `casa_clara_app` + triggers de
   auditoría + índice parcial único de categoría `transferencia` raíz por hogar.
 - `fixtures/002_finance.sql` (crear): datos sintéticos de finanzas para los dos hogares
@@ -282,8 +292,8 @@ La auditoría cruzada de los 7 planes encontró contradicciones entre fases. Est
 decisiones firmes; cada plan se corrigió para cumplirlas. Ante cualquier duda futura, esta
 sección gana.
 
-1. **Imports del dominio**: SIEMPRE por el subpath `@casa-clara/domain/finance`, nunca desde
-   la raíz `@casa-clara/domain` (que no reexporta finanzas, por presupuesto de bundle).
+1. **Imports del dominio**: SIEMPRE por el subpath `@housekeeper/domain/finance`, nunca desde
+   la raíz `@housekeeper/domain` (que no reexporta finanzas, por presupuesto de bundle).
 2. **Lecturas de Analítica y pivot**: las produce la FASE 4 en
    `packages/server/src/finance/queries.ts`, con estas firmas exactas, y la fase 6 solo las consume:
    - `readFinanceAnalytics(client, householdId, filters): Promise<{ rows: AnalyticsRow[] }>`
@@ -345,7 +355,7 @@ sección gana.
 
 | Fase | Consume | Produce |
 |---|---|---|
-| 1 Cimientos | — | Esquema 0034 vivo, capacidad, `requireFinanceAdmin`, routing+nav+páginas esqueleto, tarjeta de concesiones, fixtures, suite RLS 030 |
+| 1 Cimientos | — | Esquema 0036 vivo, capacidad, `requireFinanceAdmin`, routing+nav+páginas esqueleto, tarjeta de concesiones, fixtures, suite RLS 030 |
 | 2 Dominio y parsers | tipos de fase 1 (solo contratos) | `domain/finance` completo, parsers, `computeDedupHash`, pipeline |
 | 3 ETL | esquema (1), `computeDedupHash` + parsers (2, para verificación cruzada) | `migrar-home-finance.mjs` + runbook de ensayo local |
 | 4 UI lectura | 1 (routing/esquema), 2 (kpis/pivot vía `queries.ts`) | FilterBar, Dashboard, Movimientos (lectura), DetailPanel, endpoints GET, gráficas SVG |

@@ -21,7 +21,7 @@
 - Toda spec nueva (unit/e2e/a11y/dbe2e/SQL) cableada a un job de `.github/workflows/ci.yml` (lo exige `scripts/ci/assert-suite-coverage.py`).
 - CSS solo con tokens de `apps/web/src/app.css` (vigila `apps/web/scripts/lint-css-tokens.mjs`); pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server` (jamás en cliente).
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo para lecturas y para la importación multipart.
 - TDD: test que falla → implementación mínima → verde → commit. Commits frecuentes.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con confirmación explícita de Alberto.
@@ -32,7 +32,7 @@
 - Los tests unitarios nuevos van en `apps/web/tests/*.test.ts` y los e2e en `apps/web/e2e/*.e2e.ts`: ambos globs ya están cableados en `.github/workflows/ci.yml` (`--specs 'apps/web::tests/*.test.ts'` y `--specs 'apps/web/e2e::*.e2e.ts'`), así que NO hay que tocar el workflow — `assert-suite-coverage.py` los recogerá solo.
 - Este plan consume artefactos de fases anteriores fijados en el doc de interfaces: `buildPivotTree` y los tipos `PivotDimension`/`PivotSourceRow`/`PivotOptions`/`PivotTree` (fase 2, `packages/domain/src/finance/pivot.ts`), `$lib/finance/{filters,api,format,breakdown,pivot-state}.ts` y los componentes `FinanceFilterBar.svelte`/`FinanceDetailPanel.svelte` (fase 4), los endpoints GET de `/api/v1/finance/*` y las lecturas de `packages/server/src/finance/queries.ts` (fase 4) y los comandos `finance.*` (fase 5). Donde una tarea asuma un detalle NO fijado por el doc de interfaces (nombre de campo de un payload, forma exacta de un tipo del dominio), la tarea lo dice y su PRIMER paso es leer el fichero real y alinear los nombres: **los nombres del repo mandan sobre los asumidos por este plan**.
 - **Resoluciones canónicas que atan a esta fase** (sección «Resoluciones canónicas» del doc de interfaces; mandan sobre cualquier cosa que diga este plan):
-  1. Los símbolos del dominio se importan SIEMPRE por el subpath `@casa-clara/domain/finance`, nunca desde la raíz `@casa-clara/domain`.
+  1. Los símbolos del dominio se importan SIEMPRE por el subpath `@housekeeper/domain/finance`, nunca desde la raíz `@housekeeper/domain`.
   2. `readFinanceAnalytics` y `readFinancePivot` (y los endpoints `/api/v1/finance/analytics` y `/pivot`) los **produce la fase 4**; esta fase solo los consume con las firmas exactas de la Task 8. Si al empezar la Task 8 no existen, la fase 4 no está cerrada: párate y avísalo, no los escribas aquí.
   3. `buildPivotTree(rows, dims, { monthsCount, dupEventIds? })` — el tercer argumento lleva `monthsCount`, nunca `months`.
   4. `apps/web/src/lib/finance/pivot-state.ts` lo **crea la fase 4** con `PIVOT_DIMENSIONS`, `DEFAULT_DIMS`, `parseDims` y `serializeDims(dims): string | null`; esta fase lo MODIFICA conservando esos nombres (nada de `ALL_DIMS`/`dimsToParam`).
@@ -322,7 +322,7 @@ git commit -m "feat(finanzas): datos puros de la gráfica por naturaleza y resum
 
 **Interfaces:**
 - Consumes:
-  - `type PivotDimension = 'cat'|'sub'|'nat'|'prov'|'concept'|'movement'` de `@casa-clara/domain/finance` (canónico, fase 2; resolución canónica nº 1: los símbolos de finanzas SIEMPRE por el subpath, nunca desde la raíz `@casa-clara/domain`).
+  - `type PivotDimension = 'cat'|'sub'|'nat'|'prov'|'concept'|'movement'` de `@housekeeper/domain/finance` (canónico, fase 2; resolución canónica nº 1: los símbolos de finanzas SIEMPRE por el subpath, nunca desde la raíz `@housekeeper/domain`).
   - Del propio `pivot-state.ts` (stub de la fase 4): `PIVOT_DIMENSIONS: readonly PivotDimension[]`, `DEFAULT_DIMS: readonly PivotDimension[]`, `parseDims(param: string | null): PivotDimension[]`, `serializeDims(dims): string | null` (`null` para el orden por defecto ⇒ URL limpia).
 - Produces (todo puro, sin runas, AÑADIDO al fichero existente):
   - `DIM_LABELS: Record<PivotDimension, string>`
@@ -334,7 +334,7 @@ git commit -m "feat(finanzas): datos puros de la gráfica por naturaleza y resum
 Porta la intención de `sortSections` de `/home/abf/github/home-finance/frontend/src/features/analytics/pivotTree.ts` (las claves de URL `dims`, `q`, `dupev` son contrato del doc de interfaces). El árbol lo construye el dominio; aquí solo se reordena, de forma estructural, sin tocar subtotales.
 
 - [ ] **Step 1: alinear con el repo antes de escribir nada.** Abre y anota:
-  1. `packages/domain/package.json` → confirma el subpath `"./finance": "./src/finance/index.ts"`; el import de este plan es `@casa-clara/domain/finance`.
+  1. `packages/domain/package.json` → confirma el subpath `"./finance": "./src/finance/index.ts"`; el import de este plan es `@housekeeper/domain/finance`.
   2. `packages/domain/src/finance/pivot.ts` → anota si el dominio ya exporta una ordenación recursiva (`sortPivotTree`) y su tipo de clave (`SortKey`). Si existe, IMPORTA la del dominio y no escribas `sortTree`/`PivotSortKey` locales: reexpórtalos desde `pivot-state.ts` con esos mismos nombres para que el resto del plan compile sin cambios.
   3. `apps/web/src/lib/finance/pivot-state.ts` (stub de la fase 4) y `apps/web/tests/finance-pivot-state.test.ts` → anota las firmas exactas de `PIVOT_DIMENSIONS`, `DEFAULT_DIMS`, `parseDims` y `serializeDims`. Este plan las USA tal cual; si tocas alguna, el test de la fase 4 se pone rojo y `pnpm test` (Task 16) no cierra.
 
@@ -438,7 +438,7 @@ Salida esperada: errores de export inexistente (`DIM_LABELS`, `moveDim`, `sortTr
 // El fichero lo creó la fase 4 con PIVOT_DIMENSIONS / DEFAULT_DIMS / parseDims /
 // serializeDims (?dims=, contrato del doc de interfaces). Aquí solo se AÑADE.
 // El tipo PivotDimension llega del dominio por su subpath canónico:
-//   import type { PivotDimension } from '@casa-clara/domain/finance';
+//   import type { PivotDimension } from '@housekeeper/domain/finance';
 // (si el stub de la fase 4 ya lo importa, reutiliza ese import: uno solo).
 
 export const DIM_LABELS: Record<PivotDimension, string> = {
@@ -469,8 +469,8 @@ export function addDim(dims: readonly PivotDimension[], dim: PivotDimension): Pi
 // ── Orden de columnas (Acumulado/Promedio/Ticket/mes, recursivo) ─────────────
 // Si el dominio (fase 2) exporta `sortPivotTree`/`SortKey` equivalentes, borra
 // este bloque y reexpórtalos con estos nombres (ver Step 1):
-//   export { sortPivotTree as sortTree } from '@casa-clara/domain/finance';
-//   export type { SortKey as PivotSortKey } from '@casa-clara/domain/finance';
+//   export { sortPivotTree as sortTree } from '@housekeeper/domain/finance';
+//   export type { SortKey as PivotSortKey } from '@housekeeper/domain/finance';
 
 export type PivotSortKey = 'label' | 'total' | 'avg' | 'ticket' | { month: string };
 export type SortDir = 'asc' | 'desc';
@@ -541,7 +541,7 @@ git commit -m "feat(finanzas): etiquetas, reordenación de dims y orden recursiv
 - Test: `apps/web/tests/finance-pivot-selection.test.ts`
 
 **Interfaces:**
-- Consumes: `PivotDimension` de `@casa-clara/domain/finance` (subpath canónico, resolución nº 1); `SortableNodeLike` (tarea 2).
+- Consumes: `PivotDimension` de `@housekeeper/domain/finance` (subpath canónico, resolución nº 1); `SortableNodeLike` (tarea 2).
 - Produces:
   - `interface PivotMovLike { id: string; date: string; cents: bigint }`
   - `interface PivotNodeLike extends SortableNodeLike { key: string; depth: number; count: number; catId: string | null; nat: 'recurrente'|'extraordinario'|null; provider: string | null; concept: string | null; movs: PivotMovLike[]; children: PivotNodeLike[] }`
@@ -1455,8 +1455,8 @@ pnpm vitest run tests/finance-pivot-actions.test.ts
 - [ ] **Step 4: implementación mínima.** Crea `apps/web/src/lib/finance/pivot-actions.ts`:
 
 ```ts
-import type { AggregateType } from '@casa-clara/contracts';
-import type { FinanceTransactionStatus } from '@casa-clara/domain/finance';
+import type { AggregateType } from '@housekeeper/contracts';
+import type { FinanceTransactionStatus } from '@housekeeper/domain/finance';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import { queueCommand, type QueueCommandResult } from '$lib/offline/queue-command';
@@ -1897,7 +1897,7 @@ pnpm vitest run tests/finanzas-analitica-demo.test.ts
 - [ ] **Step 4: tipos + maqueta.** Crea `apps/web/src/lib/finance/analitica-data.ts`:
 
 ```ts
-import type { FinanceAccountKind } from '@casa-clara/domain/finance';
+import type { FinanceAccountKind } from '@housekeeper/domain/finance';
 
 import type { AnalyticsRowLike } from './chart-data';
 import type { FinanceFilters } from './filters';
@@ -2151,7 +2151,7 @@ import type { AnalyticsRowLike } from '$lib/finance/chart-data';
 import {
   readFinanceAccounts, readFinanceAnalytics, readFinanceCategories, readFinanceEventsSummary,
   readFinancePivot, readFinanceSummary
-} from '@casa-clara/server/finance/queries'; // Step 1: usa el subpath real del paquete
+} from '@housekeeper/server/finance/queries'; // Step 1: usa el subpath real del paquete
 
 function toAnaliticaSummary(dto: Awaited<ReturnType<typeof readFinanceSummary>>): AnaliticaSummary {
   if (!dto) throw new Error('summary vacío'); // el llamador ya lo comprueba
@@ -2559,7 +2559,7 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
 - Modify: `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte` (integración + filtro de naturaleza)
 
 **Interfaces:**
-- Consumes: `buildPivotTree` y `INTERNA_DIMS`/`INVERSION_DIMS` de `@casa-clara/domain/finance` (fase 2, subpath canónico); todo `$lib/finance/pivot-state` (incluidos `PIVOT_DIMENSIONS`, `parseDims` y `serializeDims`, del stub de la fase 4); `formatCents` y `categoryPath` (fase 4); `monthLabel`; tipos de `$lib/finance/analitica-data`.
+- Consumes: `buildPivotTree` y `INTERNA_DIMS`/`INVERSION_DIMS` de `@housekeeper/domain/finance` (fase 2, subpath canónico); todo `$lib/finance/pivot-state` (incluidos `PIVOT_DIMENSIONS`, `parseDims` y `serializeDims`, del stub de la fase 4); `formatCents` y `categoryPath` (fase 4); `monthLabel`; tipos de `$lib/finance/analitica-data`.
 - Produces: componente `PivotTable` con props `{ rows, months, categories, events, invAccounts, householdId, onOpenIds }` y testids `pivot-table`, `pivot-banda-*`, `pivot-total-neto`.
 - `invAccounts` y `householdId` no se usan todavía en esta tarea: los consume la Task 12 (barra de acciones y envío de comandos). No los borres cuando `pnpm check` avise de props sin usar; si el aviso rompe el gate, deja el `// eslint-disable-next-line` que use el repo para ese caso y quítalo en la Task 12.
 
@@ -2585,7 +2585,7 @@ grep -n "export \|interface \|monthsCount" packages/domain/src/finance/pivot.ts 
 <script lang="ts">
   import { replaceState } from '$app/navigation';
   import { page } from '$app/state';
-  import { buildPivotTree, INTERNA_DIMS, INVERSION_DIMS, type PivotDimension } from '@casa-clara/domain/finance';
+  import { buildPivotTree, INTERNA_DIMS, INVERSION_DIMS, type PivotDimension } from '@housekeeper/domain/finance';
   import { monthLabel } from '$lib/finance/chart-data';
   import { categoryPath } from '$lib/finance/breakdown';
   import { formatCents } from '$lib/finance/format';

@@ -21,7 +21,7 @@
 - Toda spec nueva (unit/e2e/a11y/dbe2e/SQL) cableada a un job de `.github/workflows/ci.yml` (lo exige `scripts/ci/assert-suite-coverage.py`).
 - CSS solo con tokens de `apps/web/src/app.css` (vigila `apps/web/scripts/lint-css-tokens.mjs`); pesos 400/500/700; terracota solo para «ahora».
 - Única dependencia nueva permitida: `xlsx` (SheetJS), SOLO en `packages/server` (jamás en cliente).
-- La matriz de capacidades NO se reexporta desde la raíz de `@casa-clara/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
+- La matriz de capacidades NO se reexporta desde la raíz de `@housekeeper/contracts` (vigila `apps/web/scripts/verify-today-bundle.mjs`).
 - Escrituras de negocio SOLO como comandos por `POST /api/v1/sync`; REST solo para lecturas y para la importación multipart.
 - TDD: test que falla → implementación mínima → verde → commit. Commits frecuentes.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con confirmación explícita de Alberto.
@@ -29,10 +29,10 @@
 
 **Contexto común a todas las tareas** (repítelo mentalmente en cada una):
 
-- Esta fase corre DESPUÉS de las fases 1 y 2: el esquema `0034_finance.sql`, las fixtures `packages/db/fixtures/002_finance.sql` (datos sintéticos en roble y olivo, concesión viva SOLO para el admin de roble), `requireFinanceAdmin`, el routing/nav y las páginas esqueleto de `/h/[householdId]/finanzas/*` ya existen en el worktree, igual que `packages/domain/src/finance/` completo.
+- Esta fase corre DESPUÉS de las fases 1 y 2: el esquema `0036_finance.sql`, las fixtures `packages/db/fixtures/002_finance.sql` (datos sintéticos en roble y olivo, concesión viva SOLO para el admin de roble), `requireFinanceAdmin`, el routing/nav y las páginas esqueleto de `/h/[householdId]/finanzas/*` ya existen en el worktree, igual que `packages/domain/src/finance/` completo.
 - Patrón de load: `apps/web/src/routes/h/[householdId]/employment/+page.server.ts` (con `demoOrUnavailable` de `$lib/server/data-source.server`). Patrón de lector SQL bajo RLS: `apps/web/src/lib/server/employment.server.ts` (`withAuthorizedTransaction`, camelCase con `as "alias"`, céntimos como string). Patrón de endpoint: `apps/web/src/routes/api/v1/households/[householdId]/vacaciones/vistas/+server.ts`. Patrón de página Svelte 5: `apps/web/src/routes/h/[householdId]/employment/+page.svelte` (runas `$props/$state/$derived/$effect`, snippets, clases de `app.css`: `.page-wrap`, `.card`, `.chip`, `.summary-strip`, `.ledger-list`, `.cifra`).
 - Los importes viajan por JSON SIEMPRE como cadenas de céntimos (`"amountCents": "-4550"`); solo se convierten a `BigInt` para operar y a `Number` únicamente para coordenadas de píxel de las gráficas (nunca para dinero).
-- **Todo símbolo del dominio de finanzas se importa por el subpath `@casa-clara/domain/finance`**, jamás desde la raíz `@casa-clara/domain`: la fase 2 solo publica el subpath (la raíz no reexporta finanzas, por presupuesto de bundle) y un import a la raíz no resuelve y rompe `typecheck`/`build`.
+- **Todo símbolo del dominio de finanzas se importa por el subpath `@housekeeper/domain/finance`**, jamás desde la raíz `@housekeeper/domain`: la fase 2 solo publica el subpath (la raíz no reexporta finanzas, por presupuesto de bundle) y un import a la raíz no resuelve y rompe `typecheck`/`build`.
 - Esta fase es la PRODUCTORA de las lecturas de Analítica y pivot (`readFinanceAnalytics`, `readFinancePivot` en `queries.ts` y los endpoints `analytics`/`pivot`). La fase 6 solo las consume con esos nombres exactos: si aquí no se crean, la pantalla de Analítica se queda sin fuente de datos.
 - Postgres local para integración: el mismo del worktree que usa `test:e2e:db`; exporta `TEST_DATABASE_URL=postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u` (ajústalo si tu instancia difiere). Sin la variable, las suites de integración se saltan (`describe.runIf`), así que ponla siempre.
 
@@ -176,7 +176,7 @@ describe('merge no destructivo (contrato del original state/filters.tsx)', () =>
 });
 ```
 
-- [ ] **Step 2: Ejecútalo y ve que falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-filters.test.ts` — salida esperada: `Error: Failed to load ... Cannot find module '../src/lib/finance/filters'` (o `failed to resolve import`).
+- [ ] **Step 2: Ejecútalo y ve que falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-filters.test.ts` — salida esperada: `Error: Failed to load ... Cannot find module '../src/lib/finance/filters'` (o `failed to resolve import`).
 - [ ] **Step 3: Implementación mínima.** Crea `apps/web/src/lib/finance/filters.ts`. Aritmética de fechas por cadenas (patrón de `$lib/employment/model`: nunca dependas del huso del proceso):
 
 ```ts
@@ -338,7 +338,7 @@ export function todayLocal(now: Date = new Date(), timeZone = 'Europe/Madrid'): 
 }
 ```
 
-- [ ] **Step 4: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-filters.test.ts` — todos los tests pasan.
+- [ ] **Step 4: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-filters.test.ts` — todos los tests pasan.
 - [ ] **Step 5: Commit.** `git add apps/web/src/lib/finance/filters.ts apps/web/tests/finance-filters.test.ts && git commit -m "feat(finanzas): filtros de URL con merge no destructivo y presets de periodo"`
 
 ---
@@ -412,7 +412,7 @@ describe('formato de finanzas', () => {
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-format.test.ts` — `Cannot find module '../src/lib/finance/format'`.
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-format.test.ts` — `Cannot find module '../src/lib/finance/format'`.
 - [ ] **Step 3: Implementación.** `apps/web/src/lib/finance/format.ts`:
 
 ```ts
@@ -468,7 +468,7 @@ export function summarizeTxs(
 
 Después, en `filters.ts`: borra sus `MONTHS_LONG`/`MONTHS_SHORT` locales y añade `import { MONTHS_LONG, MONTHS_SHORT } from './format';` (format no importa filters: sin ciclo).
 
-- [ ] **Step 4: En verde ambos.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-format.test.ts tests/finance-filters.test.ts`
+- [ ] **Step 4: En verde ambos.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-format.test.ts tests/finance-filters.test.ts`
 - [ ] **Step 5: Commit.** `git add apps/web/src/lib/finance/format.ts apps/web/src/lib/finance/filters.ts apps/web/tests/finance-format.test.ts && git commit -m "feat(finanzas): formato es-ES de porcentajes, cubos y deltas sobre céntimos"`
 
 ---
@@ -608,7 +608,7 @@ describe('categoryPath', () => {
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-charts.test.ts` — módulos inexistentes.
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-charts.test.ts` — módulos inexistentes.
 - [ ] **Step 3: Implementa `chart-geometry.ts`.**
 
 ```ts
@@ -817,7 +817,7 @@ export function categoryPath(
 }
 ```
 
-- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-charts.test.ts`
+- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-charts.test.ts`
 - [ ] **Step 6: Commit.** `git add apps/web/src/lib/finance/chart-geometry.ts apps/web/src/lib/finance/breakdown.ts apps/web/tests/finance-charts.test.ts && git commit -m "feat(finanzas): geometría pura de las gráficas SVG y agrupación del desglose"`
 
 ---
@@ -829,7 +829,7 @@ export function categoryPath(
 - Test: `apps/web/tests/finance-pivot-state.test.ts`
 
 **Interfaces:**
-- Consumes: `PivotDimension` del SUBPATH `@casa-clara/domain/finance` (canónico, fase 2: `"cat" | "sub" | "nat" | "prov" | "concept" | "movement"`), solo `import type`. La raíz `@casa-clara/domain` NO reexporta finanzas (presupuesto de bundle): todo símbolo de finanzas se importa siempre por el subpath.
+- Consumes: `PivotDimension` del SUBPATH `@housekeeper/domain/finance` (canónico, fase 2: `"cat" | "sub" | "nat" | "prov" | "concept" | "movement"`), solo `import type`. La raíz `@housekeeper/domain` NO reexporta finanzas (presupuesto de bundle): todo símbolo de finanzas se importa siempre por el subpath.
 - Produces (stub: la fase 6 lo amplía; el contrato de URL — clave `dims`, CSV — queda fijado aquí):
 
 ```ts
@@ -866,7 +866,7 @@ describe('pivot-state (stub, contrato de la clave dims)', () => {
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-pivot-state.test.ts`
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-pivot-state.test.ts`
 - [ ] **Step 3: Implementación.** `apps/web/src/lib/finance/pivot-state.ts`:
 
 ```ts
@@ -876,7 +876,7 @@ describe('pivot-state (stub, contrato de la clave dims)', () => {
  * solo fija el contrato de URL de la clave `dims` (CSV de dimensiones, del
  * doc de interfaces) para que filters.ts ya la conserve en el merge.
  */
-import type { PivotDimension } from '@casa-clara/domain/finance';
+import type { PivotDimension } from '@housekeeper/domain/finance';
 
 export const PIVOT_DIMENSIONS: readonly PivotDimension[] = ['cat', 'sub', 'nat', 'prov', 'concept', 'movement'];
 
@@ -897,7 +897,7 @@ export function serializeDims(dims: readonly PivotDimension[]): string | null {
 }
 ```
 
-- [ ] **Step 4: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-pivot-state.test.ts`
+- [ ] **Step 4: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-pivot-state.test.ts`
 - [ ] **Step 5: Commit.** `git add apps/web/src/lib/finance/pivot-state.ts apps/web/tests/finance-pivot-state.test.ts && git commit -m "feat(finanzas): stub de pivot-state con el contrato de la clave dims"`
 
 ---
@@ -911,7 +911,7 @@ export function serializeDims(dims: readonly PivotDimension[]): string | null {
 - Test: `packages/server/src/finance/queries.integration.test.ts` (Postgres real, `describe.runIf`)
 
 **Interfaces:**
-- Consumes: esquema `0034_finance.sql` (fase 1): tablas `app.finance_transactions`, `app.finance_accounts`, `app.finance_categories`, `app.finance_events`, `app.finance_transaction_events`, `app.finance_provider_aliases`, columnas del doc de interfaces §«Esquema SQL». `withAuthorizedTransaction`/`AuthorizationError` de `packages/server/src/database.ts`. Fixtures `packages/db/fixtures/002_finance.sql` (fase 1: datos en roble y olivo; concesión viva SOLO para el admin de roble).
+- Consumes: esquema `0036_finance.sql` (fase 1): tablas `app.finance_transactions`, `app.finance_accounts`, `app.finance_categories`, `app.finance_events`, `app.finance_transaction_events`, `app.finance_provider_aliases`, columnas del doc de interfaces §«Esquema SQL». `withAuthorizedTransaction`/`AuthorizationError` de `packages/server/src/database.ts`. Fixtures `packages/db/fixtures/002_finance.sql` (fase 1: datos en roble y olivo; concesión viva SOLO para el admin de roble).
 - Produces (DTOs de cable, céntimos SIEMPRE como string; los consumen las tareas 7–9 y las fases 5–6):
 
 ```ts
@@ -961,7 +961,7 @@ describe("seriesWindow: N cubos hacia atrás desde el final del rango", () => {
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/queries.test.ts` — `Cannot find module './queries.js'`.
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/queries.test.ts` — `Cannot find module './queries.js'`.
 - [ ] **Step 3: Crea `queries.ts` (primera mitad).** Cabecera, tipos, helpers puros y las lecturas de esta tarea:
 
 ```ts
@@ -1031,7 +1031,7 @@ function addMonths(year: number, month: number, delta: number): [number, number]
   return [Math.floor(index / 12), ((index % 12) + 12) % 12 + 1];
 }
 
-// El periodo anterior NO se calcula aquí: es prevRange de @casa-clara/domain/finance
+// El periodo anterior NO se calcula aquí: es prevRange de @housekeeper/domain/finance
 // (fase 2) y computeRangeSummary ya lo aplica por dentro. Una segunda copia de
 // esa regla en este fichero divergiría en silencio.
 
@@ -1241,8 +1241,8 @@ export async function readFinanceTransactions(
 
 Nota para ti: `txConditions` YA se usa en esta tarea (dentro de `readFinanceTransactions`); el único que queda huérfano hasta la Task 6 es `kindedTx`. No lo exportes: es interno. Para no arrastrar un `eslint-disable` que luego haya que recordar retirar, implementa la Task 6 antes de correr `pnpm lint`. Añade también el export en `packages/server/src/index.ts`.
 
-- [ ] **Step 4: Puro en verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/queries.test.ts`
-- [ ] **Step 5: Test de integración que falla.** `packages/server/src/finance/queries.integration.test.ts` (patrón de `packages/server/src/employment.integration.test.ts`: el global setup ya migró 0001–0034 y cargó `fixtures/*.sql`, incluida `002_finance.sql`, y creó el rol `it_casa_clara_app_login`):
+- [ ] **Step 4: Puro en verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/server test src/finance/queries.test.ts`
+- [ ] **Step 5: Test de integración que falla.** `packages/server/src/finance/queries.integration.test.ts` (patrón de `packages/server/src/employment.integration.test.ts`: el global setup ya migró 0001–0036 y cargó `fixtures/*.sql`, incluida `002_finance.sql`, y creó el rol `it_casa_clara_app_login`):
 
 ```ts
 import pg from "pg";
@@ -1332,7 +1332,7 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
 });
 ```
 
-- [ ] **Step 6: Integración en verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.integration.test.ts` (primera pasada: falla — típicamente por columnas mal nombradas; corrige contra `packages/db/migrations/0034_finance.sql`, que ya está en el worktree, hasta verde).
+- [ ] **Step 6: Integración en verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @housekeeper/server test src/finance/queries.integration.test.ts` (primera pasada: falla — típicamente por columnas mal nombradas; corrige contra `packages/db/migrations/0036_finance.sql`, que ya está en el worktree, hasta verde).
 - [ ] **Step 7: Commit.** `git add packages/server/src/finance/queries.ts packages/server/src/finance/queries.test.ts packages/server/src/finance/queries.integration.test.ts packages/server/src/index.ts && git commit -m "feat(finanzas): lecturas SQL de movimientos y catalogos con paginacion explicita bajo RLS"`
 
 ---
@@ -1345,7 +1345,7 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
 - Test: `packages/server/src/finance/queries.integration.test.ts` (ampliar)
 
 **Interfaces:**
-- Consumes (canónicos, fase 2, SIEMPRE por el subpath `@casa-clara/domain/finance` — la raíz no reexporta finanzas): `computeRangeSummary(txs: readonly FinanceTxView[], opts: SummaryOptions): RangeSummary` y los tipos `FinanceTxView`, `FinanceAccountView`, `FinanceCategoryKind`, `FinanceRecurrence`, `FinanceTransactionStatus`, `PivotSourceRow`, `RangeSummary`, `SummaryOptions`. Sus formas exactas (fijadas por `packages/domain/src/finance/types.ts`, ya en el worktree) son:
+- Consumes (canónicos, fase 2, SIEMPRE por el subpath `@housekeeper/domain/finance` — la raíz no reexporta finanzas): `computeRangeSummary(txs: readonly FinanceTxView[], opts: SummaryOptions): RangeSummary` y los tipos `FinanceTxView`, `FinanceAccountView`, `FinanceCategoryKind`, `FinanceRecurrence`, `FinanceTransactionStatus`, `PivotSourceRow`, `RangeSummary`, `SummaryOptions`. Sus formas exactas (fijadas por `packages/domain/src/finance/types.ts`, ya en el worktree) son:
 
 ```ts
 // FinanceTxView incluye las tres extensiones de la fase 2 que las lecturas DEBEN rellenar:
@@ -1516,12 +1516,12 @@ it("summary para el admin de olivo sin concesión: todo a cero", async () => {
 
 Añade los imports nuevos (`readFinanceSummary`, `readFinanceSeries`, `readFinanceBreakdown`, `readFinanceProviders`, `readFinanceEventsSummary`, `readFinanceEventDetail`, `readFinanceAnalytics`, `readFinancePivot`) al import de `./queries.js`.
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.integration.test.ts` — `readFinanceSummary is not a function` (o error de import).
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @housekeeper/server test src/finance/queries.integration.test.ts` — `readFinanceSummary is not a function` (o error de import).
 - [ ] **Step 3: Implementa las lecturas agregadas en `queries.ts`.** Añade al final del fichero:
 
 ```ts
 // (mueve este import a la cabecera del fichero, junto al de pg). SUBPATH
-// obligatorio: la raíz @casa-clara/domain no reexporta finanzas.
+// obligatorio: la raíz @housekeeper/domain no reexporta finanzas.
 import {
   computeRangeSummary,
   type FinanceAccountView,
@@ -1532,7 +1532,7 @@ import {
   type PivotSourceRow,
   type RangeSummary,
   type SummaryOptions,
-} from "@casa-clara/domain/finance";
+} from "@housekeeper/domain/finance";
 
 export interface FinanceSummaryDto {
   incomeCents: string;
@@ -1960,7 +1960,7 @@ export async function readFinancePivot(
 }
 ```
 
-- [ ] **Step 4: En verde (puro + integración + tipos).** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.test.ts src/finance/queries.integration.test.ts && pnpm --filter @casa-clara/server typecheck` — el typecheck es aquí una comprobación de contrato, no un trámite: como ni `txs` ni `options` llevan aserciones, cualquier desajuste con `FinanceTxView`/`SummaryOptions` de `packages/domain/src/finance/types.ts` sale a la luz en este paso. Si sale alguno, corrige `queries.ts` contra `types.ts`, nunca al revés.
+- [ ] **Step 4: En verde (puro + integración + tipos).** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @housekeeper/server test src/finance/queries.test.ts src/finance/queries.integration.test.ts && pnpm --filter @housekeeper/server typecheck` — el typecheck es aquí una comprobación de contrato, no un trámite: como ni `txs` ni `options` llevan aserciones, cualquier desajuste con `FinanceTxView`/`SummaryOptions` de `packages/domain/src/finance/types.ts` sale a la luz en este paso. Si sale alguno, corrige `queries.ts` contra `types.ts`, nunca al revés.
 - [ ] **Step 5: Commit.** `git add packages/server/src/finance/queries.ts packages/server/src/finance/queries.test.ts packages/server/src/finance/queries.integration.test.ts && git commit -m "feat(finanzas): lecturas agregadas (summary, series, desglose, proveedores, eventos, analitica y pivot) sobre el dominio"`
 
 ---
@@ -1973,7 +1973,7 @@ export async function readFinancePivot(
 - Test: `apps/web/tests/finance-fixtures.test.ts`
 
 **Interfaces:**
-- Consumes: todo lo de `@casa-clara/server` de las tareas 5–6, más `requireFinanceAdmin` (canónico, fase 1, exportado desde `@casa-clara/server`; consúmelo como `await requireFinanceAdmin(client, membership)` — si la firma real de fase 1 difiere en parámetros, ajusta la LLAMADA, nunca el nombre), `withAuthorizedTransaction`, `AuthorizationError`, `createLogger`, `errorCode`. `unreadable`/`demoOnly` de `$lib/server/data-source.server`. `getDatabasePool` de `$lib/server/db.server`. `FinanceFilters` de `$lib/finance/filters`.
+- Consumes: todo lo de `@housekeeper/server` de las tareas 5–6, más `requireFinanceAdmin` (canónico, fase 1, exportado desde `@housekeeper/server`; consúmelo como `await requireFinanceAdmin(client, membership)` — si la firma real de fase 1 difiere en parámetros, ajusta la LLAMADA, nunca el nombre), `withAuthorizedTransaction`, `AuthorizationError`, `createLogger`, `errorCode`. `unreadable`/`demoOnly` de `$lib/server/data-source.server`. `getDatabasePool` de `$lib/server/db.server`. `FinanceFilters` de `$lib/finance/filters`.
 - Produces:
 
 ```ts
@@ -2035,7 +2035,7 @@ describe('fixtures sintéticas de finanzas (modo demo)', () => {
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-fixtures.test.ts`
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-fixtures.test.ts`
 - [ ] **Step 3: Fixtures.** Al final de `apps/web/src/lib/server/fixtures.server.ts` añade (imports arriba: `import type { FinanceDashboardData, FinanceMovimientosData } from './finance.server';` y `import type { FinanceFilters } from '$lib/finance/filters';`). Datos INVENTADOS, ids `fa…/fb…` hexadecimales válidos:
 
 ```ts
@@ -2201,7 +2201,7 @@ import {
   type FinanceSeriesPointDto,
   type FinanceSummaryDto,
   type FinanceTransactionsPage
-} from '@casa-clara/server';
+} from '@housekeeper/server';
 
 import type { FinanceFilters } from '$lib/finance/filters';
 import { unreadable } from './data-source.server';
@@ -2323,7 +2323,7 @@ export async function loadFinanceMovimientos(
 
 Nota sobre `requireFinanceAdmin` (fase 1), que aquí se llama en dos sitios (Task 7 y Task 8): abre `packages/server/src/commands/finance.ts` antes de escribir la llamada y ajusta LA LLAMADA a su firma real, nunca al revés. Tres cosas que pueden diferir: (a) los parámetros —si pide además el `householdId`, pásaselo—; (b) la espera —el doc de interfaces la declara síncrona (`: void`) y la fase 1 la implementa `async`; si te la encuentras síncrona, quita el `await` o `@typescript-eslint/await-thenable` protestará—; (c) el error con el que rechaza —si es uno propio (`CommandRejectedError`) y no `AuthorizationError`, añade su captura junto a la de `AuthorizationError` devolviendo null.
 
-- [ ] **Step 5: En verde + tipos.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-fixtures.test.ts && pnpm --filter @casa-clara/web typecheck`
+- [ ] **Step 5: En verde + tipos.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-fixtures.test.ts && pnpm --filter @housekeeper/web typecheck`
 - [ ] **Step 6: Commit.** `git add apps/web/src/lib/server/finance.server.ts apps/web/src/lib/server/fixtures.server.ts apps/web/tests/finance-fixtures.test.ts && git commit -m "feat(finanzas): cargadores bajo RLS con doble cerrojo y corpus demo sintetico"`
 
 ---
@@ -2344,7 +2344,7 @@ Nota sobre `requireFinanceAdmin` (fase 1), que aquí se llama en dos sitios (Tas
 - Test: `apps/web/tests/finance-endpoints.test.ts`
 
 **Interfaces:**
-- Consumes: contrato canónico de rutas y parámetros del doc de interfaces (`household`, `from,to,g,acc,ev,exev`, `months`, `limit`, `q,cat,rec,status,ids,group_ids,limit/offset`, `dims`, `dupev`); `belongsToHousehold` de `$lib/auth/membership`; lecturas de `@casa-clara/server`; `parseDims` de `$lib/finance/pivot-state` (Task 4).
+- Consumes: contrato canónico de rutas y parámetros del doc de interfaces (`household`, `from,to,g,acc,ev,exev`, `months`, `limit`, `q,cat,rec,status,ids,group_ids,limit/offset`, `dims`, `dupev`); `belongsToHousehold` de `$lib/auth/membership`; lecturas de `@housekeeper/server`; `parseDims` de `$lib/finance/pivot-state` (Task 4).
 - Los NUEVE endpoints del doc de interfaces se crean aquí, incluidos `analytics` y `pivot`: la fase 6 los da por existentes y no crea ninguno. `pivot` es el único que además parsea `dims` y `dupev`.
 - Produces (añadidos a `finance.server.ts`):
 
@@ -2426,8 +2426,8 @@ describe('parseo de filtros de lectura', () => {
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-endpoints.test.ts` — no existen los exports.
-- [ ] **Step 3: Guard y parseo en `finance.server.ts`.** Añade (imports: `error`, `isHttpError`, `json` de `@sveltejs/kit`; `belongsToHousehold` de `$lib/auth/membership`; `errorCode` de `@casa-clara/server`; `DATA_UNAVAILABLE_MESSAGE`, `DATA_UNAVAILABLE_STATUS` de `./data-source.server`; `PoolClient` de `pg`):
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-endpoints.test.ts` — no existen los exports.
+- [ ] **Step 3: Guard y parseo en `finance.server.ts`.** Añade (imports: `error`, `isHttpError`, `json` de `@sveltejs/kit`; `belongsToHousehold` de `$lib/auth/membership`; `errorCode` de `@housekeeper/server`; `DATA_UNAVAILABLE_MESSAGE`, `DATA_UNAVAILABLE_STATUS` de `./data-source.server`; `PoolClient` de `pg`):
 
 ```ts
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2543,7 +2543,7 @@ El cerrojo vive AQUÍ a propósito: los nueve `+server.ts` de `/api/v1/finance` 
 
 ```ts
 // apps/web/src/routes/api/v1/finance/summary/+server.ts
-import { readFinanceSummary } from '@casa-clara/server';
+import { readFinanceSummary } from '@housekeeper/server';
 
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2555,7 +2555,7 @@ export const GET: RequestHandler = async ({ locals, url }) =>
 ```ts
 // apps/web/src/routes/api/v1/finance/series/+server.ts
 import { error } from '@sveltejs/kit';
-import { readFinanceSeries } from '@casa-clara/server';
+import { readFinanceSeries } from '@housekeeper/server';
 
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2574,7 +2574,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 ```ts
 // apps/web/src/routes/api/v1/finance/breakdown/+server.ts
-import { readFinanceBreakdown } from '@casa-clara/server';
+import { readFinanceBreakdown } from '@housekeeper/server';
 
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2586,7 +2586,7 @@ export const GET: RequestHandler = async ({ locals, url }) =>
 ```ts
 // apps/web/src/routes/api/v1/finance/providers/+server.ts
 import { error } from '@sveltejs/kit';
-import { readFinanceProviders } from '@casa-clara/server';
+import { readFinanceProviders } from '@housekeeper/server';
 
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2601,7 +2601,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
 ```ts
 // apps/web/src/routes/api/v1/finance/transactions/+server.ts
-import { readFinanceTransactions } from '@casa-clara/server';
+import { readFinanceTransactions } from '@housekeeper/server';
 
 import { financeRead, parseTransactionsQuery } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2613,7 +2613,7 @@ export const GET: RequestHandler = async ({ locals, url }) =>
 
 ```ts
 // apps/web/src/routes/api/v1/finance/events-summary/+server.ts
-import { readFinanceEventsSummary } from '@casa-clara/server';
+import { readFinanceEventsSummary } from '@housekeeper/server';
 
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2625,7 +2625,7 @@ export const GET: RequestHandler = async ({ locals, url }) =>
 ```ts
 // apps/web/src/routes/api/v1/finance/events/[id]/+server.ts
 import { error } from '@sveltejs/kit';
-import { readFinanceEventDetail } from '@casa-clara/server';
+import { readFinanceEventDetail } from '@housekeeper/server';
 
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2646,7 +2646,7 @@ export const GET: RequestHandler = async ({ locals, url, params }) => {
 // apps/web/src/routes/api/v1/finance/analytics/+server.ts
 // Lo consume la pantalla Analítica de la fase 6; se crea aquí porque aquí vive
 // su lectura (readFinanceAnalytics) y el doc de interfaces lo exige en la lista.
-import { readFinanceAnalytics } from '@casa-clara/server';
+import { readFinanceAnalytics } from '@housekeeper/server';
 
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
@@ -2662,7 +2662,7 @@ export const GET: RequestHandler = async ({ locals, url }) =>
 // pinta el pivot (fase 6) llama después a buildPivotTree(rows, dims,
 // { monthsCount: months.length, dupEventIds }).
 import { error } from '@sveltejs/kit';
-import { readFinancePivot, serializePivotRows } from '@casa-clara/server';
+import { readFinancePivot, serializePivotRows } from '@housekeeper/server';
 
 import { parseDims } from '$lib/finance/pivot-state';
 import { financeRead, parseReadFilters } from '$lib/server/finance.server';
@@ -2685,7 +2685,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 };
 ```
 
-- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-endpoints.test.ts && pnpm --filter @casa-clara/web typecheck`
+- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-endpoints.test.ts && pnpm --filter @housekeeper/web typecheck`
 - [ ] **Step 6: Commit.** `git add apps/web/src/routes/api/v1/finance apps/web/src/lib/server/finance.server.ts apps/web/tests/finance-endpoints.test.ts && git commit -m "feat(finanzas): endpoints GET de lectura con sesion, membresia y concesion explicitas"`
 
 ---
@@ -2697,7 +2697,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 - Test: `apps/web/tests/finance-api.test.ts`
 
 **Interfaces:**
-- Consumes: `apiQuery`, `FinanceFilters` de `./filters`; `serializeDims` y `PivotDimension` de `./pivot-state` (Task 4); tipos DTO SOLO como `import type { … } from '@casa-clara/server'` (se borran al compilar: nada del paquete servidor llega al navegador).
+- Consumes: `apiQuery`, `FinanceFilters` de `./filters`; `serializeDims` y `PivotDimension` de `./pivot-state` (Task 4); tipos DTO SOLO como `import type { … } from '@housekeeper/server'` (se borran al compilar: nada del paquete servidor llega al navegador).
 - Produces:
 
 ```ts
@@ -2781,7 +2781,7 @@ describe('cliente de /api/v1/finance', () => {
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-api.test.ts`
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-api.test.ts`
 - [ ] **Step 3: Implementación.**
 
 ```ts
@@ -2789,7 +2789,7 @@ describe('cliente de /api/v1/finance', () => {
  * Cliente de las lecturas REST de finanzas (§7). Solo lecturas: toda escritura
  * va por comandos de /api/v1/sync (fase 5). Los tipos DTO se importan SOLO
  * como tipos del paquete servidor: se borran al compilar y nada de
- * @casa-clara/server llega al navegador.
+ * @housekeeper/server llega al navegador.
  */
 import type {
   AnalyticsRow,
@@ -2802,8 +2802,8 @@ import type {
   FinanceSummaryDto,
   FinanceTransactionsPage,
   FinanceTxDto
-} from '@casa-clara/server';
-import type { PivotDimension } from '@casa-clara/domain/finance';
+} from '@housekeeper/server';
+import type { PivotDimension } from '@housekeeper/domain/finance';
 
 import { apiQuery, type FinanceFilters } from './filters';
 import { serializeDims } from './pivot-state';
@@ -2882,7 +2882,7 @@ export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {
 
 Ojo con el ORDEN de los parámetros en los tres tests de URL, porque `URLSearchParams.set` de una clave que aún no existe la APPENDEA al final: `summary` parte de `apiQuery(filters)` (from, to, acc…) y `household` queda el último; `transactionsByIds`/`transactionsByGroups` parten de `{ ids }` / `{ group_ids }`, así que también ahí `household` va detrás; en `pivot`, `dims` y `dupev` se añaden después de `household`. Las aserciones de arriba están escritas con ese orden exacto: si prefieres `household` delante, construye `withHousehold(new URLSearchParams())` y haz los `set` después — y entonces corrige los tres tests.
 
-- [ ] **Step 4: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-api.test.ts`
+- [ ] **Step 4: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test tests/finance-api.test.ts`
 - [ ] **Step 5: Commit.** `git add apps/web/src/lib/finance/api.ts apps/web/tests/finance-api.test.ts && git commit -m "feat(finanzas): cliente tipado de las lecturas REST"`
 
 ---
@@ -3133,7 +3133,7 @@ Los nombres de campo (`segment.nature`, `group.segments`, `bucket.recurringCents
 </style>
 ```
 
-- [ ] **Step 5: Verifica tokens, tipos y movimiento.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check` — cero errores de svelte-check y cero violaciones del linter de tokens (si el linter acusa una longitud, sustitúyela por el token `--space-*`/`--text-*` más cercano). Después, `grep -rn "transition\|animation" apps/web/src/lib/components/finance` — cada coincidencia debe estar dentro de un bloque `@media (prefers-reduced-motion: reduce)` o tener uno que la anule; lo esperable aquí es salida vacía.
+- [ ] **Step 5: Verifica tokens, tipos y movimiento.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check` — cero errores de svelte-check y cero violaciones del linter de tokens (si el linter acusa una longitud, sustitúyela por el token `--space-*`/`--text-*` más cercano). Después, `grep -rn "transition\|animation" apps/web/src/lib/components/finance` — cada coincidencia debe estar dentro de un bloque `@media (prefers-reduced-motion: reduce)` o tener uno que la anule; lo esperable aquí es salida vacía.
 - [ ] **Step 6: Commit.** `git add apps/web/src/lib/components/finance && git commit -m "feat(finanzas): graficas SVG artesanales con tokens de la casa"`
 
 ---
@@ -3148,7 +3148,7 @@ Los nombres de campo (`segment.nature`, `group.segments`, `bucket.recurringCents
 - Create: `apps/web/src/lib/components/finance/FinanceDetailPanel.svelte`
 
 **Interfaces:**
-- Consumes: `mergeFilters`, `presetRanges`, `rangeLabel`, `shiftRange`, `todayLocal` de `$lib/finance/filters`; `financeApi`, `FinanceDetailMode` de `$lib/finance/api`; `formatCents`, `dateLabel`, `summarizeTxs` de `$lib/finance/format`; `import type { FinanceTxDto } from '@casa-clara/server'`; la acción `modalDialog`, hoy declarada dentro de `apps/web/src/lib/components/AppShell.svelte` (líneas 137–182, comentario de cabecera incluido).
+- Consumes: `mergeFilters`, `presetRanges`, `rangeLabel`, `shiftRange`, `todayLocal` de `$lib/finance/filters`; `financeApi`, `FinanceDetailMode` de `$lib/finance/api`; `formatCents`, `dateLabel`, `summarizeTxs` de `$lib/finance/format`; `import type { FinanceTxDto } from '@housekeeper/server'`; la acción `modalDialog`, hoy declarada dentro de `apps/web/src/lib/components/AppShell.svelte` (líneas 137–182, comentario de cabecera incluido).
 - Produces: `FinanceFilterBar { filters: FinanceFilters; accounts: { id: string; name: string; kind: string }[] }` · `LedgerTable { rows: FinanceTxDto[]; eventNameById: Record<string, string>; onOpen: (tx: FinanceTxDto) => void }` · `FinanceDetailPanel { mode: FinanceDetailMode | null; householdId: string; live?: boolean; onClose: () => void }` · `export const modalDialog: Action<HTMLElement, { onClose: () => void }>` en `$lib/components/modal-dialog.ts`.
 
 **Pasos:**
@@ -3316,7 +3316,7 @@ Y en `AppShell.svelte`: borra el bloque `const modalDialog = …` con su comenta
 
 ```svelte
 <script lang="ts">
-  import type { FinanceTxDto } from '@casa-clara/server';
+  import type { FinanceTxDto } from '@housekeeper/server';
   import { dateLabel, formatCents } from '$lib/finance/format';
 
   let { rows, eventNameById, onOpen }: {
@@ -3373,7 +3373,7 @@ Y en `AppShell.svelte`: borra el bloque `const modalDialog = …` con su comenta
 
 ```svelte
 <script lang="ts">
-  import type { FinanceTxDto } from '@casa-clara/server';
+  import type { FinanceTxDto } from '@housekeeper/server';
   import { financeApi, type FinanceDetailMode } from '$lib/finance/api';
   import { dateLabel, formatCents, summarizeTxs } from '$lib/finance/format';
   import { modalDialog } from '$lib/components/modal-dialog';
@@ -3522,7 +3522,7 @@ Y en `AppShell.svelte`: borra el bloque `const modalDialog = …` con su comenta
 </style>
 ```
 
-- [ ] **Step 5: Verifica.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e && pnpm --filter @casa-clara/web test:a11y` — el `check` cubre la extracción de `modalDialog` (si quedó un import huérfano en `AppShell.svelte`, sale aquí) y las suites existentes confirman que los tres diálogos del AppShell siguen comportándose igual tras el movimiento.
+- [ ] **Step 5: Verifica.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && pnpm --filter @housekeeper/web test:e2e && pnpm --filter @housekeeper/web test:a11y` — el `check` cubre la extracción de `modalDialog` (si quedó un import huérfano en `AppShell.svelte`, sale aquí) y las suites existentes confirman que los tres diálogos del AppShell siguen comportándose igual tras el movimiento.
 - [ ] **Step 6: Commit.** `git add apps/web/src/lib/components/finance apps/web/src/lib/components/modal-dialog.ts apps/web/src/lib/components/AppShell.svelte && git commit -m "feat(finanzas): barra de filtros, ledger de lectura y panel de detalle accesible"`
 
 ---
@@ -3574,7 +3574,7 @@ test('una ruta hija inventada de Finanzas sí es 404', async ({ page }) => {
 
 Este fichero lo CREA esta tarea; la fase 7 lo **amplía** al final (nunca lo reescribe). Los dos códigos son el contrato canónico del doc de interfaces: **403** cuando la ruta está declarada en `HOUSEHOLD_MODULES`/`MODULE_CAPABILITY` y falta la capacidad (`+layout.server.ts` de fase 1 lanza `error(403, 'Esta parte la lleva la familia.')`, y `+error.svelte` pinta «no está incluida en tu acceso»); **404** solo para una ruta hija que no existe.
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — el primer test falla (la página esqueleto no tiene `.finance-kpis`).
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test:e2e finanzas.e2e.ts` — el primer test falla (la página esqueleto no tiene `.finance-kpis`).
 - [ ] **Step 3: Load.** Sustituye el contenido de `finanzas/+page.server.ts` (calca el patrón de `employment/+page.server.ts`):
 
 ```ts
@@ -3741,7 +3741,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 </style>
 ```
 
-- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — los tres tests pasan. Si el de la empleada NO devuelve 403, el fallo está en el guard, no en la aserción: comprueba que la fase 1 declaró `finanzas` en `HOUSEHOLD_MODULES` y `MODULE_CAPABILITY` (`src/lib/auth/routing.ts`) y que `h/[householdId]/+layout.server.ts` lanza `error(403, 'Esta parte la lleva la familia.')` ante capacidad ausente. Un 404 ahí significa que la ruta no está declarada: arregla el guard, no el test. El 404 solo lo firma la ruta hija inexistente.
+- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && pnpm --filter @housekeeper/web test:e2e finanzas.e2e.ts` — los tres tests pasan. Si el de la empleada NO devuelve 403, el fallo está en el guard, no en la aserción: comprueba que la fase 1 declaró `finanzas` en `HOUSEHOLD_MODULES` y `MODULE_CAPABILITY` (`src/lib/auth/routing.ts`) y que `h/[householdId]/+layout.server.ts` lanza `error(403, 'Esta parte la lleva la familia.')` ante capacidad ausente. Un 404 ahí significa que la ruta no está declarada: arregla el guard, no el test. El 404 solo lo firma la ruta hija inexistente.
 - [ ] **Step 6: Commit.** `git add apps/web/src/routes/h/\[householdId\]/finanzas/+page.server.ts apps/web/src/routes/h/\[householdId\]/finanzas/+page.svelte apps/web/e2e/finanzas.e2e.ts && git commit -m "feat(finanzas): dashboard real con KPIs, deltas, flujo de caja y desglose"`
 
 ---
@@ -3777,7 +3777,7 @@ test('admin en modo fixture: Movimientos lista el ledger y abre el panel con «D
 });
 ```
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — el test nuevo falla.
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web test:e2e finanzas.e2e.ts` — el test nuevo falla.
 - [ ] **Step 3: Load.** `movimientos/+page.server.ts`:
 
 ```ts
@@ -3903,7 +3903,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 </style>
 ```
 
-- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — los cuatro tests del spec pasan (los tres de la Task 12 más el de Movimientos que añade esta tarea).
+- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web check && pnpm --filter @housekeeper/web test:e2e finanzas.e2e.ts` — los cuatro tests del spec pasan (los tres de la Task 12 más el de Movimientos que añade esta tarea).
 - [ ] **Step 6: Commit.** `git add apps/web/src/routes/h/\[householdId\]/finanzas/movimientos apps/web/e2e/finanzas.e2e.ts && git commit -m "feat(finanzas): movimientos con filtros locales, paginacion explicita y panel de detalle"`
 
 ---
@@ -3921,9 +3921,9 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 
 **Pasos:**
 
-- [ ] **Step 1: Unit y tipos de todo el monorepo.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm typecheck && pnpm --filter @casa-clara/web test && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test` — todo verde.
+- [ ] **Step 1: Unit y tipos de todo el monorepo.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm typecheck && pnpm --filter @housekeeper/web test && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @housekeeper/server test` — todo verde.
 - [ ] **Step 2: Lint y check.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm check` — cero errores (tokens CSS incluidos).
-- [ ] **Step 3: Presupuesto de Hoy.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web build && pnpm --filter @casa-clara/web verify:bundle` — el verificador debe seguir verde: NADA de `$lib/finance/`, `$lib/components/finance/` ni `@casa-clara/server` puede aparecer en el grafo inicial de Hoy (si aparece, algún import se coló fuera de las rutas de finanzas: búscalo con `.svelte-kit/casa-clara-module-map.json`).
+- [ ] **Step 3: Presupuesto de Hoy.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @housekeeper/web build && pnpm --filter @housekeeper/web verify:bundle` — el verificador debe seguir verde: NADA de `$lib/finance/`, `$lib/components/finance/` ni `@housekeeper/server` puede aparecer en el grafo inicial de Hoy (si aparece, algún import se coló fuera de las rutas de finanzas: búscalo con `.svelte-kit/casa-clara-module-map.json`).
 - [ ] **Step 4: e2e completo en fixture.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm test:e2e && pnpm test:a11y` — sin regresiones en las suites existentes.
 - [ ] **Step 5: db/rls intactos.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm test:db && pnpm test:rls` — esta fase no toca el esquema; deben seguir verdes tal cual.
 - [ ] **Step 6: Commit de cierre (solo si hubo retoques).** `git add -A && git commit -m "chore(finanzas): fase 4 en verde — gates de rama y presupuesto de arranque"`

@@ -37,7 +37,7 @@ BEGIN
   END IF;
 
   -- Árbol de categorías blindado (spec §5), y la migración es append-only: si
-  -- estas dos rejas no entran en 0034, corregirlas cuesta un 0035.
+  -- estas dos rejas no entran en 0036, corregirlas cuesta un 0037.
   IF NOT EXISTS (
     SELECT 1
       FROM pg_catalog.pg_index AS index_row
@@ -105,7 +105,7 @@ BEGIN
     RAISE EXCEPTION 'finance_module_grants needs its three admin policies';
   END IF;
 
-  -- El cerrojo del rastro de auditoría (0035). `write_audit_event` vuelca la
+  -- El cerrojo del rastro de auditoría (0037). `write_audit_event` vuelca la
   -- fila entera en after_data, y `audit_events_read` (0005) deja leer esa tabla
   -- a cualquier family_admin del hogar sin pasar por finance_enabled(): sin
   -- esta restrictiva, un admin sin concesión leía concepto, proveedor, importe
@@ -120,7 +120,7 @@ BEGIN
        AND cmd = 'SELECT'
        AND qual LIKE '%finance_enabled%'
   ) THEN
-    RAISE EXCEPTION 'app.audit_events needs the restrictive finance lock from 0035';
+    RAISE EXCEPTION 'app.audit_events needs the restrictive finance lock from 0037';
   END IF;
 
   IF to_regclass('app.finance_module_grants_live_idx') IS NULL THEN
@@ -144,9 +144,9 @@ END
 $assert_finance_schema$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- La reja del árbol mira también hacia ABAJO y hacia SÍ MISMA (0035).
+-- La reja del árbol mira también hacia ABAJO y hacia SÍ MISMA (0037).
 --
--- La versión de la 0034 solo comprobaba el padre del padre que se asigna, así
+-- La versión de la 0036 solo comprobaba el padre del padre que se asigna, así
 -- que por UPDATE se podía (a) colgar bajo otra raíz una categoría que YA tiene
 -- hijas —dejándolas en un tercer nivel— y (b) apuntar `parent_id` a la propia
 -- fila: en un BEFORE UPDATE la tabla aún contiene la fila vieja, el abuelo leído
@@ -230,7 +230,7 @@ BEGIN
     RAISE EXCEPTION 'mover una hoja sin hijas debería estar permitido';
   END IF;
 
-  -- El tercer nivel por INSERT seguía cerrado desde la 0034; que siga.
+  -- El tercer nivel por INSERT seguía cerrado desde la 0036; que siga.
   BEGIN
     INSERT INTO app.finance_categories (household_id, parent_id, name, kind)
     VALUES ('10000000-0000-4000-8000-000000000001',
@@ -244,7 +244,7 @@ $assert_category_depth_guard$;
 ROLLBACK;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- La fuga por `app.audit_events` (0035).
+-- La fuga por `app.audit_events` (0037).
 --
 -- Un family_admin sin concesión ve cero movimientos por la vía normal, pero el
 -- trigger de auditoría guarda la fila entera y `audit_events_read` no pasa por
@@ -787,7 +787,7 @@ COMMIT;
 -- ─────────────────────────────────────────────────────────────────────────────
 -- El rastro de auditoría, papel por papel, sobre datos de finanzas REALES.
 --
--- La sonda de la 0035 (más arriba) prueba la restrictiva con filas que ella
+-- La sonda de la 0037 (más arriba) prueba la restrictiva con filas que ella
 -- misma inserta y revirtiendo la concesión de la fixture. Esto es el caso de
 -- verdad y el que pidió el encargo: una administración a la que NADIE ha
 -- concedido Finanzas, con todas las filas financieras que la fixture 002 dejó
