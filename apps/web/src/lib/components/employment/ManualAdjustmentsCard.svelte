@@ -217,8 +217,12 @@
           <small>
             {adjustment.periodLabel} · {adjustment.reason}
             {#if isVoided}
-              · Anulado{adjustment.voidReason ? `: ${adjustment.voidReason}` : ''} · no cuenta en la
-              cuenta del mes
+              <!-- Sin el motivo: aquí sólo se llega por el camino optimista, y
+                   la fila que lo traería ya no existe —el servidor no manda los
+                   anulados—. El motivo que se acaba de escribir queda en el
+                   expediente; esta línea desaparece en cuanto llegan los datos
+                   frescos. -->
+              · Anulado · no cuenta en la cuenta del mes
             {:else}
               · {adjustment.transferLabel}
             {/if}
