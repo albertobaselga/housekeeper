@@ -138,6 +138,14 @@
       {:else}
         <form onsubmit={submitPayment}>
           <h3>Registrar pago</h3>
+          <!-- Pagar y cobrar son dos hechos distintos y los cuenta cada parte:
+               esto lo apunta la casa. Lo decía una tarjeta del Resumen que se
+               quedó sin botón y no pedía ninguna decisión; aquí es una
+               aclaración de una línea, en el sitio donde se actúa. -->
+          <p class="field-hint">
+            Aquí la casa apunta que pagó. Que el dinero llegó lo confirma la empleada por su
+            cuenta, y hasta entonces la cuenta se queda como pagada sin confirmar.
+          </p>
           <div class="form-grid">
             <label>Importe (€)
               <input type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" bind:value={paymentAmount} required />
