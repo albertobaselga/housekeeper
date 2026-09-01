@@ -139,9 +139,9 @@
           <p class="audit-note">{person.entitlementNote}</p>
         {/if}
 
-        {#each person.years as year (year.year)}
+        {#each person.years as year (year.index)}
           <section class="vacation-year">
-            <h3>{year.year}{year.current ? ' · este año' : ''}</h3>
+            <h3>{year.label}{year.current ? ' · en curso' : ''}</h3>
             <p class="vacation-headline">{year.headline}</p>
             {#if year.excessNote}
               <p class="audit-note" role="status">{year.excessNote}</p>
@@ -168,8 +168,8 @@
               {:else}
                 <div>
                   <span>
-                    <strong>Sin días apuntados en {year.year}</strong>
-                    <small>No consta ningún periodo de vacaciones ese año.</small>
+                    <strong>Sin días apuntados</strong>
+                    <small>No consta ningún periodo de vacaciones en este año de contrato.</small>
                   </span>
                 </div>
               {/each}

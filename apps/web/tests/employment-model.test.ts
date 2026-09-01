@@ -19,7 +19,6 @@ import {
   annualVacationDaysInForce,
   currentLocalDate,
   currentPeriod,
-  currentVacationYear,
   employmentTabHref,
   formatCents,
   formatMinutes,
@@ -264,7 +263,7 @@ describe('horario del contrato', () => {
   });
 });
 
-describe('vacaciones del año en curso', () => {
+describe('vacaciones del año de contrato en curso', () => {
   const PERIODS = [
     {
       id: 'p1',
@@ -288,7 +287,7 @@ describe('vacaciones del año en curso', () => {
 
   it('resume el saldo en lenguaje llano y no cuenta lo anulado', () => {
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2020-01-01',
       agreementEndsOn: null,
@@ -297,6 +296,9 @@ describe('vacaciones del año en curso', () => {
     expect(view.takenDays).toBe(15);
     expect(view.remainingDays).toBe(15);
     expect(view.summaryLabel).toBe('15 de 30 días disfrutados · quedan 15');
+    // El año se dice con sus fechas: un contrato de 2020 tiene su séptimo año
+    // en 2026, y sin las fechas el ordinal no le diría nada a nadie.
+    expect(view.yearLabel).toBe('Séptimo año · 1 ene 2026 – 31 dic 2026');
     expect(view.prorationNote).toBeNull();
     // Lo anulado se LISTA (para entender por qué el saldo es el que es) pero
     // no suma.
@@ -306,7 +308,7 @@ describe('vacaciones del año en curso', () => {
 
   it('ordena del más reciente al más antiguo y nombra bien un solo día', () => {
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2020-01-01',
       agreementEndsOn: null,
@@ -340,7 +342,7 @@ describe('vacaciones del año en curso', () => {
 
   it('el exceso se dice, no se esconde', () => {
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2020-01-01',
       agreementEndsOn: null,
@@ -360,23 +362,43 @@ describe('vacaciones del año en curso', () => {
     expect(view.summaryLabel).toBe('35 de 30 días disfrutados · 5 días de más');
   });
 
-  it('explica el prorrateo del primer año en vez de enseñar 30 a secas', () => {
+  it('el primer año ya no se prorratea: empieza el día del contrato', () => {
+    // Antes, con el año natural, un contrato de febrero enseñaba 28 de 30 días
+    // en su primer año. Con el año de contrato eso desaparece por construcción:
+    // los doce meses empiezan el 3 de febrero, así que se devenga entero.
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2026-02-03',
       agreementEndsOn: null,
       periods: []
     });
+    expect(view.yearLabel).toBe('Primer año · 3 feb 2026 – 2 feb 2027');
+    expect(view.prorated).toBe(false);
+    expect(view.entitledDays).toBe(30);
+    expect(view.prorationNote).toBeNull();
+  });
+
+  it('el que sí se prorratea es el último, cuando el contrato termina a media anualidad', () => {
+    const view = buildVacationView({
+      today: '2026-08-20',
+      annualVacationDays: 30,
+      agreementStartsOn: '2026-02-03',
+      agreementEndsOn: '2026-12-31',
+      periods: []
+    });
     expect(view.prorated).toBe(true);
+    // Los días parciales se redondean hacia arriba: la duda favorece a quien
+    // descansa, no a quien paga.
     expect(view.entitledDays).toBe(28);
     expect(view.summaryLabel).toBe('0 de 28 días disfrutados · quedan 28');
     expect(view.prorationNote).toBe(
-      'El acuerdo cubre 332 días de 2026, así que de los 30 días del año le tocan 28 en 2026.'
+      'El contrato termina el 31 dic 2026 y cubre 332 días de los 365 de este año, ' +
+        'así que de los 30 días pactados le tocan 28.'
     );
   });
 
-  it('un periodo a caballo del fin de año solo gasta sus días de este año', () => {
+  it('un periodo a caballo del aniversario solo gasta sus días de este año', () => {
     const periods = [
       {
         id: 'p1',
@@ -388,9 +410,11 @@ describe('vacaciones del año en curso', () => {
         voidReason: null
       }
     ];
+    // El contrato empezó un 1 de enero, así que su año de contrato coincide con
+    // el natural: el corte sigue cayendo el 31 de diciembre.
     expect(
       buildVacationView({
-        year: 2026,
+        today: '2026-12-28',
         annualVacationDays: 30,
         agreementStartsOn: '2020-01-01',
         agreementEndsOn: null,
@@ -399,7 +423,7 @@ describe('vacaciones del año en curso', () => {
     ).toBe(8);
     expect(
       buildVacationView({
-        year: 2027,
+        today: '2027-01-03',
         annualVacationDays: 30,
         agreementStartsOn: '2020-01-01',
         agreementEndsOn: null,
@@ -408,11 +432,11 @@ describe('vacaciones del año en curso', () => {
     ).toBe(5);
   });
 
-  it('el año natural se lee en la zona del hogar, no en la del proceso', () => {
-    // 31 de diciembre a las 23:30 UTC ya es 1 de enero en Madrid.
-    expect(currentVacationYear(new Date('2026-12-31T23:30:00Z'))).toBe(2027);
+  it('la fecha de hoy se lee en la zona del hogar, no en la del proceso', () => {
+    // 31 de diciembre a las 23:30 UTC ya es 1 de enero en Madrid, y de esa
+    // fecha sale en qué año de contrato se está.
     expect(currentLocalDate(new Date('2026-12-31T23:30:00Z'))).toBe('2027-01-01');
-    expect(currentVacationYear(new Date('2026-06-15T10:00:00Z'))).toBe(2026);
+    expect(currentLocalDate(new Date('2026-06-15T10:00:00Z'))).toBe('2026-06-15');
   });
 });
 

@@ -1,6 +1,7 @@
 import type { Pool } from 'pg';
 
 import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { contractYear, contractYearOn } from '@casa-clara/domain';
 
 import {
   buildAccrual,
@@ -19,7 +20,6 @@ import {
   annualVacationDaysInForce,
   currentLocalDate,
   currentPeriod,
-  currentVacationYear,
   employmentTabHref,
   type AdvanceRow,
   type AgreementRow,
@@ -246,11 +246,16 @@ export async function loadEmploymentOverview(
         [householdId, agreement.id]
       );
 
-      // Vacaciones del año natural en curso. Se piden los periodos que TOCAN el
-      // año, no los que empiezan en él: uno del 24 de diciembre al 5 de enero
-      // gasta días de los dos, y el motor de dominio reparte cuáles son de cada
-      // uno. Los anulados vienen también: se listan tachados, sin contar.
-      const vacationYear = currentVacationYear(now);
+      // Vacaciones del año de CONTRATO en curso: los doce meses contados desde
+      // el día en que empezó el acuerdo, no del 1 de enero al 31 de diciembre.
+      // Se piden los periodos que TOCAN ese año, no los que empiezan en él: uno
+      // a caballo del aniversario gasta días de los dos, y el motor de dominio
+      // reparte cuáles son de cada uno. Los anulados vienen también: se listan
+      // tachados, sin contar. Un contrato que aún no ha empezado enseña su
+      // primer año, que es el que va a regir.
+      const vacationYear =
+        contractYearOn(agreement.startsOn, currentLocalDate(now)) ??
+        contractYear(agreement.startsOn, 1);
       const vacationPeriods = await client.query<VacationPeriodRow>(
         `select id,
                 starts_on::text as "startsOn",
@@ -263,7 +268,7 @@ export async function loadEmploymentOverview(
           where household_id = $1 and agreement_id = $2
             and starts_on <= $4 and ends_on >= $3
           order by starts_on desc`,
-        [householdId, agreement.id, `${vacationYear}-01-01`, `${vacationYear}-12-31`]
+        [householdId, agreement.id, vacationYear.startsOn, vacationYear.endsOn]
       );
 
       // Conceptos apuntados a mano (0022) que TODAVÍA esperan decisión: es lo
@@ -606,7 +611,7 @@ export async function loadEmploymentOverview(
           versions.rows.length === 0
             ? null
             : buildVacationView({
-                year: vacationYear,
+                today: currentLocalDate(now),
                 annualVacationDays: annualVacationDaysInForce(
                   versions.rows,
                   currentLocalDate(now)

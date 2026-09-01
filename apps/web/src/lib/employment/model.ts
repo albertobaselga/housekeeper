@@ -1,5 +1,7 @@
 import {
   calculateSettlement,
+  contractYear,
+  contractYearOn,
   describeSchedule,
   resolveWeek,
   scheduleCoherence,
@@ -15,6 +17,11 @@ import {
   type SettlementLine,
   type Weekday
 } from '@casa-clara/domain';
+
+// La etiqueta del año de contrato la escribe el módulo del historial, que es
+// donde vive el lenguaje de las vacaciones. Decirlo aquí a mano dejaría dos
+// redacciones del mismo año, y tarde o temprano dirían cosas distintas.
+import { contractYearLabel } from './vacation-history';
 
 /**
  * Modelo de lectura del expediente laboral. Todas las funciones son puras y
@@ -657,7 +664,12 @@ export interface VacationPeriodView {
 }
 
 export interface VacationView {
-  year: number;
+  /**
+   * «Segundo año · 5 mar 2026 – 4 mar 2027». El año de vacaciones es el del
+   * CONTRATO, no el natural, así que el ordinal a secas no le diría nada a
+   * quien lo lee: sin las fechas nadie sabe de qué doce meses se habla.
+   */
+  yearLabel: string;
   /** Derecho de este año, ya prorrateado si el acuerdo no lo cubre entero. */
   entitledDays: number;
   /** Derecho anual completo pactado, para poder explicar el prorrateo. */
@@ -1715,14 +1727,6 @@ export function buildCompensationBalanceViews(
   }));
 }
 
-/** Año natural en curso en la zona horaria del hogar. */
-export function currentVacationYear(now = new Date(), timeZone = 'Europe/Madrid'): number {
-  const year = new Intl.DateTimeFormat('es-ES', { timeZone, year: 'numeric' })
-    .formatToParts(now)
-    .find((part) => part.type === 'year')?.value;
-  return Number(year ?? now.getUTCFullYear());
-}
-
 /** Fecha de hoy `YYYY-MM-DD` en la zona horaria del hogar, no en la del proceso. */
 export function currentLocalDate(now = new Date(), timeZone = 'Europe/Madrid'): string {
   const parts = new Intl.DateTimeFormat('es-ES', {
@@ -1785,27 +1789,36 @@ export function vacationRangeLabel(startsOn: string, endsOn: string): string {
 }
 
 /**
- * Bloque de vacaciones del año natural en curso.
+ * Bloque de vacaciones del año de CONTRATO en curso: los doce meses que van
+ * desde el día en que empezó el acuerdo, no del 1 de enero al 31 de diciembre.
  *
  * El saldo lo calcula el motor puro del dominio (`vacationYearBalance`), que es
- * quien sabe prorratear el primer año y repartir un periodo que cruza el 31 de
- * diciembre. Aquí solo se ponen las palabras.
+ * quien sabe dónde empieza y acaba cada año, prorratear el último cuando el
+ * contrato termina a media anualidad y repartir un periodo que cruza el
+ * aniversario. Aquí solo se ponen las palabras.
  *
  * Los periodos ANULADOS se listan pero no cuentan: verlos tachados es lo que
  * convierte «me faltan días» en «ah, aquello se anuló el martes».
  */
 export function buildVacationView(input: {
-  year: number;
+  /** Hoy en la zona del hogar: decide en qué año de contrato se está. */
+  today: string;
   annualVacationDays: number;
   agreementStartsOn: string;
   agreementEndsOn: string | null;
   periods: readonly VacationPeriodRow[];
 }): VacationView {
+  // Un contrato que aún no ha empezado no tiene año en curso: se enseña el
+  // primero, que es el que va a regir, en vez de no enseñar nada.
+  const year =
+    contractYearOn(input.agreementStartsOn, input.today) ??
+    contractYear(input.agreementStartsOn, 1);
   const balance = vacationYearBalance({
-    year: input.year,
+    contractYearIndex: year.index,
     annualVacationDays: input.annualVacationDays,
     agreementStartsOn: input.agreementStartsOn,
     agreementEndsOn: input.agreementEndsOn,
+    asOf: input.today,
     periods: input.periods
       .filter((row) => row.status === 'recorded')
       .map((row) => ({ startsOn: row.startsOn, endsOn: row.endsOn }))
@@ -1820,16 +1833,19 @@ export function buildVacationView(input: {
       : `quedan ${balance.remainingDays}`;
 
   return {
-    year: balance.year,
+    yearLabel: contractYearLabel(balance.contractYear),
     entitledDays: balance.entitledDays,
     annualVacationDays: balance.annualVacationDays,
     takenDays: balance.takenDays,
     remainingDays: balance.remainingDays,
     prorated: balance.prorated,
     summaryLabel: `${balance.takenDays} de ${balance.entitledDays} días disfrutados · ${remaining}`,
+    // El prorrateo ya solo puede ser el del ÚLTIMO año: el año de contrato
+    // empieza el día del contrato, así que por arriba nunca recorta.
     prorationNote: balance.prorated
-      ? `El acuerdo cubre ${dayCountLabel(balance.coveredDays)} de ${input.year}, así que de los ` +
-        `${balance.annualVacationDays} días del año le tocan ${balance.entitledDays} en ${input.year}.`
+      ? `El contrato termina el ${dateLabel(balance.coveredThrough)} y cubre ` +
+        `${dayCountLabel(balance.coveredDays)} de los ${balance.daysInContractYear} de este año, ` +
+        `así que de los ${balance.annualVacationDays} días pactados le tocan ${balance.entitledDays}.`
       : null,
     periods: [...input.periods]
       .sort((left, right) => right.startsOn.localeCompare(left.startsOn))

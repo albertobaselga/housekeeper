@@ -25,7 +25,9 @@ const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
 const HELPER_USER = { id: 'fixture:roble:helper' };
 
 // Reloj fijo de la suite: agosto de 2026, con el contrato de la empleada vivo
-// desde febrero de 2025. Así hay dos años que enseñar y uno de ellos prorrateado.
+// desde el 3 de febrero de 2025. Así hay dos años de contrato que enseñar —el
+// primero cerrado, el segundo en curso— y el corte entre ambos cae en febrero,
+// no en enero, que es justo lo que este cambio tenía que demostrar.
 const NOW = new Date('2026-08-11T09:00:00Z');
 
 const VACATION_SEED = `
@@ -127,20 +129,28 @@ describe.runIf(Boolean(adminUrl))('vacaciones completas desde Postgres bajo RLS'
     expect(overview!.people).toHaveLength(1);
     const mine = overview!.people[0]!;
     expect(mine.own).toBe(true);
-    expect(mine.years.map((year) => year.year)).toEqual([2026, 2025]);
+    // El año se dice con sus fechas, y el año es el del CONTRATO: los doce
+    // meses desde el 3 de febrero, no del 1 de enero al 31 de diciembre.
+    expect(mine.years.map((year) => year.label)).toEqual([
+      'Segundo año · 3 feb 2026 – 2 feb 2027',
+      'Primer año · 3 feb 2025 – 2 feb 2026'
+    ]);
 
-    const twentySix = mine.years[0]!;
-    expect(twentySix.takenDays).toBe(15);
-    expect(twentySix.headline).toContain('te tocan');
-    const voided = twentySix.periods.find((period) => period.state === 'voided');
+    const enCurso = mine.years[0]!;
+    expect(enCurso.current).toBe(true);
+    expect(enCurso.takenDays).toBe(15);
+    expect(enCurso.headline).toContain('te tocan');
+    const voided = enCurso.periods.find((period) => period.state === 'voided');
     expect(voided?.detail).toContain('Anuladas: Las fechas eran otras');
     expect(voided?.daysLabel).toBe('—');
 
-    // 2025 va prorrateado: el contrato empezó el 3 de febrero.
-    const twentyFive = mine.years[1]!;
-    expect(twentyFive.prorationNote).toContain('El contrato cubre 332 días de 2025');
-    expect(twentyFive.entitledDays).toBe(28);
-    expect(twentyFive.takenDays).toBe(14);
+    // El primer año ya NO va prorrateado: empieza el día del contrato, así que
+    // se devenga entero. Antes, con el año natural, aquí se enseñaban 28 de 30
+    // y una frase explicando que el contrato solo cubría 332 días de 2025.
+    const primero = mine.years[1]!;
+    expect(primero.prorationNote).toBeNull();
+    expect(primero.entitledDays).toBe(30);
+    expect(primero.takenDays).toBe(14);
   });
 
   it('quien administra ve a las dos empleadas del hogar, no solo a la primera', async () => {
