@@ -1087,16 +1087,49 @@ export function employmentTabHref(
 }
 
 /**
+ * Los orígenes que tienen una pantalla a la que llevar. Se escriben a mano en
+ * varios sitios y una errata NO rompía nada visible: `sourceAnchor` caía en su
+ * `default` y devolvía null, o sea, borraba en silencio el enlace que lleva al
+ * origen de un importe. Siendo una unión, la errata la caza el compilador.
+ */
+const ANCHORED_SOURCE_TYPES = [
+  'agreement-version',
+  'jornadas-extra',
+  'anticipos',
+  'gastos',
+  'ajustes',
+  'ajustes-aplicados'
+] as const;
+
+export type AnchoredSourceType = (typeof ANCHORED_SOURCE_TYPES)[number];
+
+/**
+ * El origen de una línea del dominio, si es de los que tienen destino. El motor
+ * de liquidación calcula dinero y emite orígenes que ninguna pestaña pinta
+ * —`complementos`, `pagas-extra`, `ausencias`—: esos no son erratas, son líneas
+ * sin sitio al que ir, y se quedan sin enlace a propósito. Esta es la ÚNICA
+ * puerta por la que una cadena suelta entra en la unión.
+ */
+export function anchoredSourceType(sourceType: string): AnchoredSourceType | null {
+  return (ANCHORED_SOURCE_TYPES as readonly string[]).includes(sourceType)
+    ? (sourceType as AnchoredSourceType)
+    : null;
+}
+
+/**
  * Ancla navegable hacia la entidad de origen. Sin `bases` es un fragmento en
  * la misma página (lo que era cuando todo vivía en una); con `bases`, la ruta
  * de la pestaña donde la entidad está pintada, con el ancla detrás. Hueco
  * conocido: aún no existen rutas de detalle por entidad.
+ *
+ * Devuelve siempre una cadena: todo miembro de la unión tiene destino, y quien
+ * traiga un origen de fuera lo pasa antes por `anchoredSourceType`.
  */
 export function sourceAnchor(
-  sourceType: string,
+  sourceType: AnchoredSourceType,
   sourceId: string,
   bases?: SourceHrefBases
-): string | null {
+): string {
   switch (sourceType) {
     case 'agreement-version':
       return `${bases?.contrato ?? ''}#version-${sourceId}`;
@@ -1120,8 +1153,6 @@ export function sourceAnchor(
     // concepto, y `sourceId` es el id de la liquidación.
     case 'ajustes-aplicados':
       return `${bases?.pagos ?? ''}#cuenta-${sourceId}`;
-    default:
-      return null;
   }
 }
 
@@ -1599,6 +1630,10 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       line.sourceType === 'jornadas-extra' ? originByExtraId.get(line.sourceId) : undefined;
     const settledIn =
       line.sourceType === 'ajustes' ? settlementByAdjustmentId.get(line.sourceId) : undefined;
+    // El origen llega como cadena desde el motor de dominio, que también emite
+    // los que no tienen pantalla (complementos, pagas extra, ausencias): pasa
+    // por la puerta antes de tocar el constructor de anclas.
+    const anchored = anchoredSourceType(line.sourceType);
     return {
       id: line.id,
       anchorId,
@@ -1611,7 +1646,9 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       sourceId: line.sourceId,
       href: settledIn
         ? sourceAnchor('ajustes-aplicados', settledIn, facts.hrefBases)
-        : sourceAnchor(line.sourceType, line.sourceId, facts.hrefBases),
+        : anchored
+          ? sourceAnchor(anchored, line.sourceId, facts.hrefBases)
+          : null,
       originLabel: origin === undefined ? null : extraWorkOriginLabel(origin)
     };
   });

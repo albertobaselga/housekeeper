@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseEuroInput } from '../src/lib/employment/commands';
 import {
+  anchoredSourceType,
   buildAccrual,
   buildPortadaView,
   centsToEuroInput,
@@ -669,7 +670,20 @@ describe('liquidaciones y saldos', () => {
 
   it('solo genera anclas para orígenes conocidos', () => {
     expect(sourceAnchor('agreement-version', 'x')).toBe('#version-x');
-    expect(sourceAnchor('desconocido', 'x')).toBeNull();
+  });
+
+  it('la puerta de la unión deja fuera las erratas y los orígenes sin pantalla', () => {
+    // Que el tipo sea una unión es lo que hace que una errata al escribir
+    // «ajustes-aplicados» no compile en vez de borrar el enlace en silencio.
+    // Aquí se prueba la ÚNICA puerta por la que entra una cadena suelta: la de
+    // las líneas del motor de dominio.
+    expect(anchoredSourceType('ajustes-aplicados')).toBe('ajustes-aplicados');
+    expect(anchoredSourceType('ajustes-aplicaods')).toBeNull();
+    // Orígenes que el motor SÍ emite y que ninguna pestaña pinta: no tienen
+    // enlace porque no tienen destino, no porque nadie se acordara de ellos.
+    expect(anchoredSourceType('complementos')).toBeNull();
+    expect(anchoredSourceType('pagas-extra')).toBeNull();
+    expect(anchoredSourceType('ausencias')).toBeNull();
   });
 
   it('con bases, cada origen enlaza a la pestaña donde vive', () => {
@@ -689,7 +703,6 @@ describe('liquidaciones y saldos', () => {
     expect(sourceAnchor('ajustes', 'c1', bases)).toBe('/h/H/employment/conceptos#concepto-c1');
     expect(sourceAnchor('anticipos', 'a1', bases)).toBe('/h/H/employment#anticipo-a1');
     expect(sourceAnchor('agreement-version', 'v1', bases)).toBe('/h/H/employment/acuerdo#version-v1');
-    expect(sourceAnchor('desconocido', 'x', bases)).toBeNull();
   });
 });
 
