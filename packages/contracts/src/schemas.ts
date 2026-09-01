@@ -373,11 +373,33 @@ export const agreementScheduleInputSchema = z
   });
 
 /**
+ * Qué pasa con los días de vacaciones sin disfrutar al cerrar un año de
+ * contrato (apartado 4.2 del diseño). Viaja en `agreement_versions.terms`, no
+ * en una columna: es política pactada con forma propia, y `terms` es
+ * exactamente para eso.
+ *
+ * `never` no lleva número: decir «nunca expiran, a los 6 meses» sería dos
+ * respuestas a la vez, y la CHECK de la 0034 tampoco lo admitiría.
+ */
+export const vacationCarryoverExpirySchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("months"), months: z.number().int().min(1).max(120) }),
+  z.object({ mode: z.literal("never") }),
+]);
+
+/** Ausente = seis meses. Ningún contrato ya firmado necesita tocarse. */
+export const DEFAULT_VACATION_CARRYOVER_EXPIRY = { mode: "months", months: 6 } as const;
+
+/**
  * Términos completos de una versión: nunca se editan, siempre se apilan.
  *
  * `schedule` es nullable Y opcional a propósito: un contrato puede no declarar
  * horario, y entonces a la empleada no se le enseña una sección vacía. Ese
  * «null» no es un hueco por rellenar, es una respuesta.
+ *
+ * `unusedVacationDayRateCents` es nullable por el mismo motivo y por uno más:
+ * la columna de la 0034 es NULLABLE a propósito, porque un cero por omisión
+ * dejaría escrito en una tabla inmutable que se acordó pagar cero euros por
+ * día de vacaciones no disfrutado. Vacío dice la verdad: no se pactó.
  */
 export const agreementTermsInputSchema = z.object({
   effectiveFrom: isoDateSchema,
@@ -387,6 +409,15 @@ export const agreementTermsInputSchema = z.object({
   ),
   contractedWeeklyMinutes: z.number().int().min(1).max(7 * 24 * 60),
   annualVacationDays: z.number().int().min(0).max(365),
+  unusedVacationDayRateCents: moneyCentsSchema
+    .nullable()
+    .default(null)
+    .refine((value) => value === null || BigInt(value) >= 0n, {
+      message: "El día de vacaciones no disfrutado no puede tener precio negativo",
+    }),
+  vacationCarryoverExpiry: vacationCarryoverExpirySchema.default(
+    DEFAULT_VACATION_CARRYOVER_EXPIRY,
+  ),
   reason: z.string().trim().min(1).max(500),
   extraWorkTypes: z.array(extraWorkTypeInputSchema).max(30),
   supplements: z.array(recurringSupplementInputSchema).max(30),

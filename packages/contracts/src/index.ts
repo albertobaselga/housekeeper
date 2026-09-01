@@ -306,6 +306,20 @@ export interface AgreementScheduleInputV1 {
 }
 
 /**
+ * Qué pasa con los días de vacaciones que quedan sin disfrutar al cerrar un año
+ * de contrato (apartado 4.2 del diseño). Es política PACTADA, así que viaja en
+ * los términos de la versión y cambia apilando otra, como todo lo demás.
+ *
+ * `months` es el margen desde el fin del año de contrato; `never` dice que esos
+ * días no caducan nunca y entonces no hay fecha límite ni aviso. Ausente en una
+ * versión ya firmada significa seis meses, que es lo que de hecho se les venía
+ * aplicando: por eso ningún contrato existente necesita tocarse.
+ */
+export type VacationCarryoverExpiryV1 =
+  | { mode: "months"; months: number }
+  | { mode: "never" };
+
+/**
  * Términos completos de UNA versión. Nunca se editan: cada cambio apila una
  * versión nueva con su catálogo entero, y el historial enseña las dos.
  */
@@ -314,6 +328,14 @@ export interface AgreementTermsInputV1 {
   monthlySalaryCents: MoneyCents;
   contractedWeeklyMinutes: number;
   annualVacationDays: number;
+  /**
+   * Importe por día de vacaciones NO disfrutado (apartado 4.4). null = no se
+   * pactó, y entonces no hay compensación: la aplicación no estima un precio ni
+   * escribe un cero, porque la fila es inmutable y ese cero diría para siempre
+   * que se acordó pagar cero euros por día.
+   */
+  unusedVacationDayRateCents: MoneyCents | null;
+  vacationCarryoverExpiry: VacationCarryoverExpiryV1;
   reason: string;
   extraWorkTypes: ExtraWorkTypeInputV1[];
   supplements: RecurringSupplementInputV1[];
