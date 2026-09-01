@@ -331,11 +331,18 @@
         </p>
         <ul class="wiki-recent" data-lista="finanzas">
           {#each data.finance.admins as admin (admin.membershipId)}
+            <!-- Las TRES superficies que hablan del estado de esta fila —el
+                 chip, la frase y la etiqueta del botón— salen de aquí y de
+                 ningún otro sitio. Leyendo cada una por su cuenta se podían
+                 contradecir entre sí, y una fila que dice «Apagado» mientras su
+                 botón ofrece «Desactivar Finanzas» no es media verdad: no hay
+                 forma de saber cuál de las dos es. -->
+            {@const granted = admin.granted}
             <li>
               <div class="fila-accion">
                 <span class="fila-cuerpo">
                   <strong>{admin.name}</strong>
-                  <small>{admin.granted ? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'}</small>
+                  <small>{granted ? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'}</small>
                 </span>
                 <span class="fila-fin">
                   <!-- Mientras el comando viaja, el estado sigue siendo el de
@@ -345,7 +352,7 @@
                   {#if financePendingId === admin.membershipId}
                     <span class="status-chip">Enviando…</span>
                   {/if}
-                  {#if admin.granted}
+                  {#if granted}
                     <span class="status-chip success">Activado</span>
                   {:else}
                     <span class="status-chip">Apagado</span>
@@ -359,12 +366,12 @@
                     class="button secondary small-button"
                     type="button"
                     disabled={busy}
-                    aria-label={admin.granted
+                    aria-label={granted
                       ? `Desactivar Finanzas a ${admin.name}`
                       : `Activar Finanzas a ${admin.name}`}
                     onclick={() => askFinance(admin)}
                   >
-                    {admin.granted ? 'Desactivar Finanzas' : 'Activar Finanzas'}
+                    {granted ? 'Desactivar Finanzas' : 'Activar Finanzas'}
                   </button>
                 </span>
               </div>

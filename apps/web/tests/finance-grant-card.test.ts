@@ -172,11 +172,14 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     // más, así que cualquier suplantación (`override[id] ?? admin.granted`)
     // rompe aquí.
     expect(card).toMatch(
-      /\{#if admin\.granted\}[^{]*<span class="status-chip success">Activado<\/span> \{:else\}[^{]*<span class="status-chip">Apagado<\/span>/
+      /\{#if granted\}[^{]*<span class="status-chip success">Activado<\/span> \{:else\}[^{]*<span class="status-chip">Apagado<\/span>/
     );
-    expect(card).toMatch(
-      /admin\.granted \? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'/
-    );
+    expect(card).toMatch(/granted \? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'/);
+    // Y las tres superficies salen de la MISMA fuente: leyendo cada una por su
+    // cuenta se podían contradecir, y una fila que dice «Apagado» con un botón
+    // que ofrece «Desactivar Finanzas» no deja saber cuál de las dos es verdad.
+    expect(card).toContain('{@const granted = admin.granted}');
+    expect(card).toMatch(/\{granted \? 'Desactivar Finanzas' : 'Activar Finanzas'\}/);
   });
 
   it('el interruptor envía el comando de la fila, con su estado real', () => {
