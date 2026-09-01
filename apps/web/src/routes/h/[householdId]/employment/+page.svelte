@@ -5,6 +5,7 @@
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
+  import { employmentTabHref, parseCents } from '$lib/employment/model';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -39,15 +40,23 @@
     can(context.role, 'settlement.close') || can(context.role, 'payment.confirm.self')
   );
 
-  // El enlace a Conceptos conserva a la persona elegida, como las pestañas, y
-  // con el MISMO escapado: tres productores de la misma URL no pueden
-  // discrepar en cómo la escriben.
+  // Los destinos los escribe el constructor único de `model.ts`: la persona
+  // elegida viaja siempre, y siempre escapada igual. Escribir la cadena a mano
+  // en cada sitio era la vía por la que un enlace acababa en el expediente de
+  // otra persona.
   const conceptosHref = $derived(
-    overview
-      ? `/h/${overview.householdId}/employment/conceptos${agreement ? `?empleada=${encodeURIComponent(agreement.id)}` : ''}`
-      : ''
+    overview ? employmentTabHref(overview.householdId, 'conceptos', agreement?.id) : ''
   );
-  const lastSettlement = $derived(overview?.settlements[0] ?? null);
+
+  // La última cuenta que de verdad dice algo. Se salta las anuladas —el día
+  // que exista anular una cuenta, la anulada taparía la última real— y calla
+  // cuando la última es una cuenta recién abierta sin un solo importe: eso ya
+  // lo cuenta la tarjeta del devengo de arriba, y con su desglose entero.
+  const lastSettlement = $derived.by(() => {
+    const latest = overview?.settlements.find((row) => row.status !== 'void') ?? null;
+    if (!latest) return null;
+    return latest.status === 'open' && parseCents(latest.transferTotalCents) === 0n ? null : latest;
+  });
 </script>
 
 <div class="page-wrap">
@@ -113,7 +122,7 @@
               {/if}
               <a
                 class="button secondary small-button"
-                href={`?empleada=${encodeURIComponent(employee.agreementId)}`}
+                href={employmentTabHref(context.household.id, 'resumen', employee.agreementId)}
                 data-sveltekit-noscroll
               >Abrir su expediente</a>
             </span>
@@ -260,13 +269,47 @@
             <!-- La última cuenta, en una línea: el historial entero, con sus
                  pagos y su documento, vive en la pestaña Pagos. -->
             {#if lastSettlement}
+              {@const pendiente = parseCents(lastSettlement.pendingCents) > 0n}
               <article class="card">
                 <div class="section-heading">
                   <div><p class="eyebrow">Última cuenta</p><h2>{lastSettlement.periodLabel}</h2></div>
                   <span class="status-chip {lastSettlement.fullyPaid && lastSettlement.receiptConfirmed ? 'success' : 'warning'}">{lastSettlement.paymentStateLabel}</span>
                 </div>
+                <!-- Con su cifra: quien mira la última cuenta quiere saber
+                     cuánto queda por pagar o, si ya se pagó, de quién es la
+                     pelota. El estado a secas no contesta ninguna de las dos. -->
+                <div class="ledger-list">
+                  <div>
+                    <span>
+                      <strong>{pendiente ? 'Queda por pagar' : 'Pagada'}</strong>
+                      <small>
+                        {#if pendiente}
+                          De {lastSettlement.transferTotalLabel} · vence el {lastSettlement.dueOnLabel}
+                        {:else if lastSettlement.receiptConfirmed}
+                          Cobro confirmado: la cuenta queda cerrada del todo.
+                        {:else if isOwnAgreement}
+                          Falta que confirmes el cobro. Se hace en Pagos.
+                        {:else}
+                          Falta que ella confirme el cobro, que lo hace por su cuenta. De tu parte
+                          no queda nada.
+                        {/if}
+                      </small>
+                    </span>
+                    <strong class="cifra pequena">
+                      {pendiente ? lastSettlement.pendingLabel : lastSettlement.transferTotalLabel}
+                    </strong>
+                  </div>
+                </div>
                 <div class="action-row">
-                  <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/pagos${agreement ? `?empleada=${encodeURIComponent(agreement.id)}` : ''}`}>Ver los pagos</a>
+                  <a
+                    class="button secondary small-button"
+                    href={employmentTabHref(
+                      overview.householdId,
+                      'pagos',
+                      agreement?.id,
+                      `cuenta-${lastSettlement.id}`
+                    )}
+                  >Ver los pagos</a>
                 </div>
               </article>
             {/if}
@@ -328,13 +371,11 @@
               </a>
             </article>
           {/if}
-          {#if seesAmounts}
-            <article class="card quiet-card">
-              <span class="card-icon" aria-hidden="true">✓</span>
-              <h2>Confirmación independiente</h2>
-              <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
-            </article>
-          {/if}
+          <!-- Aquí vivía «Confirmación independiente»: el rótulo que quedó
+               huérfano cuando se borró su botón, enunciando una regla en
+               abstracto y ocupando un tercio de la columna. Lo que explicaba se
+               dice ahora donde se actúa —junto al formulario de pago, en
+               Pagos— y sobre una cuenta concreta, no sobre la idea de una. -->
         </aside>
       </div>
     {/if}
@@ -366,11 +407,6 @@
               <div><span><strong>{item.label}</strong><small>{item.detail}</small></span><strong>{item.value}</strong></div>
             {/each}
           </div>
-        </article>
-        <article class="card quiet-card">
-          <span class="card-icon" aria-hidden="true">✓</span>
-          <h2>Confirmación independiente</h2>
-          <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
         </article>
       </aside>
     </div>
