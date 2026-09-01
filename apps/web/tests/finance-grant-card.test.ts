@@ -155,6 +155,13 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
   it('el estado pintado sale de la concesión, y en la dirección correcta', () => {
     // Invertir cualquiera de las dos correspondencias deja la tarjeta diciendo
     // «Activado» a quien el layout no deja entrar en el módulo.
+    //
+    // Esta es además la red que cubre lo que ningún cierre del despacho puede
+    // cubrir: `apply` nunca fue la única manera de pintar antes de tiempo —se
+    // puede pintar sin gancho ninguno, con estado local de la página—. Las dos
+    // expresiones exigen que lo que se ve salga de `admin.granted` y de nada
+    // más, así que cualquier suplantación (`override[id] ?? admin.granted`)
+    // rompe aquí.
     expect(card).toMatch(
       /\{#if admin\.granted\}[^{]*<span class="status-chip success">Activado<\/span> \{:else\}[^{]*<span class="status-chip">Apagado<\/span>/
     );
@@ -175,24 +182,20 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     // constante ni el de la primera: `financeGrantToggle` hace el resto y lo
     // comprueba `finance-commands.test.ts` ejecutándolo.
     expect(script).toMatch(/membershipId: admin\.membershipId, granted: admin\.granted/);
-    // Y viaja como comando por la cola optimista, nunca como form action.
-    expect(script).toMatch(/financeOptimistic\s*\.run\(envelope/);
+    // Y viaja como comando por la cola, nunca como form action.
     expect(card).not.toContain('method="POST"');
   });
 
-  it('no pinta nada antes de que el servidor conteste', () => {
-    // `OptimisticActions` solo miente si se le da un `apply`: sin él, el estado
-    // de la tarjeta sigue siendo el que trajo el `load` hasta que un comando se
-    // confirma y `cc:settings` lo refresca. Un rechazo deja la fila como estaba
-    // y la nota roja al lado.
-    //
-    // Se prohíbe la PROPIEDAD en sus dos formas, no solo `apply:`: en un objeto
-    // literal, `{ apply, messageOverrides }` es la misma entrega del gancho
-    // escrita en abreviado, y buscando únicamente los dos puntos el pintado
-    // optimista vuelve a entrar con la prueba en verde.
-    expect(scriptCode, 'el despacho entrega un gancho `apply` y vuelve a pintar antes de tiempo').not.toMatch(
-      /\bapply\s*[,:}]/
-    );
+  it('despacha por el camino que no puede pintar antes del acuse', () => {
+    // Aquí NO se persigue la forma de escribir el gancho de pintado: esa pelea
+    // no se gana con expresiones regulares (`apply:`, `apply,`, `['apply']`,
+    // una constante intermedia, una propagación…). Quien garantiza la propiedad
+    // es `$lib/finance/grant-dispatch`, que elige las opciones que admite en
+    // vez de reenviar las que le den, y lo comprueba `finance-grant-dispatch`
+    // ejecutándolo. Lo único que hace falta afirmar sobre la pantalla es que
+    // despacha POR AHÍ, que es lo que pone esa garantía en el camino.
+    expect(script).toContain("from '$lib/finance/grant-dispatch'");
+    expect(script).toMatch(/financeGrant\s*\.run\(envelope/);
     expect(card).toContain('<ActionStatus status={financeStatus} />');
   });
 

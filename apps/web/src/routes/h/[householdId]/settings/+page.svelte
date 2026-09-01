@@ -8,6 +8,7 @@
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { revokeMembership, setMembershipExpiry } from '$lib/access/commands';
   import { financeGrantToggle } from '$lib/finance/commands';
+  import { createFinanceGrantDispatch } from '$lib/finance/grant-dispatch';
   import type { ActionData, PageData } from './$types';
 
   import { useAppContext } from '$lib/auth/context';
@@ -47,24 +48,15 @@
   };
 
   // ── Concesiones de Finanzas (spec §4) ──────────────────────────────────────
-  // Nota de guardado PROPIA: el acuse tiene que aparecer donde estaba el dedo
-  // (§2.5 del sistema móvil) y la tarjeta de accesos queda muy por encima. Son
-  // dos instancias porque son dos notas, no dos mecanismos: mismo token de
-  // invalidación y mismo acuse veraz.
-  const financeOptimistic = new OptimisticActions({
-    householdId: context.household.id,
-    invalidateToken: 'cc:settings'
-  });
-  const financeStatus = financeOptimistic.status;
-  $effect(() => financeOptimistic.start());
-
-  // Rechazos propios de la concesión de Finanzas (códigos de commands/finance.ts).
-  const FINANCE_MESSAGES: Readonly<Record<string, string>> = {
-    already_granted: 'Esa cuenta ya tiene Finanzas activado',
-    not_granted: 'Esa cuenta no tiene Finanzas activado',
-    grant_target_not_admin: 'Finanzas solo se concede a la familia administradora',
-    membership_not_found: 'Ese acceso ya no existe'
-  };
+  // Despacho propio, y no una segunda `OptimisticActions` suelta: el módulo
+  // `$lib/finance/grant-dispatch` fija el token, los mensajes de rechazo y —lo
+  // que importa— hace IMPOSIBLE entregarle un gancho de pintado optimista. Esta
+  // tarjeta no puede decir «Activado» de algo que el servidor no ha aceptado.
+  // La nota es propia porque el acuse tiene que aparecer donde estaba el dedo
+  // (§2.5 del sistema móvil) y la tarjeta de accesos queda muy por encima.
+  const financeGrant = createFinanceGrantDispatch({ householdId: context.household.id });
+  const financeStatus = financeGrant.status;
+  $effect(() => financeGrant.start());
 
   type FinanceAdmin = NonNullable<PageData['finance']>['admins'][number];
 
@@ -95,15 +87,16 @@
     busy = true;
     financePendingId = admin.membershipId;
     confirmingFinanceId = null;
-    // Sin `apply`: la fila sigue diciendo lo que trajo el `load` hasta que el
-    // servidor confirma y `cc:settings` la refresca. Un rechazo la deja como
-    // estaba, con su causa al lado.
-    void financeOptimistic
+    // La fila sigue diciendo lo que trajo el `load` hasta que el servidor
+    // confirma y `cc:settings` la refresca; un rechazo la deja como estaba, con
+    // su causa al lado. No es una convención que haya que recordar: el despacho
+    // no admite ganchos de pintado.
+    void financeGrant
       .run(envelope, {
-        messageOverrides: FINANCE_MESSAGES,
         // Cambiar la concesión PROPIA cambia lo que el layout entrega al
         // cliente —la capacidad `finance.access`, y con ella la entrada de
         // navegación—, y `cc:settings` solo re-ejecuta el load de esta página.
+        // Va como `settle`: después del acuse, nunca antes.
         settle: admin.isSelf ? () => void invalidateAll() : undefined
       })
       .finally(() => {
