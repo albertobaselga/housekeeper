@@ -866,13 +866,11 @@ export async function loadEmploymentPortada(
        */
       const owed = await client.query<{
         agreementId: string;
-        count: string;
         pendingCents: string;
         earliestDueOn: string | null;
         overdueCount: string;
       }>(
         `select settlement.agreement_id as "agreementId",
-                count(*)::text as "count",
                 sum(totals.pending_cents)::text as "pendingCents",
                 min(settlement.due_on)::text as "earliestDueOn",
                 count(*) filter (where settlement.due_on < $3::date)::text as "overdueCount"
@@ -892,7 +890,6 @@ export async function loadEmploymentPortada(
           row.agreementId,
           {
             pendingCents: row.pendingCents,
-            count: Number(row.count),
             earliestDueOn: row.earliestDueOn,
             overdueCount: Number(row.overdueCount)
           }

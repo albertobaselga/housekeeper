@@ -1087,7 +1087,6 @@ describe('la portada del hogar', () => {
           // Dos cuentas cerradas sin pagar del todo, una de ellas vencida.
           owed: {
             pendingCents: '145330',
-            count: 2,
             earliestDueOn: '2026-07-05',
             overdueCount: 1
           }
@@ -1097,16 +1096,45 @@ describe('la portada del hogar', () => {
       ]
     });
 
-    expect(portada.owedTotalCents).toBe('145330');
     expect(portada.owedTotalLabel).toBe('1.453,30 €');
-    expect(portada.owedCount).toBe(2);
-    expect(portada.anyOverdue).toBe(true);
     expect(portada.employees[0]).toMatchObject({
       owedLabel: '1.453,30 €',
       owedDueLabel: 'Venció el 5 jul 2026',
       overdue: true
     });
-    expect(portada.employees[1]).toMatchObject({ owedCents: '0', owedLabel: null, owedDueLabel: null });
+    expect(portada.employees[1]).toMatchObject({
+      owedLabel: null,
+      owedDueLabel: null,
+      overdue: false
+    });
+  });
+
+  it('la vista no puede decir «Al día» y «Vencida» a la vez', () => {
+    // La consulta de hoy filtra `pending_cents > 0` y no puede producir esto,
+    // pero la función está exportada y se prueba suelta: con una entrada
+    // incoherente el distintivo se encendía por su cuenta, al margen del
+    // importe que gobierna la etiqueta. Se normaliza en vez de reventar: esto
+    // construye una pantalla, y una fila rara la deja coherente, no rota.
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        {
+          agreementId: 'a1',
+          employeeLabel: 'Ana',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          owed: { pendingCents: '0', earliestDueOn: '2026-07-05', overdueCount: 2 }
+        }
+      ]
+    });
+    expect(portada.owedTotalLabel).toBeNull();
+    expect(portada.employees[0]).toMatchObject({
+      owedLabel: null,
+      owedDueLabel: null,
+      overdue: false
+    });
   });
 
   it('sin deuda ninguna, el total no es «0,00 €» sino la ausencia de cifra', () => {
@@ -1117,10 +1145,9 @@ describe('la portada del hogar', () => {
         { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 0 }
       ]
     });
-    expect(portada.owedTotalCents).toBe('0');
     // La pantalla dice «Al día» justamente porque aquí no hay etiqueta.
     expect(portada.owedTotalLabel).toBeNull();
-    expect(portada.anyOverdue).toBe(false);
+    expect(portada.employees[0]!.overdue).toBe(false);
   });
 
   it('suma la deuda de varias personas en BigInt, por encima de 2^53', () => {
@@ -1134,7 +1161,7 @@ describe('la portada del hogar', () => {
           active: true,
           accrual: null,
           pendingCount: 0,
-          owed: { pendingCents: '9007199254740993', count: 1, earliestDueOn: '2026-09-05', overdueCount: 0 }
+          owed: { pendingCents: '9007199254740993', earliestDueOn: '2026-09-05', overdueCount: 0 }
         },
         {
           agreementId: 'a2',
@@ -1142,11 +1169,13 @@ describe('la portada del hogar', () => {
           active: true,
           accrual: null,
           pendingCount: 0,
-          owed: { pendingCents: '1', count: 1, earliestDueOn: '2026-09-05', overdueCount: 0 }
+          owed: { pendingCents: '1', earliestDueOn: '2026-09-05', overdueCount: 0 }
         }
       ]
     });
-    expect(portada.owedTotalCents).toBe('9007199254740994');
+    // 9007199254740993 + 1 en Number daría 9.007.199.254.740.992: la etiqueta
+    // es ahora la única prueba de que la suma va en BigInt, y basta.
+    expect(portada.owedTotalLabel).toBe('90.071.992.547.409,94 €');
     expect(portada.employees[0]!.owedDueLabel).toBe('Vence el 5 sep 2026');
   });
 

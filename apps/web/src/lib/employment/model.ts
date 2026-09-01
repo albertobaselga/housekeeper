@@ -822,12 +822,9 @@ export interface PortadaEmployeeView {
   pendingLabel: string;
   /**
    * La deuda REAL, que no es el devengo: cuentas CERRADAS con importe sin
-   * pagar. '0' cuando no se debe nada.
+   * pagar. null cuando no se debe nada, para que nadie pinte un «0,00 €».
    */
-  owedCents: string;
-  /** null cuando no se debe nada, para que nadie pinte un «0,00 €». */
   owedLabel: string | null;
-  owedCount: number;
   /** «Vence el 5 sep 2026» / «Venció el 5 ago 2026». null sin deuda. */
   owedDueLabel: string | null;
   overdue: boolean;
@@ -840,7 +837,6 @@ export interface PortadaEmployeeView {
  */
 export interface PortadaOwedInput {
   pendingCents: string;
-  count: number;
   earliestDueOn: string | null;
   overdueCount: number;
 }
@@ -881,12 +877,12 @@ export interface EmploymentPortadaView {
   reimbursementCents: string;
   reimbursementLabel: string;
   withReimbursements: boolean;
-  /** Deuda de la casa entera. '0' cuando no se debe nada. */
-  owedTotalCents: string;
-  /** null cuando no se debe nada: el encabezado dice «Al día», no «0,00 €». */
+  /**
+   * Deuda de la casa entera. null cuando no se debe nada: el encabezado dice
+   * «Al día», no «0,00 €». Solo la etiqueta: los céntimos en crudo no los
+   * pintaba nadie y mandarlos era peso en el arranque y superficie a la vez.
+   */
   owedTotalLabel: string | null;
-  owedCount: number;
-  anyOverdue: boolean;
   employees: PortadaEmployeeView[];
   candidates: PortadaCandidateView[];
 }
@@ -923,8 +919,6 @@ export function buildPortadaView(input: {
   let salary = 0n;
   let reimbursement = 0n;
   let owedTotal = 0n;
-  let owedCount = 0;
-  let anyOverdue = false;
   const employees: PortadaEmployeeView[] = input.employees.map((employee) => {
     const accrual = employee.accrual;
     if (accrual) {
@@ -934,9 +928,15 @@ export function buildPortadaView(input: {
     const owed = employee.owed ?? null;
     const owedCents = owed ? parseCents(owed.pendingCents) : 0n;
     owedTotal += owedCents;
-    owedCount += owed?.count ?? 0;
-    const overdue = (owed?.overdueCount ?? 0) > 0;
-    if (overdue) anyOverdue = true;
+    // El distintivo cuelga del MISMO predicado que la cifra, no de su propio
+    // recuento: sin importe pendiente no hay deuda que pueda estar vencida. La
+    // consulta de hoy filtra `pending_cents > 0` y no puede producir la
+    // incoherencia, pero esta función está exportada y se prueba suelta, y con
+    // una entrada incoherente decía «Al día» y «Vencida» a la vez. Se normaliza
+    // en vez de rechazarla: esto construye una vista, y una fila rara de la
+    // base tiene que dejar la pantalla coherente, no tirarla abajo.
+    const owedAnything = owedCents > 0n;
+    const overdue = owedAnything && (owed?.overdueCount ?? 0) > 0;
     return {
       agreementId: employee.agreementId,
       employeeLabel: employee.employeeLabel,
@@ -950,11 +950,9 @@ export function buildPortadaView(input: {
           : employee.pendingCount === 1
             ? '1 asunto por decidir'
             : `${employee.pendingCount} asuntos por decidir`,
-      owedCents: owedCents.toString(),
-      owedLabel: owedCents > 0n ? formatCents(owedCents.toString()) : null,
-      owedCount: owed?.count ?? 0,
+      owedLabel: owedAnything ? formatCents(owedCents.toString()) : null,
       owedDueLabel:
-        owedCents > 0n && owed?.earliestDueOn
+        owedAnything && owed?.earliestDueOn
           ? `${overdue ? 'Venció' : 'Vence'} el ${dateLabel(owed.earliestDueOn)}`
           : null,
       overdue
@@ -972,10 +970,7 @@ export function buildPortadaView(input: {
     reimbursementCents: reimbursement.toString(),
     reimbursementLabel: formatCents(reimbursement.toString()),
     withReimbursements: reimbursement !== 0n,
-    owedTotalCents: owedTotal.toString(),
     owedTotalLabel: owedTotal > 0n ? formatCents(owedTotal.toString()) : null,
-    owedCount,
-    anyOverdue,
     employees,
     candidates: (input.candidates ?? []).map((candidate) => ({
       membershipId: candidate.membershipId,

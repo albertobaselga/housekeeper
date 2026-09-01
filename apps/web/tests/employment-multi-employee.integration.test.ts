@@ -386,22 +386,19 @@ describe.runIf(Boolean(adminUrl))('un hogar con dos personas empleadas, bajo RLS
 
       // La cerrada cuenta; la abierta del mes en curso NO, aunque sea la más
       // reciente: es previsión, no deuda.
-      expect(portada!.owedTotalCents).toBe('120000');
       expect(portada!.owedTotalLabel).toBe('1.200,00 €');
-      expect(portada!.owedCount).toBe(1);
-      // Vencía el 30 de junio y NOW es el 10 de agosto.
-      expect(portada!.anyOverdue).toBe(true);
 
       const primera = portada!.employees.find((row) => row.agreementId === AGREEMENT_ONE)!;
       expect(primera.owedLabel).toBe('1.200,00 €');
       expect(primera.owedDueLabel).toBe('Venció el 30 jun 2026');
+      // Vencía el 30 de junio y NOW es el 10 de agosto.
       expect(primera.overdue).toBe(true);
 
       // La segunda no debe nada: null y no «0,00 €», que se leería como cifra.
       const segunda = portada!.employees.find((row) => row.agreementId === AGREEMENT_TWO)!;
-      expect(segunda.owedCents).toBe('0');
       expect(segunda.owedLabel).toBeNull();
       expect(segunda.owedDueLabel).toBeNull();
+      expect(segunda.overdue).toBe(false);
     });
 
     it('la empleada solo ve la suya, y eso lo decide Postgres', async () => {
@@ -413,7 +410,7 @@ describe.runIf(Boolean(adminUrl))('un hogar con dos personas empleadas, bajo RLS
       );
       expect(portada!.employees.map((row) => row.agreementId)).toEqual([AGREEMENT_ONE]);
       expect(portada!.seesAmounts).toBe(true);
-      expect(portada!.owedTotalCents).toBe('120000');
+      expect(portada!.owedTotalLabel).toBe('1.200,00 €');
     });
 
     it('la familia no administradora ve a las personas y ni una cifra', async () => {
@@ -427,7 +424,6 @@ describe.runIf(Boolean(adminUrl))('un hogar con dos personas empleadas, bajo RLS
       // haya llegado: es la diferencia entre «no puedes verlo» y «su contrato no
       // está en vigor este mes».
       expect(portada!.seesAmounts).toBe(false);
-      expect(portada!.owedTotalCents).toBe('0');
       expect(portada!.owedTotalLabel).toBeNull();
       expect(portada!.employees.every((row) => row.monthTotalLabel === null)).toBe(true);
       // Y sin el alta: las personas sin contrato solo se las ofrece a quien
