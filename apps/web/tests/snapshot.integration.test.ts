@@ -50,9 +50,60 @@ function snapshotUrlFor(base: string): string {
   return url.toString();
 }
 
+/** La zona del hogar: la misma con la que la aplicación decide qué día es hoy. */
+const CASA_TZ = 'Europe/Madrid';
+
+/**
+ * «Hoy» EN LA ZONA DE LA CASA, para sembrar.
+ *
+ * Aquí ponía `current_date`, que es la fecha del SERVIDOR DE BASE DE DATOS (su
+ * zona de sesión; en CI y en el Docker local, UTC). La aplicación decide qué día
+ * es hoy en `Europe/Madrid` —`snapshot.server.ts` lo calcula con `Intl` y lo
+ * manda como parámetro—, así que entre las 22:00 y las 00:00 UTC las dos fechas
+ * eran días distintos y la prueba fallaba sola: el hueco de «mañana» pasaba a
+ * ser el de hoy y el menú sembrado dejaba de coincidir. Fallo real, no ruido,
+ * pero de los que aparecen y desaparecen según la hora — y un CI que falla dos
+ * horas de cada veinticuatro se aprende a ignorar.
+ *
+ * `now() at time zone 'Europe/Madrid'` no depende de la zona de sesión de nadie:
+ * dice la hora de pared de la casa, que es la única que le importa a un menú.
+ */
+const HOY_EN_CASA = `(now() at time zone '${CASA_TZ}')::date`;
+
+/**
+ * Zona de sesión DELIBERADAMENTE HOSTIL para la siembra, elegida para que la
+ * fecha del servidor NUNCA coincida con la de la casa.
+ *
+ * Sin esto, el arreglo de arriba sólo se comprobaría de verdad durante las dos
+ * horas al día en que las dos fechas difieren: el resto del tiempo un
+ * `current_date` reintroducido pasaría la prueba. Con esto, la franja mala es
+ * SIEMPRE, así que el fallo deja de depender de a qué hora corra CI.
+ *
+ * Antes del mediodía en casa se elige UTC−12 (la sesión va un día por detrás) y
+ * a partir del mediodía UTC+14 (un día por delante). Con el desfase de Madrid
+ * —+1 en invierno, +2 en verano— las dos ramas caen siempre en otro día, así
+ * que no hay hora del año en la que esta prueba se relaje.
+ */
+function zonaQueNoEsLaDeCasa(ahora = new Date()): string {
+  const hora = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: CASA_TZ,
+      hour: '2-digit',
+      hourCycle: 'h23'
+    }).format(ahora)
+  );
+  return hora < 12 ? 'Etc/GMT+12' : 'Pacific/Kiritimati';
+}
+
+const ZONA_HOSTIL = zonaQueNoEsLaDeCasa();
+
 const SNAPSHOT_SEED = `
 BEGIN;
 SET LOCAL row_security = off;
+-- Ver zonaQueNoEsLaDeCasa(): la siembra corre a propósito en una zona cuya
+-- fecha no es la de la casa, para que un current_date que volviera a colarse
+-- aquí falle SIEMPRE y no sólo en la franja en que se caía antes.
+SET LOCAL TIME ZONE '${ZONA_HOSTIL}';
 
 -- Guía: un espacio vivo con una nota fijada y publicada, una publicada sin
 -- fijar, un borrador fijado, y un espacio plantilla con otra nota fijada.
@@ -103,17 +154,17 @@ INSERT INTO app.menu_groups (id, household_id, name, position)
 VALUES ('${MENU_GROUP}', '${FIXTURE_HOUSEHOLD}', 'Casa', 20);
 
 INSERT INTO app.menu_slots (id, household_id, group_id, on_date, meal, recipe_page_id, free_text, notes, updated_by_membership_id) VALUES
-  ('${SLOT_COMIDA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', current_date, 'comida', '${RECIPE_PAGE}', '', '', '${ADMIN_MEMBERSHIP}'),
-  ('${SLOT_CENA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', current_date, 'cena', NULL, 'Tortilla y ensalada', '', '${ADMIN_MEMBERSHIP}'),
-  ('${SLOT_MANANA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', current_date + 1, 'comida', NULL, 'Sopa de mañana', '', '${ADMIN_MEMBERSHIP}');
+  ('${SLOT_COMIDA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', ${HOY_EN_CASA}, 'comida', '${RECIPE_PAGE}', '', '', '${ADMIN_MEMBERSHIP}'),
+  ('${SLOT_CENA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', ${HOY_EN_CASA}, 'cena', NULL, 'Tortilla y ensalada', '', '${ADMIN_MEMBERSHIP}'),
+  ('${SLOT_MANANA}', '${FIXTURE_HOUSEHOLD}', '${MENU_GROUP}', ${HOY_EN_CASA} + 1, 'comida', NULL, 'Sopa de mañana', '', '${ADMIN_MEMBERSHIP}');
 
 -- Rutinas: hoy (empleada), atrasada (todas), futura (todas) y una solo de familia.
 INSERT INTO app.routines (id, household_id, title, details, audience, next_due_hint, created_by_membership_id,
   pattern, anchor_on, repeat_every) VALUES
-  ('${ROUTINE_TODAY}', '${FIXTURE_HOUSEHOLD}', 'Sacar la basura (off)', 'Contenedor amarillo', 'employee', current_date, '${ADMIN_MEMBERSHIP}', 'every_n_days', current_date, 1),
-  ('${ROUTINE_LATE}', '${FIXTURE_HOUSEHOLD}', 'Cambiar sábanas (off)', '', 'all', current_date - 2, '${ADMIN_MEMBERSHIP}', 'every_n_days', current_date - 2, 7),
-  ('${ROUTINE_FUTURE}', '${FIXTURE_HOUSEHOLD}', 'Limpiar filtros (off)', '', 'all', current_date + 5, '${ADMIN_MEMBERSHIP}', 'every_n_days', current_date + 5, 30),
-  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Revisar seguros (off)', '', 'family', current_date, '${ADMIN_MEMBERSHIP}', 'every_n_days', current_date, 90);
+  ('${ROUTINE_TODAY}', '${FIXTURE_HOUSEHOLD}', 'Sacar la basura (off)', 'Contenedor amarillo', 'employee', ${HOY_EN_CASA}, '${ADMIN_MEMBERSHIP}', 'every_n_days', ${HOY_EN_CASA}, 1),
+  ('${ROUTINE_LATE}', '${FIXTURE_HOUSEHOLD}', 'Cambiar sábanas (off)', '', 'all', ${HOY_EN_CASA} - 2, '${ADMIN_MEMBERSHIP}', 'every_n_days', ${HOY_EN_CASA} - 2, 7),
+  ('${ROUTINE_FUTURE}', '${FIXTURE_HOUSEHOLD}', 'Limpiar filtros (off)', '', 'all', ${HOY_EN_CASA} + 5, '${ADMIN_MEMBERSHIP}', 'every_n_days', ${HOY_EN_CASA} + 5, 30),
+  ('${ROUTINE_FAMILY}', '${FIXTURE_HOUSEHOLD}', 'Revisar seguros (off)', '', 'family', ${HOY_EN_CASA}, '${ADMIN_MEMBERSHIP}', 'every_n_days', ${HOY_EN_CASA}, 90);
 
 COMMIT;
 `;
@@ -161,6 +212,49 @@ describe.runIf(Boolean(adminUrl))('snapshot crítico con datos reales del hogar'
 
   afterAll(async () => {
     await appPool?.end();
+  });
+
+  it('la siembra llama «hoy» al mismo día que la casa, no al del servidor', async () => {
+    /*
+     * La invariante que faltaba, dicha en voz alta en vez de supuesta. Se
+     * comprueba a la vez que la zona hostil hace su trabajo: si las dos fechas
+     * de abajo coincidieran, esta prueba pasaría por casualidad y no probaría
+     * nada, así que primero se afirma que DIFIEREN.
+     */
+    // Se lee con el rol propietario a propósito: bajo la RLS del rol de la
+    // aplicación estas filas no se ven sin contexto de hogar, y lo que se
+    // comprueba aquí es la SIEMBRA, no quién la puede leer.
+    const duena = new pg.Client({ connectionString: snapshotUrlFor(adminUrl as string) });
+    await duena.connect();
+    try {
+      const zonas = await duena.query<{ casa: string; hostil: string }>(
+        `select ${HOY_EN_CASA}::text as casa,
+                (now() at time zone '${ZONA_HOSTIL}')::date::text as hostil`
+      );
+      // Primero, que la zona hostil esté haciendo su trabajo: si coincidiera con
+      // la de la casa, todo lo de abajo pasaría por casualidad.
+      expect(
+        zonas.rows[0]!.hostil,
+        `la zona ${ZONA_HOSTIL} debería estar en otro día que ${CASA_TZ}`
+      ).not.toBe(zonas.rows[0]!.casa);
+
+      // Y ahora lo que importa: lo sembrado como «hoy» es el hoy DE LA CASA, no
+      // el del servidor, aunque el servidor esté sembrando desde otro día.
+      const hoyEnCasa = new Intl.DateTimeFormat('en-CA', { timeZone: CASA_TZ }).format(new Date());
+      expect(zonas.rows[0]!.casa).toBe(hoyEnCasa);
+
+      const slots = await duena.query<{ id: string; onDate: string }>(
+        `select id::text, on_date::text as "onDate" from app.menu_slots where id = any($1::uuid[])`,
+        [[SLOT_COMIDA, SLOT_MANANA]]
+      );
+      const porId = new Map(slots.rows.map((row) => [row.id, row.onDate]));
+      expect(porId.get(SLOT_COMIDA)).toBe(hoyEnCasa);
+      // El de mañana es mañana EN CASA: es el que la prueba de abajo exige que
+      // NO viaje en el snapshot.
+      expect(porId.get(SLOT_MANANA)! > hoyEnCasa).toBe(true);
+    } finally {
+      await duena.end();
+    }
   });
 
   it('lleva el menú de HOY con su estado, no el de otros días', async () => {
