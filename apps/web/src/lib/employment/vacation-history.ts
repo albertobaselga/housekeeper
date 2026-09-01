@@ -1,5 +1,6 @@
 import {
   contractYear,
+  contractYearName,
   contractYearOn,
   vacationCalendarDays,
   vacationDaysInWindow,
@@ -152,28 +153,11 @@ function days(count: number): string {
 }
 
 /**
- * Los años de contrato se dicen con el ordinal que usaría una persona hasta el
- * décimo; a partir de ahí «el año 11», porque «undécimo» suena a otra cosa y
- * nadie lo diría en voz alta.
+ * El ordinal del año de contrato se dice en el dominio, no aquí: el servidor
+ * necesita el mismo nombre para la etiqueta congelada del concepto que paga una
+ * compensación. Se reexporta porque media pantalla ya lo importaba de aquí.
  */
-const ORDINALS = [
-  'primer',
-  'segundo',
-  'tercer',
-  'cuarto',
-  'quinto',
-  'sexto',
-  'séptimo',
-  'octavo',
-  'noveno',
-  'décimo'
-] as const;
-
-/** «segundo año» · «año 12». En minúscula: casi siempre va dentro de una frase. */
-export function contractYearName(index: number): string {
-  const ordinal = ORDINALS[index - 1];
-  return ordinal ? `${ordinal} año` : `año ${index}`;
-}
+export { contractYearName };
 
 /** «Segundo año · 5 mar 2026 – 4 mar 2027». */
 export function contractYearLabel(year: ContractYear): string {

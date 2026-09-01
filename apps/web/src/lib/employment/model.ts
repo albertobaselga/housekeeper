@@ -15,6 +15,7 @@ import {
   type ScheduleDay as DomainScheduleDay,
   type SettledExtraWork,
   type SettlementLine,
+  type VacationCarryoverExpiry,
   type Weekday
 } from '@casa-clara/domain';
 
@@ -1886,35 +1887,18 @@ export function annualVacationDaysInForce(
  * La política de caducidad de los días arrastrados, leída de
  * `agreement_versions.terms` (migración 0034, apartado 4.2 del diseño).
  *
- * **Ausente son seis meses**, y por eso ningún contrato firmado antes de la
- * 0034 hubo que tocarlo. Se lee con tolerancia a propósito: lo que la base
- * admite lo garantiza su CHECK de forma, y una fila anterior —o de una
- * instalación que se saltara la restricción— tiene que seguir dando la
- * respuesta por omisión en vez de reventar la pantalla.
+ * La implementación vive en el dominio, no aquí: la necesitan también los
+ * comandos del servidor, que son quienes calculan la fecha límite CONGELADA de
+ * un arrastre. Dos lecturas de la misma clave acabarían dando dos caducidades
+ * distintas del mismo contrato. Se reexporta para no obligar a media aplicación
+ * a cambiar de sitio la importación.
  */
-export type VacationCarryoverExpiry = { mode: 'months'; months: number } | { mode: 'never' };
-
-export const DEFAULT_VACATION_CARRYOVER_MONTHS = 6;
-
-export function readVacationCarryoverExpiry(terms: unknown): VacationCarryoverExpiry {
-  const raw =
-    terms && typeof terms === 'object'
-      ? (terms as Record<string, unknown>).vacationCarryoverExpiry
-      : null;
-  if (raw && typeof raw === 'object') {
-    const policy = raw as Record<string, unknown>;
-    if (policy.mode === 'never') return { mode: 'never' };
-    if (
-      policy.mode === 'months' &&
-      typeof policy.months === 'number' &&
-      Number.isInteger(policy.months) &&
-      policy.months >= 1
-    ) {
-      return { mode: 'months', months: policy.months };
-    }
-  }
-  return { mode: 'months', months: DEFAULT_VACATION_CARRYOVER_MONTHS };
-}
+export {
+  DEFAULT_VACATION_CARRYOVER_MONTHS,
+  readVacationCarryoverExpiry,
+  vacationCarryoverDeadline
+} from '@casa-clara/domain';
+export type { VacationCarryoverExpiry };
 
 /** «Nunca expiran» / «6 meses de margen», para leerlo sin traducir nada. */
 export function vacationCarryoverExpiryLabel(policy: VacationCarryoverExpiry): string {

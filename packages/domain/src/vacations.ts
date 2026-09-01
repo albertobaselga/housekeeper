@@ -205,6 +205,36 @@ export function contractYear(agreementStartsOn: string, index: number): Contract
 }
 
 /**
+ * Los años de contrato se dicen con el ordinal que usaría una persona hasta el
+ * décimo; a partir de ahí «el año 11», porque «undécimo» suena a otra cosa y
+ * nadie lo diría en voz alta.
+ *
+ * Vive en el dominio y no en la capa de frases porque lo necesitan las dos
+ * orillas: la pantalla, para titular cada bloque del historial, y el servidor,
+ * para escribir la etiqueta CONGELADA del concepto que paga una compensación
+ * («Vacaciones del segundo año no disfrutadas»). Dos copias serían dos formas
+ * de nombrar el mismo año dentro del mismo expediente.
+ */
+const CONTRACT_YEAR_ORDINALS = [
+  "primer",
+  "segundo",
+  "tercer",
+  "cuarto",
+  "quinto",
+  "sexto",
+  "séptimo",
+  "octavo",
+  "noveno",
+  "décimo",
+] as const;
+
+/** «segundo año» · «año 12». En minúscula: casi siempre va dentro de una frase. */
+export function contractYearName(index: number): string {
+  const ordinal = CONTRACT_YEAR_ORDINALS[index - 1];
+  return ordinal ? `${ordinal} año` : `año ${index}`;
+}
+
+/**
  * En qué año de contrato cae una fecha. `null` si es anterior al acuerdo: antes
  * de empezar no hay ningún año que contar.
  */
@@ -418,6 +448,71 @@ export function vacationCompensation(
       `vigentes desde el ${spokenDate(input.rateEffectiveFrom)} = ` +
       `${formatEuroCents(compensationCents)}`,
   });
+}
+
+// ─── Hasta cuándo se pueden disfrutar los días arrastrados ───────────────────
+
+/**
+ * La política de caducidad pactada en la versión del acuerdo (apartado 4.2 del
+ * diseño): seis meses por omisión, otro número de meses, o «nunca expiran».
+ */
+export type VacationCarryoverExpiry =
+  | { readonly mode: "months"; readonly months: number }
+  | { readonly mode: "never" };
+
+/** Ausente son seis meses, y por eso ningún contrato ya firmado hubo que tocarlo. */
+export const DEFAULT_VACATION_CARRYOVER_MONTHS = 6;
+
+/**
+ * Lee la política de `agreement_versions.terms`.
+ *
+ * Tolerante a propósito: lo que la base admite lo garantiza su CHECK de forma
+ * (migración 0034), y una fila anterior —o de una instalación que se saltara la
+ * restricción— tiene que seguir dando la respuesta por omisión en vez de
+ * reventar la pantalla o el comando. Un `terms` ilegible NO es «no hay
+ * caducidad»: es «no se pactó otra cosa», que son seis meses.
+ */
+export function readVacationCarryoverExpiry(terms: unknown): VacationCarryoverExpiry {
+  const raw =
+    terms && typeof terms === "object"
+      ? (terms as Record<string, unknown>).vacationCarryoverExpiry
+      : null;
+  if (raw && typeof raw === "object") {
+    const policy = raw as Record<string, unknown>;
+    if (policy.mode === "never") return { mode: "never" };
+    if (
+      policy.mode === "months" &&
+      typeof policy.months === "number" &&
+      Number.isInteger(policy.months) &&
+      policy.months >= 1
+    ) {
+      return { mode: "months", months: policy.months };
+    }
+  }
+  return { mode: "months", months: DEFAULT_VACATION_CARRYOVER_MONTHS };
+}
+
+/**
+ * Último día en que se pueden disfrutar los días arrastrados de un año de
+ * contrato que se cierra. `null` cuando la política dice que nunca expiran, y
+ * ese null es una respuesta, no un hueco: no hay fecha límite que enseñar.
+ *
+ * El margen se cuenta desde el FIN del año de contrato, que es cuando los días
+ * dejaron de poder disfrutarse por la vía normal. Un año que acaba el 4 de
+ * marzo de 2027 con seis meses de margen llega hasta el 4 de septiembre de 2027.
+ */
+export function vacationCarryoverDeadline(
+  sourceYearEndsOn: string,
+  policy: VacationCarryoverExpiry,
+): string | null {
+  assertIsoDate(sourceYearEndsOn, "El fin del año de contrato");
+  if (policy.mode === "never") return null;
+  invariant(
+    Number.isInteger(policy.months) && policy.months >= 1,
+    "INVALID_VACATION_CARRYOVER_EXPIRY",
+    "El margen de los días arrastrados debe ser un número entero de meses mayor que cero.",
+  );
+  return addMonths(sourceYearEndsOn, policy.months);
 }
 
 // ─── Lo que todavía no se le ha contado ──────────────────────────────────────

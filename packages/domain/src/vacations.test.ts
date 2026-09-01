@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   DomainRuleError,
   contractYear,
+  contractYearName,
   contractYearOn,
   moneyCents,
   parseEuroCents,
+  readVacationCarryoverExpiry,
   vacationCalendarDays,
+  vacationCarryoverDeadline,
   vacationCompensation,
   vacationDaysInWindow,
   vacationNewsSince,
@@ -596,5 +599,79 @@ describe("lo que todavía no se le ha contado", () => {
     expect(
       domainCode(() => vacationNewsSince([apuntado("2026-08-01", "2026-08-15", "ayer")], null)),
     ).toBe("INVALID_VACATION_INSTANT");
+  });
+});
+
+describe("el nombre del año de contrato", () => {
+  it("usa el ordinal que diría una persona hasta el décimo", () => {
+    expect(contractYearName(1)).toBe("primer año");
+    expect(contractYearName(2)).toBe("segundo año");
+    expect(contractYearName(10)).toBe("décimo año");
+  });
+
+  it("a partir de ahí lo dice con el número, que sí se lee en voz alta", () => {
+    expect(contractYearName(11)).toBe("año 11");
+    expect(contractYearName(37)).toBe("año 37");
+  });
+});
+
+describe("caducidad de los días arrastrados", () => {
+  it("ausente son seis meses: ningún contrato ya firmado necesita tocarse", () => {
+    expect(readVacationCarryoverExpiry({})).toEqual({ mode: "months", months: 6 });
+    expect(readVacationCarryoverExpiry(null)).toEqual({ mode: "months", months: 6 });
+    expect(readVacationCarryoverExpiry(undefined)).toEqual({ mode: "months", months: 6 });
+  });
+
+  it("lee las dos formas pactadas", () => {
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: "never" } }),
+    ).toEqual({ mode: "never" });
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: "months", months: 12 } }),
+    ).toEqual({ mode: "months", months: 12 });
+  });
+
+  it("una política ilegible NO es «sin caducidad»: es la de por omisión", () => {
+    // Es la diferencia entre no haber pactado nada y haber pactado que nunca
+    // expiren. Confundirlas regalaría días que nadie acordó regalar.
+    expect(readVacationCarryoverExpiry({ vacationCarryoverExpiry: "seis meses" })).toEqual({
+      mode: "months",
+      months: 6,
+    });
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: "months", months: 0 } }),
+    ).toEqual({ mode: "months", months: 6 });
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: "months", months: 1.5 } }),
+    ).toEqual({ mode: "months", months: 6 });
+  });
+
+  it("el margen se cuenta desde el fin del año de contrato", () => {
+    expect(vacationCarryoverDeadline("2027-03-04", { mode: "months", months: 6 })).toBe(
+      "2027-09-04",
+    );
+    expect(vacationCarryoverDeadline("2026-12-31", { mode: "months", months: 3 })).toBe(
+      "2027-03-31",
+    );
+  });
+
+  it("clava el día al último del mes cuando el día no existe", () => {
+    // El 31 de agosto más seis meses no es el 3 de marzo.
+    expect(vacationCarryoverDeadline("2026-08-31", { mode: "months", months: 6 })).toBe(
+      "2027-02-28",
+    );
+  });
+
+  it("«nunca expiran» no tiene fecha límite, y eso es una respuesta", () => {
+    expect(vacationCarryoverDeadline("2027-03-04", { mode: "never" })).toBeNull();
+  });
+
+  it("rechaza una fecha que no es fecha y un margen imposible", () => {
+    expect(domainCode(() => vacationCarryoverDeadline("ayer", { mode: "never" }))).toBe(
+      "INVALID_VACATION_DATE",
+    );
+    expect(
+      domainCode(() => vacationCarryoverDeadline("2027-03-04", { mode: "months", months: 0 })),
+    ).toBe("INVALID_VACATION_CARRYOVER_EXPIRY");
   });
 });
