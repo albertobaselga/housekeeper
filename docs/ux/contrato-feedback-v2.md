@@ -258,29 +258,44 @@ la lista de decisiones, con el texto escrito por el servidor**: el presupuesto d
 bytes del arranque de Hoy tiene unos 1.500 de margen y una rama nueva en la
 plantilla se lo come.
 
-### 4.4 El precio del día
+### 4.4 El precio del día se pacta, no se calcula
 
-**Decisión del propietario:** «Salario mensual ÷ días laborables».
+**Decisión del propietario, corrigiendo la primera respuesta:** «el precio del
+día de vacaciones no disfrutado tiene otro valor que se cierra en el contrato, no
+se auto calcula».
 
-Hoy no existe ninguna tarifa diaria: la nómina emite el salario mensual íntegro
-sin prorratear. Se calcula así, en aritmética entera de céntimos de principio a
-fin, como todo el dinero de esta casa:
+Así que no hay fórmula. El importe por día de vacaciones no disfrutado es **una
+tarifa más de las condiciones pactadas**, hermana de las dos que ya existen —el
+precio de la hora extra y el del día de descanso trabajado— y se guarda donde
+están ellas: una columna nueva en las versiones del acuerdo.
 
 ```
-días laborables al mes = (7 − días de descanso semanal) × 52 ÷ 12
-precio del día         = salario mensual ÷ días laborables al mes
-compensación           = precio del día × días no disfrutados
+compensación = tarifa pactada × días no disfrutados
 ```
 
-Los días de descanso salen del calendario pactado del contrato, que ya se modela
-(`restDays`). Si el contrato no declara calendario, se toma **un día de descanso
-semanal** —el mínimo del empleo del hogar— y la frase congelada lo dice, para que
-nadie tenga que deducir de dónde salió el número.
+**La columna es opcional, y esa es una decisión deliberada.** Los contratos ya
+firmados no pactaron esta tarifa; ponerles un cero significaría dejar escrito en
+un expediente inmutable que se acordó pagar cero euros por día, que es falso y
+que además nunca se podría corregir, sólo tapar apilando otra versión. Vacía dice
+la verdad: no se pactó.
 
-**Qué versión del acuerdo fija el precio: la vigente cuando se decide pagar**, no
-la del año que se cierra. El dinero es del mes en que se paga; si el salario
-subió, se paga con el salario nuevo, y la frase congelada deja constancia de cuál
-se usó.
+**Sin tarifa pactada no hay compensación.** No se estima, no se deduce del
+salario, no se pone cero. La pantalla de Vacaciones ofrece arrastrar o rechazar
+los días, y para compensarlos dice lo que falta y lleva a pactarlo. Es más
+trabajo para quien administra que inventar un número, y es lo único honesto:
+esta aplicación existe para que cada cifra diga de dónde sale.
+
+**Dónde se pacta.** En «Cambiar las condiciones» está siempre. En el alta de una
+persona es opcional, como ya lo son el catálogo de trabajo extra y los
+complementos: al dar de alta no se sabe todo, y obligar a rellenarlo entonces
+sólo conseguiría que alguien escribiera cualquier cosa.
+
+**Qué versión fija el precio: la vigente cuando se decide pagar**, no la del año
+que se cierra. El dinero es del mes en que se paga; si la tarifa subió, se paga
+con la nueva, y la frase congelada deja constancia de cuál se usó y desde cuándo
+regía: «18 días sin disfrutar × 46,15 € por día, pactados en las condiciones
+vigentes desde el 5 de marzo de 2026 = 830,70 €». Esa fecha es lo que hace la
+frase verificable dentro de dos años.
 
 **Cómo llega a la nómina.** Aceptar la compensación crea, **en la misma
 transacción**, un concepto a mano («Vacaciones del segundo año no disfrutadas»)

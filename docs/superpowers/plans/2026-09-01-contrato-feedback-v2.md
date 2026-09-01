@@ -125,15 +125,14 @@ Primera mitad del punto 4. Fuente: `inv-1.md`, apartado 4.1 del diseño.
 4. Las frases del historial dicen el año de contrato **con sus fechas**:
    «Segundo año · 5 mar 2026 – 4 mar 2027». Sin fechas el ordinal no significa
    nada.
-5. El cálculo del precio del día de vacaciones, en aritmética entera de
-   céntimos y con la frase que lo explica:
-   `días laborables al mes = (7 − días de descanso semanal) × 52 ÷ 12`,
-   `precio del día = salario mensual ÷ días laborables al mes`,
-   `compensación = precio del día × días no disfrutados`.
-   Los días de descanso salen de `restDays` (`packages/domain/src/agreement-schedule.ts`);
-   sin calendario declarado se toma **un** día de descanso y la frase lo dice.
-   La frase congelada tiene que poder leerse sola: «18 días sin disfrutar ·
-   1.200,00 € ÷ 26 días laborables = 46,15 € por día».
+5. La compensación, que **no calcula ningún precio**: el importe por día de
+   vacaciones no disfrutado se pacta en el contrato (apartado 4.4 del diseño,
+   corregido por el propietario). La función recibe la tarifa **como parámetro**
+   y hace `compensación = tarifa pactada × días no disfrutados`, en BigInt de
+   céntimos. **Sin tarifa pactada devuelve la ausencia, nunca un importe
+   estimado ni un cero.** La frase congelada dice de dónde sale el precio, no
+   cómo se calculó: «18 días sin disfrutar × 46,15 € por día, pactados en las
+   condiciones vigentes desde el 5 de marzo de 2026 = 830,70 €».
 
 7. **Los días devengados a día de hoy** (apartado 4.1 bis del diseño), pedido en
    la segunda ronda: `accruedDays` proporcional dentro del año de contrato con la
@@ -145,8 +144,11 @@ Primera mitad del punto 4. Fuente: `inv-1.md`, apartado 4.1 del diseño.
 
 **Pruebas:** las 290 líneas de `vacations.test.ts` se adaptan, no se tiran.
 Casos nuevos obligatorios: contrato empezado un 29 de febrero; periodo a caballo
-de dos años de contrato; último año prorrateado; precio del día con uno y con dos
-días de descanso semanales; y que ningún camino del cálculo pase por `Number`.
+de dos años de contrato; último año prorrateado; el devengo a una fecha dada,
+incluida una anterior al inicio y otra posterior al fin; un saldo disponible
+negativo por días disfrutados por adelantado; la compensación con tarifa pactada;
+**la compensación sin tarifa pactada, que no devuelve importe**; y que ningún
+camino del dinero pase por `Number`.
 
 ---
 
@@ -185,6 +187,12 @@ Cubre los puntos 7 y 8. Fuente: `inv-3.md` e `inv-5.md`.
    camino llamado **«Cambiar las condiciones»** que explica que se apilan con
    fecha de aplicación, y el historial de versiones plegado. El `h1` sigue siendo
    «Condiciones del contrato» (lo esperan `app-title.ts` y dos pruebas).
+8. Entre las condiciones aparece **el importe por día de vacaciones no
+   disfrutado** (apartado 4.4 del diseño): obligatorio en «Cambiar las
+   condiciones», **opcional en el alta** —como ya lo son el catálogo de trabajo
+   extra y los complementos—, y cuando no está pactado se dice que no está, sin
+   enseñar un cero. La columna la crea la tarea E; coordina con ella el nombre
+   antes de escribir el formulario y no te lo inventes.
 
 ---
 
@@ -225,6 +233,18 @@ Segunda mitad del punto 4. Fuente: `inv-1.md`, apartados 4.2 a 4.4 del diseño.
 3. La política de caducidad entra en `agreement_versions.terms`: seis meses por
    omisión, otro número de meses, o «nunca expiran». Ausente = seis meses, así
    que ningún contrato existente se toca.
+3 bis. **La tarifa del día de vacaciones no disfrutado** (apartado 4.4 del
+   diseño): columna nueva en `app.agreement_versions`, hermana de
+   `overtime_hourly_rate_cents` y `worked_rest_day_rate_cents`, `bigint` con
+   `CHECK (>= 0)` y **NULLABLE**. Vacía significa «no se pactó», que es la
+   verdad de los contratos ya firmados; un cero por omisión dejaría escrito en
+   una tabla inmutable que se acordó pagar cero euros por día. El trigger
+   `enforce_agreement_version_append_only` **no enumera columnas** (sólo prohíbe
+   todo lo que no sea INSERT), así que añadirla no obliga a reescribirlo —al
+   revés que en `manual_adjustments`. Sin tarifa pactada, la pantalla ofrece
+   arrastrar o rechazar, y para compensar dice lo que falta y lleva a pactarlo;
+   nunca estima un importe. Pásale el nombre exacto de la columna a la tarea D,
+   que la pide en el formulario.
 4. Tres acciones nuevas del comando de vacaciones: arrastrar, compensar y
    rechazar con motivo obligatorio. Compensar crea el concepto a mano **en la
    misma transacción**, con el importe y la frase congelados, y enlaza las dos
