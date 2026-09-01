@@ -222,7 +222,7 @@ La batería dbe2e corre contra Postgres real con RLS (config `apps/web/playwrigh
     expect(restored?.status()).toBe(200);
   });
   ```
-- [ ] **Step 3: Ejecuta contra el Postgres local.** El clúster local del worktree es el que usa `test:e2e:db` por omisión (`postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u`); el globalSetup recrea esquema y fixtures en cada ejecución:
+- [ ] **Step 3: Ejecuta contra el Postgres local.** El clúster local del worktree es el que usa `test:e2e:db` por omisión (`postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u`); el globalSetup recrea esquema y fixtures en cada ejecución:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
   pnpm test:e2e:db
@@ -347,7 +347,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - [ ] **Step 3: Verde local del gate de vitest.** Genera la evidencia del server (su vitest ya escribe JUnit en `artifacts/unit/`, es lo que recoge CI) y pásale el gate con el glob nuevo:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-  export TEST_DATABASE_URL='postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u'
+  export TEST_DATABASE_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u'
   pnpm --filter @casa-clara/server test
   python3 scripts/ci/assert-suite-coverage.py \
     --label 'suites de vitest del server' \
@@ -657,12 +657,13 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - [ ] **Step 2: Verifica que la copia de seguridad datada del origen existe** (la que exige el runbook como paso previo, spec §9.1 y §13: única copia de la BD origen). Comprueba en la ruta que el runbook nombra que hay una copia fechada de `finanzas.db` FUERA de los árboles de ambos repos y que su tamaño coincide con el original (`ls -l /home/abf/github/home-finance/backend/data/finanzas.db` como contraste). Si no existe, créala exactamente como diga el runbook ANTES de seguir.
 - [ ] **Step 3: Postgres 18.4 limpio en Docker y esquema completo.**
   ```bash
-  docker run --name cc-finanzas-ensayo \
-    -e POSTGRES_USER=casa_admin -e POSTGRES_PASSWORD=ensayo-local \
-    -e POSTGRES_DB=casaclara_ensayo \
-    -p 127.0.0.1:54340:5432 -d postgres:18.4-alpine
+  # Base de ensayo limpia en el clúster compartido de pruebas (127.0.0.1:5439).
+  # NUNCA el puerto 54329: en esta máquina lo ocupa la base embebida de Paperclip, otra aplicación.
+  docker start casaclara-it-pg 2>/dev/null || true
+  docker exec casaclara-it-pg dropdb -U ci_admin --if-exists casaclara_ensayo
+  docker exec casaclara-it-pg createdb -U ci_admin casaclara_ensayo
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-  export ENSAYO_URL='postgresql://casa_admin:ensayo-local@127.0.0.1:54340/casaclara_ensayo'
+  export ENSAYO_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_ensayo'
   DATABASE_URL="$ENSAYO_URL" pnpm db:migrate
   DATABASE_URL="$ENSAYO_URL" pnpm db:migrate   # idempotencia: la segunda aplica 0
   ```

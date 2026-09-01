@@ -33,12 +33,13 @@
 - Postgres local para las tareas 5–7 (una sola vez):
 
 ```bash
-docker run -d --name pg-etl-finanzas -p 55440:5432 \
-  -e POSTGRES_USER=etl_admin -e POSTGRES_PASSWORD=solo-pruebas -e POSTGRES_DB=casaclara_etl \
-  postgres:18.4-alpine
-until docker exec pg-etl-finanzas pg_isready -U etl_admin -d casaclara_etl; do sleep 1; done
-export TEST_DATABASE_URL="postgresql://etl_admin:solo-pruebas@127.0.0.1:55440/casaclara_etl"
+# Clúster compartido de pruebas de esta máquina (ya levantado; la base casaclara_etl ya existe).
+docker start casaclara-it-pg 2>/dev/null || true
+until docker exec casaclara-it-pg pg_isready -U ci_admin; do sleep 1; done
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_etl"
 ```
+
+⚠️ **Nunca uses el puerto 54329** (valor por omisión del README y de `package.json`): en esta máquina lo ocupa la base embebida de Paperclip, otra aplicación. Exporta siempre la variable explícitamente.
 
 ---
 
@@ -1474,14 +1475,12 @@ ensayar sin datos reales, fabrica una base sintética equivalente:
 node packages/db/scripts/home-finance-sintetica.mjs ~/copias-home-finance/finanzas-sintetica.db
 ```
 
-1. Postgres 18.4 efímero (no toques el Postgres de desarrollo):
+1. Base de ensayo LIMPIA (recreada de cero en el clúster compartido; no toques `casaclara_dev`):
 
 ```bash
-docker run -d --name pg-ensayo-finanzas -p 55441:5432 \
-  -e POSTGRES_USER=ensayo -e POSTGRES_PASSWORD=solo-ensayo -e POSTGRES_DB=casaclara_ensayo \
-  postgres:18.4-alpine
-until docker exec pg-ensayo-finanzas pg_isready -U ensayo -d casaclara_ensayo; do sleep 1; done
-export DATABASE_URL="postgresql://ensayo:solo-ensayo@127.0.0.1:55441/casaclara_ensayo"
+docker exec casaclara-it-pg dropdb -U ci_admin --if-exists casaclara_ensayo
+docker exec casaclara-it-pg createdb -U ci_admin casaclara_ensayo
+export DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_ensayo"
 ```
 
 2. Esquema completo (0001–0034; los roles de grupo los crea la 0001):

@@ -27,11 +27,15 @@
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6.
 - Gates de la rama: `pnpm lint`, `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm test:db`, `pnpm test:rls` deben quedar en verde al cerrar cada tarea que los afecte.
 
-**Entorno de base de datos local (todas las tareas con BD):** el clúster local del repo escucha en `127.0.0.1:54329` con superusuario `casa_admin` (ver `.claude/skills/operar-la-casa/referencia-instalacion.md` si no responde: `"$PGBIN/pg_ctl" -D "$PGDATA" -o "-p 54329 -k /tmp/ccpg-socket" -l "$PGDATA/log" start`). Antes de cualquier suite con BD:
+**Entorno de base de datos local (todas las tareas con BD):** en ESTA máquina el clúster de pruebas de casa-clara es el contenedor Docker `casaclara-it-pg` (`postgres:18.4-alpine`) en `127.0.0.1:5439`, superusuario `ci_admin` / `ci-only-password`. Si no responde: `docker start casaclara-it-pg` (y si no existe: `docker run -d --name casaclara-it-pg -e POSTGRES_USER=ci_admin -e POSTGRES_PASSWORD=ci-only-password -e POSTGRES_DB=casaclara_ci_integration -p 5439:5432 postgres:18.4-alpine`). Las bases `casaclara_dev`, `casaclara_wt_u`, `casaclara_e2e`, `casaclara_etl` y `casaclara_ensayo` ya están creadas ahí.
+
+⚠️ **NO uses el puerto 54329 que documenta el README del repo**: en esta máquina lo ocupa la base de datos embebida de otra aplicación (Paperclip, `/home/abf/.paperclip/instances/default/db`). Migrar contra él corrompería datos ajenos. Exporta SIEMPRE `TEST_DATABASE_URL`/`E2E_DATABASE_URL` de forma explícita — nunca confíes en los valores por omisión de `package.json`, que apuntan a 54329.
+
+Antes de cualquier suite con BD:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 ```
 
 ---
@@ -301,7 +305,7 @@ $assert_finance_schema$;
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm test:db
 ```
 
@@ -649,7 +653,7 @@ $audit_triggers$;
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm test:db
 ```
 
@@ -905,7 +909,7 @@ COMMIT;
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm test:db
 ```
 
@@ -1011,7 +1015,7 @@ Ejecuta y comprueba `1..2` con ambos `ok`:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm test:rls
 ```
 
@@ -1210,7 +1214,7 @@ describe.runIf(Boolean(adminUrl))("concesión y revocación de Finanzas sobre Po
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm --filter @casa-clara/server exec vitest run src/finance-grants.integration.test.ts
 ```
 
@@ -1352,7 +1356,7 @@ export * from "./commands/finance.js";
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm --filter @casa-clara/server exec vitest run src/finance-grants.integration.test.ts
 pnpm --filter @casa-clara/server typecheck
 ```
@@ -1619,7 +1623,7 @@ describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layou
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm --filter @casa-clara/web exec vitest run tests/finance-access.integration.test.ts
 ```
 
@@ -2176,7 +2180,7 @@ Verde: repetir la suite de integración.
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm --filter @casa-clara/web exec vitest run tests/finance-commands.test.ts tests/finance-access.integration.test.ts
 pnpm --filter @casa-clara/web check
 ```
@@ -2221,7 +2225,7 @@ pnpm test
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev"
 pnpm test:db && pnpm test:rls
 pnpm --filter @casa-clara/server test
 pnpm --filter @casa-clara/web test

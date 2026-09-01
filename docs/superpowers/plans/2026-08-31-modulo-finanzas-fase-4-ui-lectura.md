@@ -32,7 +32,7 @@
 - Esta fase corre DESPUÉS de las fases 1 y 2: el esquema `0034_finance.sql`, las fixtures `packages/db/fixtures/002_finance.sql` (datos sintéticos en roble y olivo, concesión viva SOLO para el admin de roble), `requireFinanceAdmin`, el routing/nav y las páginas esqueleto de `/h/[householdId]/finanzas/*` ya existen en el worktree, igual que `packages/domain/src/finance/` completo.
 - Patrón de load: `apps/web/src/routes/h/[householdId]/employment/+page.server.ts` (con `demoOrUnavailable` de `$lib/server/data-source.server`). Patrón de lector SQL bajo RLS: `apps/web/src/lib/server/employment.server.ts` (`withAuthorizedTransaction`, camelCase con `as "alias"`, céntimos como string). Patrón de endpoint: `apps/web/src/routes/api/v1/households/[householdId]/vacaciones/vistas/+server.ts`. Patrón de página Svelte 5: `apps/web/src/routes/h/[householdId]/employment/+page.svelte` (runas `$props/$state/$derived/$effect`, snippets, clases de `app.css`: `.page-wrap`, `.card`, `.chip`, `.summary-strip`, `.ledger-list`, `.cifra`).
 - Los importes viajan por JSON SIEMPRE como cadenas de céntimos (`"amountCents": "-4550"`); solo se convierten a `BigInt` para operar y a `Number` únicamente para coordenadas de píxel de las gráficas (nunca para dinero).
-- Postgres local para integración: el mismo del worktree que usa `test:e2e:db`; exporta `TEST_DATABASE_URL=postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u` (ajústalo si tu instancia difiere). Sin la variable, las suites de integración se saltan (`describe.runIf`), así que ponla siempre.
+- Postgres local para integración: el mismo del worktree que usa `test:e2e:db`; exporta `TEST_DATABASE_URL=postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u` (ajústalo si tu instancia difiere). Sin la variable, las suites de integración se saltan (`describe.runIf`), así que ponla siempre.
 
 ---
 
@@ -1342,7 +1342,7 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
 });
 ```
 
-- [ ] **Step 6: Integración en verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.integration.test.ts` (primera pasada: falla — típicamente por columnas mal nombradas; corrige contra `packages/db/migrations/0034_finance.sql`, que ya está en el worktree, hasta verde).
+- [ ] **Step 6: Integración en verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.integration.test.ts` (primera pasada: falla — típicamente por columnas mal nombradas; corrige contra `packages/db/migrations/0034_finance.sql`, que ya está en el worktree, hasta verde).
 - [ ] **Step 7: Commit.** `git add packages/server/src/finance/queries.ts packages/server/src/finance/queries.test.ts packages/server/src/finance/queries.integration.test.ts packages/server/src/index.ts && git commit -m "feat(finanzas): lecturas SQL de movimientos y catalogos con paginacion explicita bajo RLS"`
 
 ---
@@ -1443,7 +1443,7 @@ it("summary para el admin de olivo sin concesión: todo a cero", async () => {
 
 Añade los imports nuevos (`readFinanceSummary`, `readFinanceSeries`, `readFinanceBreakdown`, `readFinanceProviders`, `readFinanceEventsSummary`, `readFinanceEventDetail`) al import de `./queries.js`.
 
-- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.integration.test.ts` — `readFinanceSummary is not a function` (o error de import).
+- [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.integration.test.ts` — `readFinanceSummary is not a function` (o error de import).
 - [ ] **Step 3: Implementa las lecturas agregadas en `queries.ts`.** Añade al final del fichero:
 
 ```ts
@@ -1672,7 +1672,7 @@ export async function readFinanceEventDetail(
 }
 ```
 
-- [ ] **Step 4: En verde (puro + integración + tipos).** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.test.ts src/finance/queries.integration.test.ts && pnpm --filter @casa-clara/server typecheck` — si el typecheck acusa los campos de `SummaryOptions`, reconcílialos contra `packages/domain/src/finance/types.ts` como dice el comentario.
+- [ ] **Step 4: En verde (puro + integración + tipos).** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.test.ts src/finance/queries.integration.test.ts && pnpm --filter @casa-clara/server typecheck` — si el typecheck acusa los campos de `SummaryOptions`, reconcílialos contra `packages/domain/src/finance/types.ts` como dice el comentario.
 - [ ] **Step 5: Commit.** `git add packages/server/src/finance/queries.ts packages/server/src/finance/queries.integration.test.ts && git commit -m "feat(finanzas): lecturas agregadas (summary, series, breakdown, providers, eventos) sobre el dominio"`
 
 ---
@@ -3337,7 +3337,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 
 **Pasos:**
 
-- [ ] **Step 1: Unit y tipos de todo el monorepo.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm typecheck && pnpm --filter @casa-clara/web test && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u} pnpm --filter @casa-clara/server test` — todo verde.
+- [ ] **Step 1: Unit y tipos de todo el monorepo.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm typecheck && pnpm --filter @casa-clara/web test && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test` — todo verde.
 - [ ] **Step 2: Lint y check.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm check` — cero errores (tokens CSS incluidos).
 - [ ] **Step 3: Presupuesto de Hoy.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web build && pnpm --filter @casa-clara/web verify:bundle` — el verificador debe seguir verde: NADA de `$lib/finance/`, `$lib/components/finance/` ni `@casa-clara/server` puede aparecer en el grafo inicial de Hoy (si aparece, algún import se coló fuera de las rutas de finanzas: búscalo con `.svelte-kit/casa-clara-module-map.json`).
 - [ ] **Step 4: e2e completo en fixture.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm test:e2e && pnpm test:a11y` — sin regresiones en las suites existentes.

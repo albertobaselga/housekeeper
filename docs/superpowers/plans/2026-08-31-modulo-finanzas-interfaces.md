@@ -29,6 +29,15 @@ que no aparece es decisión local de cada fase siguiendo los patrones del repo.
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para
   db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con
   confirmación explícita de Alberto.
+- **Clúster de pruebas de esta máquina**: contenedor `casaclara-it-pg` (`postgres:18.4-alpine`)
+  en `127.0.0.1:5439`, usuario `ci_admin`, contraseña `ci-only-password`. Bases ya creadas:
+  `casaclara_ci_integration`, `casaclara_dev`, `casaclara_wt_u`, `casaclara_e2e`,
+  `casaclara_etl`, `casaclara_ensayo`. Arranque: `docker start casaclara-it-pg`.
+  ⚠️ **Prohibido el puerto 54329**, aunque lo documenten el README y los valores por omisión de
+  `apps/web/package.json`: en esta máquina lo ocupa la base de datos embebida de **Paperclip**
+  (`/home/abf/.paperclip/instances/default/db`), otra aplicación. Migrar o escribir ahí
+  corrompería datos ajenos. Exporta SIEMPRE `TEST_DATABASE_URL`/`E2E_DATABASE_URL`/`DATABASE_URL`
+  de forma explícita; nunca dependas del valor por omisión de un script.
 - Gates de la rama: `pnpm lint`, `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm test:db`,
   `pnpm test:rls` deben quedar en verde al cerrar cada tarea que los afecte.
 

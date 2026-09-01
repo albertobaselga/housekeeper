@@ -690,7 +690,7 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
 - [ ] **Step 2: Ejecuta y ve el fallo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-review
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-review
 ```
 
 Expected: FAIL — o bien `financeCommandHandler` no exportado, o bien los ack llegan `rejected` con `invalid_payload` porque el kind no está manejado.
@@ -1011,7 +1011,7 @@ const handlers: CommandHandlers = {
 - [ ] **Step 5: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-review && pnpm --filter @casa-clara/server typecheck
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-review && pnpm --filter @casa-clara/server typecheck
 ```
 
 Expected: PASS (6 tests).
@@ -1178,7 +1178,7 @@ Casos (`it(...)`, en este orden):
 - [ ] **Step 2: Ejecuta y ve el fallo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-ledger
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-ledger
 ```
 
 Expected: FAIL — ack `rejected` con `invalid_payload` («Comando de finanzas aún no implementado»).
@@ -1412,7 +1412,7 @@ Y en el `switch` del dispatcher, antes del `default`:
 - [ ] **Step 4: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-ledger && pnpm --filter @casa-clara/server typecheck
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-ledger && pnpm --filter @casa-clara/server typecheck
 ```
 
 Expected: PASS (5 tests).
@@ -1531,7 +1531,7 @@ con el helper:
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-events
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-events
 ```
 
 Expected: FAIL — ack `rejected`/`invalid_payload` en los kinds de eventos.
@@ -1765,7 +1765,7 @@ async function updateProviderAlias(
 - [ ] **Step 4: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-events && pnpm --filter @casa-clara/server typecheck
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-events && pnpm --filter @casa-clara/server typecheck
 ```
 
 Expected: PASS (6 tests).
@@ -1875,7 +1875,7 @@ git commit -m "feat(finanzas): eventos, reglas de evento y alias de proveedores"
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-settings
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-settings
 ```
 
 Expected: FAIL — `invalid_payload` («aún no implementado») en los kinds de ajustes.
@@ -2068,7 +2068,7 @@ Tras esto el `default` del switch queda inalcanzable para kinds válidos: déjal
 - [ ] **Step 4: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/server test finance-settings && pnpm --filter @casa-clara/server typecheck && pnpm --filter @casa-clara/server test finance
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-settings && pnpm --filter @casa-clara/server typecheck && pnpm --filter @casa-clara/server test finance
 ```
 
 Expected: PASS — la última orden ejecuta las cuatro suites `finance-*` juntas y todas quedan verdes.
@@ -2211,7 +2211,7 @@ describe.runIf(Boolean(adminUrl))('ciclo importar → confirmar → deshacer sob
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/web test finance-imports
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/web test finance-imports
 ```
 
 Expected: FAIL — `finance-imports.server` no existe.
@@ -2490,7 +2490,7 @@ const confirmPayloadSchema = z.object({
 - [ ] **Step 5: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm --filter @casa-clara/web test finance-imports && pnpm --filter @casa-clara/web check
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/web test finance-imports && pnpm --filter @casa-clara/web check
 ```
 
 Expected: PASS (4 tests) y `svelte-check` sin errores.
@@ -4489,7 +4489,7 @@ export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa
 Expected: sin errores (finanzas no toca el grafo inicial de Hoy). Después, los gates completos de la rama:
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm check && pnpm test && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm test:db && TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev" pnpm test:rls && pnpm --filter @casa-clara/web test:e2e:db
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm check && pnpm test && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:db && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:rls && pnpm --filter @casa-clara/web test:e2e:db
 ```
 
 Expected: todo verde.
