@@ -1,10 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { can, capabilitiesFor } from '$lib/auth/capabilities';
+import { capabilitiesFor } from '$lib/auth/capabilities';
 import { membershipIn } from '$lib/auth/membership';
 import { guardForPath, pickHousehold } from '$lib/auth/routing';
 import { getAuth } from '$lib/server/auth.server';
 import { loadSnapshotContacts } from '$lib/server/contacts.server';
 import { fixturesAllowed, isDataUnavailable } from '$lib/server/data-source.server';
+import { financeAccessGranted } from '$lib/server/finance-access.server';
 import { getHousehold } from '$lib/server/fixtures.server';
 import { getSnapshotKeys } from '$lib/server/keys.server';
 import { buildCriticalSnapshot, loadSnapshotHousehold } from '$lib/server/snapshot.server';
@@ -51,7 +52,20 @@ export const load: LayoutServerLoad = async ({ locals, params, url }) => {
   // lanza aquí (no en hooks) para que aterrice en +error.svelte con lenguaje
   // de casa y un camino de vuelta a Hoy, en vez del fallo crudo de SvelteKit.
   const guard = guardForPath(url.pathname);
-  if (guard?.capability && !can(membership.role, guard.capability)) {
+  // Doble cerrojo de Finanzas (spec §4): la capacidad sale de la matriz por
+  // rol, pero solo cuenta con concesión viva en la base. Se retira AQUÍ,
+  // antes del guard y del AppContext, para que el guard de rutas, el AppShell
+  // y la UI sigan funcionando con su mecanismo de siempre — y el cliente no
+  // vea el módulo si no le corresponde. La consulta solo ocurre para quien
+  // tiene la capacidad por rol (family_admin).
+  const roleCapabilities = capabilitiesFor(membership.role);
+  const financeGranted =
+    roleCapabilities.includes('finance.access') &&
+    (await financeAccessGranted({ id: locals.user.id }, params.householdId));
+  const capabilities = financeGranted
+    ? roleCapabilities
+    : roleCapabilities.filter((capability) => capability !== 'finance.access');
+  if (guard?.capability && !capabilities.includes(guard.capability)) {
     error(403, 'Esta parte la lleva la familia.');
   }
 
@@ -68,7 +82,7 @@ export const load: LayoutServerLoad = async ({ locals, params, url }) => {
     household,
     membershipId: membership.membershipId,
     role: membership.role,
-    capabilities: capabilitiesFor(membership.role),
+    capabilities,
     locale: 'es-ES',
     timeZone: 'Europe/Madrid',
     criticalSnapshot: buildCriticalSnapshot(
