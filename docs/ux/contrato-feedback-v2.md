@@ -404,6 +404,19 @@ pactan después apilando una versión. El aviso de que hasta entonces la emplead
 no puede registrar jornada extra se dice al terminar el alta y en la pestaña
 Contrato, que es donde se resuelve.
 
+**El horario detallado también queda aplazado, y conviene decirlo aquí porque
+antes no lo estaba.** El camino viejo de «dar de alta un contrato» desde la
+pestaña Contrato sí pactaba el horario en el primer contrato: veintiocho campos.
+La etapa 2 del alta nueva pide inicio, salario, jornada y días de vacaciones, y
+nada más. Es deliberado —veintiocho campos en el segundo paso de un alta es la
+forma más segura de que alguien rellene cualquier cosa para poder seguir— pero es
+una capacidad que existía y ha dejado de estar en ese camino, así que se aplaza
+en los mismos términos que el catálogo: se pacta después, en «Cambiar las
+condiciones», y **la pestaña Contrato tiene que decirlo de forma visible mientras
+falte**, igual que avisa de que sin catálogo no se puede registrar jornada extra.
+Un alta que deja al contrato a medias sin que nadie lo diga es peor que un
+formulario largo.
+
 **Las dos clases de persona** —empleada con contrato y apoyo del hogar— se
 ofrecen en el mismo formulario, diciendo que el apoyo del hogar no genera
 contrato ni línea en esta lista. Es una frase; tener dos formularios en dos sitios
