@@ -93,6 +93,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
     ],
     overdueRoutineCount: 2,
     vacationNews: null,
+    vacationCarryovers: [],
     ...overrides
   };
 }

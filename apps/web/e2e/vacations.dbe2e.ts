@@ -9,8 +9,9 @@ import { HOUSEHOLD, loginAs } from './helpers';
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 test.describe.configure({ mode: 'serial' });
 
-// El bloque enseña el año natural EN CURSO, así que las fechas se calculan
-// desde hoy. Noviembre no lo toca ningún otro spec de la batería.
+// El bloque enseña el AÑO DE CONTRATO en curso —doce meses desde el día en que
+// empezó el acuerdo—, y el de la fixture arranca en febrero, así que noviembre
+// del año natural en curso cae dentro. Noviembre no lo toca ningún otro spec.
 const YEAR = new Date().getFullYear();
 const FIRST_DAY = `${YEAR}-11-02`;
 const LAST_DAY = `${YEAR}-11-08`;
@@ -36,7 +37,9 @@ test('Alberto apunta una semana de vacaciones y el saldo del año baja siete dí
   await expect(card).toBeVisible();
   // Estado de partida: 30 días de derecho y nada apuntado todavía este año.
   await expect(card.getByText('0 de 30 días disfrutados · quedan 30')).toBeVisible();
-  await expect(card).toContainText(`Todavía no hay vacaciones apuntadas en ${YEAR}`);
+  // La tarjeta ya no habla de un año natural: el año de vacaciones es el del
+  // contrato, y la frase vacía lo dice con esas palabras.
+  await expect(card).toContainText('Todavía no hay vacaciones apuntadas en este año de contrato');
 
   const form = card.locator('form.action-form');
   await form.getByLabel('Primer día').fill(FIRST_DAY);

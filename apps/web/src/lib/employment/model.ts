@@ -1,12 +1,17 @@
 import {
   calculateSettlement,
   contractYear,
+  contractYearName,
   contractYearOn,
   describeSchedule,
+  moneyCents,
+  readVacationCarryoverExpiry,
   resolveWeek,
   scheduleCoherence,
   spokenDuration,
   spokenTime,
+  vacationCarryoverDeadline,
+  vacationCompensation,
   vacationYearBalance,
   weekdayName,
   type AgreementSchedule,
@@ -2011,6 +2016,219 @@ export function buildVacationView(input: {
         voidReason: row.voidReason
       }))
   };
+}
+
+// ─── El salto de año: días sin disfrutar y qué se decidió con ellos ──────────
+
+/** Una versión del acuerdo, con lo que hace falta para valorar un arrastre. */
+export interface VacationCarryoverVersionRow {
+  effectiveFrom: string;
+  annualVacationDays: number;
+  /** null = la versión no pacta el precio del día no disfrutado. */
+  unusedVacationDayRateCents: string | null;
+  terms: unknown;
+}
+
+/**
+ * Un año de contrato ya cerrado con días sin disfrutar y sin decisión todavía.
+ *
+ * NO existe como fila: se calcula al leer desde los periodos apuntados, que sí
+ * son append-only, y sólo se escribe cuando alguien decide. Por eso no hay ni
+ * trabajo periódico ni disparador por calendario, que en esta casa no existen.
+ */
+export interface VacationCarryoverProposalView {
+  agreementId: string;
+  employeeLabel: string;
+  sourceYearIndex: number;
+  /** «Segundo año · 5 mar 2026 – 4 mar 2027». */
+  sourceYearLabel: string;
+  sourceYearEndsOn: string;
+  entitledDays: number;
+  takenDays: number;
+  unusedDays: number;
+  /** null = la política pactada dice que nunca expiran. */
+  deadlineOn: string | null;
+  /** Céntimos, o null si el contrato no pacta el precio del día. */
+  compensationCents: string | null;
+  /** «830,70 €», o null cuando no hay tarifa: nunca un cero. */
+  compensationLabel: string | null;
+  /** La frase que explica el importe, o null. */
+  compensationBasis: string | null;
+  /** Título ya escrito: lo usan la tarjeta y la línea de decisión de Hoy. */
+  headline: string;
+  /** Segunda línea, con el margen y las salidas que de verdad hay. */
+  detail: string;
+}
+
+/** Una decisión ya tomada, para enseñarla como línea aparte del derecho. */
+export interface VacationCarryoverDecisionView {
+  id: string;
+  agreementId: string;
+  employeeLabel: string;
+  sourceYearIndex: number;
+  status: 'proposed' | 'carried' | 'compensated' | 'rejected' | 'expired';
+  /** «18 días arrastrados del segundo año, hasta el 4 sep 2027». */
+  summary: string;
+  /** El motivo del rechazo o la frase del importe. null si no hay nada más. */
+  detail: string | null;
+}
+
+interface CarryoverRowInput {
+  id: string;
+  agreementId: string;
+  sourceYearIndex: number;
+  status: VacationCarryoverDecisionView['status'];
+  unusedDays: number;
+  deadlineOn: string | null;
+  compensationCents: string | null;
+  compensationBasis: string | null;
+  decisionReason: string | null;
+}
+
+/**
+ * Las propuestas vivas de un contrato: un año de contrato CERRADO, con días sin
+ * disfrutar y sin decisión.
+ *
+ * Se miran todos los años cerrados y no sólo el último, por la misma razón por
+ * la que Conceptos dejó de tener ventana de historial: un pendiente que se cae
+ * de la única pantalla donde vive no aparece en ninguna otra, y es exactamente
+ * así como se deja de pagar dinero que sí se debía.
+ */
+export function buildVacationCarryoverProposals(input: {
+  agreementId: string;
+  employeeLabel: string;
+  /** Hoy en la zona del hogar: decide qué años de contrato están cerrados. */
+  today: string;
+  agreementStartsOn: string;
+  agreementEndsOn: string | null;
+  /** Ordenadas por `effectiveFrom`. Vacío = quien mira no ve lo pactado. */
+  versions: readonly VacationCarryoverVersionRow[];
+  /** Periodos VIGENTES; los anulados no cuentan. */
+  periods: readonly { startsOn: string; endsOn: string }[];
+  /** Años de contrato que ya tienen decisión: no se vuelven a proponer. */
+  decidedYearIndexes: readonly number[];
+}): VacationCarryoverProposalView[] {
+  if (input.versions.length === 0) return [];
+  const current = contractYearOn(input.agreementStartsOn, input.today);
+  if (current === null) return [];
+
+  // El último año que puede estar cerrado: el anterior al que corre, y nunca
+  // más allá del final del contrato.
+  let lastClosed = current.index - 1;
+  if (input.agreementEndsOn !== null) {
+    const closing = contractYearOn(input.agreementStartsOn, input.agreementEndsOn);
+    if (closing !== null) lastClosed = Math.min(lastClosed, closing.index);
+  }
+
+  const decided = new Set(input.decidedYearIndexes);
+  const ordered = [...input.versions].sort((left, right) =>
+    left.effectiveFrom.localeCompare(right.effectiveFrom)
+  );
+  const versionOn = (onDate: string): VacationCarryoverVersionRow =>
+    ordered.filter((version) => version.effectiveFrom <= onDate).at(-1) ?? ordered[0]!;
+  const pricing = versionOn(input.today);
+
+  const proposals: VacationCarryoverProposalView[] = [];
+  for (let index = 1; index <= lastClosed; index += 1) {
+    if (decided.has(index)) continue;
+    const year = contractYear(input.agreementStartsOn, index);
+    if (year.endsOn >= input.today) continue;
+    // El derecho del año que se cierra lo fijó la versión vigente al terminarlo:
+    // subir hoy los días pactados no reescribe un año ya vivido. La política de
+    // caducidad viaja con él, porque el margen es de esos días.
+    const entitlement = versionOn(year.endsOn);
+    const balance = vacationYearBalance({
+      contractYearIndex: index,
+      annualVacationDays: entitlement.annualVacationDays,
+      agreementStartsOn: input.agreementStartsOn,
+      agreementEndsOn: input.agreementEndsOn,
+      periods: input.periods,
+      asOf: input.today
+    });
+    if (balance.remainingDays <= 0) continue;
+
+    const deadlineOn = vacationCarryoverDeadline(
+      year.endsOn,
+      readVacationCarryoverExpiry(entitlement.terms)
+    );
+    // El PRECIO sale de la versión vigente hoy, no de la del año que cierra: el
+    // dinero es del mes en que se paga. Sin tarifa pactada no hay importe que
+    // ofrecer, y se dice — nunca un cero ni una estimación.
+    const compensation = vacationCompensation({
+      dayRateCents:
+        pricing.unusedVacationDayRateCents === null
+          ? null
+          : moneyCents(parseCents(pricing.unusedVacationDayRateCents)),
+      rateEffectiveFrom: pricing.effectiveFrom,
+      unusedDays: balance.remainingDays
+    });
+
+    const yearName = contractYearName(index);
+    const margin =
+      deadlineOn === null
+        ? 'Se pueden arrastrar sin fecha límite'
+        : `Se pueden arrastrar hasta el ${dateLabel(deadlineOn)}`;
+    const money =
+      compensation === null
+        ? '. Para pagarlos hay que pactar antes el precio del día en las condiciones.'
+        : `, pagar ${formatCents(compensation.compensationCents)} o darlos por perdidos.`;
+    proposals.push({
+      agreementId: input.agreementId,
+      employeeLabel: input.employeeLabel,
+      sourceYearIndex: index,
+      sourceYearLabel: contractYearLabel(year),
+      sourceYearEndsOn: year.endsOn,
+      entitledDays: balance.entitledDays,
+      takenDays: balance.takenDays,
+      unusedDays: balance.remainingDays,
+      deadlineOn,
+      compensationCents: compensation === null ? null : compensation.compensationCents.toString(),
+      compensationLabel: compensation === null ? null : formatCents(compensation.compensationCents),
+      compensationBasis: compensation?.basis ?? null,
+      headline: `${dayCountLabel(balance.remainingDays)} de vacaciones sin disfrutar del ${yearName}`,
+      detail:
+        `El ${yearName} terminó el ${dateLabel(year.endsOn)}. ${margin}` +
+        (compensation === null ? ' o darlos por perdidos' : '') +
+        money
+    });
+  }
+  return proposals;
+}
+
+/** Las decisiones ya tomadas, dichas como lo que son. */
+export function buildVacationCarryoverDecisions(
+  rows: readonly CarryoverRowInput[],
+  employeeLabelFor: (agreementId: string) => string
+): VacationCarryoverDecisionView[] {
+  return rows.map((row) => {
+    const yearName = contractYearName(row.sourceYearIndex);
+    const days = dayCountLabel(row.unusedDays);
+    const until =
+      row.deadlineOn === null ? ', sin fecha límite' : `, hasta el ${dateLabel(row.deadlineOn)}`;
+    const summary =
+      row.status === 'carried'
+        ? `${days} arrastrados del ${yearName}${until}`
+        : row.status === 'compensated'
+          ? `${days} del ${yearName} pagados${
+              row.compensationCents === null ? '' : `: ${formatCents(row.compensationCents)}`
+            }`
+          : row.status === 'rejected'
+            ? `${days} del ${yearName} no se arrastraron`
+            : row.status === 'expired'
+              ? `${days} arrastrados del ${yearName} vencieron${until.replace(', hasta el', ' el')}`
+              : `${days} del ${yearName} pendientes de decidir`;
+    return {
+      id: row.id,
+      agreementId: row.agreementId,
+      employeeLabel: employeeLabelFor(row.agreementId),
+      sourceYearIndex: row.sourceYearIndex,
+      status: row.status,
+      summary,
+      // El motivo del rechazo importa más que el importe: es lo único que
+      // explica por qué unos días se perdieron.
+      detail: row.status === 'rejected' ? row.decisionReason : row.compensationBasis
+    };
+  });
 }
 
 export function buildAdvanceBalanceViews(rows: readonly AdvanceRow[]): AdvanceBalanceView[] {

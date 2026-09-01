@@ -13,12 +13,14 @@ import {
 } from '@casa-clara/domain';
 
 import {
+  buildVacationCarryoverProposals,
   dateLabel,
   employmentTabHref,
   formatCents,
   formatMinutes,
   parseCents,
-  periodLabel
+  periodLabel,
+  type VacationCarryoverProposalView
 } from '$lib/employment/model';
 import { addDays, mondayOf } from '$lib/food/dates';
 import type { MealSlot } from '$lib/food/commands';
@@ -340,6 +342,15 @@ export interface TodayDecisionFacts {
    * por el motor del dominio. null = no es empleada, o no hay nada que contar.
    */
   vacationNews: VacationNewsView | null;
+  /**
+   * Años de contrato cerrados con días sin disfrutar y sin decisión, con el
+   * texto YA ESCRITO por el servidor. Vacío para quien no administra.
+   *
+   * Que venga escrito no es comodidad: el presupuesto de bytes del arranque de
+   * Hoy deja poco margen y una rama nueva en la plantilla se lo come, así que
+   * esto tiene que ser un elemento más de la lista de decisiones y nada más.
+   */
+  vacationCarryovers: readonly VacationCarryoverProposalView[];
 }
 
 function extraDetail(extra: TodayExtraRow): string {
@@ -426,6 +437,18 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
   }
 
   if (isAdmin) {
+    // Los días de un año de contrato que ya se cerró: es una decisión, no una
+    // novedad, y por eso va sin `kind: 'news'`. El texto lo escribe el servidor
+    // entero —titular y detalle— para que aquí no haga falta ninguna rama nueva.
+    for (const carryover of facts.vacationCarryovers) {
+      items.push({
+        key: `vacaciones-arrastre-${carryover.agreementId}-${carryover.sourceYearIndex}`,
+        title: carryover.headline,
+        detail: carryover.detail,
+        href: employmentTabHref(facts.householdId, 'vacaciones', carryover.agreementId),
+        cta: 'Decidir'
+      });
+    }
     for (const settlement of facts.settlements) {
       if (settlement.status === 'closed' && parseCents(settlement.pendingCents) > 0n) {
         items.push({
@@ -962,10 +985,24 @@ export async function loadTodayOverview(
       // se enseña es una decisión que no se toma. Para roles sin acceso laboral
       // (helper/viewer) la RLS devuelve cero filas y el bloque queda vacío; a
       // la empleada le devuelve el suyo y solo el suyo.
-      const agreementResult = await client.query<{ id: string }>(
-        `select id from app.employment_agreements
-          where household_id = $1
-          order by (status = 'active') desc, starts_on desc`,
+      const agreementResult = await client.query<{
+        id: string;
+        startsOn: string;
+        endsOn: string | null;
+        employeeName: string | null;
+      }>(
+        `select agreement.id,
+                agreement.starts_on::text as "startsOn",
+                agreement.ends_on::text as "endsOn",
+                profile.display_name as "employeeName"
+           from app.employment_agreements as agreement
+           left join app.household_memberships as employee
+             on employee.household_id = agreement.household_id
+            and employee.id = agreement.employee_membership_id
+           left join app.user_profiles as profile
+             on profile.user_id = employee.user_id
+          where agreement.household_id = $1
+          order by (agreement.status = 'active') desc, agreement.starts_on desc`,
         [householdId]
       );
       const agreementIds = agreementResult.rows.map((row) => row.id);
@@ -1092,6 +1129,65 @@ export async function loadTodayOverview(
         }
       }
 
+      // Años de contrato ya cerrados con días sin disfrutar y sin decisión.
+      // Sólo para quien administra: es una decisión suya, y para el resto del
+      // hogar la RLS no devuelve ni las versiones ni los arrastres.
+      //
+      // Se calcula al leer, como en la pestaña de Vacaciones: no hay fila hasta
+      // que alguien decide, y por tanto no hace falta ni trabajo periódico ni
+      // disparador por calendario, que aquí no existen.
+      let vacationCarryovers: VacationCarryoverProposalView[] = [];
+      if (membership.role === 'family_admin' && agreementIds.length > 0) {
+        const [versions, vacationPeriods, decided] = await Promise.all([
+          client.query<{
+            agreementId: string;
+            effectiveFrom: string;
+            annualVacationDays: number;
+            unusedVacationDayRateCents: string | null;
+            terms: unknown;
+          }>(
+            `select agreement_id as "agreementId",
+                    effective_from::text as "effectiveFrom",
+                    annual_vacation_days as "annualVacationDays",
+                    unused_vacation_day_rate_cents::text as "unusedVacationDayRateCents",
+                    terms
+               from app.agreement_versions
+              where household_id = $1 and agreement_id = any($2::uuid[])
+              order by agreement_id, version_number`,
+            [householdId, agreementIds]
+          ),
+          client.query<{ agreementId: string; startsOn: string; endsOn: string }>(
+            `select agreement_id as "agreementId",
+                    starts_on::text as "startsOn",
+                    ends_on::text as "endsOn"
+               from app.vacation_periods
+              where household_id = $1 and agreement_id = any($2::uuid[])
+                and status = 'recorded'`,
+            [householdId, agreementIds]
+          ),
+          client.query<{ agreementId: string; sourceYearIndex: number }>(
+            `select agreement_id as "agreementId", source_year_index as "sourceYearIndex"
+               from app.vacation_carryovers
+              where household_id = $1 and agreement_id = any($2::uuid[])`,
+            [householdId, agreementIds]
+          )
+        ]);
+        vacationCarryovers = agreementResult.rows.flatMap((agreement) =>
+          buildVacationCarryoverProposals({
+            agreementId: agreement.id,
+            employeeLabel: agreement.employeeName?.trim() || 'Empleada del hogar',
+            today: todayISO,
+            agreementStartsOn: agreement.startsOn,
+            agreementEndsOn: agreement.endsOn,
+            versions: versions.rows.filter((row) => row.agreementId === agreement.id),
+            periods: vacationPeriods.rows.filter((row) => row.agreementId === agreement.id),
+            decidedYearIndexes: decided.rows
+              .filter((row) => row.agreementId === agreement.id)
+              .map((row) => row.sourceYearIndex)
+          })
+        );
+      }
+
       const decisions = buildTodayDecisions({
         householdId,
         role: membership.role,
@@ -1102,7 +1198,8 @@ export async function loadTodayOverview(
         settlements,
         unconfirmedSlots,
         overdueRoutineCount: routines.overdueCount,
-        vacationNews
+        vacationNews,
+        vacationCarryovers
       });
 
       const hour = Number(MADRID_HOUR.format(now));
