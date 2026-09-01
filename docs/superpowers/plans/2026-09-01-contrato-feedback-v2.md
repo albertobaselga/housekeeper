@@ -273,6 +273,23 @@ acepta).
 
 ---
 
+## Un hueco del reparto, y cómo se tapó
+
+El reparto por ficheros tenía un agujero que sólo se vio al ejecutarlo: la tarea C
+cambia la firma de `vacationYearBalance`, sus **llamadas** viven en `model.ts` y
+en `employment.server.ts`, y esos dos ficheros estaban asignados a la tarea A en
+la tanda 1 pero el arreglo estaba escrito en la tarea E, de la tanda 3. Con ese
+reparto, **la tanda 1 no podía cerrar en verde por construcción**: seis errores de
+tipos y cinco pruebas rojas se quedaban esperando dos tandas.
+
+Se tapó dándole a la tarea A la adaptación mínima —la firma nueva y las frases
+con `contractYearLabel`—, y dejándole a E lo que de verdad es suyo: pintar el
+devengo, la nota de anticipo y la tarjeta del arrastre.
+
+La lección para el próximo reparto: cuando una tarea cambia una **firma**, el
+reparto tiene que seguir a sus llamantes, no sólo a su fichero. Repartir por
+ficheros no basta si la unidad que se rompe es un contrato entre módulos.
+
 ## Cabos sueltos anotados durante la ejecución
 
 - **Cobertura de densidad y desbordamiento para Pagos.** `apps/web/e2e/mobile-densidad.dbe2e.ts`
@@ -281,6 +298,10 @@ acepta).
   o sea que esas baterías la medirían solas con sólo añadir la ruta. Se midió a
   mano a 320 px y no desborda, pero sin la ruta en la lista nada lo guarda de una
   regresión futura. Va en el cierre.
+- **Las capturas del manual**: `apps/web/scripts/manual-shots.mjs` buscaba
+  rótulos que el rediseño en pestañas ya había mudado de ruta, así que el manual
+  publicado llevaba desde entonces ilustrado con capturas de pantallas que ya no
+  existían. Asignado a la tarea A, que es quien reescribe los pies.
 - **`app.css`**: el bloque de la fila de mes vive en el `<style>` del `.svelte`.
   Pasa el mismo linter de tokens. Si se quiere consolidar en `app.css`, se mueve
   tal cual.
