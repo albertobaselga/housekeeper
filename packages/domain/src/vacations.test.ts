@@ -283,6 +283,41 @@ describe("saldo del año de contrato", () => {
     expect(balance.annualVacationDays).toBe(30);
   });
 
+  it("último año prorrateado y periodo repartido: las tres reglas a la vez", () => {
+    // El contrato acaba el 30 de junio de 2026, a media anualidad, y hay un
+    // periodo del 1 al 10 de marzo justo encima del aniversario. Es el cruce que
+    // ninguna prueba cubría: prorrateo del último año, reparto entre dos años y
+    // devengo a una fecha, todo sobre el mismo contrato.
+    const termina = {
+      agreementStartsOn: "2025-03-05",
+      agreementEndsOn: "2026-06-30",
+      annualVacationDays: 30,
+      periods: [{ startsOn: "2026-03-01", endsOn: "2026-03-10" }],
+      asOf: "2026-05-01",
+    } as const;
+    const primero = vacationYearBalance({ ...termina, contractYearIndex: 1 });
+    const segundo = vacationYearBalance({ ...termina, contractYearIndex: 2 });
+
+    // Del 5 de marzo al 30 de junio de 2026 hay 118 días cubiertos de 365.
+    // 30 × 118 / 365 = 9,7 → 10.
+    expect(segundo.coveredDays).toBe(118);
+    expect(segundo.prorated).toBe(true);
+    expect(segundo.entitledDays).toBe(10);
+    // Devengado a 1 de mayo: 58 de los 118 días cubiertos. 10 × 58 / 118 = 4,9 → 5.
+    expect(segundo.accruedDays).toBe(5);
+    expect(segundo.availableNowDays).toBe(-1);
+    expect(segundo.remainingDays).toBe(4);
+
+    // Los diez días del periodo se reparten entre los dos años sin perder ni
+    // duplicar ninguno: cuatro gastan el primer año y seis el segundo.
+    expect(primero.takenDays).toBe(4);
+    expect(segundo.takenDays).toBe(6);
+    expect(primero.takenDays + segundo.takenDays).toBe(10);
+    // Y el primer año sigue sin prorratearse: el contrato lo cubre entero.
+    expect(primero.prorated).toBe(false);
+    expect(primero.entitledDays).toBe(30);
+  });
+
   it("un año de contrato que empieza después del fin del acuerdo no da derecho a nada", () => {
     const balance = vacationYearBalance({
       ...acuerdo,

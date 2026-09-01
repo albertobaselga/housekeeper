@@ -213,19 +213,27 @@ export function contractYearOn(agreementStartsOn: string, date: string): Contrac
   assertIsoDate(date, "La fecha");
   if (date < agreementStartsOn) return null;
 
-  // Estimación por meses completos y ajuste. El ajuste hace falta de verdad:
-  // con el día clavado al final del mes, el aniversario puede caer un día antes
-  // de lo que dice la aritmética de meses.
+  // Estimación por meses completos, y luego avanzar mientras haga falta.
+  //
+  // El ajuste SOLO puede ir hacia delante, y no por casualidad: clavar el día al
+  // último del mes (el contrato del 29 de febrero) adelanta el aniversario, no
+  // lo atrasa, así que un año de contrato puede quedarse corto —364 días— pero
+  // nunca empieza más tarde de lo que dice la aritmética de meses. La estimación
+  // acierta o se queda por debajo; pasarse es imposible. Por eso no hay bucle
+  // hacia atrás: habría sido una rama que no se ejecuta nunca y que nadie
+  // volvería a mirar. Queda el invariante, que si algún día me equivoco grita en
+  // vez de devolver un año en silencio.
   const months =
     (Number(date.slice(0, 4)) - Number(agreementStartsOn.slice(0, 4))) * 12 +
     (Number(date.slice(5, 7)) - Number(agreementStartsOn.slice(5, 7))) -
     (date.slice(8, 10) < agreementStartsOn.slice(8, 10) ? 1 : 0);
   let index = Math.max(1, Math.floor(months / 12) + 1);
   let year = contractYear(agreementStartsOn, index);
-  while (index > 1 && date < year.startsOn) {
-    index -= 1;
-    year = contractYear(agreementStartsOn, index);
-  }
+  invariant(
+    date >= year.startsOn,
+    "INVALID_VACATION_YEAR",
+    `La estimación del año de contrato se pasó de largo: ${date} cae antes del ${year.startsOn}.`,
+  );
   while (date > year.endsOn) {
     index += 1;
     year = contractYear(agreementStartsOn, index);
