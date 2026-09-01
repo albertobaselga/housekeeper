@@ -66,10 +66,19 @@ export interface FinanceGrantDispatch {
   run: (envelope: CommandEnvelopeV1, options?: FinanceGrantDispatchOptions) => Promise<QueueOutcome>;
 }
 
+/**
+ * Dependencias sustituibles SOLO en pruebas, las mismas que `OptimisticActions`
+ * ya declara. Van en un segundo parámetro y no mezcladas con lo único que la
+ * aplicación pasa de verdad, que es el hogar: en producción se llama
+ * `createFinanceGrantDispatch(householdId)` y no hay más superficie que esa.
+ */
+type FinanceGrantDispatchDeps = Omit<OptimisticActionsOptions, 'householdId' | 'invalidateToken'>;
+
 export function createFinanceGrantDispatch(
-  options: Omit<OptimisticActionsOptions, 'invalidateToken'>
+  householdId: string,
+  deps: FinanceGrantDispatchDeps = {}
 ): FinanceGrantDispatch {
-  const optimistic = new OptimisticActions({ ...options, invalidateToken: INVALIDATE_TOKEN });
+  const optimistic = new OptimisticActions({ ...deps, householdId, invalidateToken: INVALIDATE_TOKEN });
   return {
     status: optimistic.status,
     start: () => optimistic.start(),

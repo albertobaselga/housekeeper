@@ -13,7 +13,7 @@
 
   import { useAppContext } from '$lib/auth/context';
 
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  const { data, form }: { data: PageData; form: ActionData } = $props();
   const context = useAppContext();
 
   const access = $derived(data.access);
@@ -54,7 +54,7 @@
   // tarjeta no puede decir «Activado» de algo que el servidor no ha aceptado.
   // La nota es propia porque el acuse tiene que aparecer donde estaba el dedo
   // (§2.5 del sistema móvil) y la tarjeta de accesos queda muy por encima.
-  const financeGrant = createFinanceGrantDispatch({ householdId: context.household.id });
+  const financeGrant = createFinanceGrantDispatch(context.household.id);
   const financeStatus = financeGrant.status;
   $effect(() => financeGrant.start());
 

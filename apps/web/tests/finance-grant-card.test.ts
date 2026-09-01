@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_HOUSEHOLD } from './helpers';
@@ -125,6 +126,8 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
   let scriptCode = '';
   /** La tarjeta de Finanzas y nada más, con los espacios colapsados. */
   let card = '';
+  /** El `<script>` parseado: para lo que se pregunta por estructura, no por texto. */
+  let scriptAst: ts.SourceFile;
 
   beforeAll(async () => {
     page = await readFile(
@@ -137,6 +140,12 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     const rawScript = page.slice(page.indexOf('<script'), page.indexOf('</script>'));
     script = flat(rawScript);
     scriptCode = flat(code(rawScript));
+    scriptAst = ts.createSourceFile(
+      'settings.ts',
+      rawScript.slice(rawScript.indexOf('>') + 1),
+      ts.ScriptTarget.ESNext,
+      true
+    );
     // La tarjeta se acota por su propia sección para que nada de lo que se
     // afirma abajo pueda quedar satisfecho por la tarjeta de accesos vecina,
     // que tiene filas, chips y botones parecidos.
@@ -184,6 +193,52 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     expect(script).toMatch(/membershipId: admin\.membershipId, granted: admin\.granted/);
     // Y viaja como comando por la cola, nunca como form action.
     expect(card).not.toContain('method="POST"');
+  });
+
+  it('la fuente de la que se pinta no se puede suplantar', () => {
+    // La cuarta vía, y la única que pintaba de verdad sin tocar nada de lo
+    // anterior: reasignar `data` con la fila invertida antes de despachar. No
+    // necesita `apply`, ni un cast, ni estado local, ni una segunda instancia
+    // del mecanismo; el prop llega marcado como actualizable, así que la lista
+    // se repinta. Y el modo de fallo es el prohibido entero: ante un rechazo no
+    // hay nada que revierta, y la fila se queda diciendo «Activado» de una
+    // concesión que el servidor acaba de negar.
+    //
+    // La cura es que `data` sea `const`: entonces la evasión no compila (dos
+    // errores, uno del compilador de Svelte y otro del comprobador de tipos).
+    // Esto se pregunta por ESTRUCTURA y no por texto: al parser le da igual el
+    // formato, los comentarios y el orden.
+    const declarations = scriptAst.statements
+      .filter(ts.isVariableStatement)
+      .flatMap((statement) => {
+        const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0;
+        return statement.declarationList.declarations.map((declaration) => ({ declaration, isConst }));
+      });
+    const props = declarations.find(({ declaration }) =>
+      ts.isObjectBindingPattern(declaration.name) &&
+      declaration.name.elements.some((element) => element.name.getText() === 'data')
+    );
+    expect(props, 'la página ya no destructura `data` de $props()').toBeDefined();
+    expect(props?.isConst, '`data` vuelve a ser reasignable: la fuente de la tarjeta se puede suplantar').toBe(
+      true
+    );
+
+    // Y, por si alguien la devolviera a `let`, la asignación en sí: es el acto
+    // prohibido, se escriba como se escriba.
+    const assignments: string[] = [];
+    const walk = (node: ts.Node): void => {
+      if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isIdentifier(node.left) &&
+        (node.left.text === 'data' || node.left.text === 'form')
+      ) {
+        assignments.push(node.getText());
+      }
+      ts.forEachChild(node, walk);
+    };
+    walk(scriptAst);
+    expect(assignments, 'la página asigna sobre los datos que le llegan del servidor').toEqual([]);
   });
 
   it('despacha por el camino que no puede pintar antes del acuse', () => {

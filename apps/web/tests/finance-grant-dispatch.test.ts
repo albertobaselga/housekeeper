@@ -43,8 +43,7 @@ function dispatchWith(result: QueueCommandResult): {
   invalidated: string[];
 } {
   const invalidated: string[] = [];
-  const dispatch = createFinanceGrantDispatch({
-    householdId: HOUSEHOLD,
+  const dispatch = createFinanceGrantDispatch(HOUSEHOLD, {
     queueCommandFn: async () => result,
     invalidateFn: async (token: string) => {
       invalidated.push(token);
