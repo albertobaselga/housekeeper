@@ -1,10 +1,10 @@
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 
 /**
  * Constructores puros de los envelopes de concesión de Finanzas (spec §4).
- * Producen los payloads CONGELADOS de @casa-clara/contracts/schemas
+ * Producen los payloads CONGELADOS de @housekeeper/contracts/schemas
  * (financeGrantPayloadSchema / financeRevokePayloadSchema); la validación zod
  * vive en los tests y en el servidor, nunca en el bundle del navegador.
  * Patrón calcado de $lib/access/commands.ts.

@@ -7,7 +7,7 @@ import {
   financeCommandPayloadSchema,
   financeGrantPayloadSchema,
   financeRevokePayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import { financeGrantToggle, grantFinanceAccess, revokeFinanceAccess } from '../src/lib/finance/commands';
 

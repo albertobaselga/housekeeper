@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { fixturesAllowed, unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';

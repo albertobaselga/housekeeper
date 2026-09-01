@@ -25,10 +25,10 @@ vi.mock('$env/dynamic/private', () => ({ env: fakeEnv }));
 // en local mientras corre CI) se borraban la base la una a la otra a mitad.
 // El pid las separa y el `afterAll` las retira en vez de acumularlas.
 const RUN = process.pid;
-const APP_LOGIN = `it_casa_clara_finance_login_${RUN}`;
+const APP_LOGIN = `it_housekeeper_finance_login_${RUN}`;
 // Base propia (patrón de la suite de contactos): las suites vecinas recrean
 // el esquema en paralelo y ninguna puede compartir instancia.
-const FINANCE_DB = `casaclara_finance_it_${RUN}`;
+const FINANCE_DB = `housekeeper_finance_it_${RUN}`;
 
 const OLIVO_HOUSEHOLD = '20000000-0000-4000-8000-000000000001';
 const ROBLE_ADMIN = '11000000-0000-4000-8000-000000000001';
