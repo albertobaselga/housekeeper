@@ -1,6 +1,7 @@
 import {
   contractYear,
   contractYearOn,
+  vacationCalendarDays,
   vacationDaysInWindow,
   vacationYearBalance,
   type ContractYear
@@ -37,11 +38,17 @@ import { dateLabel, vacationRangeLabel } from './model';
 /** Quién está leyendo: ella sobre sí misma, o la administración sobre ella. */
 export type VacationVoice = 'own' | 'other';
 
+/**
+ * Un periodo tal y como sale de `app.vacation_periods`. NO trae el número de
+ * días: la fila lo guarda, pero aquí se deriva de las fechas con el mismo
+ * contador que usa el dominio. Si el número viniera de fuera y no cuadrara con
+ * las fechas, esta capa escribiría «99 días» mientras el saldo dice 15, y la
+ * pantalla se contradiría a sí misma en el mismo renglón.
+ */
 export interface VacationHistoryPeriodRow {
   id: string;
   startsOn: string;
   endsOn: string;
-  calendarDays: number;
   note: string;
   status: 'recorded' | 'voided';
   voidReason: string | null;
@@ -263,6 +270,10 @@ function periodView(
   daysThisYear: number
 ): VacationHistoryPeriodView {
   const state = periodState(row, today);
+  // Los días salen de las fechas, con el contador del dominio. Es el mismo que
+  // reparte el periodo entre años, así que la coletilla del reparto y el número
+  // grande no pueden decir cosas distintas.
+  const calendarDays = vacationCalendarDays(row.startsOn, row.endsOn);
   return {
     id: row.id,
     startsOn: row.startsOn,
@@ -271,15 +282,15 @@ function periodView(
     // Lo anulado no suma, y la lista no debe insinuar que sí con un número al
     // lado. El número original se conserva en el detalle, que es donde se
     // explica qué pasó.
-    daysLabel: state === 'voided' ? '—' : days(row.calendarDays),
+    daysLabel: state === 'voided' ? '—' : days(calendarDays),
     state,
     stateLabel: STATE_LABELS[state],
     detail:
       state === 'voided'
-        ? `Eran ${days(row.calendarDays)}. Anuladas${row.voidReason ? `: ${row.voidReason}` : ''}`
+        ? `Eran ${days(calendarDays)}. Anuladas${row.voidReason ? `: ${row.voidReason}` : ''}`
         : row.note || 'Vacaciones',
     splitLabel:
-      state !== 'voided' && daysThisYear < row.calendarDays
+      state !== 'voided' && daysThisYear < calendarDays
         ? `${days(daysThisYear)} de estas caen en el ${yearName}`
         : null
   };
@@ -311,13 +322,22 @@ export function buildVacationPersonView(input: {
   // días apuntados para el siguiente. Un contrato terminado no llega más lejos
   // del año en el que terminó, aunque el calendario siga.
   let lastIndex = currentYear?.index ?? 1;
+  // …salvo que haya días apuntados más allá de ese final. El comando no deja
+  // apuntar fuera del acuerdo, pero mira los límites en el momento de apuntar y
+  // nada en la base lo sostiene después: el día que una baja fije el fin del
+  // contrato hacia atrás, los periodos ya apuntados caerían fuera de todos los
+  // años y desaparecerían de la pantalla sin que nadie se enterara. Un periodo
+  // apuntado se enseña siempre; el año en el que cae ya dirá que el contrato no
+  // reconoce esos días, que es la conversación que hay que tener.
+  let lastPeriodIndex = 0;
   for (const period of input.periods) {
     const year = contractYearOn(input.agreementStartsOn, period.endsOn);
-    if (year !== null && year.index > lastIndex) lastIndex = year.index;
+    if (year !== null && year.index > lastPeriodIndex) lastPeriodIndex = year.index;
   }
+  lastIndex = Math.max(lastIndex, lastPeriodIndex);
   if (input.agreementEndsOn !== null) {
     const closing = contractYearOn(input.agreementStartsOn, input.agreementEndsOn);
-    lastIndex = Math.min(lastIndex, closing?.index ?? 1);
+    lastIndex = Math.max(Math.min(lastIndex, closing?.index ?? 1), lastPeriodIndex);
   }
 
   // Sin ninguna versión visible no se puede decir cuántos días le tocan. Es el
@@ -330,8 +350,13 @@ export function buildVacationPersonView(input: {
   for (let index = lastIndex; index >= 1; index -= 1) {
     const year = contractYear(input.agreementStartsOn, index);
     const yearName = contractYearName(index);
+    // El primer año recoge además lo anterior al contrato, por la misma razón
+    // que el último recoge lo posterior: sin ese suelo, un periodo apuntado
+    // antes del inicio no saldría en ninguna parte. Se lista con sus fechas y
+    // con la coletilla diciendo que ninguno de esos días cae dentro del año.
     const touching = input.periods.filter(
-      (period) => period.startsOn <= year.endsOn && period.endsOn >= year.startsOn
+      (period) =>
+        period.startsOn <= year.endsOn && (index === 1 || period.endsOn >= year.startsOn)
     );
     const balance = vacationYearBalance({
       contractYearIndex: index,
@@ -416,7 +441,10 @@ export function buildVacationPersonView(input: {
         ? `Desde el ${dateLabel(input.agreementStartsOn)}`
         : `Del ${dateLabel(input.agreementStartsOn)} al ${dateLabel(input.agreementEndsOn)}`,
     years,
-    empty: input.periods.length === 0,
+    // Vacío es «no hay nada QUE VER», no «no hay nada guardado». Contando las
+    // filas de entrada, un periodo que no cupiera en ningún año dejaría la
+    // pantalla sin él y sin el aviso de que no hay nada: mentiría dos veces.
+    empty: years.every((year) => year.periods.length === 0),
     entitlementNote: entitlementKnown
       ? null
       : 'Los días de vacaciones que le corresponden al año son parte de lo pactado, y eso solo lo ' +

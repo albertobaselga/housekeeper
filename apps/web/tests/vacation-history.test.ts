@@ -22,7 +22,6 @@ function period(overrides: Partial<VacationHistoryPeriodRow> = {}): VacationHist
     id: 'p-1',
     startsOn: '2026-08-01',
     endsOn: '2026-08-15',
-    calendarDays: 15,
     note: 'Quincena de agosto',
     status: 'recorded',
     voidReason: null,
@@ -101,7 +100,7 @@ describe('historial de vacaciones de una persona', () => {
     const person = view({
       own: false,
       periods: [
-        period({ id: 'p-1', startsOn: '2026-03-05', endsOn: '2026-04-15', calendarDays: 42 })
+        period({ id: 'p-1', startsOn: '2026-03-05', endsOn: '2026-04-15' })
       ]
     });
     expect(person.years[0]?.remainingDays).toBe(-12);
@@ -122,7 +121,6 @@ describe('historial de vacaciones de una persona', () => {
           id: 'p-anulado',
           startsOn: '2026-03-06',
           endsOn: '2026-03-10',
-          calendarDays: 5,
           status: 'voided',
           voidReason: 'Las fechas eran otras'
         })
@@ -139,9 +137,9 @@ describe('historial de vacaciones de una persona', () => {
   it('distingue lo ya disfrutado, lo que está pasando y lo que viene', () => {
     const person = view({
       periods: [
-        period({ id: 'p-pasado', startsOn: '2026-04-02', endsOn: '2026-04-06', calendarDays: 5 }),
-        period({ id: 'p-ahora', startsOn: '2026-08-25', endsOn: '2026-09-05', calendarDays: 12 }),
-        period({ id: 'p-futuro', startsOn: '2026-12-24', endsOn: '2026-12-31', calendarDays: 8 })
+        period({ id: 'p-pasado', startsOn: '2026-04-02', endsOn: '2026-04-06' }),
+        period({ id: 'p-ahora', startsOn: '2026-08-25', endsOn: '2026-09-05' }),
+        period({ id: 'p-futuro', startsOn: '2026-12-24', endsOn: '2026-12-31' })
       ]
     });
     const states = Object.fromEntries(
@@ -155,7 +153,7 @@ describe('historial de vacaciones de una persona', () => {
     // gastan el segundo año y seis el tercero.
     const person = view({
       periods: [
-        period({ id: 'p-marzo', startsOn: '2027-03-01', endsOn: '2027-03-10', calendarDays: 10 })
+        period({ id: 'p-marzo', startsOn: '2027-03-01', endsOn: '2027-03-10' })
       ]
     });
     const segundo = person.years.find((year) => year.index === 2);
@@ -214,6 +212,82 @@ describe('historial de vacaciones de una persona', () => {
     // Ningún año está en curso: el contrato acabó hace más de un año.
     expect(person.years.every((year) => year.accruedNote === null)).toBe(true);
   });
+
+  it('el último año prorrateado con días repartidos: el cruce de las tres reglas', () => {
+    // Contrato que acaba el 30 de junio de 2026 y unas vacaciones del 1 al 10
+    // de marzo, justo encima del aniversario. Aquí se tocan a la vez el
+    // prorrateo del último año, el reparto entre dos años y el devengo a fecha.
+    const person = view({
+      agreementEndsOn: '2026-06-30',
+      periods: [period({ id: 'p-marzo', startsOn: '2026-03-01', endsOn: '2026-03-10' })],
+      today: '2026-05-01'
+    });
+    const primero = person.years.find((year) => year.index === 1);
+    const segundo = person.years.find((year) => year.index === 2);
+
+    // 118 días cubiertos de 365: de los 30 del año le tocan 10.
+    expect(segundo?.entitledDays).toBe(10);
+    expect(segundo?.prorationNote).toBe(
+      'El contrato termina dentro del segundo año: cubre 118 días de los 365, así que de los ' +
+        '30 días del año te tocan 10.'
+    );
+    // Los diez días del periodo, repartidos sin perder ni duplicar ninguno.
+    expect(primero?.takenDays).toBe(4);
+    expect(segundo?.takenDays).toBe(6);
+    expect((primero?.takenDays ?? 0) + (segundo?.takenDays ?? 0)).toBe(10);
+    expect(primero?.periods[0]?.splitLabel).toBe('4 días de estas caen en el primer año');
+    expect(segundo?.periods[0]?.splitLabel).toBe('6 días de estas caen en el segundo año');
+    // Y el mismo periodo se lista en los dos años, con sus fechas enteras.
+    expect(primero?.periods[0]?.daysLabel).toBe('10 días');
+    expect(segundo?.periods[0]?.daysLabel).toBe('10 días');
+    // Devengado 5 de los 10 a 1 de mayo, con 6 cogidos: uno por delante.
+    expect(segundo?.accruedDays).toBe(5);
+    expect(segundo?.availableNowDays).toBe(-1);
+    expect(segundo?.advanceNote).toContain('Has disfrutado 1 día por delante de lo devengado');
+    expect(segundo?.excessNote).toBeNull();
+  });
+
+  it('los días se cuentan de las fechas, no de un número que venga en la fila', () => {
+    const [único] = view({
+      periods: [period({ startsOn: '2026-08-01', endsOn: '2026-08-15' })]
+    }).years[0]?.periods ?? [];
+    expect(único?.daysLabel).toBe('15 días');
+  });
+});
+
+describe('ningún periodo apuntado desaparece de la pantalla', () => {
+  it('uno posterior al fin del contrato se enseña, y su año dice que no lo reconoce', () => {
+    // El día que una baja fije el fin del contrato hacia atrás, esto deja de
+    // ser hipotético: los periodos ya apuntados caerían fuera de todos los años.
+    const person = view({
+      own: false,
+      agreementEndsOn: '2026-06-30',
+      periods: [period({ id: 'p-fuera', startsOn: '2027-05-01', endsOn: '2027-05-05' })],
+      today: '2026-08-01'
+    });
+    const tercero = person.years.find((year) => year.index === 3);
+    expect(tercero?.periods.map((entry) => entry.id)).toEqual(['p-fuera']);
+    expect(tercero?.entitledDays).toBe(0);
+    expect(tercero?.headline).toBe(
+      'En el tercer año ha disfrutado 5 días y el contrato reconoce 0 días: hay 5 días de más.'
+    );
+    expect(tercero?.excessNote).toContain('Casa Clara no lo corrige sola');
+    expect(person.empty).toBe(false);
+  });
+
+  it('uno anterior al inicio del contrato se recoge en el primer año', () => {
+    const person = view({
+      periods: [period({ id: 'p-antes', startsOn: '2025-01-10', endsOn: '2025-01-15' })]
+    });
+    const primero = person.years.find((year) => year.index === 1);
+    expect(primero?.periods.map((entry) => entry.id)).toEqual(['p-antes']);
+    expect(primero?.takenDays).toBe(0);
+    expect(primero?.periods[0]?.splitLabel).toBe('0 días de estas caen en el primer año');
+  });
+
+  it('sin ningún periodo el estado vacío dice la verdad', () => {
+    expect(view({ periods: [] }).empty).toBe(true);
+  });
 });
 
 describe('los días devengados a día de hoy', () => {
@@ -243,7 +317,7 @@ describe('los días devengados a día de hoy', () => {
   it('lo devengado y lo que queda son dos cifras distintas', () => {
     const person = view({
       periods: [
-        period({ id: 'p-agosto', startsOn: '2026-08-01', endsOn: '2026-08-20', calendarDays: 20 })
+        period({ id: 'p-agosto', startsOn: '2026-08-01', endsOn: '2026-08-20' })
       ]
     });
     expect(person.years[0]?.remainingDays).toBe(10);
@@ -253,7 +327,7 @@ describe('los días devengados a día de hoy', () => {
 
   it('los días cogidos por delante de lo devengado se explican sin acusar a nadie', () => {
     const cogidos = [
-      period({ id: 'p-agosto', startsOn: '2026-08-01', endsOn: '2026-08-20', calendarDays: 20 })
+      period({ id: 'p-agosto', startsOn: '2026-08-01', endsOn: '2026-08-20' })
     ];
     expect(view({ periods: cogidos }).years[0]?.advanceNote).toBe(
       'Has disfrutado 5 días por delante de lo devengado a día de hoy. Es lo corriente cuando ' +
