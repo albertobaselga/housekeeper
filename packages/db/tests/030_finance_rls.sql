@@ -161,6 +161,13 @@ $assert_finance_schema$;
 BEGIN;
 SET LOCAL row_security = off;
 
+-- La fixture 002 ya planta la única raíz de transferencia del roble, y el caso
+-- (c) de abajo necesita una propia para sacarla del índice parcial. Se retira
+-- aquí la de la fixture —no la referencia nadie: los movimientos y la regla
+-- cuelgan de «Supermercado»— y el ROLLBACK final la devuelve intacta.
+DELETE FROM app.finance_categories
+ WHERE id = 'f1c00000-0000-4000-8000-000000000004';
+
 INSERT INTO app.finance_categories (id, household_id, parent_id, name, kind) VALUES
   ('fc100000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
    NULL, 'Raíz con hijas', 'gasto'),
@@ -248,6 +255,17 @@ ROLLBACK;
 BEGIN;
 SET LOCAL row_security = off;
 
+-- La sonda necesita partir de un administrador SIN concesión, y la fixture 002
+-- se la da al del roble. Se revoca aquí dentro; el ROLLBACK del final la
+-- devuelve viva. Revocar no despierta la reja del disparador (mira solo las
+-- filas que quedan vivas), y deja libre el índice parcial de concesiones vivas
+-- para la que se concede más abajo.
+UPDATE app.finance_module_grants
+   SET revoked_at = statement_timestamp(),
+       revoked_by_membership_id = '11000000-0000-4000-8000-000000000001'
+ WHERE household_id = '10000000-0000-4000-8000-000000000001'
+   AND revoked_at IS NULL;
+
 INSERT INTO app.finance_accounts (id, household_id, name, kind, bank_ref) VALUES
   ('fc200000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
    'Cuenta de la sonda', 'comun', 'fc-sonda-0001');
@@ -266,11 +284,17 @@ DO $assert_audit_trail_written$
 DECLARE
   written integer;
 BEGIN
-  -- Primero, lo que NO debe cambiar nunca: la auditoría lo registró todo.
+  -- Primero, lo que NO debe cambiar nunca: la auditoría lo registró todo. Se
+  -- cuentan por `entity_id` las DOS filas de la sonda, no todo el rastro
+  -- financiero del hogar: desde la fixture 002 el roble llega aquí con
+  -- movimientos ya auditados, y un `count` global mediría la fixture en vez de
+  -- lo que esta sonda acaba de escribir.
   SELECT count(*)::integer INTO written
     FROM app.audit_events
    WHERE household_id = '10000000-0000-4000-8000-000000000001'
-     AND entity_table IN ('finance_accounts', 'finance_transactions');
+     AND entity_table IN ('finance_accounts', 'finance_transactions')
+     AND entity_id IN ('fc200000-0000-4000-8000-000000000001',
+                       'fc200000-0000-4000-8000-000000000002');
   IF written <> 2 THEN
     RAISE EXCEPTION 'la auditoría financiera registró % filas, se esperaban 2', written;
   END IF;
@@ -376,3 +400,422 @@ $assert_worker_not_broken$;
 
 RESET ROLE;
 ROLLBACK;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Sembrado propio del fichero (prefijo fa9*, libre: 170_push_subscriptions.sql
+-- ya ocupa fa1*/fa2*): una SEGUNDA administración del roble SIN concesión — la
+-- fila que demuestra que el rol solo no abre nada — y una TERCERA ya revocada,
+-- para probar que la reja del disparador tampoco admite membresías muertas.
+-- Ambas se eliminan al final para no alterar los conteos de las suites
+-- posteriores.
+-- ─────────────────────────────────────────────────────────────────────────────
+BEGIN;
+SET LOCAL row_security = off;
+INSERT INTO app.user_profiles (user_id, display_name) VALUES
+  ('fixture:roble:admin2', 'Fixture Segunda Admin Roble'),
+  ('fixture:roble:admin3', 'Fixture Admin Roble Revocada');
+INSERT INTO app.household_memberships (id, household_id, user_id, role) VALUES
+  ('fa900000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
+   'fixture:roble:admin2', 'family_admin'),
+  ('fa900000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+   'fixture:roble:admin3', 'family_admin');
+UPDATE app.household_memberships
+   SET revoked_at = statement_timestamp()
+ WHERE id = 'fa900000-0000-4000-8000-000000000002';
+COMMIT;
+
+BEGIN;
+SET LOCAL ROLE casa_clara_app;
+
+-- Admin del roble CON concesión: ve lo suyo, nada del olivo, y las seis rejas
+-- estructurales (cruce de hogar; segunda raíz de transferencia; concesión a
+-- quien no administra; concesión a una administración revocada; raíz repetida
+-- por nombre; tercer nivel del árbol) fallan con su SQLSTATE exacto.
+SELECT set_config('app.user_id', 'fixture:roble:admin', true);
+SELECT app.set_household_context(
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001'
+);
+
+DO $assert_granted_admin$
+BEGIN
+  IF (SELECT count(*) FROM app.finance_module_grants) <> 1
+     OR (SELECT count(*) FROM app.finance_accounts) <> 2
+     OR (SELECT count(*) FROM app.finance_categories) <> 4
+     OR (SELECT count(*) FROM app.finance_rules) <> 1
+     OR (SELECT count(*) FROM app.finance_import_batches) <> 1
+     OR (SELECT count(*) FROM app.finance_transactions) <> 2
+     OR (SELECT count(*) FROM app.finance_provider_aliases) <> 1
+     OR (SELECT count(*) FROM app.finance_events) <> 1
+     OR (SELECT count(*) FROM app.finance_transaction_events) <> 1
+     OR (SELECT count(*) FROM app.finance_event_rules) <> 1 THEN
+    RAISE EXCEPTION 'granted family_admin read matrix failed';
+  END IF;
+  IF (SELECT count(*) FROM app.finance_accounts
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0
+     OR (SELECT count(*) FROM app.finance_transactions
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0
+     OR (SELECT count(*) FROM app.finance_categories
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0 THEN
+    RAISE EXCEPTION 'granted admin leaked olivo finance rows';
+  END IF;
+
+  -- Suplantación de hogar: escribir en el olivo desde el roble → 42501.
+  BEGIN
+    INSERT INTO app.finance_events (household_id, name)
+    VALUES ('20000000-0000-4000-8000-000000000001', 'Evento intruso');
+    RAISE EXCEPTION 'cross-tenant finance insert unexpectedly succeeded';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+
+  -- Segunda raíz de transferencia: el índice parcial la mata (23505).
+  BEGIN
+    INSERT INTO app.finance_categories (household_id, name, kind)
+    VALUES ('10000000-0000-4000-8000-000000000001', 'Otra transferencia', 'transferencia');
+    RAISE EXCEPTION 'second transfer-root category unexpectedly succeeded';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
+
+  -- Conceder a la persona de apoyo: la reja del disparador (23514).
+  BEGIN
+    INSERT INTO app.finance_module_grants (household_id, membership_id, granted_by_membership_id)
+    VALUES ('10000000-0000-4000-8000-000000000001',
+            '11000000-0000-4000-8000-000000000004',
+            '11000000-0000-4000-8000-000000000001');
+    RAISE EXCEPTION 'granting finance to a helper unexpectedly succeeded';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  -- Conceder a una administración REVOCADA: la reja mira también la vigencia
+  -- de la membresía, no solo su papel (23514).
+  BEGIN
+    INSERT INTO app.finance_module_grants (household_id, membership_id, granted_by_membership_id)
+    VALUES ('10000000-0000-4000-8000-000000000001',
+            'fa900000-0000-4000-8000-000000000002',
+            '11000000-0000-4000-8000-000000000001');
+    RAISE EXCEPTION 'granting finance to a revoked admin unexpectedly succeeded';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  -- Segunda raíz con el MISMO nombre: la mata UNIQUE NULLS NOT DISTINCT
+  -- (23505); con el UNIQUE clásico esta fila entraría.
+  BEGIN
+    INSERT INTO app.finance_categories (household_id, name, kind)
+    VALUES ('10000000-0000-4000-8000-000000000001', 'Casa', 'gasto');
+    RAISE EXCEPTION 'duplicate root category name unexpectedly succeeded';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
+
+  -- Tercer nivel: «Supermercado» ya cuelga de «Casa» en la fixture, así que
+  -- colgar de él sería el tercer piso — lo prohíbe la reja de profundidad
+  -- (23514), porque la spec §5 fija un árbol de DOS niveles.
+  BEGIN
+    INSERT INTO app.finance_categories (household_id, parent_id, name, kind)
+    VALUES ('10000000-0000-4000-8000-000000000001',
+            'f1c00000-0000-4000-8000-000000000002', 'Fruta', 'gasto');
+    RAISE EXCEPTION 'third-level finance category unexpectedly succeeded';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+END
+$assert_granted_admin$;
+
+-- Admin del roble SIN concesión: cero filas de finanzas. Las concesiones sí
+-- las ve (cualquier admin pinta Ajustes con ellas), pero no le abren nada.
+SELECT set_config('app.user_id', 'fixture:roble:admin2', true);
+SELECT set_config('app.household_id', '', true);
+SELECT set_config('app.membership_id', '', true);
+SELECT set_config('app.role', '', true);
+SELECT app.set_household_context(
+  '10000000-0000-4000-8000-000000000001',
+  'fa900000-0000-4000-8000-000000000001'
+);
+
+DO $assert_ungranted_admin$
+BEGIN
+  IF (SELECT count(*) FROM app.finance_accounts) <> 0
+     OR (SELECT count(*) FROM app.finance_categories) <> 0
+     OR (SELECT count(*) FROM app.finance_rules) <> 0
+     OR (SELECT count(*) FROM app.finance_import_batches) <> 0
+     OR (SELECT count(*) FROM app.finance_transactions) <> 0
+     OR (SELECT count(*) FROM app.finance_provider_aliases) <> 0
+     OR (SELECT count(*) FROM app.finance_events) <> 0
+     OR (SELECT count(*) FROM app.finance_transaction_events) <> 0
+     OR (SELECT count(*) FROM app.finance_event_rules) <> 0 THEN
+    RAISE EXCEPTION 'ungranted family_admin must see zero finance rows';
+  END IF;
+  IF (SELECT count(*) FROM app.finance_module_grants) <> 1
+     OR (SELECT app.finance_enabled()) THEN
+    RAISE EXCEPTION 'grant visibility or lock state wrong for ungranted admin';
+  END IF;
+  BEGIN
+    INSERT INTO app.finance_events (household_id, name)
+    VALUES ('10000000-0000-4000-8000-000000000001', 'Evento sin cerrojo');
+    RAISE EXCEPTION 'ungranted admin wrote a finance row';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END
+$assert_ungranted_admin$;
+
+-- Los otros cuatro papeles del roble: cero en TODO, concesiones incluidas.
+DO $assert_non_admin_roles$
+DECLARE
+  role_pair record;
+BEGIN
+  FOR role_pair IN
+    SELECT * FROM (VALUES
+      ('fixture:roble:family',   '11000000-0000-4000-8000-000000000002'::uuid),
+      ('fixture:roble:employee', '11000000-0000-4000-8000-000000000003'::uuid),
+      ('fixture:roble:helper',   '11000000-0000-4000-8000-000000000004'::uuid),
+      ('fixture:roble:viewer',   '11000000-0000-4000-8000-000000000005'::uuid)
+    ) AS pairs(user_id, membership_id)
+  LOOP
+    PERFORM set_config('app.user_id', role_pair.user_id, true);
+    PERFORM set_config('app.household_id', '', true);
+    PERFORM set_config('app.membership_id', '', true);
+    PERFORM set_config('app.role', '', true);
+    PERFORM app.set_household_context(
+      '10000000-0000-4000-8000-000000000001', role_pair.membership_id);
+    IF (SELECT count(*) FROM app.finance_module_grants) <> 0
+       OR (SELECT count(*) FROM app.finance_accounts) <> 0
+       OR (SELECT count(*) FROM app.finance_categories) <> 0
+       OR (SELECT count(*) FROM app.finance_rules) <> 0
+       OR (SELECT count(*) FROM app.finance_import_batches) <> 0
+       OR (SELECT count(*) FROM app.finance_transactions) <> 0
+       OR (SELECT count(*) FROM app.finance_provider_aliases) <> 0
+       OR (SELECT count(*) FROM app.finance_events) <> 0
+       OR (SELECT count(*) FROM app.finance_transaction_events) <> 0
+       OR (SELECT count(*) FROM app.finance_event_rules) <> 0 THEN
+      RAISE EXCEPTION '% unexpectedly read finance rows', role_pair.user_id;
+    END IF;
+  END LOOP;
+END
+$assert_non_admin_roles$;
+
+-- Admin del OLIVO sin concesión: su hogar tiene datos de finanzas sembrados y
+-- aun así ve cero. La concesión es por membresía, no por hogar.
+SELECT set_config('app.user_id', 'fixture:olivo:admin', true);
+SELECT set_config('app.household_id', '', true);
+SELECT set_config('app.membership_id', '', true);
+SELECT set_config('app.role', '', true);
+SELECT app.set_household_context(
+  '20000000-0000-4000-8000-000000000001',
+  '21000000-0000-4000-8000-000000000001'
+);
+
+DO $assert_olivo_admin$
+BEGIN
+  IF (SELECT count(*) FROM app.finance_accounts) <> 0
+     OR (SELECT count(*) FROM app.finance_categories) <> 0
+     OR (SELECT count(*) FROM app.finance_transactions) <> 0
+     OR (SELECT count(*) FROM app.finance_module_grants) <> 0 THEN
+    RAISE EXCEPTION 'olivo admin without grant read finance rows';
+  END IF;
+END
+$assert_olivo_admin$;
+
+COMMIT;
+
+-- Revocar apaga el módulo EN EL ACTO. Se prueba dentro de una transacción que
+-- se revierte, para no alterar la fixture compartida por las demás suites.
+BEGIN;
+SET LOCAL row_security = off;
+UPDATE app.finance_module_grants
+   SET revoked_at = statement_timestamp(),
+       revoked_by_membership_id = '11000000-0000-4000-8000-000000000001'
+ WHERE id = 'f1900000-0000-4000-8000-000000000001';
+SET LOCAL row_security = on;
+SET LOCAL ROLE casa_clara_app;
+SELECT set_config('app.user_id', 'fixture:roble:admin', true);
+SELECT app.set_household_context(
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001'
+);
+DO $assert_revocation_is_immediate$
+BEGIN
+  IF (SELECT app.finance_enabled())
+     OR (SELECT count(*) FROM app.finance_transactions) <> 0 THEN
+    RAISE EXCEPTION 'a revoked grant still opened finance';
+  END IF;
+END
+$assert_revocation_is_immediate$;
+ROLLBACK;
+
+-- La semilla del árbol de categorías (spec §5, portada de seed.py): siembra
+-- 50 filas la primera vez y 0 la segunda. Se prueba sobre el OLIVO —cuyo admin
+-- NO tiene concesión, que es justo el caso real: se siembra al conceder, antes
+-- de que el cerrojo se abra— dentro de una transacción que se revierte.
+BEGIN;
+SET LOCAL row_security = off;
+DELETE FROM app.finance_categories
+ WHERE household_id = '20000000-0000-4000-8000-000000000001';
+SET LOCAL row_security = on;
+SET LOCAL ROLE casa_clara_app;
+SELECT set_config('app.user_id', 'fixture:olivo:admin', true);
+SELECT set_config('app.household_id', '', true);
+SELECT set_config('app.membership_id', '', true);
+SELECT set_config('app.role', '', true);
+SELECT app.set_household_context(
+  '20000000-0000-4000-8000-000000000001',
+  '21000000-0000-4000-8000-000000000001'
+);
+DO $assert_category_seed$
+DECLARE
+  first_run integer;
+  second_run integer;
+BEGIN
+  first_run := app.seed_finance_categories();
+  second_run := app.seed_finance_categories();
+  IF first_run <> 50 OR second_run <> 0 THEN
+    RAISE EXCEPTION 'category seed inserted % rows and % on the second run (expected 50 and 0)',
+      first_run, second_run;
+  END IF;
+END
+$assert_category_seed$;
+RESET ROLE;
+DO $assert_seeded_tree$
+BEGIN
+  -- Se leen como propietario (superusuario del clúster de pruebas): el admin
+  -- del olivo sigue sin concesión y la RLS no le enseñaría ni una fila.
+  IF (SELECT count(*) FROM app.finance_categories
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 50
+     OR (SELECT count(*) FROM app.finance_categories
+          WHERE household_id = '20000000-0000-4000-8000-000000000001'
+            AND parent_id IS NOT NULL) <> 29 THEN
+    RAISE EXCEPTION 'seeded category tree has the wrong shape';
+  END IF;
+  IF (SELECT count(*) FROM app.finance_categories
+       WHERE household_id = '20000000-0000-4000-8000-000000000001'
+         AND kind = 'transferencia' AND parent_id IS NULL) <> 1 THEN
+    RAISE EXCEPTION 'the seed must leave exactly one transferencia root';
+  END IF;
+END
+$assert_seeded_tree$;
+ROLLBACK;
+
+-- El emisor de trabajos no tiene GRANT sobre finanzas: ni una fila.
+BEGIN;
+SET LOCAL ROLE casa_clara_worker;
+DO $assert_worker_no_finance$
+BEGIN
+  BEGIN
+    PERFORM 1 FROM app.finance_transactions;
+    RAISE EXCEPTION 'worker unexpectedly read finance data';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END
+$assert_worker_no_finance$;
+COMMIT;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- El rastro de auditoría, papel por papel, sobre datos de finanzas REALES.
+--
+-- La sonda de la 0035 (más arriba) prueba la restrictiva con filas que ella
+-- misma inserta y revirtiendo la concesión de la fixture. Esto es el caso de
+-- verdad y el que pidió el encargo: una administración a la que NADIE ha
+-- concedido Finanzas, con las quince filas financieras que la fixture 002 dejó
+-- auditadas en el hogar del roble, ahí delante y sin poder leer ni una.
+--
+-- Las quince: 1 concesión + 2 cuentas + 4 categorías + 1 regla + 1 lote +
+-- 2 movimientos + 1 alias + 1 evento + 1 vínculo + 1 regla de evento. Si la
+-- fixture crece, este número se actualiza a mano: es el precio de que la
+-- aserción positiva muerda en vez de conformarse con «alguna».
+-- ─────────────────────────────────────────────────────────────────────────────
+BEGIN;
+SET LOCAL ROLE casa_clara_app;
+
+SELECT set_config('app.user_id', 'fixture:roble:admin2', true);
+SELECT app.set_household_context(
+  '10000000-0000-4000-8000-000000000001',
+  'fa900000-0000-4000-8000-000000000001'
+);
+
+DO $assert_audit_matrix_ungranted$
+DECLARE
+  finance_rows integer;
+  other_rows integer;
+BEGIN
+  IF app.finance_enabled() THEN
+    RAISE EXCEPTION 'la segunda administración del roble no debería tener concesión';
+  END IF;
+  SELECT count(*)::integer INTO finance_rows
+    FROM app.audit_events WHERE entity_table LIKE 'finance\_%';
+  IF finance_rows <> 0 THEN
+    RAISE EXCEPTION 'un admin sin concesión lee % filas del rastro financiero', finance_rows;
+  END IF;
+  -- Y no por estar el rastro vacío: el resto del hogar se sigue viendo.
+  SELECT count(*)::integer INTO other_rows
+    FROM app.audit_events WHERE entity_table NOT LIKE 'finance\_%';
+  IF other_rows = 0 THEN
+    RAISE EXCEPTION 'la restrictiva se llevó por delante la auditoría no financiera';
+  END IF;
+END
+$assert_audit_matrix_ungranted$;
+
+-- Los otros cuatro papeles tampoco lo alcanzan. `audit_events_read` (0005) ya
+-- los deja fuera por no administrar, así que aquí la restrictiva es la segunda
+-- reja: si alguien relajara la de 0005, esta aserción seguiría en pie.
+DO $assert_audit_matrix_other_roles$
+DECLARE
+  role_pair record;
+  finance_rows integer;
+BEGIN
+  FOR role_pair IN
+    SELECT * FROM (VALUES
+      ('fixture:roble:family',   '11000000-0000-4000-8000-000000000002'::uuid),
+      ('fixture:roble:employee', '11000000-0000-4000-8000-000000000003'::uuid),
+      ('fixture:roble:helper',   '11000000-0000-4000-8000-000000000004'::uuid),
+      ('fixture:roble:viewer',   '11000000-0000-4000-8000-000000000005'::uuid)
+    ) AS pairs(user_id, membership_id)
+  LOOP
+    PERFORM set_config('app.user_id', role_pair.user_id, true);
+    PERFORM set_config('app.household_id', '', true);
+    PERFORM set_config('app.membership_id', '', true);
+    PERFORM set_config('app.role', '', true);
+    PERFORM app.set_household_context(
+      '10000000-0000-4000-8000-000000000001', role_pair.membership_id);
+    SELECT count(*)::integer INTO finance_rows
+      FROM app.audit_events WHERE entity_table LIKE 'finance\_%';
+    IF finance_rows <> 0 THEN
+      RAISE EXCEPTION '% lee % filas del rastro financiero', role_pair.user_id, finance_rows;
+    END IF;
+  END LOOP;
+END
+$assert_audit_matrix_other_roles$;
+
+-- Y el control positivo, sin el cual todo lo anterior lo cumpliría también una
+-- restrictiva que tapara la tabla entera: CON concesión, las quince están.
+SELECT set_config('app.user_id', 'fixture:roble:admin', true);
+SELECT set_config('app.household_id', '', true);
+SELECT set_config('app.membership_id', '', true);
+SELECT set_config('app.role', '', true);
+SELECT app.set_household_context(
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001'
+);
+
+DO $assert_audit_matrix_granted$
+DECLARE
+  finance_rows integer;
+BEGIN
+  IF NOT app.finance_enabled() THEN
+    RAISE EXCEPTION 'la concesión de la fixture no encendió el módulo';
+  END IF;
+  SELECT count(*)::integer INTO finance_rows
+    FROM app.audit_events WHERE entity_table LIKE 'finance\_%';
+  IF finance_rows <> 15 THEN
+    RAISE EXCEPTION 'con concesión el rastro financiero tiene % filas, se esperaban 15', finance_rows;
+  END IF;
+END
+$assert_audit_matrix_granted$;
+
+COMMIT;
+
+-- Limpieza del sembrado propio: las suites posteriores comparten esta base.
+BEGIN;
+SET LOCAL row_security = off;
+DELETE FROM app.household_memberships
+ WHERE id IN ('fa900000-0000-4000-8000-000000000001',
+              'fa900000-0000-4000-8000-000000000002');
+DELETE FROM app.user_profiles
+ WHERE user_id IN ('fixture:roble:admin2', 'fixture:roble:admin3');
+COMMIT;

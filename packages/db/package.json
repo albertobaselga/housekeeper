@@ -12,7 +12,7 @@
     "probe:supabase": "node scripts/probe-supabase.mjs",
     "test:db": "node scripts/run-sql-tests.mjs",
     "test:import": "vitest run",
-    "test:rls": "node scripts/run-sql-tests.mjs tests/020_rls_matrix.sql"
+    "test:rls": "node scripts/run-sql-tests.mjs tests/020_rls_matrix.sql tests/030_finance_rls.sql"
   },
   "dependencies": {
     "fflate": "0.8.3",
