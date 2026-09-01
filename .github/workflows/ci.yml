@@ -233,8 +233,14 @@ jobs:
       # Las specs *.dbe2e.ts: la batería de aceptación de los cinco roles
       # contra Postgres real. El globalSetup recrea el esquema, aplica fixtures
       # y crea el login NOBYPASSRLS con el que arranca el servidor web.
+      #
+      # ALLOW_SYNTHETIC_DATA_ONLY NO se declara aquí a propósito: esta batería
+      # comprueba la FORMA DE PRODUCCIÓN —family-settings.dbe2e.ts afirma que
+      # Ajustes no anuncia un entorno de prueba— y Playwright arranca su
+      # webServer con `{...process.env, ...webServer.env}`, así que una
+      # variable del job se cuela en el servidor bajo prueba y le hace decir
+      # «datos exclusivamente sintéticos» sobre datos reales.
       E2E_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_e2e
-      ALLOW_SYNTHETIC_DATA_ONLY: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
