@@ -34,11 +34,24 @@ La página queda con exactamente tres bloques, en este orden:
 3. **Importes sueltos del mes** — los conceptos a mano imputados al mes en curso
    que todavía no se han cerrado.
 
-**Ventana de historial: de 12 meses a 3.** Los 12 meses existían para enseñar
-historial. El historial se mudó a la pestaña Pagos en el rediseño anterior, así
-que aquí sólo sirven para arrastrar cosas viejas. Lo único que puede quedar
-antiguo tras el filtro es un pendiente que nunca se cerró, y tres meses lo
-alcanzan de sobra.
+**La ventana de historial desaparece, no se acorta.** *(Corregido el 1 de
+septiembre de 2026, tras una revisión que lo demostró ejecutándolo. La decisión
+original era bajar de doce meses a tres, y estaba mal.)*
+
+El razonamiento equivocado era que los doce meses servían para enseñar historial
+y que el historial ya se había mudado a Pagos. Vale para lo aplicado, pero **no
+para un pendiente vivo**: un concepto que nunca se cerró no está en Pagos, porque
+nunca llegó a tener línea; no está en el devengo, que sólo mira el mes en curso;
+no está en Hoy, que ni siquiera consulta esta tabla; y no está en el contador de
+la portada. O sea que al cuarto mes salía de la única pantalla donde vivía y **no
+aparecía en ninguna otra**. Justo la forma de que deje de pagarse dinero que sí se
+debía.
+
+Como el filtro ya retira todo lo aplicado y todo lo anulado, lo único que queda
+en la lista son pendientes vivos, que por definición son pocos y **todos
+importan, tengan la edad que tengan**. Un pendiente de hace un año sigue siendo
+algo que hay que decidir, que es exactamente el criterio de esta pantalla. Si
+alguna vez son muchos, eso no es ruido: es el problema que hay que ver.
 
 **El enlace huérfano del Resumen.** Hoy el Resumen enlaza el origen de cada
 importe a Conceptos con un ancla. Si el concepto ya no está en Conceptos, el
