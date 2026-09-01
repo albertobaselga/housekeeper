@@ -272,7 +272,8 @@ describe('vacaciones del año en curso', () => {
       calendarDays: 15,
       note: 'Quincena de agosto',
       status: 'recorded' as const,
-      voidReason: null
+      voidReason: null,
+      settledPeriod: null
     },
     {
       id: 'p2',
@@ -281,7 +282,8 @@ describe('vacaciones del año en curso', () => {
       calendarDays: 5,
       note: 'Apuntado por error',
       status: 'voided' as const,
-      voidReason: 'Las fechas eran otras'
+      voidReason: 'Las fechas eran otras',
+      settledPeriod: null
     }
   ];
 
@@ -318,7 +320,8 @@ describe('vacaciones del año en curso', () => {
           calendarDays: 1,
           note: '',
           status: 'recorded' as const,
-          voidReason: null
+          voidReason: null,
+          settledPeriod: null
         }
       ]
     });
@@ -384,7 +387,8 @@ describe('vacaciones del año en curso', () => {
         calendarDays: 13,
         note: '',
         status: 'recorded' as const,
-        voidReason: null
+        voidReason: null,
+        settledPeriod: null
       }
     ];
     expect(
@@ -652,7 +656,8 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: true,
       deferralNote: '',
       status: 'recorded',
-      voidReason: null
+      voidReason: null,
+      settledPeriod: null
     },
     {
       id: 'c2',
@@ -664,7 +669,8 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: false,
       deferralNote: '',
       status: 'recorded',
-      voidReason: null
+      voidReason: null,
+      settledPeriod: null
     },
     {
       id: 'c3',
@@ -676,7 +682,8 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: true,
       deferralNote: '',
       status: 'voided',
-      voidReason: 'Se apuntó dos veces'
+      voidReason: 'Se apuntó dos veces',
+      settledPeriod: null
     }
   ];
 
@@ -738,7 +745,8 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
         deferralNote:
           'Se pidió para agosto de 2026, pero esa cuenta ya estaba cerrada: se imputa a septiembre de 2026.',
         status: 'recorded',
-        voidReason: null
+        voidReason: null,
+        settledPeriod: null
       }
     ]);
     expect(views.map((view) => view.id)).toEqual(['c4', 'c3']);
@@ -878,5 +886,46 @@ describe('la portada del hogar', () => {
     expect(portada.seesAmounts).toBe(false);
     expect(portada.totalCents).toBe('0');
     expect(portada.employees[0]!.pendingLabel).toBe('1 asunto por decidir');
+  });
+});
+
+describe('conceptos ya aplicados en una nómina', () => {
+  it('marca settled con la nómina que lo materializó, y lo demás queda pendiente', () => {
+    const views = buildManualAdjustmentViews([
+      {
+        id: 'c-ap',
+        period: '2026-08',
+        requestedPeriod: '2026-08',
+        label: 'Adelanto entregado',
+        reason: 'Entregado a cuenta',
+        amountCents: '-15000',
+        addsToPay: true,
+        deferralNote: '',
+        status: 'recorded',
+        voidReason: null,
+        // La nómina de agosto ya lo materializó como línea: no puede volver a
+        // ofrecerse como pendiente en septiembre.
+        settledPeriod: '2026-08'
+      },
+      {
+        id: 'c-pe',
+        period: '2026-09',
+        requestedPeriod: '2026-09',
+        label: 'Gratificación de verano',
+        reason: 'Acordada al volver',
+        amountCents: '5000',
+        addsToPay: true,
+        deferralNote: '',
+        status: 'recorded',
+        voidReason: null,
+        settledPeriod: null
+      }
+    ]);
+    const aplicado = views.find((view) => view.id === 'c-ap')!;
+    expect(aplicado.settled).toBe(true);
+    expect(aplicado.settledLabel).toBe('Aplicado en la nómina de agosto 2026');
+    const pendiente = views.find((view) => view.id === 'c-pe')!;
+    expect(pendiente.settled).toBe(false);
+    expect(pendiente.settledLabel).toBeNull();
   });
 });

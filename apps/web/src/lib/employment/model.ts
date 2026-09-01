@@ -208,6 +208,14 @@ export interface ManualAdjustmentRow {
   deferralNote: string;
   status: 'recorded' | 'voided';
   voidReason: string | null;
+  /**
+   * Mes de la nómina que YA lo materializó como línea (`settlement_lines.
+   * manual_adjustment_id`, 0022), o null si sigue pendiente de aplicarse. Es
+   * la verdad que separa «cuenta en el mes que toque» de «ya contó»: sin
+   * ella, un adelanto de agosto seguía ofreciéndose en septiembre como si
+   * nadie lo hubiera pagado.
+   */
+  settledPeriod: string | null;
 }
 
 /**
@@ -561,6 +569,10 @@ export interface ManualAdjustmentView {
   deferralNote: string;
   voided: boolean;
   voidReason: string | null;
+  /** true = ya materializado como línea de una nómina cerrada. */
+  settled: boolean;
+  /** «Aplicado en la nómina de agosto 2026», o null si sigue pendiente. */
+  settledLabel: string | null;
 }
 
 export interface SettlementLineView {
@@ -1489,7 +1501,12 @@ export function buildManualAdjustmentViews(
       transferLabel: row.addsToPay ? TRANSFER_LABELS.adds : TRANSFER_LABELS.noted,
       deferralNote: row.deferralNote,
       voided: row.status === 'voided',
-      voidReason: row.voidReason
+      voidReason: row.voidReason,
+      settled: row.settledPeriod !== null,
+      settledLabel:
+        row.settledPeriod === null
+          ? null
+          : `Aplicado en la nómina de ${periodLabel(row.settledPeriod).toLocaleLowerCase('es')}`
     }));
 }
 

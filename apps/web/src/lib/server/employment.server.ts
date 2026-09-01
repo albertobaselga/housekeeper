@@ -283,7 +283,16 @@ export async function loadEmploymentOverview(
                 adds_to_pay as "addsToPay",
                 deferral_note as "deferralNote",
                 status::text as "status",
-                void_reason as "voidReason"
+                void_reason as "voidReason",
+                (select to_char(nomina.period_start, 'YYYY-MM')
+                   from app.settlement_lines as linea
+                   join app.settlements as nomina
+                     on nomina.household_id = linea.household_id
+                    and nomina.id = linea.settlement_id
+                  where linea.household_id = manual_adjustments.household_id
+                    and linea.manual_adjustment_id = manual_adjustments.id
+                    and nomina.status = 'closed'
+                  limit 1) as "settledPeriod"
            from app.manual_adjustments
           where household_id = $1 and agreement_id = $2
             and period_month >= (date_trunc('month', $3::date) - interval '11 months')::date
@@ -720,7 +729,16 @@ export async function loadEmploymentPortada(
                 adds_to_pay as "addsToPay",
                 deferral_note as "deferralNote",
                 status::text as "status",
-                void_reason as "voidReason"
+                void_reason as "voidReason",
+                (select to_char(nomina.period_start, 'YYYY-MM')
+                   from app.settlement_lines as linea
+                   join app.settlements as nomina
+                     on nomina.household_id = linea.household_id
+                    and nomina.id = linea.settlement_id
+                  where linea.household_id = manual_adjustments.household_id
+                    and linea.manual_adjustment_id = manual_adjustments.id
+                    and nomina.status = 'closed'
+                  limit 1) as "settledPeriod"
            from app.manual_adjustments
           where household_id = $1 and agreement_id = any($2::uuid[])
             and period_month = date_trunc('month', $3::date)::date
