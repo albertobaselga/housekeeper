@@ -815,7 +815,6 @@ export interface PortadaEmployeeView {
   agreementId: string;
   employeeLabel: string;
   active: boolean;
-  monthTotalCents: string | null;
   monthTotalLabel: string | null;
   pendingCount: number;
   /** «Nada pendiente» / «1 asunto por decidir» / «N asuntos por decidir». */
@@ -870,13 +869,12 @@ export interface EmploymentPortadaView {
   period: string;
   periodLabel: string;
   seesAmounts: boolean;
-  totalCents: string;
+  /**
+   * Lo que va costando la casa este mes, ya formateado. El desglose en salario
+   * y reembolsos vive en el Resumen de cada persona, que sí lo pinta desde su
+   * propio devengo: aquí no lo leía nadie.
+   */
   totalLabel: string;
-  salaryCents: string;
-  salaryLabel: string;
-  reimbursementCents: string;
-  reimbursementLabel: string;
-  withReimbursements: boolean;
   /**
    * Deuda de la casa entera. null cuando no se debe nada: el encabezado dice
    * «Al día», no «0,00 €». Solo la etiqueta: los céntimos en crudo no los
@@ -916,15 +914,14 @@ export function buildPortadaView(input: {
     returning: boolean;
   }[];
 }): EmploymentPortadaView {
-  let salary = 0n;
-  let reimbursement = 0n;
+  // La cuenta de la casa es la SUMA DE LAS FILAS que se enseñan debajo, no otra
+  // cuenta paralela: el total de cada devengo es el mismo número que pinta su
+  // línea, así que el encabezado no puede discrepar de lo que se lee al lado.
+  let total = 0n;
   let owedTotal = 0n;
   const employees: PortadaEmployeeView[] = input.employees.map((employee) => {
     const accrual = employee.accrual;
-    if (accrual) {
-      salary += BigInt(accrual.salaryCents);
-      reimbursement += BigInt(accrual.reimbursementCents);
-    }
+    if (accrual) total += parseCents(accrual.transferTotalCents);
     const owed = employee.owed ?? null;
     const owedCents = owed ? parseCents(owed.pendingCents) : 0n;
     owedTotal += owedCents;
@@ -941,7 +938,6 @@ export function buildPortadaView(input: {
       agreementId: employee.agreementId,
       employeeLabel: employee.employeeLabel,
       active: employee.active,
-      monthTotalCents: accrual ? accrual.transferTotalCents : null,
       monthTotalLabel: accrual ? accrual.transferTotalLabel : null,
       pendingCount: employee.pendingCount,
       pendingLabel:
@@ -958,18 +954,11 @@ export function buildPortadaView(input: {
       overdue
     };
   });
-  const total = salary + reimbursement;
   return {
     period: input.period,
     periodLabel: periodLabel(input.period),
     seesAmounts: input.seesAmounts,
-    totalCents: total.toString(),
     totalLabel: formatCents(total.toString()),
-    salaryCents: salary.toString(),
-    salaryLabel: formatCents(salary.toString()),
-    reimbursementCents: reimbursement.toString(),
-    reimbursementLabel: formatCents(reimbursement.toString()),
-    withReimbursements: reimbursement !== 0n,
     owedTotalLabel: owedTotal > 0n ? formatCents(owedTotal.toString()) : null,
     employees,
     candidates: (input.candidates ?? []).map((candidate) => ({

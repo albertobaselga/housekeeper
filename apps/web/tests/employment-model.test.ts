@@ -1028,10 +1028,9 @@ describe('la portada del hogar', () => {
     });
 
     expect(portada.periodLabel).toBe('Agosto 2026');
-    expect(portada.salaryLabel).toBe('1.500,00 €');
-    expect(portada.reimbursementLabel).toBe('18,50 €');
+    // 1.500,00 € de salario y 18,50 € de reembolso: el encabezado dice la suma
+    // y es EXACTAMENTE la de la fila de abajo, que es la única que se pinta.
     expect(portada.totalLabel).toBe('1.518,50 €');
-    expect(portada.withReimbursements).toBe(true);
     expect(portada.seesAmounts).toBe(true);
 
     expect(portada.employees[0]).toMatchObject({
@@ -1041,7 +1040,6 @@ describe('la portada del hogar', () => {
     });
     expect(portada.employees[1]).toMatchObject({
       employeeLabel: 'Bea',
-      monthTotalCents: null,
       monthTotalLabel: null,
       pendingLabel: 'Nada pendiente'
     });
@@ -1069,7 +1067,7 @@ describe('la portada del hogar', () => {
       ]
     });
     expect(familia.seesAmounts).toBe(false);
-    expect(familia.totalCents).toBe('0');
+    expect(familia.totalLabel).toBe('0,00 €');
     expect(familia.employees[0]!.pendingLabel).toBe('1 asunto por decidir');
   });
 
