@@ -119,8 +119,14 @@ interface Instantanea {
 async function expectRowSays(row: Locator, state: 'activado' | 'apagado'): Promise<void> {
   const granted = state === 'activado';
   const [chip, opposite] = granted ? ['Activado', 'Apagado'] : ['Apagado', 'Activado'];
-  await expect(row.locator('.status-chip').filter({ hasText: chip })).toBeVisible();
+  const chipVisible = row.locator('.status-chip').filter({ hasText: chip });
+  await expect(chipVisible).toBeVisible();
   await expect(row.locator('.status-chip').filter({ hasText: opposite })).toHaveCount(0);
+  // También el TONO, no solo la palabra: el verde dice «esta cuenta ve las
+  // finanzas de la casa», y a un metro de distancia el color se lee antes que el
+  // texto. Un chip «Apagado» pintado de logro no lo detectaba nadie.
+  if (granted) await expect(chipVisible).toHaveClass(/success/);
+  else await expect(chipVisible).not.toHaveClass(/success/);
   await expect(row.locator('small')).toHaveText(
     granted ? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'
   );
