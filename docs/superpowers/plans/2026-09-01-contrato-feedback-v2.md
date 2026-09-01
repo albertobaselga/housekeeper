@@ -135,6 +135,14 @@ Primera mitad del punto 4. Fuente: `inv-1.md`, apartado 4.1 del diseño.
    La frase congelada tiene que poder leerse sola: «18 días sin disfrutar ·
    1.200,00 € ÷ 26 días laborables = 46,15 € por día».
 
+7. **Los días devengados a día de hoy** (apartado 4.1 bis del diseño), pedido en
+   la segunda ronda: `accruedDays` proporcional dentro del año de contrato con la
+   fecha **inyectada**, y `availableNowDays = accruedDays − takenDays`, que
+   **puede ser negativo** cuando se han disfrutado días por adelantado, y no por
+   eso es un error. No confundirlo con `remainingDays`, que es lo que quedará al
+   terminar el año: son dos cifras distintas y las dos son ciertas. La frase lleva
+   siempre la fecha; sin ella el número no significa nada.
+
 **Pruebas:** las 290 líneas de `vacations.test.ts` se adaptan, no se tiran.
 Casos nuevos obligatorios: contrato empezado un 29 de febrero; periodo a caballo
 de dos años de contrato; último año prorrateado; precio del día con uno y con dos
@@ -228,6 +236,11 @@ Segunda mitad del punto 4. Fuente: `inv-1.md`, apartados 4.2 a 4.4 del diseño.
    escrito por el servidor**, sin ninguna rama nueva en la plantilla, porque el
    presupuesto de bytes no lo aguanta.
 7. Los días arrastrados se enseñan como línea aparte, no sumados al derecho.
+   En la misma pantalla va **el devengo a día de hoy** que deja calculado la
+   tarea C (`accruedDays` / `availableNowDays`): «Devengados a 1 de septiembre:
+   15 de 30 días», con la fecha siempre dicha, y la nota de días disfrutados por
+   adelantado **sólo cuando los haya**. Es un dato pedido expresamente por el
+   propietario; que no se quede en el dominio sin llegar a la pantalla.
 8. Segunda enmienda del ADR `docs/adr/0002-vacaciones.md` explicando el año de
    contrato, por qué tabla nueva, por qué los días van congelados, por qué no se
    reutiliza la marca de agua de 0028, y qué política eligió el propietario.

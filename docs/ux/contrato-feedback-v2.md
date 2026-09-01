@@ -159,6 +159,46 @@ Consecuencias, todas buenas:
   ellos exactamente como hoy se reparte entre dos años naturales. La regla no
   cambia, sólo dónde está el corte.
 
+### 4.1 bis — Los días devengados a día de hoy
+
+Pedido en la segunda ronda: «tiene que salir el dato de vacaciones devengadas
+hasta la fecha para saber cuántas ha devengado a día de hoy».
+
+Hoy la pantalla sólo sabe decir el derecho del año entero, que responde «cuántos
+le tocan este año» y no «cuántos se ha ganado ya» — que es justo lo que se
+pregunta quien está a mitad de año decidiendo si puede dar unos días.
+
+Se añade el devengo proporcional dentro del año de contrato en curso:
+
+```
+devengado = ceil(derecho del año × días transcurridos ÷ días del año de contrato)
+```
+
+contando los días naturales desde el inicio del año de contrato hasta la fecha,
+ambos incluidos, y sobre el derecho **ya prorrateado** si es el último año de un
+contrato que termina. El redondeo va hacia arriba, a favor de quien trabaja, que
+es la regla que el módulo ya declara para el prorrateo.
+
+**Dos cifras que no se pueden confundir**, y de las que sale el único error
+serio posible aquí:
+
+- *Lo que quedará al terminar el año* = derecho del año − disfrutados. Ya existe.
+- *Lo disponible ahora mismo* = devengado − disfrutados. Es lo nuevo.
+
+Quien en marzo ha disfrutado 20 de sus 30 días tiene diez por delante y, a la
+vez, ha gastado más de lo devengado. Las dos cosas son ciertas y dicen cosas
+distintas; mezclarlas hace que la pantalla mienta.
+
+**Lo disponible ahora puede salir negativo, y no es un error:** son vacaciones
+disfrutadas por adelantado, algo normal y legítimo (se dan en agosto aunque el
+año de contrato acabe en marzo). Se enseña como lo que es —un anticipo—, no como
+una alarma, y sólo cuando ocurre. La línea del devengo lleva siempre la fecha:
+«Devengados a 1 de septiembre: 15 de 30 días». Sin la fecha, el número no
+significa nada.
+
+La fecha de referencia se inyecta, nunca se lee del reloj dentro del dominio,
+como ya hace el resto del repo.
+
 ### 4.2 El margen: seis meses, configurable, o nunca
 
 **Decisión del propietario:** «posterior a esa fecha se dan 6 meses más de margen
