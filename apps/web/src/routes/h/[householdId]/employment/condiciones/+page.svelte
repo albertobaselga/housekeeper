@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -16,6 +17,8 @@
     title="Mis condiciones"
     description="Lo que está pactado ahora mismo, tal y como se aplica a tu pago."
   />
+
+  <EmploymentTabs householdId={data.householdId} current="contrato" empleada={data.empleada} />
 
   {#if !terms}
     <article class="card">
@@ -159,6 +162,36 @@
         </div>
       </article>
     {/if}
+
+    <!-- El contrato, versión a versión: lo que el Resumen ya no enseña vive
+         aquí, que es donde se viene a leer lo pactado. Las versiones llegan
+         ya recortadas por la RLS —la empleada ve las suyas— y las anclas
+         `version-…` reciben los saltos de «ver origen» de la cuenta. -->
+    <article class="card">
+      <div class="section-heading">
+        <div><p class="eyebrow">Historial</p><h2>Tu contrato, versión a versión</h2></div>
+      </div>
+      <div class="ledger-list">
+        {#each data.versions as version (version.id)}
+          <div id={`version-${version.id}`}>
+            <span>
+              <strong>v{version.versionNumber} · desde el {version.effectiveFromLabel}</strong>
+              <small>{version.reason} · {version.vacationDaysLabel} de vacaciones{#each version.concepts as concept (concept.id)}{#if concept.rateLabel} · {concept.name} {concept.rateLabel}{/if}{/each}{#each version.supplements as supplement (supplement.id)}{#if supplement.amountLabel} · {supplement.name} {supplement.amountLabel}{supplement.addsToPay ? '' : ' (lo paga la casa)'}{/if}{/each}</small>
+            </span>
+            <span>
+              <strong>{version.salaryLabel}</strong>
+              <small>
+                {#if version.state === 'vigente'}Vigente{:else if version.state === 'futura'}Entra en vigor{:else}Histórica{/if}
+                {#if version.salaryDiffLabel}&nbsp;· {version.salaryDiffLabel}{/if}
+                {#if version.vacationDiffLabel}&nbsp;· {version.vacationDiffLabel} de vacaciones{/if}
+              </small>
+            </span>
+          </div>
+        {:else}
+          <div><span><strong>Sin versiones visibles</strong><small>Los términos salariales solo los ven quien administra y la empleada.</small></span></div>
+        {/each}
+      </div>
+    </article>
   {/if}
 </div>
 

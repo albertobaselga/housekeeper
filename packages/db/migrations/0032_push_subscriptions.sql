@@ -103,7 +103,8 @@ CREATE INDEX push_subscriptions_user_live_idx
   WHERE revoked_at IS NULL;
 
 ALTER TABLE app.push_subscriptions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app.push_subscriptions FORCE ROW LEVEL SECURITY;
+-- El FORCE va al FINAL de esta migración, no aquí. Ver el porqué junto a la
+-- propia línea, después de crear `app_private.push_delivery_recorded`.
 
 -- **Esta política rompe a propósito el patrón de `user_profiles_admin_read`**
 -- (0005), donde quien administra sí ve los perfiles de su hogar. Aquí no debe, y
@@ -355,5 +356,25 @@ $$;
 
 REVOKE ALL ON FUNCTION app_private.push_delivery_recorded(uuid, boolean, boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app_private.push_delivery_recorded(uuid, boolean, boolean) TO casa_clara_worker;
+
+-- El FORCE, aquí y no arriba, y esta es la razón exacta:
+--
+-- Con un propietario de esquema NOSUPERUSER + NOBYPASSRLS —Supabase, y lo que
+-- reproduce `probe-supabase.mjs`—, FORCE somete al propio dueño a las
+-- políticas de la tabla. El validador de funciones (`check_function_bodies`)
+-- planifica el cuerpo de una función SQL al CREARLA aplicando su `proconfig`,
+-- `SET row_security = off` incluido; al llegar a `app.push_subscriptions` el
+-- planificador aborta con 42501. Es decir: la migración moría en el CREATE
+-- FUNCTION de arriba, no al ejecutarla nunca nadie.
+--
+-- La compatibilidad que ya existe no alcanza: `0018_rls_force_compat.sql`
+-- relaja el FORCE cuando el dueño no puede puentear RLS, pero el runner la
+-- ejecuta ENTRE ficheros (migrate.mjs), y aquí el FORCE y la función viven en
+-- la MISMA transacción. Poniendo el FORCE al final, la función se crea con la
+-- tabla aún sin forzar y el estado final es idéntico por los dos caminos.
+--
+-- Consecuencia de no hacerlo: la transacción hacía ROLLBACK, el runner abortaba
+-- y una instalación desde cero en Supabase se quedaba en la 0031, sin avisos.
+ALTER TABLE app.push_subscriptions FORCE ROW LEVEL SECURITY;
 
 COMMIT;

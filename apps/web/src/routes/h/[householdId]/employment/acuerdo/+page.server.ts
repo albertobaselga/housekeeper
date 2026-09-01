@@ -17,6 +17,8 @@ import {
   loadAgreementAdmin,
   stackAgreementVersion
 } from '$lib/server/agreement-terms.server';
+import { getAuth } from '$lib/server/auth.server';
+import { hireFromForm } from '$lib/server/staff-hire.server';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -28,14 +30,22 @@ import type { Actions, PageServerLoad } from './$types';
  * JavaScript inicial: es una ruta propia, con su propio trozo, que Hoy no
  * importa nunca.
  */
-export const load: PageServerLoad = async ({ locals, params, depends }) => {
+export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
   depends('cc:agreement-terms');
   const admin = locals.user
     ? await loadAgreementAdmin({ id: locals.user.id }, params.householdId)
     : null;
   // `admin === null` significa las dos cosas a la vez —sin base de datos o sin
   // ser quien administra— y la página dice esa verdad sin distinguirlas.
-  return { admin };
+  return {
+    admin,
+    householdId: params.householdId,
+    empleada: url.searchParams.get('empleada'),
+    // Sin identidad real no hay cuentas que crear: la página calla el
+    // formulario de alta en vez de ofrecer una imposible (mismo criterio que
+    // Personal).
+    canHire: Boolean(getAuth())
+  };
 };
 
 /** Un campo de texto del formulario, sin espacios de cortesía. */
@@ -262,5 +272,25 @@ export const actions: Actions = {
     );
     if (!result.ok) return fail(400, { stackError: result.message, agreementId });
     return { stacked: true, agreementId };
+  },
+
+  /**
+   * Alta de una persona nueva SIN salir del contrato: la MISMA lectura de
+   * formulario y el mismo camino de servidor que Personal (`hireFromForm` →
+   * `hireHouseholdMember`: identidad + acceso + contrato en un acto, con
+   * contraseña provisional). Compartido, no calcado: un campo nuevo se lee una
+   * vez o en ninguna pantalla. La ruta ya exige `agreement.write` y el
+   * servidor vuelve a comprobar la membresía real bajo RLS.
+   */
+  hire: async ({ locals, params, request }) => {
+    if (!locals.user) error(401, 'Necesitas haber entrado');
+    const result = await hireFromForm(
+      { id: locals.user.id },
+      params.householdId,
+      await request.formData(),
+      request.headers
+    );
+    if (!result.ok) return fail(400, { hireError: result.message, draft: result.draft });
+    return { hired: result.hired };
   }
 };

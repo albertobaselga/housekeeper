@@ -7,6 +7,8 @@
     type Weekday
   } from '@casa-clara/domain';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
+  import StaffHireForm from '$lib/components/employment/StaffHireForm.svelte';
   import { PAYER_CHOICES, type PayerChoice } from '$lib/employment/payer';
   import { centsToEuroInput, scheduleMismatchLabel } from '$lib/employment/model';
   import type {
@@ -415,6 +417,8 @@
   description="Cada cambio crea una versión nueva. Lo ya pactado no se reescribe nunca."
 />
 
+<EmploymentTabs householdId={data.householdId} current="contrato" empleada={data.empleada} />
+
 {#if !admin}
   <article class="card">
     <p>
@@ -444,7 +448,9 @@
 
       <div class="ledger-list">
         {#each agreement.versions as version (version.id)}
-          <div>
+          <!-- El ancla la usan las líneas de la cuenta («ver origen»): una
+               línea de salario enlaza a la versión que la valoró. -->
+          <div id={`version-${version.id}`}>
             <span>
               <strong>v{version.versionNumber} · desde el {version.effectiveFromLabel}</strong>
               <small>
@@ -626,10 +632,20 @@
       <div><p class="eyebrow">Alta</p><h2>Nuevo contrato</h2></div>
     </div>
     {#if admin.candidates.length === 0}
-      <p>
-        No hay ninguna empleada interna sin contrato activo. Da de alta primero su acceso
-        en Ajustes; el hogar admite varios contratos vivos a la vez, uno por persona.
-      </p>
+      {#if data.canHire}
+        <p>
+          No hay ninguna empleada interna sin contrato activo. Si entra alguien nuevo en la
+          casa, dala de alta aquí debajo (acceso y contrato en un acto); el hogar admite
+          varios contratos vivos a la vez, uno por persona.
+        </p>
+      {:else}
+        <!-- Sin identidad configurada el formulario de abajo no existe: la
+             frase no puede prometerlo. Camino de siempre: el acceso en Ajustes. -->
+        <p>
+          No hay ninguna empleada interna sin contrato activo. Da de alta primero su acceso
+          en Ajustes; el hogar admite varios contratos vivos a la vez, uno por persona.
+        </p>
+      {/if}
     {:else}
       <div class="action-row">
         <button
@@ -784,6 +800,19 @@
       {/if}
     {/if}
   </article>
+
+  {#if data.canHire}
+    <!-- Y si la persona aún no tiene ni acceso, el alta completa sin salir de
+         aquí: el mismo componente y el mismo camino de servidor que Personal
+         (identidad + acceso + contrato en un acto). -->
+    <StaffHireForm
+      householdId={data.householdId}
+      hired={form?.hired ?? null}
+      hireError={form?.hireError ?? null}
+      draft={form?.draft ?? null}
+      enElAcuerdo={true}
+    />
+  {/if}
 {/if}
 
 <style>

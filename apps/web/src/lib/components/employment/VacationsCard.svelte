@@ -8,13 +8,16 @@
     householdId,
     agreementId,
     vacations,
-    canRecord
+    canRecord,
+    allYearsLink = true
   }: {
     householdId: string;
     agreementId: string;
     vacations: VacationView;
     /** Solo la familia administradora apunta y anula; el resto solo mira. */
     canRecord: boolean;
+    /** En la propia pestaña de Vacaciones el enlace se apuntaría a sí mismo. */
+    allYearsLink?: boolean;
   } = $props();
 
   // Patrón wiki (P2-1): lo apuntado se pinta al instante y `invalidate`
@@ -136,8 +139,11 @@
   {/if}
 
   <div class="ledger-list">
+    <!-- Sin id por fila: el ancla `vacaciones-<id>` canónica la pinta el
+         historial año a año de la propia página de Vacaciones, y dos ids
+         iguales en el mismo documento dejan a uno de los dos inalcanzable. -->
     {#each vacations.periods as period (period.id)}
-      <div id={`vacaciones-${period.id}`}>
+      <div>
         <span>
           <strong>{period.rangeLabel}</strong>
           <small>
@@ -243,11 +249,13 @@
        demás —los años anteriores, lo anulado, y las otras personas si el hogar
        emplea a más de una— vive en su propia ruta, con su propio trozo de
        JavaScript, para no cargarlo aquí cada vez. -->
-  <nav class="action-row">
-    <a class="button secondary small-button" href={`/h/${householdId}/employment/vacaciones`}>
-      Ver todos los años
-    </a>
-  </nav>
+  {#if allYearsLink}
+    <nav class="action-row">
+      <a class="button secondary small-button" href={`/h/${householdId}/employment/vacaciones`}>
+        Ver todos los años
+      </a>
+    </nav>
+  {/if}
 
   <ActionStatus status={actionStatus} />
 </article>

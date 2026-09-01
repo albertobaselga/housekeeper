@@ -8,6 +8,11 @@ import { HOUSEHOLD, loginAs } from './helpers';
 // liquidación del mes en curso de abierta a pagada y apunta una jornada nueva a
 // nombre de la empleada eligiendo a cuál de las dos. Los tests son serializados
 // porque cada paso construye sobre el estado que dejó el anterior.
+//
+// Con la sección en pestañas, el flujo navega como una persona: registrar y
+// decidir en Conceptos, la cuenta y sus cifras en el Resumen, los pagos en
+// Pagos. Cambiar de pestaña no cambia de empleada: `?empleada=` viaja en la
+// barra.
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 test.describe.configure({ mode: 'serial' });
 
@@ -28,21 +33,43 @@ function dueDateLabel(iso: string): string {
   return `${day} ${months[month! - 1]} ${year}`;
 }
 
+/**
+ * Primero la persona: `/employment` con dos empleadas es la PORTADA del hogar
+ * (la cuenta total del mes y una tarjeta por persona). El flujo entra por ahí,
+ * como entraría una persona, y abre el expediente de Ana.
+ */
 async function gotoEmployment(page: Page): Promise<void> {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/employment`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const fila = page
+    .locator('[data-lista="principal"] > div')
+    .filter({ hasText: 'Fixture Empleada Roble' })
+    .first();
+  await fila.getByRole('link', { name: 'Abrir su expediente' }).click();
+  await expect(page.getByRole('navigation', { name: 'Secciones del contrato' })).toBeVisible();
+}
+
+/** Navegación de sección: la barra de pestañas, como la usaría una persona. */
+async function gotoTab(page: Page, name: string): Promise<void> {
+  await page
+    .getByRole('navigation', { name: 'Secciones del contrato' })
+    .getByRole('link', { name })
+    .click();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
 test('Alberto acepta la jornada solicitada y resuelve el festivo como descanso: el saldo permanente sube', async ({ page }) => {
   await gotoEmployment(page);
 
-  const extrasCard = page.locator('article.card').filter({ hasText: 'Jornadas extra' });
+  // Estado sembrado: crédito permanente de partida (fixture), en el Resumen.
   const balanceCard = page.locator('article.card').filter({ hasText: 'Tiempo y compensación' });
-
-  // Estado sembrado: crédito permanente de partida (fixture) y dos pendientes.
   const balanceRow = balanceCard.locator('.balance-list > div').filter({ hasText: 'Descanso compensatorio' });
   await expect(balanceRow).toContainText('1 día');
+
+  // Las decisiones viven en Conceptos.
+  await gotoTab(page, 'Conceptos');
+  const extrasCard = page.locator('article.card').filter({ hasText: 'Jornadas extra' });
 
   // 1) Acepta la jornada extra sembrada en estado requested.
   const requestedRow = extrasCard.locator('.ledger-list > div').filter({ hasText: 'Plancha del sábado E2E' });
@@ -63,13 +90,16 @@ test('Alberto acepta la jornada solicitada y resuelve el festivo como descanso: 
   await resolveForm.getByRole('button', { name: 'Confirmar la decisión' }).click();
 
   // La jornada resuelta desaparece de pendientes y el crédito PERMANENTE sube
-  // (worked_rest_day_credit_minutes = 1440 de la versión vigente: 1 día más).
+  // (worked_rest_day_credit_minutes = 1440 de la versión vigente: 1 día más),
+  // visible de vuelta en el Resumen.
   await expect(resolvableRow).toHaveCount(0);
+  await gotoTab(page, 'Resumen');
   await expect(balanceRow).toContainText('2 días');
 });
 
 test('Alberto aprueba el gasto pendiente de Ana con motivo y entra en el devengo', async ({ page }) => {
   await gotoEmployment(page);
+  await gotoTab(page, 'Conceptos');
 
   const expensesCard = page.locator('article.card').filter({ hasText: 'Gastos pendientes' });
   const pendingRow = expensesCard.locator('.ledger-list > div').filter({ hasText: 'Farmacia E2E pendiente' });
@@ -82,17 +112,20 @@ test('Alberto aprueba el gasto pendiente de Ana con motivo y entra en el devengo
   await decideForm.getByLabel('Motivo de la decisión').fill('Justificante correcto E2E');
   await decideForm.getByRole('button', { name: 'Aprobar' }).click();
 
-  // Aprobado: sale de pendientes y el devengo del mes lo proyecta como reembolso.
+  // Aprobado: sale de pendientes y el devengo del mes lo proyecta como
+  // reembolso, en la tira de cifras del Resumen.
   await expect(pendingRow).toHaveCount(0);
+  await gotoTab(page, 'Resumen');
   await expect(page.locator('.summary-strip')).toContainText('21,75 €');
 });
 
 test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y la paga en dos plazos', async ({ page }) => {
   await gotoEmployment(page);
+  // Todo el ciclo de la cuenta vive en Pagos.
+  await gotoTab(page, 'Pagos');
 
-  // 1) Abrir: el formulario de cabecera propone el fin de mes como vencimiento.
-  // Abrir la cuenta del mes es irreversible: vive plegada al final de la
-  // pantalla, no encima del resumen.
+  // 1) Abrir: el formulario propone el fin de mes como vencimiento. Abrir la
+  // cuenta del mes es irreversible: vive plegada, no encima del historial.
   await page.locator('details.open-settlement > summary').click();
   const openForm = page.locator('form.open-settlement-form');
   await expect(openForm).toBeVisible();
@@ -135,6 +168,15 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
   await expect(secondForm.getByLabel('Importe (€)')).toHaveValue(centsToEuroInput(remainingCents));
   await secondForm.getByRole('button', { name: 'Registrar pago' }).click();
   await expect(page.locator('.status-chip').filter({ hasText: 'Pagada · cobro sin confirmar' })).toBeVisible();
+
+  // Y cada cuenta ofrece su documento de pago en PDF, generado bajo la sesión
+  // de quien lo pide.
+  const documentLink = settlementsCard.getByRole('link', { name: 'Descargar el documento de pago (PDF)' }).first();
+  await expect(documentLink).toBeVisible();
+  const href = await documentLink.getAttribute('href');
+  const response = await page.request.get(href!);
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toBe('application/pdf');
 });
 
 // Conceptos del catálogo de las fixtures (packages/db/fixtures): «Jornada
@@ -147,6 +189,7 @@ const AGREEMENT_SEGUNDA = '12000000-0000-4000-8000-000000000002';
 
 test('Alberto apunta una jornada a nombre de Ana y la cierra en el acto, con el concepto del catálogo', async ({ page }) => {
   await gotoEmployment(page);
+  await gotoTab(page, 'Conceptos');
 
   const extrasCard = page.locator('article.card').filter({ hasText: 'Jornadas extra' });
   const registerForm = extrasCard.locator('form.register-extra-form');
@@ -168,25 +211,44 @@ test('Alberto apunta una jornada a nombre de Ana y la cierra en el acto, con el 
   await registerForm.getByLabel('Motivo').fill('Se le paga con este mes E2E');
   await registerForm.getByRole('button', { name: 'Apuntar la jornada' }).click();
 
-  // Cerrada en el acto: no queda pendiente y entra en la cuenta del mes por los
-  // 50,00 € del concepto —nadie tecleó ese importe— y diciendo quién la apuntó.
+  // Cerrada en el acto: no queda pendiente en Conceptos y entra en la cuenta
+  // del mes del Resumen por los 50,00 € del concepto —nadie tecleó ese
+  // importe— y diciendo quién la apuntó.
+  await expect(extrasCard.locator('.ledger-list > div').filter({ hasText: 'Se quedó el sábado E2E' })).toHaveCount(0);
+  await gotoTab(page, 'Resumen');
   const ledgerCard = page.locator('article.card').filter({ hasText: 'Lo que va sumando' });
   const ledgerRow = ledgerCard.locator('.ledger-list > div').filter({ hasText: 'Se quedó el sábado E2E' });
   await expect(ledgerRow).toContainText('+50,00 €');
   await expect(ledgerRow).toContainText('La apuntó la familia');
-  await expect(extrasCard.locator('.ledger-list > div').filter({ hasText: 'Se quedó el sábado E2E' })).toHaveCount(0);
 });
 
-test('Alberto cambia de empleada y el expediente entero es el de la otra', async ({ page }) => {
+test('Alberto cambia de empleada por la portada y el expediente entero es el de la otra, pestaña a pestaña', async ({ page }) => {
   await gotoEmployment(page);
 
-  const chooser = page.getByRole('navigation', { name: 'Elegir de quién es el expediente' });
-  await expect(chooser.getByRole('link')).toHaveCount(2);
-  await chooser.getByRole('link', { name: 'Fixture Segunda Empleada Roble' }).click();
-  await page.waitForURL(new RegExp(`/employment\\?empleada=${AGREEMENT_SEGUNDA}$`));
+  // Dentro del expediente, la barra fija dice de quién es y «Cambiar» vuelve
+  // a la portada del hogar: primero la persona, luego los detalles.
+  const personBar = page.locator('.person-bar');
+  await expect(personBar).toContainText('Fixture Empleada Roble');
+  await personBar.getByRole('link', { name: 'Cambiar' }).click();
 
-  // Su expediente, no el de Ana: su catálogo en el formulario, ninguna de las
-  // jornadas de su compañera y el epígrafe del acuerdo con su nombre.
+  // La portada: la cuenta total de la casa y una tarjeta por empleada con su
+  // gasto del mes.
+  await expect(page.locator('.summary-strip')).toContainText('Total de la casa');
+  const tarjetas = page.locator('[data-lista="principal"] > div');
+  await expect(tarjetas).toHaveCount(2);
+  await tarjetas
+    .filter({ hasText: 'Fixture Segunda Empleada Roble' })
+    .getByRole('link', { name: 'Abrir su expediente' })
+    .click();
+  await page.waitForURL(new RegExp(`/employment\\?empleada=${AGREEMENT_SEGUNDA}$`));
+  await expect(page.locator('.person-bar')).toContainText('Fixture Segunda Empleada Roble');
+
+  // Cambiar de pestaña no cambia de persona: la elección viaja en la barra.
+  await gotoTab(page, 'Conceptos');
+  await page.waitForURL(new RegExp(`/employment/conceptos\\?empleada=${AGREEMENT_SEGUNDA}$`));
+
+  // Su expediente, no el de Ana: su catálogo en el formulario y ninguna de las
+  // jornadas de su compañera.
   const extrasCard = page.locator('article.card').filter({ hasText: 'Jornadas extra' });
   const registerForm = extrasCard.locator('form.register-extra-form');
   await expect(registerForm).toContainText('Apuntar una jornada a Fixture Segunda Empleada Roble');
@@ -199,6 +261,4 @@ test('Alberto cambia de empleada y el expediente entero es el de la otra', async
   // a un concepto del contrato anterior.
   await expect(registerForm.getByLabel('Tipo')).toHaveValue(TYPE_JORNADA_COMPLETA);
   await expect(extrasCard).not.toContainText('Se quedó el sábado E2E');
-  await expect(page.locator('article.card').filter({ hasText: 'Versiones y cambios de salario' }))
-    .toContainText('Contrato de Fixture Segunda Empleada Roble');
 });

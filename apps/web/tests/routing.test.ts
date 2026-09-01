@@ -72,7 +72,23 @@ describe('household route contract', () => {
     });
     expect(can('helper', 'agreement.read')).toBe(false);
     expect(can('viewer', 'agreement.read')).toBe(false);
-    // Ninguna de las tres hereda `settlement.read`, la del módulo padre.
+    // Las dos pestañas nuevas piden la misma llave que la raíz del expediente:
+    // la familia no administradora entra y ve lo pendiente en solo lectura,
+    // y los importes los recorta la RLS, igual que en el resumen.
+    expect(guardForPath('/h/casa-roble/employment/conceptos')).toEqual({
+      householdId: 'casa-roble',
+      module: 'employment',
+      capability: 'settlement.read',
+      known: true
+    });
+    expect(guardForPath('/h/casa-roble/employment/pagos')).toEqual({
+      householdId: 'casa-roble',
+      module: 'employment',
+      capability: 'settlement.read',
+      known: true
+    });
+    // Ninguna hija hereda `settlement.read` por colgar del padre: las que la
+    // tienen la declaran.
     expect(MODULE_CAPABILITY.employment).toBe('settlement.read');
   });
 

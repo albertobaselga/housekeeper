@@ -18,8 +18,15 @@ async function gotoEmployment(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 }
 
+/** Registrar jornadas y gastos vive en la pestaña Conceptos. */
+async function gotoConceptos(page: Page): Promise<void> {
+  await loginAs(page, 'employee');
+  await page.goto(`/h/${HOUSEHOLD}/employment/conceptos`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+}
+
 test('Ana registra una jornada extra del catálogo, con la duración pactada', async ({ page }) => {
-  await gotoEmployment(page);
+  await gotoConceptos(page);
 
   const extrasCard = page.locator('article.card').filter({ hasText: 'Jornadas extra' });
   const form = extrasCard.locator('form.action-form').filter({ hasText: 'Registrar jornada extra' });
@@ -40,7 +47,7 @@ test('Ana registra una jornada extra del catálogo, con la duración pactada', a
 });
 
 test('Ana añade un gasto con importe con coma', async ({ page }) => {
-  await gotoEmployment(page);
+  await gotoConceptos(page);
 
   const expensesCard = page.locator('article.card').filter({ hasText: 'Añadir gasto' });
   const form = expensesCard.locator('form.action-form');

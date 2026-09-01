@@ -208,6 +208,14 @@ export interface ManualAdjustmentRow {
   deferralNote: string;
   status: 'recorded' | 'voided';
   voidReason: string | null;
+  /**
+   * Mes de la nómina que YA lo materializó como línea (`settlement_lines.
+   * manual_adjustment_id`, 0022), o null si sigue pendiente de aplicarse. Es
+   * la verdad que separa «cuenta en el mes que toque» de «ya contó»: sin
+   * ella, un adelanto de agosto seguía ofreciéndose en septiembre como si
+   * nadie lo hubiera pagado.
+   */
+  settledPeriod: string | null;
 }
 
 /**
@@ -561,6 +569,10 @@ export interface ManualAdjustmentView {
   deferralNote: string;
   voided: boolean;
   voidReason: string | null;
+  /** true = ya materializado como línea de una nómina cerrada. */
+  settled: boolean;
+  /** «Aplicado en la nómina de agosto 2026», o null si sigue pendiente. */
+  settledLabel: string | null;
 }
 
 export interface SettlementLineView {
@@ -771,6 +783,101 @@ export interface EmploymentOverview {
   };
 }
 
+/**
+ * Una empleada en la portada del hogar: su gasto del mes en curso y lo que
+ * espera decisión, para elegir a quién abrir. Los importes llegan ya
+ * formateados; `monthTotalLabel` es null cuando su contrato no está en vigor
+ * este mes o cuando la RLS no dejó ver los términos (y entonces la portada
+ * dice «importes reservados», no un cero falso).
+ */
+export interface PortadaEmployeeView {
+  agreementId: string;
+  employeeLabel: string;
+  active: boolean;
+  monthTotalCents: string | null;
+  monthTotalLabel: string | null;
+  pendingCount: number;
+  /** «Nada pendiente» / «1 asunto por decidir» / «N asuntos por decidir». */
+  pendingLabel: string;
+}
+
+/**
+ * La portada de Contrato cuando el hogar emplea a varias personas: la cuenta
+ * total de la casa este mes y una tarjeta por empleada. `seesAmounts` es
+ * false cuando NINGUNA cifra llegó (familia no administradora): la portada
+ * enseña entonces a las personas y dice que los importes están reservados.
+ */
+export interface EmploymentPortadaView {
+  period: string;
+  periodLabel: string;
+  seesAmounts: boolean;
+  totalCents: string;
+  totalLabel: string;
+  salaryCents: string;
+  salaryLabel: string;
+  reimbursementCents: string;
+  reimbursementLabel: string;
+  withReimbursements: boolean;
+  employees: PortadaEmployeeView[];
+}
+
+/**
+ * Suma la casa entera a partir del devengo de cada acuerdo, ya construido por
+ * `buildAccrual`. El dinero se suma en BigInt, nunca en Number, y un acuerdo
+ * sin devengo (contrato aún no en vigor, o términos que la RLS ocultó) suma
+ * cero y lo dice con un null, no con un 0,00 € inventado.
+ */
+export function buildPortadaView(input: {
+  period: string;
+  employees: readonly {
+    agreementId: string;
+    employeeLabel: string;
+    active: boolean;
+    accrual: AccrualView | null;
+    pendingCount: number;
+  }[];
+}): EmploymentPortadaView {
+  let salary = 0n;
+  let reimbursement = 0n;
+  let anyAmount = false;
+  const employees: PortadaEmployeeView[] = input.employees.map((employee) => {
+    const accrual = employee.accrual;
+    if (accrual) {
+      anyAmount = true;
+      salary += BigInt(accrual.salaryCents);
+      reimbursement += BigInt(accrual.reimbursementCents);
+    }
+    return {
+      agreementId: employee.agreementId,
+      employeeLabel: employee.employeeLabel,
+      active: employee.active,
+      monthTotalCents: accrual ? accrual.transferTotalCents : null,
+      monthTotalLabel: accrual ? accrual.transferTotalLabel : null,
+      pendingCount: employee.pendingCount,
+      pendingLabel:
+        employee.pendingCount === 0
+          ? 'Nada pendiente'
+          : employee.pendingCount === 1
+            ? '1 asunto por decidir'
+            : `${employee.pendingCount} asuntos por decidir`
+    };
+  });
+  const total = salary + reimbursement;
+  return {
+    period: input.period,
+    periodLabel: periodLabel(input.period),
+    seesAmounts: anyAmount,
+    totalCents: total.toString(),
+    totalLabel: formatCents(total.toString()),
+    salaryCents: salary.toString(),
+    salaryLabel: formatCents(salary.toString()),
+    reimbursementCents: reimbursement.toString(),
+    reimbursementLabel: formatCents(reimbursement.toString()),
+    withReimbursements: reimbursement !== 0n,
+    employees
+  };
+}
+
 // --- Mapeos puros ------------------------------------------------------------
 
 const EXTRA_WORK_LABELS: Record<ResolvedExtraWorkRow['kind'], string> = {
@@ -801,7 +908,10 @@ const BALANCE_TYPE_LABELS: Record<string, string> = {
   worked_rest_day: 'Descanso compensatorio'
 };
 
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
+// Exportados a propósito: el documento de pago en PDF imprime los MISMOS
+// nombres que la pantalla, y una tercera copia de esta tabla ya divergió una
+// vez (la del exportador solo conocía dos métodos).
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: 'Transferencia',
   cash: 'Efectivo',
   bizum: 'Bizum',
@@ -809,29 +919,55 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   other: 'Otro'
 };
 
-const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
+export const SETTLEMENT_STATUS_LABELS: Record<string, string> = {
   open: 'Abierta',
   closed: 'Cerrada',
   void: 'Anulada'
 };
 
 /**
- * Ancla navegable hacia la entidad de origen dentro de la propia página del
- * expediente. Hueco conocido: aún no existen rutas de detalle por entidad, así
- * que el origen enlaza a la sección donde la entidad está pintada.
+ * Dónde vive cada origen ahora que la sección va en pestañas. Las rellena el
+ * servidor, que sabe el hogar y quién mira: `contrato` es el acuerdo para
+ * quien administra y las condiciones para la empleada, porque cada cual lee
+ * las versiones en su propia pestaña.
  */
-export function sourceAnchor(sourceType: string, sourceId: string): string | null {
+export interface SourceHrefBases {
+  /** Ruta de la pestaña Conceptos (jornadas, gastos y conceptos a mano). */
+  conceptos: string;
+  /** Ruta del Resumen: los anticipos viven en sus saldos. */
+  resumen: string;
+  /** Donde quien mira lee las versiones del contrato. */
+  contrato: string;
+}
+
+/**
+ * Ancla navegable hacia la entidad de origen. Sin `bases` es un fragmento en
+ * la misma página (lo que era cuando todo vivía en una); con `bases`, la ruta
+ * de la pestaña donde la entidad está pintada, con el ancla detrás. Hueco
+ * conocido: aún no existen rutas de detalle por entidad.
+ */
+export function sourceAnchor(
+  sourceType: string,
+  sourceId: string,
+  bases?: SourceHrefBases
+): string | null {
   switch (sourceType) {
     case 'agreement-version':
-      return `#version-${sourceId}`;
+      return `${bases?.contrato ?? ''}#version-${sourceId}`;
+    // Una jornada o un gasto de la CUENTA ya está resuelto, y Conceptos solo
+    // pinta pendientes: su sitio es la propia línea del Resumen, que lleva el
+    // ancla. Los pendientes llegan a Conceptos por los avisos de Hoy, no por
+    // aquí.
     case 'jornadas-extra':
-      return `#extra-${sourceId}`;
+      return `${bases?.resumen ?? ''}#extra-${sourceId}`;
     case 'anticipos':
-      return `#anticipo-${sourceId}`;
+      return `${bases?.resumen ?? ''}#anticipo-${sourceId}`;
     case 'gastos':
-      return `#gasto-${sourceId}`;
+      return `${bases?.resumen ?? ''}#gasto-${sourceId}`;
+    // Los conceptos a mano sí viven enteros en Conceptos: la tarjeta lista
+    // también los ya apuntados, con su ancla `concepto-…`.
     case 'ajustes':
-      return `#concepto-${sourceId}`;
+      return `${bases?.conceptos ?? ''}#concepto-${sourceId}`;
     default:
       return null;
   }
@@ -1201,6 +1337,8 @@ export interface AccrualFacts {
    * eso es exactamente lo que significa «que se contabilicen el mes que toque».
    */
   adjustments?: readonly ManualAdjustmentRow[];
+  /** Sin bases, los orígenes enlazan como fragmento en la misma página. */
+  hrefBases?: SourceHrefBases;
 }
 
 /**
@@ -1304,7 +1442,7 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
       sourceType: line.sourceType,
       sourceId: line.sourceId,
-      href: sourceAnchor(line.sourceType, line.sourceId),
+      href: sourceAnchor(line.sourceType, line.sourceId, facts.hrefBases),
       originLabel: origin === undefined ? null : extraWorkOriginLabel(origin)
     };
   });
@@ -1363,13 +1501,21 @@ export function buildManualAdjustmentViews(
       transferLabel: row.addsToPay ? TRANSFER_LABELS.adds : TRANSFER_LABELS.noted,
       deferralNote: row.deferralNote,
       voided: row.status === 'voided',
-      voidReason: row.voidReason
+      voidReason: row.voidReason,
+      settled: row.settledPeriod !== null,
+      settledLabel:
+        row.settledPeriod === null
+          ? null
+          : `Aplicado en la nómina de ${periodLabel(row.settledPeriod).toLocaleLowerCase('es')}`
     }));
 }
 
-export function settlementLineHref(row: SettlementLineRow): string | null {
-  if (row.agreementVersionId) return sourceAnchor('agreement-version', row.agreementVersionId);
-  if (row.advanceId) return sourceAnchor('anticipos', row.advanceId);
+export function settlementLineHref(
+  row: SettlementLineRow,
+  bases?: SourceHrefBases
+): string | null {
+  if (row.agreementVersionId) return sourceAnchor('agreement-version', row.agreementVersionId, bases);
+  if (row.advanceId) return sourceAnchor('anticipos', row.advanceId, bases);
   return null;
 }
 
@@ -1387,7 +1533,8 @@ export function buildSettlementViews(
   lines: readonly SettlementLineRow[],
   payments: readonly PaymentRow[],
   /** Gastos de estas líneas que tienen justificante guardado (lectura RLS). */
-  expensesWithReceipt: ReadonlySet<string> = new Set()
+  expensesWithReceipt: ReadonlySet<string> = new Set(),
+  hrefBases?: SourceHrefBases
 ): SettlementView[] {
   return settlements.map((row) => {
     const ownLines = lines
@@ -1402,7 +1549,7 @@ export function buildSettlementViews(
         concept: line.concept,
         amountCents: line.amountCents,
         amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
-        href: settlementLineHref(line),
+        href: settlementLineHref(line, hrefBases),
         receiptExpenseId:
           line.expenseId && expensesWithReceipt.has(line.expenseId) ? line.expenseId : null
       }));

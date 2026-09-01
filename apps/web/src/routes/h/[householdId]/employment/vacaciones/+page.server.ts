@@ -1,3 +1,4 @@
+import { loadEmploymentOverview } from '$lib/server/employment.server';
 import { loadVacationOverview } from '$lib/server/vacations.server';
 import type { PageServerLoad } from './$types';
 
@@ -17,10 +18,28 @@ import type { PageServerLoad } from './$types';
  * vacaciones que nadie llegó a abrir. Esa marca la manda la propia página,
  * cuando de verdad está delante.
  */
-export const load: PageServerLoad = async ({ locals, params, depends }) => {
+export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
   depends('cc:vacations');
-  const overview = locals.user
-    ? await loadVacationOverview({ id: locals.user.id }, params.householdId)
-    : null;
-  return { overview };
+  // También del token de empleo: apuntar o anular días desde la tarjeta del
+  // año invalida 'cc:employment', y el saldo de esta página debe refrescarse.
+  depends('cc:employment');
+  // La empleada elegida viaja en la URL por toda la sección: decide de quién
+  // es la tarjeta del año, el orden del historial (la elegida primero) y el
+  // enlace de vuelta de las pestañas.
+  const empleada = url.searchParams.get('empleada');
+  const [overview, employment] = locals.user
+    ? await Promise.all([
+        loadVacationOverview({ id: locals.user.id }, params.householdId),
+        // El expediente trae el saldo del año y el acuerdo al que apuntar
+        // días: es lo que la tarjeta de vacaciones necesita para escribir.
+        loadEmploymentOverview(
+          { id: locals.user.id },
+          params.householdId,
+          undefined,
+          undefined,
+          empleada
+        )
+      ])
+    : [null, null];
+  return { overview, employment, householdId: params.householdId, empleada };
 };

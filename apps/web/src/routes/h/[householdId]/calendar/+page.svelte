@@ -786,7 +786,12 @@
      desbordar la página. */
   .cal-scopes, .cal-filters, .cal-move { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
   .cal-move { gap: var(--space-2); }
-  .cal-period { flex: 1 1 8rem; min-width: 0; font-size: var(--text-meta); font-weight: 700; text-align: center; }
+  /* Frase, no etiqueta: «Semana del 31 de agosto al 6 de septiembre» se lee
+     entera y a veces parte en dos líneas. Va en el cuerpo de la casa; con
+     --text-meta (13 px) quedaba por debajo del piso tipográfico de 14 px que
+     el sistema móvil exige a las frases, y las semanas a caballo entre dos
+     meses —las más largas— lo dejaban en evidencia. */
+  .cal-period { flex: 1 1 8rem; min-width: 0; font-size: var(--text-body); font-weight: 700; text-align: center; }
 
   .chip {
     min-height: 2.75rem; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--r-full);

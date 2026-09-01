@@ -45,6 +45,44 @@
   let voidReason = $state('');
   let voided = $state<string[]>([]);
 
+  /**
+   * Atajos de precarga, no rutas de escritura nuevas: «Adelanto» y «Ausencia»
+   * rellenan ESTE formulario (etiqueta, sentido y motivo orientativo) y acaban
+   * en el mismo comando `recordManualAdjustment`. Son acciones de un toque, no
+   * conmutadores: no guardan estado propio ni marcan nada como «pulsado». El
+   * importe NUNCA se toca —borrar lo tecleado por precargar un texto sería
+   * perder trabajo— y todo queda editable: la precarga es un empujón, no una
+   * jaula. Los anticipos con cuota (`app.advances`) siguen siendo de solo
+   * lectura en los saldos del Resumen; este atajo apunta un descuento del mes.
+   */
+  const PRESET_TEXTS = [
+    'Adelanto entregado',
+    'Entregado a cuenta, se descuenta de este mes',
+    'Ausencia no retribuida',
+    'Día no trabajado sin sueldo, hablado con ella'
+  ];
+
+  function applyPreset(choice: 'adelanto' | 'ausencia' | 'otro'): void {
+    formError = null;
+    if (choice === 'adelanto') {
+      label = 'Adelanto entregado';
+      reason = 'Entregado a cuenta, se descuenta de este mes';
+      direction = 'subtracts';
+      addsToPay = true;
+    } else if (choice === 'ausencia') {
+      label = 'Ausencia no retribuida';
+      reason = 'Día no trabajado sin sueldo, hablado con ella';
+      direction = 'subtracts';
+      addsToPay = true;
+    } else {
+      // «Otro» limpia SOLO lo que puso un atajo: lo tecleado a mano se queda.
+      if (PRESET_TEXTS.includes(label)) label = '';
+      if (PRESET_TEXTS.includes(reason)) reason = '';
+      direction = 'adds';
+      addsToPay = true;
+    }
+  }
+
   type Draft = {
     operationId: string;
     periodLabel: string;
@@ -55,12 +93,25 @@
   };
   let drafts = $state<Draft[]>([]);
   // El borrador se retira cuando los datos frescos traen un concepto con la
-  // misma etiqueta: es lo único que la fila optimista y la real comparten con
-  // seguridad, porque el MES puede no coincidir (si el pedido estaba cerrado,
-  // el servidor lo imputa al siguiente y lo dice en la fila que llega).
+  // misma etiqueta E importe: con los atajos, la etiqueta sola dejó de ser
+  // distintiva («Adelanto entregado» dos meses seguidos es el caso normal) y
+  // compararla a secas retiraba el borrador nada más crearlo. El MES no entra
+  // en la comparación a propósito: si el pedido estaba cerrado, el servidor lo
+  // imputa al siguiente y lo dice en la fila que llega.
   const pendingDrafts = $derived(
-    drafts.filter((draft) => !adjustments.some((row) => row.label === draft.label))
+    drafts.filter(
+      (draft) =>
+        !adjustments.some((row) => row.label === draft.label && row.amountLabel === draft.amountLabel)
+    )
   );
+
+  // Lo ya materializado en una nómina cerrada no puede volver a ofrecerse como
+  // pendiente: un adelanto de agosto ya descontado en la nómina de agosto no
+  // es un concepto de septiembre. Se pliega como rastro, sin acciones —anular
+  // uno aplicado lo rechazaría igualmente el servidor—; lo pendiente (y lo
+  // anulado sin aplicar) sigue en la lista de siempre.
+  const pendingAdjustments = $derived(adjustments.filter((row) => !row.settled));
+  const settledAdjustments = $derived(adjustments.filter((row) => row.settled));
 
   const MESSAGE_OVERRIDES = {
     adjustment_before_agreement: 'Ese mes es anterior al primer día de trabajo del acuerdo.',
@@ -114,6 +165,11 @@
         label = '';
         reason = '';
         amount = '';
+        // El sentido no se hereda de un apunte al siguiente: tras un adelanto
+        // (resta), teclear una gratificación sin tocar el desplegable NO puede
+        // enviarla restando.
+        direction = 'adds';
+        addsToPay = true;
       },
       revert: removeDraft,
       settle: removeDraft,
@@ -155,7 +211,7 @@
   </p>
 
   <div class="ledger-list">
-    {#each adjustments as adjustment (adjustment.id)}
+    {#each pendingAdjustments as adjustment (adjustment.id)}
       {@const isVoided = adjustment.voided || voided.includes(adjustment.id)}
       <div id={`concepto-${adjustment.id}`}>
         <span>
@@ -225,7 +281,11 @@
       {#if pendingDrafts.length === 0}
         <div>
           <span>
-            <strong>Todavía no hay conceptos apuntados a mano</strong>
+            <strong>
+              {settledAdjustments.length > 0
+                ? 'Nada pendiente de aplicar'
+                : 'Todavía no hay conceptos apuntados a mano'}
+            </strong>
             <p class="audit-note">Cuando se apunte uno, aparecerá aquí y en la cuenta de su mes.</p>
           </span>
         </div>
@@ -242,9 +302,50 @@
     {/each}
   </div>
 
+  <!-- El rastro de lo ya aplicado, plegado y sin acciones: consta —esa es la
+       regla de la casa—, pero ya contó en su nómina y no puede leerse como
+       pendiente de este mes. Para corregir uno, el camino de siempre: apuntar
+       el concepto contrario en un mes abierto. -->
+  {#if settledAdjustments.length > 0}
+    <details class="settled-trail">
+      <summary>
+        Ya aplicados en una nómina ({settledAdjustments.length})
+      </summary>
+      <div class="ledger-list">
+        {#each settledAdjustments as adjustment (adjustment.id)}
+          <div id={`concepto-${adjustment.id}`}>
+            <span>
+              <strong>{adjustment.label}</strong>
+              <small>
+                {adjustment.periodLabel} · {adjustment.reason}
+                {#if adjustment.voided}
+                  · Anulado{adjustment.voidReason ? `: ${adjustment.voidReason}` : ''}
+                {:else}
+                  · {adjustment.settledLabel}
+                {/if}
+                {#if adjustment.deferralNote}<br />{adjustment.deferralNote}{/if}
+              </small>
+            </span>
+            <span class="inline-actions">
+              <strong>{adjustment.voided ? '—' : adjustment.amountLabel}</strong>
+            </span>
+          </div>
+        {/each}
+      </div>
+    </details>
+  {/if}
+
   {#if canRecord}
     <form class="action-form" onsubmit={record}>
       <h3>Apuntar un concepto</h3>
+      <!-- Los tres casos de cada mes, a un toque. Son botones de relleno de
+           un solo gesto —sin estado «pulsado» que luego mienta cuando se
+           edite a mano—: lo que precargan se ve y se corrige antes de enviar. -->
+      <div class="action-row" role="group" aria-label="Rellenar el concepto como">
+        <button class="button secondary small-button" type="button" onclick={() => applyPreset('adelanto')}>Adelanto</button>
+        <button class="button secondary small-button" type="button" onclick={() => applyPreset('ausencia')}>Ausencia</button>
+        <button class="button secondary small-button" type="button" onclick={() => applyPreset('otro')}>Otro concepto</button>
+      </div>
       <label>Cómo se llama en la cuenta
         <input
           type="text"
@@ -318,3 +419,19 @@
 
   <ActionStatus status={actionStatus} />
 </article>
+
+<style>
+  .settled-trail {
+    margin-top: var(--space-4);
+  }
+
+  .settled-trail summary {
+    color: var(--ink-soft);
+    font-size: var(--text-meta);
+    cursor: pointer;
+  }
+
+  .settled-trail .ledger-list {
+    margin-top: var(--space-2);
+  }
+</style>

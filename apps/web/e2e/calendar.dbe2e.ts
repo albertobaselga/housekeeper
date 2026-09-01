@@ -31,6 +31,12 @@ const EMPLOYEE_MEMBERSHIP = E2E_SEED.memberships.employee;
 const DAILY_ROUTINE = 'cc500000-0000-4000-8000-000000000001';
 const SEASONAL_ROUTINE = 'cc500000-0000-4000-8000-000000000002';
 const PRIVATE_ROUTINE = 'cc500000-0000-4000-8000-000000000003';
+// La ocurrencia YA marcada de la enmienda E2 vive en su PROPIA rutina. Si
+// compartiera rutina con la diaria, el día 1 de mes —cuando MONTH_START es
+// justamente hoy— la dejaría marcada por adelantado: la de hoy pasaría a
+// «Hecha · la marcó …» y se quedaría sin su cadencia a la vista ni casilla que
+// tocar. Separarlas hace la prueba cierta los 31 días del mes.
+const MARKED_ROUTINE = 'cc500000-0000-4000-8000-000000000004';
 
 // Título y detalle SIN acentos a propósito para la prueba negativa de E3: el
 // payload de la página viaja con escapes unicode, así que buscar «Revisión» en
@@ -172,6 +178,8 @@ test('siembra: una rutina diaria, una estacional y una privada de la familia', a
           $5::date, $8, 'months_of_year', $7::date, null,
           array[6,12]::smallint[], 1, 'carry'),
          ($3, $4, '${PRIVATE_TITLE}', '${PRIVATE_DETAILS}', 'family',
+          $5::date, $8, 'every_n_days', $6::date, 1, null, null, 'skip'),
+         ($9, $4, 'Riego de las plantas (E2E)', '', 'all',
           $5::date, $8, 'every_n_days', $6::date, 1, null, null, 'skip')`,
       [
         DAILY_ROUTINE,
@@ -181,7 +189,8 @@ test('siembra: una rutina diaria, una estacional y una privada de la familia', a
         TODAY,
         MONTH_START,
         YEAR_START,
-        ADMIN_MEMBERSHIP
+        ADMIN_MEMBERSHIP,
+        MARKED_ROUTINE
       ]
     );
     // Una ocurrencia pasada YA marcada por la empleada: es lo que hace visible
@@ -189,7 +198,7 @@ test('siembra: una rutina diaria, una estacional y una privada de la familia', a
     await admin.query(
       `insert into app.routine_completions (household_id, routine_id, due_on, completed_by_membership_id)
        values ($1, $2, $3::date, $4)`,
-      [HOUSEHOLD, DAILY_ROUTINE, MONTH_START, EMPLOYEE_MEMBERSHIP]
+      [HOUSEHOLD, MARKED_ROUTINE, MONTH_START, EMPLOYEE_MEMBERSHIP]
     );
   });
 });

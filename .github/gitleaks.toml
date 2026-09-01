@@ -3,11 +3,47 @@ title = "Casa Clara secret scanning"
 [extend]
 useDefault = true
 
-[allowlist]
+# Rutas que por política solo llevan credenciales de juguete. Se exige ruta Y
+# vocabulario de juguete a la vez (`condition = "AND"`): así estos ficheros
+# siguen armados contra un secreto de verdad. Si mañana una prueba estrena otra
+# contraseña de mentira, la puerta se pondrá en rojo y se añade su patrón aquí
+# abajo: es un fallo ruidoso a propósito, preferible a que pase una credencial
+# real por permitir el fichero entero.
+#
+# OJO: no se usa `targetRules`. En gitleaks v8.28.0 se ignora EN SILENCIO
+# cuando la config lleva `[extend] useDefault = true` (en config.go la global
+# `extendDepth` ya vale 1 al llegar al guardián `if extendDepth == 0`, así que
+# el bucle que reparte los allowlists por regla no llega a ejecutarse nunca).
+# Y `[allowlist]` en singular NO puede convivir con `[[allowlists]]`: la carga
+# aborta con «[allowlist] is deprecated, it cannot be used alongside».
+[[allowlists]]
+description = "Credenciales de juguete en pruebas, fixtures y guiones de CI"
+condition = "AND"
+regexTarget = "match"
+paths = [
+  '''^apps/web/tests/.*\.test\.ts$''',
+  '''^apps/web/e2e/.*\.ts$''',
+  '''^apps/web/playwright\..*\.config\.ts$''',
+  '''^scripts/ci/validate-compose\.sh$'''
+]
+regexes = [
+  '''-clave(-de-casa)?-2026''',
+  '''una-contrasena-larguisima-2026''',
+  '''secreto-de-prueba-32-bytes-largo-0''',
+  '''kFzRQ5vHJmMwPnLxTbYcVdEfGhIjKlMnOpQrStUvWxY''',
+  '''dmFsaWRhdGlvbi1vbmx5'''
+]
+
+# Marcadores documentados. Aquí NO se permite el fichero entero, solo el valor
+# de relleno concreto: `.env.example` y las guías se siguen escaneando enteras.
+[[allowlists]]
 description = "Documented synthetic-only credentials"
 regexTarget = "match"
 regexes = [
   '''Demo-(Admin|Familia|Ana|Apoyo|Visor)-2026!''',
   '''local-(development|object-storage|observability)-only''',
-  '''replace-with-(random-staging-value|at-least-32-random-bytes|random-object-storage-value|random-observability-value)'''
+  '''replace-with-(random-staging-value|at-least-32-random-bytes|random-object-storage-value|random-observability-value)''',
+  '''cambiame-por-[a-z0-9-]+''',
+  '''una-contrasena-larga-2026''',
+  '''tHlj9jSbnSPf5ozGK4G4c3xY17UBqtOIDD33mhfWf5w'''
 ]

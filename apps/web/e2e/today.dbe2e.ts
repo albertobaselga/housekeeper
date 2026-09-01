@@ -116,10 +116,10 @@ test('Alberto ve la jornada sembrada en «Necesita tu decisión» y llega a reso
     page.locator('.ledger-list > div').filter({ hasText: 'Rutina de hoy:' })
   ).toHaveCount(0);
 
-  // 1 click: del item de Hoy al ancla de la jornada en Contrato.
+  // 1 click: del item de Hoy al ancla de la jornada, en su pestaña (Conceptos).
   await decisionRow.getByRole('link', { name: 'Revisar' }).click();
   await expect(page).toHaveURL(
-    new RegExp(`/h/${HOUSEHOLD}/employment\\?empleada=${E2E_SEED.agreement}#extra-${EXTRA_HOY}$`)
+    new RegExp(`/h/${HOUSEHOLD}/employment/conceptos\\?empleada=${E2E_SEED.agreement}#extra-${EXTRA_HOY}$`)
   );
 
   const extraRow = page.locator(`#extra-${EXTRA_HOY}`);

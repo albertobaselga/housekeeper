@@ -199,13 +199,13 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     // El enlace dice de quién es el expediente al que lleva: el hogar puede
     // emplear a varias personas y el ancla solo existe en el de la suya.
     expect(jornada.href).toBe(
-      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#extra-${EXTRA_REQUESTED}`
+      `/h/${FIXTURE_HOUSEHOLD}/employment/conceptos?empleada=${AGREEMENT}#extra-${EXTRA_REQUESTED}`
     );
     expect(jornada.detail).toContain('Plancha del sábado IT');
 
     const gasto = overview!.decisions.find((item) => item.key === `gasto-${EXPENSE_PENDING}`)!;
     expect(gasto.href).toBe(
-      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT}#gasto-${EXPENSE_PENDING}`
+      `/h/${FIXTURE_HOUSEHOLD}/employment/conceptos?empleada=${AGREEMENT}#gasto-${EXPENSE_PENDING}`
     );
     expect(gasto.detail).toContain('21,75');
 
@@ -264,7 +264,7 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(segunda).toBeDefined();
     expect(segunda!.detail).toContain('Turno de la compañera IT');
     expect(segunda!.href).toBe(
-      `/h/${FIXTURE_HOUSEHOLD}/employment?empleada=${AGREEMENT_TWO}#extra-${EXTRA_SEGUNDA}`
+      `/h/${FIXTURE_HOUSEHOLD}/employment/conceptos?empleada=${AGREEMENT_TWO}#extra-${EXTRA_SEGUNDA}`
     );
 
     // Y sigue sin cruzarse: la primera empleada no ve lo de su compañera.

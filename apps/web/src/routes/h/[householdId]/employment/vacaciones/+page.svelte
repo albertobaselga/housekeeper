@@ -1,15 +1,42 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import EmploymentPersonBar from '$lib/components/employment/EmploymentPersonBar.svelte';
+  import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
+  import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
+  import { can } from '$lib/auth/capabilities';
+  import { useAppContext } from '$lib/auth/context';
   import { markVacationsSeen } from '$lib/vacations/mark-seen';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
+  const context = useAppContext();
 
   const overview = $derived(data.overview);
   // Su propio contrato, si lo tiene. Es lo que decide la voz de la pantalla:
   // quien administra lee un historial de otras personas, ella lee el suyo. El
   // orden (la propia primero) ya lo trae el servidor.
   const own = $derived(overview?.people.find((person) => person.own) ?? null);
+
+  // Los días los apunta la familia administradora (política
+  // `vacation_periods_admin_write`); con la tarjeta aquí, el saldo, el
+  // formulario y el historial comparten pantalla.
+  const employmentAgreement = $derived(
+    data.employment?.hasEmploymentData ? data.employment.agreement : null
+  );
+  const canRecordVacation = $derived(
+    employmentAgreement !== null && can(context.role, 'leave.approve')
+  );
+
+  // Con `?empleada=`, su historial va primero; el resto conserva el orden del
+  // servidor (la propia primero para la empleada).
+  const people = $derived(
+    overview
+      ? [...overview.people].sort(
+          (a, b) =>
+            Number(b.agreementId === data.empleada) - Number(a.agreementId === data.empleada)
+        )
+      : []
+  );
 
   /**
    * Dar por vistas las novedades es efecto de MIRAR, no de pulsar nada.
@@ -45,6 +72,16 @@
       : 'El historial de cada persona, año a año, con lo anulado a la vista.'}
   />
 
+  {#if data.employment && data.employment.agreements.length > 1 && employmentAgreement}
+    <EmploymentPersonBar
+      householdId={data.householdId}
+      employeeLabel={data.employment.agreements.find((option) => option.id === employmentAgreement?.id)?.employeeLabel ?? 'la empleada'}
+      active={data.employment.agreements.find((option) => option.id === employmentAgreement?.id)?.active ?? true}
+    />
+  {/if}
+
+  <EmploymentTabs householdId={data.householdId} current="vacaciones" empleada={data.empleada} />
+
   {#if !overview}
     <article class="card">
       <p>
@@ -68,7 +105,24 @@
       </p>
     {/if}
 
-    {#each overview.people as person (person.agreementId)}
+    <!-- La tarjeta de abajo ESCRIBE sobre la persona que dice la barra fija de
+         arriba: apuntar días nunca cae en silencio sobre otra. Cambiar de
+         persona se hace en la portada de Contrato. -->
+    <!-- El año en curso, encima del historial: el saldo para cualquiera que
+         pueda leerlo y el formulario de apuntar/anular solo para quien
+         administra (la empleada lo ve en solo lectura, como siempre). La
+         persona es la elegida arriba y el saldo se refresca solo al apuntar. -->
+    {#if employmentAgreement && data.employment?.vacations}
+      <VacationsCard
+        householdId={data.householdId}
+        agreementId={employmentAgreement.id}
+        vacations={data.employment.vacations}
+        canRecord={canRecordVacation}
+        allYearsLink={false}
+      />
+    {/if}
+
+    {#each people as person (person.agreementId)}
       <article class="card">
         <div class="section-heading">
           <div>

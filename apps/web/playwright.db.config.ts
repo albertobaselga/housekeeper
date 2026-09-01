@@ -63,6 +63,13 @@ export default defineConfig({
     env: {
       DATABASE_URL: appDatabaseUrl(),
       CASA_CLARA_FIXTURE_LOGIN: 'true',
+      // Cinturón sobre los tirantes del job de CI: Playwright arranca el
+      // webServer con `{...process.env, ...webServer.env}`, así que una
+      // variable del entorno se colaría en el servidor bajo prueba. Esta
+      // batería comprueba la forma de PRODUCCIÓN y no puede correr con la
+      // bandera de datos sintéticos puesta: vacía es ausente por convención
+      // de la casa (`present()` de deployment-config.js).
+      ALLOW_SYNTHETIC_DATA_ONLY: '',
       // Con canal de avisos configurado. La batería de maqueta cubre el caso
       // contrario —sin claves no se ofrece un interruptor que no funcionaría—,
       // y sin esto NADIE probaba la rama con claves. Ese hueco costó caro: los
