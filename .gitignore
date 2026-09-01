@@ -63,3 +63,4 @@ scratchpad/
 
 # Salida del guion de publicación del manual: se regenera, no se versiona.
 docs/manual/manual-publicable.html
+.playwright-mcp/
