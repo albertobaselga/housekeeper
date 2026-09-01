@@ -49,6 +49,13 @@ import { getDatabasePool } from './db.server';
 const log = createLogger('web:employment');
 
 /**
+ * La forma de un uuid, tal y como la comprueba el resto de la casa (el mismo
+ * patrón que `wiki.server.ts` y que el endpoint hermano del documento de pago).
+ * Sirve para no dejar que un identificador escrito a mano llegue a Postgres.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
  * Las bases de los orígenes para quien mira: la jornada y el gasto viven en
  * Conceptos, el anticipo en los saldos del Resumen y las versiones donde cada
  * cual lee su contrato (el acuerdo si lo pacta, sus condiciones si no). La
@@ -87,8 +94,9 @@ export interface SettlementReceiptDownload {
  * El recibo PDF registrado de una liquidación (Frente E, migración 0035). Solo
  * lectura: quien decide el acceso es RLS (`settlement_receipts_read`, calcada
  * de `settlements_read`) — family_admin del hogar y la propia empleada del
- * contrato, y nadie más. Sin fila (aún no registrado, o quien pregunta no debe
- * verlo) devuelve null, sin distinguir un caso del otro.
+ * contrato, y nadie más. Sin fila (aún no registrado, quien pregunta no debe
+ * verlo, o el identificador ni siquiera tiene forma de uuid) devuelve null, sin
+ * distinguir un caso del otro.
  */
 export async function loadSettlementReceipt(
   user: { id: string },
@@ -97,6 +105,16 @@ export async function loadSettlementReceipt(
   pool: Pool | null = getDatabasePool()
 ): Promise<SettlementReceiptDownload | null> {
   if (!pool) return null;
+  // Un identificador que ni siquiera tiene forma de uuid no llega a la consulta:
+  // Postgres levantaría un 22P02, el catch de abajo lo leería como avería del
+  // almacén y devolvería un 503 con su línea de registro por cada petición —un
+  // grifo de ruido que abre cualquier miembro de cualquier hogar escribiendo la
+  // URL a mano—. Es la misma avería que el documento de pago ya corrigió en su
+  // ruta; aquí la guarda vive DENTRO del cargador, junto al `if (!pool)`, por
+  // dos razones: `null` es la semántica exacta («no hay fila»), que el endpoint
+  // ya traduce a su 404 sin abrir un oráculo entre «malformado» y «no te toca»,
+  // y cualquier llamador futuro la hereda sin tener que acordarse.
+  if (!UUID_PATTERN.test(settlementId)) return null;
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
       const result = await client.query<{

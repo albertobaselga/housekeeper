@@ -11,9 +11,9 @@ lista de opciones apagadas sino código que no existe.
 **Qué NO resuelve, y conviene decirlo antes de encenderlo.** El push **no es un
 canal de confianza**: no garantiza entrega ni latencia. Nada con consecuencia
 —un plazo, un vencimiento, una confirmación— puede depender de que el aviso
-llegara, y no depende: los dos hechos se ven igual en Hoy y en Empleo. Y **Casa
-Clara no es un sistema de emergencia**; el 112 lo es, y está fijo y sin depender
-de nada en la pantalla de Emergencias.
+llegara, y no depende: los dos hechos se ven igual en Hoy y en Empleo. Y
+**Housekeeper no es un sistema de emergencia**; el 112 lo es, y está fijo y sin
+depender de nada en la pantalla de Emergencias.
 
 > **Este runbook lo aplica quien administra la instalación.** Nada de lo que hay
 > aquí lo ejecuta el proyecto por su cuenta, y ninguno de estos comandos se ha

@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./jobs": "./src/jobs.ts",
-    "./net": "./src/net.ts"
+    "./net": "./src/net.ts",
+    "./push-channel": "./src/push-channel.ts"
   },
   "scripts": {
     "backup:full": "node scripts/full-backup.mjs",

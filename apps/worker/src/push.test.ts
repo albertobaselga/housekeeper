@@ -130,8 +130,13 @@ describe("el texto de un aviso", () => {
     }
   });
 
-  it("enlaza al expediente de la persona correcta cuando en la casa trabaja más de una", () => {
-    expect(receipt.url).toBe(`/h/${HOUSEHOLD}/employment?empleada=${AGREEMENT}`);
+  it("aterriza en la pestaña de pagos, que es donde está lo que el aviso promete", () => {
+    // El recibo archivado y el botón de confirmar el cobro viven en
+    // `employment/pagos`; la portada de Contrato no hace ninguna de las dos
+    // cosas desde que el expediente se repartió en pestañas. Un aviso que
+    // promete un recibo y deja a la persona en otra pantalla es peor que no
+    // mandarlo. Y con `?empleada=`, que en una casa puede trabajar más de una.
+    expect(receipt.url).toBe(`/h/${HOUSEHOLD}/employment/pagos?empleada=${AGREEMENT}`);
     expect(due.url).toBe(receipt.url);
   });
 
@@ -177,6 +182,11 @@ describe("configuración VAPID", () => {
   // corchetes angulares o dominios inválidos, y **solo Apple**. Un `sub` sucio
   // deja los avisos rotos en los iPhone de la casa y en ningún otro sitio, que
   // es el peor fallo posible: el que solo le pasa a una persona.
+  //
+  // Esta lista tiene gemela en `apps/web/tests/push.test.ts`: el criterio es uno
+  // solo (`push-channel.ts`) y las dos pruebas existen para que siga siéndolo.
+  // Cuando no lo era, la web dibujaba el interruptor de unos avisos que la cola
+  // jamás iba a mandar.
   it("rechaza un `sub` que solo fallaría en los iPhone", () => {
     for (const dirty of [
       "<mailto:casa@ejemplo.es>",

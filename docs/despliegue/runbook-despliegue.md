@@ -325,7 +325,11 @@ arrancan solos. Tras dar de alta el hogar (§6) hay que sembrar el primer job a
 mano, con la conexión directa:
 
 ```sql
-insert into app.job_queue (household_id, job_type, run_at, payload)
+-- El esquema es `app_private`, NO `app`: la cola vive fuera de `app` porque no
+-- tiene ni un GRANT para el rol de la aplicación (migración 0005), y solo la
+-- tocan el worker y el drenaje con el rol del worker. Escrito `app.job_queue`
+-- esto no siembra nada: falla con «relation "app.job_queue" does not exist».
+insert into app_private.job_queue (household_id, job_type, run_at, payload)
 values ('<uuid-del-hogar>', 'ics.sync_all', now(), '{}'::jsonb);
 ```
 
@@ -349,8 +353,25 @@ Resumen de lo que hay que tener a mano: `JOB_RUNNER_TOKEN` y
 `WORKER_DATABASE_URL` en Vercel (§6b y §1 de `.env.example`), y el token
 también en `vault.create_secret`.
 
-Criterio de salida del paso 4: el calendario se sincroniza solo y llega un
-aviso de rutina de verdad.
+Criterio de salida del paso 4: **la cola se vacía sola**, y se comprueba con
+hechos, no de palabra.
+
+- `POST /api/v1/jobs/run` con su token responde **200** con
+  `"stoppedBy":"empty"` (el SQL y el `curl` exactos, en §4 del runbook del
+  planificador).
+- `select status, job_type, count(*) from app_private.job_queue group by 1, 2`
+  no deja nada en `dead` ni un `queued` con el `run_at` ya pasado.
+- Un calendario enlazado deja de decir «Pendiente de la primera lectura».
+- Y el efecto que se ve desde dentro de casa: **cerrar la cuenta de un mes deja
+  su recibo archivado en PDF** en la pestaña Pagos del Contrato antes de cinco
+  minutos.
+
+**Avisos de rutina no hay, y no los esperes.** El catálogo está cerrado a tres
+—el recibo listo, la cuenta del mes por pagar y el mes a punto de acabar— y
+notificar rutinas está **prohibido por escrito**, que no es lo mismo que estar
+pendiente de construir: [`../notificaciones.md`](../notificaciones.md) §6.1. Si
+lo que quieres es probar el canal, el único aviso que sale de este paso es el
+del recibo, y solo con las claves VAPID puestas (§5).
 
 ---
 
@@ -371,7 +392,9 @@ aviso de rutina de verdad.
 2. **Node**: el repo fija 24.18.0 y `engines: node >=24 <25`. Seleccionar
    **Node 24.x** en *Project Settings → Node.js Version*. El adaptador está
    configurado con `runtime: 'nodejs24.x'`.
-3. **Variables** (todas en *Production*, ver `.env.example`):
+3. **Variables** (todas en *Production*). El inventario completo, con el
+   destino y el carácter de cada una, es `.env.example`; esta lista es la de
+   este despliegue:
 
    ```
    DATABASE_URL=…:6543/postgres    # pooler, modo transacción
@@ -380,7 +403,45 @@ aviso de rutina de verdad.
    BETTER_AUTH_URL=https://casa.ejemplo.es
    SNAPSHOT_SIGNING_KEY_B64=…
    SUPABASE_SERVICE_ROLE_KEY=…     # adjuntos, §3.1 (o las S3_* de §3.2)
+   WORKER_DATABASE_URL=…:6543/postgres   # rol del WORKER; lo usa el drenaje (§4.6)
+   JOB_RUNNER_TOKEN=…              # el MISMO valor que guarda el Vault de Supabase
    ```
+
+   **Las dos últimas se olvidan porque el planificador parece cosa de la base**,
+   y se paga caro: sin ellas `POST /api/v1/jobs/run` responde **503 y no toca la
+   cola**, así que la cola no se vacía nunca. Y eso no se ve en ninguna pantalla
+   —la web va, la sesión va—: lo que deja de ocurrir es todo lo que se cocina en
+   la cola, o sea **el PDF del recibo del mes y la sincronización de los
+   calendarios enlazados**, en silencio y sin una línea de registro.
+   `WORKER_DATABASE_URL` lleva el rol del worker a propósito, porque
+   `app_private.job_queue` no tiene **ni un GRANT** para el rol de la aplicación
+   (migración 0005); poner ahí la cadena de la aplicación es de los pocos errores
+   que sí se delatan solos, con «permission denied».
+
+   **Avisos en el móvil**, si se quieren (§5b de `.env.example`; puesta en marcha
+   completa en
+   [`../runbooks/notificaciones-push.md`](../runbooks/notificaciones-push.md)):
+
+   ```
+   VAPID_PUBLIC_KEY=…
+   VAPID_PRIVATE_KEY=…
+   VAPID_SUBJECT=mailto:avisos@ejemplo.es
+   ```
+
+   **Las tres o ninguna, y el `sub` LIMPIO.** Un `sub` con corchetes angulares o
+   espacios —el clásico `<mailto:…>` que se pega del propio panel de Vercel—
+   hace que **Apple, y solo Apple**, conteste 403 BadJwtToken: el defecto
+   aparecería únicamente en los iPhone de la casa, que es donde nadie prueba.
+   Por eso las tres se validan juntas al arrancar (`push-channel.ts`) y un `sub`
+   sucio se trata como si no hubiera claves: es preferible «aquí no hay canal»,
+   que es verdad y se lee, a un interruptor encendido de cara a la persona y
+   apagado de verdad para siempre.
+
+   Sin las tres **no se rompe nada**: la aplicación funciona entera, no se encola
+   ningún aviso, la cola se vacía igual y `/h/<hogar>/account` dice «Esta
+   instalación no manda avisos al móvil» en vez de dibujar un interruptor que no
+   puede funcionar. Esa frase es además la comprobación: si aparece, las claves
+   **no** están puestas (o el `sub` no pasa la validación).
 
    **Opcionales**, solo si algún día hay antivirus (§4 y
    `docs/security/adjuntos-sin-antivirus.md`):
@@ -497,6 +558,20 @@ Una vez creado el hogar:
 - [ ] Subir un justificante y volver a verlo desde la cuenta del mes.
 - [ ] El banner de datos sintéticos **no** aparece, y el acceso demo con
       contraseña devuelve 403.
+- [ ] **La cola drena.** `curl -si -X POST https://casa.ejemplo.es/api/v1/jobs/run
+      -H "x-housekeeper-job-token: $JOB_RUNNER_TOKEN"` → 200 con
+      `"stoppedBy":"empty"`; sin la cabecera, 401. Un **503** aquí es
+      `WORKER_DATABASE_URL` o `JOB_RUNNER_TOKEN` sin poner (§5), y no se nota en
+      ninguna otra parte.
+- [ ] **El recibo llega hasta el final.** Cerrar la cuenta de un mes y
+      comprobar, en la pestaña Pagos del Contrato y antes de cinco minutos, que
+      aparece «Recibo archivado (PDF)» y que se descarga. Es la prueba de que la
+      cola, el almacén y el registro de la 0035 están los tres puestos.
+- [ ] **Los avisos, solo si se quieren.** `/h/<hogar>/account`: si dice «Esta
+      instalación no manda avisos al móvil», faltan las tres VAPID (o el `sub`
+      no pasa la validación). Si ofrece el interruptor, encenderlo **en un
+      teléfono de verdad** y esperar un aviso real: el `sub` sucio solo rompe
+      los iPhone.
 - [ ] `fly proxy 3001:3001 -a casaclara-worker` → `/health` y `/metrics`.
 
 Nota sobre `GET /api/metrics` de la **web**: en serverless cada invocación es

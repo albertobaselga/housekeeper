@@ -50,6 +50,7 @@
  */
 import type { Pool } from "pg";
 
+import { loadVapidConfig, type VapidConfig } from "./push-channel.js";
 import { PermanentJobError, type JobHandler } from "./queue.js";
 
 export const PUSH_NOTICE_JOB = "notification.push";
@@ -183,7 +184,13 @@ export function composeNotice(
   }
 
   const month = monthLabel(periodStart, today);
-  const href = `/h/${householdId}/employment?empleada=${agreementId}`;
+  // A la PESTAÑA DE PAGOS, no a la portada de Contrato. Un aviso tiene que
+  // aterrizar donde está lo que promete: el enlace al recibo archivado y el
+  // botón de confirmar el cobro viven en `employment/pagos` desde que el
+  // expediente se repartió en pestañas, y la portada ya no hace ninguna de las
+  // dos cosas. La ruta pide `settlement.read`, que es de las capacidades de la
+  // empleada: la destinataria del aviso del recibo puede abrirla.
+  const href = `/h/${householdId}/employment/pagos?empleada=${agreementId}`;
   // El agrupador tiene que caber en 32 caracteres del alfabeto de base64url, así
   // que ni el tópico con puntos ni el uuid entero valen. Con el prefijo corto y
   // los ocho primeros dígitos basta para que dos avisos del mismo asunto se
@@ -207,29 +214,14 @@ export function composeNotice(
   };
 }
 
-export interface VapidConfig {
-  subject: string;
-  publicKey: string;
-  privateKey: string;
-}
-
 /**
- * `sub` limpio o Apple contesta 403 BadJwtToken — y **solo Apple**, lo que
- * convierte un espacio de más en un fallo que aparece únicamente en los iPhone
- * de la casa y en ningún otro sitio. Se valida aquí, al arrancar, y no allí.
+ * El «¿hay canal?» no se decide aquí sino en `push-channel.js`, y se reexporta
+ * para que nada de lo que ya lo pedía a este módulo tenga que enterarse. Está
+ * fuera porque la web necesita exactamente el mismo criterio y no puede importar
+ * este fichero: `handlers.ts` arrastra `documents.ts` con `pdf-lib` detrás. El
+ * porqué largo, en la cabecera de aquel módulo.
  */
-const VAPID_SUBJECT = /^(mailto:[^\s<>]+@[^\s<>]+\.[^\s<>]+|https:\/\/[^\s<>]+)$/;
-
-export function loadVapidConfig(
-  environment: Partial<Record<string, string>>,
-): VapidConfig | null {
-  const subject = environment.VAPID_SUBJECT?.trim();
-  const publicKey = environment.VAPID_PUBLIC_KEY?.trim();
-  const privateKey = environment.VAPID_PRIVATE_KEY?.trim();
-  if (!subject || !publicKey || !privateKey) return null;
-  if (!VAPID_SUBJECT.test(subject)) return null;
-  return { subject, publicKey, privateKey };
-}
+export { loadVapidConfig, type VapidConfig };
 
 export type PushSendOutcome =
   /** Entregado al servicio de push (no al teléfono: eso nadie lo sabe). */

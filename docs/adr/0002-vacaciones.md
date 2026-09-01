@@ -52,8 +52,9 @@ desde el derecho vigente y los periodos apuntados.
 ### El exceso se permite y se enseña
 
 Si lo disfrutado supera el derecho, el saldo queda **negativo y visible**
-(«42 de 30 días disfrutados · 12 días de más»), con una nota que dice que Casa
-Clara no lo corrige sola. No se rechaza el alta.
+(«42 de 30 días disfrutados · 12 días de más»), con una nota que dice que **la
+aplicación** no lo corrige sola —así, sin marca: el nombre del proyecto no se
+muestra nunca a quien usa la casa—. No se rechaza el alta.
 
 La alternativa —rechazar el periodo que no cabe— tiene un coste peor: empuja a
 no apuntar los días, y un expediente que solo admite lo que cuadra deja de ser

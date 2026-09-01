@@ -204,6 +204,50 @@ describe.runIf(Boolean(adminUrl))('recibo PDF visible en la liquidación cerrada
     expect(await loadSettlementReceipt(ADMIN_USER, FIXTURE_HOUSEHOLD, SETTLEMENT_WITH_RECEIPT, null)).toBeNull();
   });
 
+  // Un identificador escrito a mano en la barra de direcciones llegaba hasta
+  // `where receipt.settlement_id = 'pepito'`; Postgres levantaba 22P02, el catch
+  // lo leía como avería del almacén y salía un 503 con su línea de registro. Una
+  // por petición, a gusto de cualquier miembro de cualquier hogar: un grifo de
+  // ruido abierto. Contra el pool REAL, que es donde se reproducía.
+  it('un identificador sin forma de uuid es «no hay recibo», no una avería de la base', async () => {
+    for (const malformado of [
+      'pepito',
+      '12b00000-0000-4000-8000-00000000000',
+      '12b00000-0000-4000-8000-00000000000g',
+      "'; select 1"
+    ]) {
+      expect(
+        await loadSettlementReceipt(ADMIN_USER, FIXTURE_HOUSEHOLD, malformado, appPool),
+        malformado
+      ).toBeNull();
+    }
+  });
+
+  it('la ruta traduce ese identificador al mismo 404 que uno inexistente', async () => {
+    const event = {
+      locals: {
+        user: {
+          id: ADMIN_USER.id,
+          name: '',
+          initials: '',
+          email: '',
+          memberships: [{ householdId: FIXTURE_HOUSEHOLD, membershipId: 'fixture-membership', role: 'family_admin' }],
+          mustChangePassword: false
+        }
+      },
+      params: { householdId: FIXTURE_HOUSEHOLD, settlementId: 'pepito' },
+      setHeaders: () => {}
+    };
+
+    type FakeReceiptEvent = typeof event;
+    await expect(
+      (GET as unknown as (fakeEvent: FakeReceiptEvent) => Promise<Response>)(event)
+    ).rejects.toMatchObject({
+      status: 404,
+      body: { message: 'Esa liquidación no tiene recibo registrado' }
+    });
+  });
+
   // La ruta, llamada de verdad (no solo `loadSettlementReceipt`): el bucket
   // registrado en la fila (`fixture-documents`, ver RECEIPT_SEED) no coincide
   // con el `S3_PRIVATE_BUCKET` con el que este proceso mockeó `$env/dynamic/private`
@@ -234,5 +278,35 @@ describe.runIf(Boolean(adminUrl))('recibo PDF visible en la liquidación cerrada
       status: 503,
       body: { message: expect.stringContaining('fixture-documents') }
     });
+  });
+});
+
+/**
+ * La guarda de forma del identificador, sin base de datos delante: aquí importa
+ * que el cargador salga ANTES de pedir una conexión. Un pool que revienta al
+ * tocarlo lo demuestra sin depender de que esta máquina tenga Postgres, y deja
+ * fijado que la guarda vive en el cargador —no en la ruta—, para que la herede
+ * cualquier llamador futuro.
+ */
+describe('la forma del identificador se comprueba antes de tocar la base', () => {
+  const POOL_QUE_REVIENTA = {
+    connect: () => {
+      throw new Error('el cargador no debería llegar a pedir conexión');
+    }
+  } as unknown as pg.Pool;
+
+  it('un identificador malformado devuelve null sin consultar ni registrar nada', async () => {
+    expect(
+      await loadSettlementReceipt(ADMIN_USER, FIXTURE_HOUSEHOLD, 'pepito', POOL_QUE_REVIENTA)
+    ).toBeNull();
+  });
+
+  // El contraste, y la única línea de registro que esta suite escribe: un fallo
+  // de verdad SÍ se registra y sale como 503. Lo que se corrigió es que un
+  // identificador inventado dejara de contar como fallo de verdad.
+  it('uno bien formado sí sigue adelante (la guarda no se traga las peticiones legítimas)', async () => {
+    await expect(
+      loadSettlementReceipt(ADMIN_USER, FIXTURE_HOUSEHOLD, SETTLEMENT_WITH_RECEIPT, POOL_QUE_REVIENTA)
+    ).rejects.toMatchObject({ status: 503 });
   });
 });

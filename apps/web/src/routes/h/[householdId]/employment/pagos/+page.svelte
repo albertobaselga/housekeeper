@@ -244,7 +244,18 @@
                anunció el aviso al móvil, byte a byte. No es el documento de
                arriba —ese se dibuja al momento—, así que se nombra distinto: si
                algún día no coincidieran, quien mira tiene que poder decir cuál
-               está mirando. Entre cerrar y tenerlo pasa una vuelta de la cola. -->
+               está mirando. Entre cerrar y tenerlo pasa una vuelta de la cola.
+
+               Cuando no lo hay, la frase no promete una espera. Los meses que se
+               cerraron antes de que existiera el archivo de recibos (migración
+               0035) no tendrán fila NUNCA, salvo que alguien lance el backfill
+               del runbook: decirles «se está generando» sería una espera que no
+               termina jamás. Y separar los dos casos no se puede de forma
+               fiable: esta vista no tiene la fecha de cierre —solo el periodo, y
+               un mes puede cerrarse meses después—, y no vamos a inventar un
+               campo en la base para redactar una frase. Así que se dice una que
+               es verdad en los dos, y se señala lo que sí está disponible hoy:
+               el documento de pago de arriba, con los mismos conceptos. -->
           {#if settlement.status === 'closed'}
             <p class="audit-note">
               {#if settlement.receiptDocumentAvailable}
@@ -254,7 +265,9 @@
                   rel="noopener"
                 >Recibo archivado (PDF)</a>
               {:else}
-                El recibo archivado se está generando.
+                Sin recibo archivado: este mes se cerró antes de que se archivaran los
+                recibos, o acaba de cerrarse y aún está en la cola. El documento de pago
+                de arriba lleva los mismos conceptos.
               {/if}
             </p>
           {/if}

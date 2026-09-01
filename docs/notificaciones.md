@@ -217,15 +217,28 @@ próxima vez. Primero instalar, después avisos — nunca los dos a la vez.
 
 ### El recibo, ahora con destino
 
-El tercer aviso apunta a `/h/{hogar}/employment`, y desde la migración 0035 esa
-pantalla tiene algo que enseñar cuando se llega: si la liquidación está
-cerrada y el recibo ya se registró (`app.settlement_receipts`), un enlace
-«Recibo (PDF)» (`GET
-/api/v1/households/{hogar}/settlements/{liquidación}/receipt`, RLS decide
-quién lo ve: quien administra y la persona de ese contrato); si aún no, «El
-recibo se está generando». No es un cuarto aviso ni cambia el texto de ninguno
-de los tres — es simplemente que ahora, al abrir el enlace del aviso, hay algo
-real que ver.
+Desde la migración 0035 el aviso del recibo tiene por fin adónde llevar. El
+aviso A y el B apuntan a **`/h/{hogar}/employment/pagos`** —la pestaña Pagos,
+no la portada de Contrato, desde que el expediente se repartió en pestañas: ahí
+están el enlace al recibo y el botón de confirmar el cobro, y la portada ya no
+hace ninguna de las dos cosas (`apps/worker/src/push.ts`)—. El tercero, el de
+cerrar el mes, sigue apuntando a la portada `/h/{hogar}/employment`, que es
+donde se ve lo que queda por cerrar.
+
+Y en Pagos hay algo real que ver al llegar: si la liquidación está cerrada y el
+recibo ya se registró (`app.settlement_receipts`), un enlace **«Recibo
+archivado (PDF)»** (`GET
+/api/v1/households/{hogar}/settlements/{liquidación}/receipt`; la RLS decide
+quién lo ve: quien administra y la persona de ese contrato). Si no lo hay, la
+pantalla **no promete una espera** —«Sin recibo archivado: este mes se cerró
+antes de que se archivaran los recibos, o acaba de cerrarse y aún está en la
+cola»— y señala el documento de pago, que se dibuja al momento con los mismos
+conceptos. La razón de no prometerla está en el propio fichero: los meses
+cerrados antes de la 0035 no tendrán recibo **nunca** sin el backfill del
+runbook, y esta vista no puede distinguirlos de los que sí están en la cola.
+
+Nada de esto es un cuarto aviso ni cambia el texto de ninguno de los tres — es
+simplemente que ahora, al abrir el enlace del aviso, hay algo que enseñar.
 
 **Sobre §6.1, regla 3 («avisos disparados por ausencia de acción»): el tercer
 aviso no la incumple.** No dice «no has cerrado la cuenta» de un hecho pasado
@@ -248,7 +261,7 @@ de enviarse solo si el hecho cambiara antes del envío.
 `apps/web/src/lib/components/InstallBanner.svelte` ·
 `apps/web/src/lib/pwa/install.ts` ·
 `apps/web/src/lib/components/AppShell.svelte` ·
-`apps/web/src/routes/h/[householdId]/employment/+page.svelte` ·
+`apps/web/src/routes/h/[householdId]/employment/pagos/+page.svelte` ·
 `apps/web/src/routes/api/v1/households/[householdId]/settlements/[settlementId]/receipt/+server.ts`
 
 ---

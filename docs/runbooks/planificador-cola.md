@@ -370,10 +370,13 @@ contenido: solo identificadores técnicos.
 Antes de la migración `0035_settlement_receipt_document.sql`, `document.render_receipt`
 generaba el PDF y lo subía al almacén, pero no quedaba ningún registro en la
 base: ni documento, ni fila que dijera «este objeto es EL recibo de esta
-liquidación». Las liquidaciones cerradas ANTES de esa migración siguen así —
-el PDF existe en el bucket, pero `app.settlement_receipts` no tiene su fila, y
-`employment/+page.svelte` enseña «El recibo se está generando» para siempre en
-vez de un enlace.
+liquidación». Las liquidaciones cerradas ANTES de esa migración siguen así — el
+PDF existe en el bucket, pero `app.settlement_receipts` no tiene su fila, y la
+pestaña Pagos del Contrato (`employment/pagos/+page.svelte`) enseña «Sin recibo
+archivado» en vez de un enlace. Esa frase no promete una espera a propósito,
+porque para estos meses la espera no termina nunca sin este backfill; lo que sí
+ofrece es el documento de pago, que se dibuja al momento y lleva los mismos
+conceptos.
 
 **No hay backfill automático** (fuera de alcance, ver el diseño de este
 frente). Se corrige re-encolando el mismo trabajo: el PDF es determinista dado
@@ -473,10 +476,32 @@ commit;
 
 El resto lo hace la cola normal: el drenaje (worker o `pg_cron`) reclama cada
 `document.render_receipt`, renderiza, sube (reutilizando el objeto si ya
-existía) y esta vez SÍ registra. No se encola ningún aviso de «tu recibo ya
-está» para estos re-renders históricos —`announceReceipt` también corre, y
-avisar meses después de un recibo que ya se cobró hace tiempo sería ruido—,
-así que conviene lanzar el backfill sin claves VAPID a mano si se quiere
-evitarlo del todo, o aceptar el aviso si el canal ya está activo: no hay
-manera de re-encolar el render sin re-disparar también el aviso, porque los
-dos viven en el mismo trabajo por diseño (ver `apps/worker/src/handlers.ts`).
+existía) y esta vez SÍ registra.
+
+> **Y AVISA.** Este backfill no es silencioso. `createRenderReceiptHandler`
+> llama a `announceReceipt` justo después de subir y registrar
+> (`apps/worker/src/handlers.ts`), así que cada liquidación que entre en el
+> `insert` de arriba encola además su «El recibo de {mes} ya está» **al teléfono
+> de la persona del contrato**. Un backfill de doce meses son doce avisos de
+> meses viejos, seguidos, sobre recibos que se cobraron hace mucho: en el
+> bolsillo de alguien, y de noche no —la ventana de silencio los agrupa a la
+> mañana siguiente—, pero de golpe.
+>
+> No hay manera de re-encolar el render sin re-disparar el aviso: los dos viven
+> en el mismo trabajo **por diseño**, porque el aviso solo debe salir cuando el
+> PDF existe de verdad. Las tres salidas, y ninguna es gratis:
+>
+> 1. **Acotar el `insert`.** Es lo normal: el filtro por hogar ya está, y si le
+>    añades un `and settlement.period_start >= …` para el mes suelto que
+>    realmente falta, el aviso que sale es uno y es casi verdad.
+> 2. **Drenar sin canal.** Lanza el backfill contra un drenaje **sin las tres
+>    variables VAPID**: `createJobHandlers` cablea `announceReceipt` solo si hay
+>    claves (`apps/worker/src/registry.ts`), así que sin ellas el recibo se
+>    genera, se sube y se registra, y nadie se entera por el móvil. En Vercel eso
+>    significa quitar y volver a poner tres variables de producción, con un
+>    despliegue por medio: no es un interruptor, es una operación.
+> 3. **Aceptarlo, avisando antes.** Si el canal está activo y el backfill es
+>    corto, decírselo a ella **antes** de lanzarlo cuesta menos que las tres
+>    variables. Que el teléfono suene por sorpresa con el recibo de febrero es
+>    exactamente el tipo de ruido que este proyecto se comprometió a no hacer
+>    (`docs/notificaciones.md` §6).

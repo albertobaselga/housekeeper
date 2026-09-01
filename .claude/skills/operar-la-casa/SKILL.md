@@ -110,10 +110,12 @@ sale de la URL.
 | Personas y accesos | `/h/<hogar>/settings` | `family_admin` | [ops](referencia-operaciones.md#personas-cuentas-roles-y-caducidad) |
 | Alta de personal | `/h/<hogar>/personal` | `family_admin` | [ops](referencia-operaciones.md#personas-cuentas-roles-y-caducidad) |
 | Tu contraseña y tus avisos | `/h/<hogar>/account` | cualquiera | [ops](referencia-operaciones.md#avisos-push) |
+| Contrato (resumen del mes) | `/h/<hogar>/employment` | `settlement.read` | [ops](referencia-operaciones.md#liquidaciones-pagos-y-el-pdf) |
+| Conceptos del mes (extras, gastos, adelantos, ausencias) | `/h/<hogar>/employment/conceptos` | `settlement.read` | [ops](referencia-operaciones.md#contratos) |
+| Liquidaciones, pagos y el recibo en PDF | `/h/<hogar>/employment/pagos` | `settlement.read` | [ops](referencia-operaciones.md#liquidaciones-pagos-y-el-pdf) |
 | Contrato (alta y versiones) | `/h/<hogar>/employment/acuerdo` | `family_admin` | [ops](referencia-operaciones.md#contratos) |
 | Condiciones pactadas | `/h/<hogar>/employment/condiciones` | `agreement.read` | [ops](referencia-operaciones.md#contratos) |
 | Vacaciones | `/h/<hogar>/employment/vacaciones` | `agreement.read` | [ops](referencia-operaciones.md#vacaciones) |
-| Liquidaciones y pagos | `/h/<hogar>/employment` | `settlement.read` | [ops](referencia-operaciones.md#liquidaciones-pagos-y-el-pdf) |
 | Rutinas | `/h/<hogar>/routines` | `routine.read` | [ops](referencia-operaciones.md#rutinas) |
 | Guía de la casa | `/h/<hogar>/wiki` | `content.read` | [ops](referencia-operaciones.md#guía-de-la-casa) |
 | Contactos | `/h/<hogar>/contacts` | cualquiera | [ops](referencia-operaciones.md#contactos-y-emergencias) |
@@ -122,6 +124,14 @@ sale de la URL.
 | Recetas | `/h/<hogar>/recipes` | `content.read` | [ops](referencia-operaciones.md#menú-recetas-alérgenos-comensales-y-compra) |
 | Calendario | `/h/<hogar>/calendar` | `calendar.read` | [ops](referencia-operaciones.md#calendario-y-calendarios-enlazados) |
 | Buscar | `/h/<hogar>/search` | `search.use` | — |
+
+**Las seis rutas de `employment` son una sola pantalla en pestañas.** El
+expediente laboral se repartió porque no cabía en una página de móvil: se entra
+por el resumen del mes y se cambia de pestaña sin salir de Contrato. Importa
+saber cuál es cuál, porque **cada cosa se hace en la suya**: apuntar una jornada
+extra o un gasto, en Conceptos; cerrar el mes, registrar el pago y descargar el
+recibo, en Pagos. Buscarlas en el resumen es el error más común desde el
+rediseño.
 
 ---
 

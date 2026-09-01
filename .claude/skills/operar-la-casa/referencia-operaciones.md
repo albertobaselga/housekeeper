@@ -210,9 +210,11 @@ Desde la 0025 el horario va a **dos sitios**: la frase de siempre
 ### Trabajo extra
 
 **(a) Por dónde.** `POST /api/v1/sync`, agregado `extra_work`. Quien trabaja lo
-registra desde su pantalla de Contrato (`work.register.self`); la administración
-lo acepta, lo marca como hecho, lo resuelve (`money` o `time_off`), lo rechaza o
-lo cancela — cada transición con motivo.
+registra desde la pestaña **Conceptos** de su Contrato
+(`/h/<hogar>/employment/conceptos`, `work.register.self`); la administración lo
+acepta ahí mismo, lo marca como hecho, lo resuelve (`money` o `time_off`), lo
+rechaza o lo cancela — cada transición con motivo. Los gastos con justificante y
+los conceptos apuntados a mano viven en esa misma pestaña.
 
 **(b) Rol.** `employee_live_in` para registrar lo suyo; `family_admin` para
 `work.confirm` y resolver. La administración puede además registrar y resolver en
@@ -509,7 +511,11 @@ Puesta en marcha: [docs/runbooks/notificaciones-push.md](../../../docs/runbooks/
 
 ## Liquidaciones, pagos y el PDF
 
-**(a) Por dónde.** `/h/<hogar>/employment`. Por debajo, `POST /api/v1/sync`:
+**(a) Por dónde.** `/h/<hogar>/employment/pagos` — la pestaña **Pagos** del
+Contrato, no su portada: ahí viven las cuentas de cada mes, el botón de cerrar,
+el de registrar un pago, el de confirmar el cobro y los dos PDF. La portada
+(`/h/<hogar>/employment`) resume el mes en curso y enlaza aquí. Por debajo,
+`POST /api/v1/sync`:
 
 | Agregado | Acción | Capacidad |
 |---|---|---|
@@ -521,12 +527,28 @@ Puesta en marcha: [docs/runbooks/notificaciones-push.md](../../../docs/runbooks/
 Cerrar la cuenta del mes **encola** el trabajo `document.render_receipt`, que
 genera el PDF determinista del recibo y lo deja en el depósito privado. Desde
 la migración 0035 ese recibo queda además **registrado**
-(`app.settlement_receipts`) y **descargable** desde la propia pantalla de
-Empleo: `GET /api/v1/households/<hogar>/settlements/<liquidación>/receipt`,
-con enlace «Recibo (PDF)» — visible para quien administra y para la persona de
-ese contrato (la RLS decide, por liquidación y por empleada). Si la cuenta
-está cerrada pero el trabajo aún no ha subido el PDF, la pantalla dice «El
-recibo se está generando» en su lugar.
+(`app.settlement_receipts`) y **descargable**.
+
+**En Pagos hay dos PDF, y no son el mismo. Conviene saber cuál se está
+mirando**, porque si algún día no coincidieran, esa diferencia es la noticia:
+
+| Enlace | Ruta | Cuándo aparece | Qué es |
+|---|---|---|---|
+| «Descargar el documento de pago (PDF)» | `GET …/settlements/<liquidación>/documento` | Cualquier cuenta que ya no esté abierta | Se **dibuja al momento** a partir de la cuenta viva |
+| «Recibo archivado (PDF)» | `GET …/settlements/<liquidación>/receipt` | Cuenta cerrada **y** con su recibo ya registrado | El fichero que **archivó la cola** al cerrar: el mismo que anunció el aviso al móvil, byte a byte |
+
+Los dos los ve quien administra y la persona de ese contrato, y en los dos
+**decide la RLS**: quien no debe verlos recibe 404, no un enlace roto.
+
+Cuando no hay recibo archivado, la pantalla dice «Sin recibo archivado: este mes
+se cerró antes de que se archivaran los recibos, o acaba de cerrarse y aún está
+en la cola», y remite al documento de pago. **No promete una espera a
+propósito**: para los meses cerrados antes de la 0035 esa espera no termina
+nunca sin el backfill de
+[docs/runbooks/planificador-cola.md](../../../docs/runbooks/planificador-cola.md)
+§7 — y ese backfill **vuelve a avisar al móvil de cada mes que rehace**, así que
+se lee entero antes de lanzarlo. Para un mes recién cerrado, en cambio, el peor
+caso son cinco minutos: una vuelta de la cola.
 
 Quien trabaja se descarga **su propio** expediente (PDF + CSV) en
 `GET /api/v1/households/<hogar>/employment-export`. Esa ruta es **sólo para

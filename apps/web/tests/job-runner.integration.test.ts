@@ -178,22 +178,6 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
     expect(await jobStates(PRUNE_JOB)).toEqual([{ status: 'queued', attempts: 0 }]);
   });
 
-  it('la cabecera legada `x-casa-clara-job-token` se sigue aceptando: la manda el pg_cron ya desplegado', async () => {
-    // El planificador de producción quedó programado con el nombre anterior
-    // del proyecto y cambiarlo es una migración operativa aparte (ver
-    // docs/despliegue/identificadores-legado.md), no algo que dependa de este
-    // renombrado. Se prueba con un trabajo propio para no interferir con el
-    // resto de esta batería.
-    const legacyPrune = await enqueuePrune();
-    const legacyRequest = new Request('https://casa.ejemplo.test/api/v1/jobs/run', {
-      method: 'POST',
-      headers: { 'x-casa-clara-job-token': TOKEN }
-    });
-    const response = await runJobDrainRequest(legacyRequest, { config, pool: workerPool });
-    expect(response.status).toBe(200);
-    expect(await jobById(legacyPrune)).toEqual({ status: 'completed', attempts: 1 });
-  });
-
   it('sin configuración completa responde 503 y deja la cola quieta', async () => {
     const response = await runJobDrainRequest(drainRequest(), { config: null, pool: workerPool });
     expect(response.status).toBe(503);
@@ -317,6 +301,27 @@ describe.runIf(Boolean(adminUrl))('drenaje de la cola desde la web', () => {
       `select last_error from app_private.job_queue where status = 'dead'`
     );
     expect(dead.rows).toEqual([{ last_error: 'AbandonedJobError: el ejecutor no terminó el trabajo' }]);
+  });
+
+  /**
+   * VA LA ÚLTIMA, y no por capricho: un drenaje autorizado vacía la cola
+   * ENTERA, así que puesto antes se llevaría por delante los trabajos que los
+   * casos anteriores siembran y cuentan uno a uno. Por eso también afirma solo
+   * sobre SU trabajo (`jobById`) y nunca sobre el censo (`jobStates`).
+   */
+  it('la cabecera legada `x-casa-clara-job-token` se sigue aceptando: la manda el pg_cron ya desplegado', async () => {
+    // El planificador de producción quedó programado con el nombre anterior del
+    // proyecto y repuntarlo es una migración operativa aparte (ver
+    // docs/despliegue/identificadores-legado.md), no algo que dependa de este
+    // renombrado. Si esta prueba se cae, la cola de producción deja de drenar.
+    const legacyPrune = await enqueuePrune();
+    const legacyRequest = new Request('https://casa.ejemplo.test/api/v1/jobs/run', {
+      method: 'POST',
+      headers: { 'x-casa-clara-job-token': TOKEN }
+    });
+    const response = await runJobDrainRequest(legacyRequest, { config, pool: workerPool });
+    expect(response.status).toBe(200);
+    expect(await jobById(legacyPrune)).toEqual({ status: 'completed', attempts: 1 });
   });
 });
 
