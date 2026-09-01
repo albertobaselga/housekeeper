@@ -73,7 +73,21 @@ export type HireResult =
     }
   | { ok: false; message: string };
 
-/** Contraseña fuerte y dictable: 4 grupos de 5, ~98 bits de entropía. */
+/**
+ * Contraseña fuerte y dictable: 4 grupos de 5, 96,6 bits de MIN-entropía.
+ *
+ * La cifra no es log2(31)×20 = 99,1. `byte % 31` tiene sesgo de módulo: 256 =
+ * 8×31 + 8, así que ocho de los treinta y un símbolos salen con probabilidad
+ * 9/256 y los otros veintitrés con 8/256. Lo que mide la resistencia a que
+ * alguien adivine es el símbolo MÁS probable: −log2(9/256) × 20 = 96,6.
+ *
+ * A esta magnitud la diferencia no significa nada —los dos números están a
+ * decenas de órdenes de cualquier ataque imaginable— y por eso el sesgo se
+ * acepta en vez de corregirse con rechazo de muestra. Lo que no se acepta es
+ * que el comentario prometa de más: aquí ponía «~98 bits», y un número que
+ * nadie ha comprobado en el sitio donde se explica la criptografía es
+ * exactamente el tipo de cosa que luego se cita como si fuera un hecho.
+ */
 export function generateInitialPassword(): string {
   const bytes = randomBytes(20);
   const chars = Array.from(bytes, (byte) => DICTABLE[byte % DICTABLE.length]);
@@ -170,11 +184,18 @@ export async function hireHouseholdMember(
     createdUserId = created.user.id;
   } catch (cause) {
     const code = (cause as { body?: { code?: string } }).body?.code;
-    if (code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
-      return { ok: false, message: 'Ya hay una cuenta con ese correo.' };
-    }
-    if (code === 'USERNAME_IS_ALREADY_TAKEN') {
-      return { ok: false, message: 'Ese nombre de usuario ya está cogido. Prueba con otro.' };
+    // UN SOLO MENSAJE PARA LOS DOS CHOQUES, y no por pereza. Better Auth no
+    // está particionado por hogar: si aquí se dijera cuál de los dos ha
+    // chocado, quien administra ESTA casa podría preguntar por un correo
+    // cualquiera y averiguar si tiene cuenta en CUALQUIER otra casa del
+    // despliegue. El radio es pequeño —una instalación familiar— pero el
+    // oráculo es gratis de cerrar y sigue siendo útil a quien da de alta:
+    // cambia uno de los dos, o los dos, y sigue.
+    if (code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL' || code === 'USERNAME_IS_ALREADY_TAKEN') {
+      return {
+        ok: false,
+        message: 'Ese correo o ese nombre de usuario ya están en uso. Prueba con otros.'
+      };
     }
     log.error('identity creation failed', { code: errorCode(cause) });
     return {
