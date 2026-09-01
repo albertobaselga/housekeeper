@@ -775,6 +775,23 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 
 **Los datos migrados son reales.** Viven en el Docker local y en el informe local, nunca en git, nunca en fixtures, nunca en un test. Cualquier fichero que este ensayo produzca se guarda fuera del árbol de ambos repos.
 
+- [ ] **Step 0 (PUERTA, añadido tras la fase 1): la cadena 0001→0034 aplica con un propietario NOBYPASSRLS.** El ensayo normal corre como `ci_admin`, que es superusuario del contenedor y **puentea la RLS**, así que no reproduce Supabase y puede esconder un fallo que solo aparece en producción. Al implementar la migración 0034, el ejecutor de la fase 1 informó de que `0032_push_subscriptions.sql` podría no aplicarse bajo propietario sin BYPASSRLS: su función `app_private.push_delivery_recorded` es `LANGUAGE sql` con `SET row_security = off` y se planifica ya en el `CREATE`, dentro de la misma transacción que 230 líneas antes puso `FORCE` sobre `push_subscriptions` — donde `0018_rls_force_compat.sql` no puede intervenir → `42501`. Si eso es cierto, la cadena se detiene **antes** de 0034 y la migración de producción fallaría a mitad. Compruébalo AQUÍ, en local:
+
+  ```bash
+  cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+  export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+  docker exec casaclara-it-pg dropdb -U ci_admin --if-exists casaclara_nobypass
+  docker exec casaclara-it-pg createdb -U ci_admin casaclara_nobypass
+  # Propietario sin BYPASSRLS, como en Supabase:
+  docker exec casaclara-it-pg psql -U ci_admin -d casaclara_nobypass -c \
+    "create role cc_owner login password 'solo-local' nobypassrls createrole; alter database casaclara_nobypass owner to cc_owner;"
+  DATABASE_URL="postgresql://cc_owner:solo-local@127.0.0.1:5439/casaclara_nobypass" pnpm --filter @casa-clara/db bootstrap
+  DATABASE_URL="postgresql://cc_owner:solo-local@127.0.0.1:5439/casaclara_nobypass" pnpm db:migrate
+  ```
+
+  **Criterio:** la cadena aplica las 34 migraciones y termina sin error.
+  - Si termina en verde: el aviso no se materializa, anótalo en el informe y sigue con el Step 1.
+  - Si muere en `0032` con `42501`: está confirmado. **NO se edita `0032`** (es append-only y ya está aplicada en producción si el módulo de avisos funciona allí). Antes de nada, comprueba el estado REAL de producción —`select name from public.schema_migrations order by name` contra Supabase en solo lectura— porque si `0032` ya consta aplicada allí, el problema no afecta a la migración de producción y basta con dejarlo documentado. Si no consta, escribe una migración `0035_push_delivery_recorded_plpgsql.sql` que sustituya esa función por una equivalente en `plpgsql` (que no planifica el cuerpo en el `CREATE`), con su prueba, y repite este Step 0 hasta verde. Ninguna tarea de producción (13, 14, 15) puede empezar con este paso en rojo.
 - [ ] **Step 1: Localiza y lee ENTERO el runbook de la fase 3.**
   ```bash
   cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
