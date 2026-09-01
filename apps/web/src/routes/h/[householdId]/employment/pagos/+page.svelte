@@ -9,6 +9,11 @@
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { openSettlement } from '$lib/employment/commands';
+  import {
+    anclaDeMesEnFragmento,
+    aperturaExplicacion,
+    buildPagoMesRows
+  } from '$lib/employment/pagos';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -36,6 +41,27 @@
   const seesAmounts = $derived(
     can(context.role, 'settlement.close') || can(context.role, 'payment.confirm.self')
   );
+
+  // Una fila por mes, plegada. Las frases y la forma de la fila viven en
+  // `pagos.ts`; aquí solo se pintan.
+  const mesRows = $derived(
+    overview
+      ? buildPagoMesRows({ householdId: overview.householdId, settlements: overview.settlements })
+      : []
+  );
+
+  // El Resumen enlaza el origen de un importe ya aplicado a `#cuenta-<id>`, y
+  // ese ancla cae dentro de un `<details>` plegado: el navegador salta a la
+  // fila y lo que se venía a ver sigue escondido. `:target` no despliega un
+  // `<details>`, así que se despliega aquí, una vez, al llegar.
+  $effect(() => {
+    const anchor = anclaDeMesEnFragmento(window.location.hash);
+    if (!anchor) return;
+    const summary = document.getElementById(anchor);
+    if (!summary) return;
+    summary.closest('details')?.setAttribute('open', '');
+    summary.scrollIntoView({ block: 'start' });
+  });
 
   function monthEnd(period: string): string {
     const [year, month] = period.split('-').map(Number);
@@ -143,8 +169,9 @@
         </p>
       </article>
     {:else}
-      <!-- Empezar la cuenta es el primer acto del historial: en cuanto se abre,
-           el mes deja de sumar solo y aparece aquí abajo como una cuenta más. -->
+      <!-- Empezar la cuenta es el primer acto del historial: crea el borrador
+           del mes y lo pone aquí abajo como una fila más. Va plegado y en peso
+           secundario porque la fila que nace no se puede borrar jamás. -->
       {#if openableAccrual && !openSent}
         <details class="card open-settlement">
           <summary>Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}</summary>
@@ -158,10 +185,7 @@
             <label>¿Cuándo vence el pago?
               <input type="date" bind:value={openDueOn} min={openPeriodEnd} required />
             </label>
-            <p class="field-hint">
-              Al empezar la cuenta, {openableAccrual.periodLabel.toLocaleLowerCase('es')} se cierra a
-              revisión y deja de sumar solo.
-            </p>
+            <p class="field-hint">{aperturaExplicacion(openableAccrual.periodLabel)}</p>
             <div class="action-row">
               <button class="button secondary" type="submit">
                 Empezar la cuenta de {openableAccrual.periodLabel.toLocaleLowerCase('es')}
@@ -177,80 +201,142 @@
         <div class="section-heading">
           <div><p class="eyebrow">Cuentas de cada mes</p><h2>Historial con pagos y confirmación</h2></div>
         </div>
-        {#each overview.settlements as settlement (settlement.id)}
-          <div class="section-heading">
-            <div><h3>{settlement.periodLabel}</h3></div>
-            <span class="status-chip {settlement.fullyPaid && settlement.receiptConfirmed ? 'success' : 'warning'}">{settlement.paymentStateLabel}</span>
-          </div>
-          <div class="ledger-list" data-lista={settlement.id === overview.settlements[0]?.id ? 'principal' : undefined}>
-            {#each settlement.lines as line (line.lineNumber)}
-              <div>
-                <span>
-                  <strong>{line.concept}</strong>
-                  <small>
-                    {#if line.href}<a href={line.href}>{line.occurredOnLabel}</a>{:else}{line.occurredOnLabel}{/if}
-                    {#if line.receiptExpenseId}
-                      ·
-                      <a
-                        href={`/api/v1/households/${context.household.id}/receipts/${line.receiptExpenseId}`}
-                        target="_blank"
-                        rel="noopener"
-                      >Ver el justificante</a>
-                    {/if}
-                  </small>
-                </span>
-                <strong>{line.amountLabel}</strong>
-              </div>
-            {/each}
-            {#each settlement.payments as payment (payment.id)}
-              <div>
-                <span>
-                  <strong>Pago · {payment.methodLabel}</strong>
-                  <small>{payment.valueOnLabel}{payment.reference ? ` · ${payment.reference}` : ''}</small>
-                </span>
-                <strong>{payment.amountLabel}</strong>
-              </div>
-            {/each}
-            <div>
-              <span><strong>Pagado / pendiente</strong><small>{settlement.statusLabel} · vence el {settlement.dueOnLabel}</small></span>
-              <strong>{settlement.paidLabel} / {settlement.pendingLabel}</strong>
+        <p class="card-footnote">
+          Cada mes tiene su cuenta: se empieza, se cierra —ahí los importes quedan fijados— y se
+          paga. Toca un mes para ver su detalle.
+        </p>
+        <!-- El plegado es LIBRE, no un acordeón: sin `name` se pueden tener dos
+             meses abiertos a la vez, que es lo que se hace al comparar una
+             discrepancia entre dos cuentas. -->
+        <div class="fila-lista" data-lista="principal">
+          {#each mesRows as row (row.id)}
+            <div class="mes-fila">
+              <details class="mes">
+                <summary class="fila-accion" id={row.anchorId}>
+                  <strong class="mes-nombre">{row.periodLabel}</strong>
+                  <strong class="cifra pequena">{row.amountLabel}</strong>
+                  <span class="mes-estado">
+                    <span class="status-chip {row.chipTone}">{row.chipLabel}</span>
+                    <small>{row.supportLine}</small>
+                  </span>
+                </summary>
+                <div class="ledger-list">
+                  {#each row.settlement.lines as line (line.lineNumber)}
+                    <div>
+                      <span>
+                        <strong>{line.concept}</strong>
+                        <small>
+                          {#if line.href}<a href={line.href}>{line.occurredOnLabel}</a>{:else}{line.occurredOnLabel}{/if}
+                          {#if line.receiptExpenseId}
+                            ·
+                            <a
+                              href={`/api/v1/households/${context.household.id}/receipts/${line.receiptExpenseId}`}
+                              target="_blank"
+                              rel="noopener"
+                            >Ver el justificante</a>
+                          {/if}
+                        </small>
+                      </span>
+                      <strong class="cifra pequena">{line.amountLabel}</strong>
+                    </div>
+                  {/each}
+                  {#each row.settlement.payments as payment (payment.id)}
+                    <div>
+                      <span>
+                        <strong>Pago · {payment.methodLabel}</strong>
+                        <small>{payment.valueOnLabel}{payment.reference ? ` · ${payment.reference}` : ''}</small>
+                      </span>
+                      <strong class="cifra pequena">{payment.amountLabel}</strong>
+                    </div>
+                  {/each}
+                  <!-- El total ya está en la fila cerrada; aquí solo se reparte
+                       entre lo pagado y lo que queda. Una fila cada uno: las
+                       dos cifras juntas en la misma no caben a 320 px y
+                       aplastaban su propio rótulo. -->
+                  <div>
+                    <span><strong>Pagado</strong></span>
+                    <strong class="cifra pequena">{row.settlement.paidLabel}</strong>
+                  </div>
+                  <div>
+                    <span><strong>Pendiente</strong></span>
+                    <strong class="cifra pequena">{row.settlement.pendingLabel}</strong>
+                  </div>
+                </div>
+                {#if row.receiptNote}
+                  <p class="audit-note">Al confirmar el cobro, la empleada anotó: {row.receiptNote}</p>
+                {/if}
+                <SettlementActions
+                  householdId={overview.householdId}
+                  settlement={row.settlement}
+                  canClose={canCloseSettlement}
+                  canRecordPayment={canRecordPayment}
+                  canConfirmReceipt={canConfirmReceipt}
+                />
+              </details>
+              <!-- El documento de pago se descarga SIN desplegar el mes: por eso
+                   el enlace vive fuera del `<summary>`, que si no se disputaría
+                   el dedo con el plegado. En la fila solo cabe «PDF»; el nombre
+                   entero va en el `aria-label`. El nombre del fichero lo pone el
+                   servidor (content-disposition) y el atributo va sin valor para
+                   no prometer otro. Quien no debe verlo no ve este enlace, y el
+                   servidor responde 404 igualmente. -->
+              {#if row.documentHref}
+                <a
+                  class="button secondary small-button"
+                  href={row.documentHref}
+                  aria-label={row.documentLabel}
+                  download
+                >PDF</a>
+              {/if}
             </div>
-          </div>
-          <div class="ledger-total"><span>Total a pagar</span><strong>{settlement.transferTotalLabel}</strong></div>
-          <p class="audit-note">
-            {#if settlement.receiptConfirmed}
-              Cobro confirmado por la empleada{settlement.receiptNote ? `: ${settlement.receiptNote}` : '.'}
-            {:else}
-              La empleada aún no ha confirmado el cobro.
-            {/if}
-          </p>
-          <!-- El documento de pago con todos los conceptos, generado al momento
-               con los mismos datos que esta tarjeta. Solo para cuentas ya
-               cerradas: la abierta aún no tiene líneas congeladas y su
-               documento no diría ningún importe. El nombre del fichero lo pone
-               el servidor (content-disposition); el atributo va sin valor para
-               no prometer otro. Quien no debe verlo no ve este enlace, y el
-               servidor responde 404 igualmente. -->
-          {#if settlement.status !== 'open'}
-            <div class="action-row">
-              <a
-                class="button secondary small-button"
-                href={`/api/v1/households/${overview.householdId}/settlements/${settlement.id}/documento`}
-                download
-              >Descargar el documento de pago (PDF)</a>
-            </div>
-          {/if}
-          <SettlementActions
-            householdId={overview.householdId}
-            {settlement}
-            canClose={canCloseSettlement}
-            canRecordPayment={canRecordPayment}
-            canConfirmReceipt={canConfirmReceipt}
-          />
-        {:else}
-          <p class="audit-note">Todavía no hay cuentas de meses empezadas ni cerradas.</p>
-        {/each}
+          {:else}
+            <p class="audit-note">Todavía no hay cuentas de meses empezadas ni cerradas.</p>
+          {/each}
+        </div>
       </article>
     {/if}
   {/if}
 </div>
+
+<style>
+  /* LA FILA DE UN MES.
+     El mes ocupa el ancho y el enlace del documento vive FUERA del `<details>`:
+     un enlace dentro del `<summary>` se disputa el dedo con el plegado, y la
+     descarga tiene que poder hacerse sin desplegar nada. */
+  .mes-fila {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-3);
+    border-top: 1px solid var(--line);
+  }
+  .mes-fila:first-child { border-top: 0; }
+  .mes-fila > details { min-width: 0; }
+  .mes-fila > a { align-self: center; }
+  /* La diana de 56 px y la rejilla las pone `.fila-accion`; el borde superior
+     lo pone la fila entera, que abarca también el enlace del documento. */
+  .mes-fila summary {
+    border-top: 0;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  /* El mes se pulsa, y hay que verlo sin gastar un icono: el mismo subrayado
+     punteado que ya distingue el título de una rutina desplegable. */
+  .mes-nombre {
+    text-decoration-line: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: .25rem;
+  }
+  /* El estado se lleva su propia línea. A 320 px un chip de «Pagada · cobro sin
+     confirmar» y el importe no caben en la misma sin aplastar el nombre del
+     mes, y el importe es el que no se puede mover. */
+  .mes-estado {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-2);
+    min-width: 0;
+    grid-column: 1 / -1;
+  }
+  .mes[open] > summary { border-bottom: 1px solid var(--line); }
+</style>
