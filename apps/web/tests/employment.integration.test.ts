@@ -270,19 +270,24 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     // aplicar y ya no hay nada que decidir sobre él, así que deja de ocupar
     // sitio en una pantalla que solo enseña lo que sigue vivo. Su rastro sigue
     // entero en la base: la tabla es append-only y nada se ha borrado.
-    expect(overview!.manualAdjustments.map((row) => row.id)).toEqual([
+    // Se comparan ordenados y se busca cada uno por su id: los cuatro se
+    // apuntaron en el mismo mes y en la misma sentencia, así que comparten
+    // `recorded_at` al microsegundo y entre ellos no hay orden que exigir.
+    const suyos = overview!.manualAdjustments;
+    expect(suyos.map((row) => row.id).sort()).toEqual([
       'eb100000-0000-4000-8000-000000000001',
       'eb100000-0000-4000-8000-000000000002',
       'eb100000-0000-4000-8000-000000000003'
     ]);
-    expect(overview!.manualAdjustments[0]).toMatchObject({
+    const porId = (id: string) => suyos.find((row) => row.id.endsWith(id))!;
+    expect(porId('001')).toMatchObject({
       periodLabel: 'Agosto 2026',
       transferLabel: 'Se suma a la transferencia',
       voided: false
     });
-    expect(overview!.manualAdjustments[1]!.transferLabel).toBe('Consta, no se transfiere');
-    expect(overview!.manualAdjustments[2]!.deferralNote).toContain('ya estaba cerrada');
-    expect(overview!.manualAdjustments.some((row) => row.voided)).toBe(false);
+    expect(porId('002').transferLabel).toBe('Consta, no se transfiere');
+    expect(porId('003').deferralNote).toContain('ya estaba cerrada');
+    expect(suyos.some((row) => row.voided)).toBe(false);
 
     // Y a quien no le corresponde verlos, RLS no le devuelve ninguno.
     const member = await loadEmploymentOverview(

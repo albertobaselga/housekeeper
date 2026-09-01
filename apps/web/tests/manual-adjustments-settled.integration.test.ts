@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { loadEmploymentOverview } from '../src/lib/server/employment.server';
+import {
+  employmentHrefBases,
+  loadEmploymentOverview
+} from '../src/lib/server/employment.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -15,6 +18,17 @@ const APP_LOGIN = 'it_casa_clara_ajustes_login';
 const AJUSTES_DB = 'casaclara_ajustes_it';
 
 const ADMIN_USER = { id: 'fixture:roble:admin' };
+// El mismo administrador, con la identidad entera que pide el constructor de
+// bases: de él solo sale qué pestaña de contrato enseñar, y la de Pagos —la
+// que aquí se comprueba— no depende del rol.
+const ADMIN_DEMO = {
+  ...ADMIN_USER,
+  name: 'Administración',
+  initials: 'AD',
+  email: 'admin@casa.test',
+  memberships: [],
+  mustChangePassword: false
+};
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
 const AGREEMENT = '12000000-0000-4000-8000-000000000001';
 const EMPLOYEE_M = '11000000-0000-4000-8000-000000000003';
@@ -181,19 +195,29 @@ describe.runIf(Boolean(adminUrl))('conceptos a mano: a la página solo llega lo 
     // La trampa del cambio: la cuenta de septiembre se cerró el día 12 y el mes
     // sigue corriendo. Si el concepto ya aplicado desapareciera también del
     // devengo, el «Total previsto del mes» diría más de lo que se pagó.
-    const overview = await loadEmploymentOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    const overview = await loadEmploymentOverview(
+      ADMIN_USER,
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      NOW,
+      null,
+      // Con las bases de verdad: el enlace de cada origen es media prueba.
+      employmentHrefBases(ADMIN_DEMO, FIXTURE_HOUSEHOLD, AGREEMENT)
+    );
     const lineas = overview!.accrual!.lines.filter((line) => line.kind === 'adjustment');
     expect(lineas.map((line) => line.concept)).toEqual([
       'IT Pendiente de aplicar',
       'IT Aplicado en el mes en curso'
     ]);
-    // Y el que ya está en la nómina enlaza a Pagos, no a Conceptos: en Conceptos
-    // ya no está, así que el clic no llevaría a ninguna parte.
+    // Y el que ya está en la nómina enlaza a su mes de Pagos, no a Conceptos:
+    // de Conceptos ya salió, así que el clic no llevaría a ninguna parte.
     const aplicada = lineas.find((line) => line.concept === 'IT Aplicado en el mes en curso');
-    expect(aplicada!.href).toContain(`#cuenta-${NOMINA_SEPTIEMBRE}`);
-    expect(aplicada!.href).toContain('/employment/pagos');
+    expect(aplicada!.href).toBe(
+      `/h/${FIXTURE_HOUSEHOLD}/employment/pagos?empleada=${AGREEMENT}#cuenta-${NOMINA_SEPTIEMBRE}`
+    );
     const pendiente = lineas.find((line) => line.concept === 'IT Pendiente de aplicar');
-    expect(pendiente!.href).toContain('/employment/conceptos#concepto-');
+    expect(pendiente!.href).toContain('/employment/conceptos?empleada=');
+    expect(pendiente!.href).toContain('#concepto-');
   });
 
   it('la empleada ve la misma verdad: sus conceptos ya aplicados no vuelven como pendientes', async () => {
