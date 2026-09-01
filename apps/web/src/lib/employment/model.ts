@@ -209,13 +209,16 @@ export interface ManualAdjustmentRow {
   status: 'recorded' | 'voided';
   voidReason: string | null;
   /**
-   * Mes de la nómina que YA lo materializó como línea (`settlement_lines.
-   * manual_adjustment_id`, 0022), o null si sigue pendiente de aplicarse. Es
-   * la verdad que separa «cuenta en el mes que toque» de «ya contó»: sin
-   * ella, un adelanto de agosto seguía ofreciéndose en septiembre como si
-   * nadie lo hubiera pagado.
+   * Nómina cerrada que YA lo materializó como línea (`settlement_lines.
+   * manual_adjustment_id`, 0022), o null si sigue pendiente de aplicarse.
+   *
+   * Solo lo pide la consulta que alimenta el devengo del mes en curso, y solo
+   * para una cosa: saber a dónde enlazar su origen. Lo ya aplicado no está en
+   * Conceptos —esa pestaña lista lo que queda por resolver— sino en su mes de
+   * Pagos, y el enlace tiene que llevar ahí. La lista de la página ni siquiera
+   * trae estas filas: las descarta Postgres.
    */
-  settledPeriod: string | null;
+  settledSettlementId?: string | null;
 }
 
 /**
@@ -569,10 +572,6 @@ export interface ManualAdjustmentView {
   deferralNote: string;
   voided: boolean;
   voidReason: string | null;
-  /** true = ya materializado como línea de una nómina cerrada. */
-  settled: boolean;
-  /** «Aplicado en la nómina de agosto 2026», o null si sigue pendiente. */
-  settledLabel: string | null;
 }
 
 export interface SettlementLineView {
@@ -936,8 +935,45 @@ export interface SourceHrefBases {
   conceptos: string;
   /** Ruta del Resumen: los anticipos viven en sus saldos. */
   resumen: string;
+  /** Ruta de Pagos: la casa de todo lo que ya cerró una nómina. */
+  pagos: string;
   /** Donde quien mira lee las versiones del contrato. */
   contrato: string;
+}
+
+/** Las pestañas del expediente, con el nombre que tienen en la ruta. */
+export type EmploymentTab =
+  | 'resumen'
+  | 'conceptos'
+  | 'vacaciones'
+  | 'pagos'
+  | 'acuerdo'
+  | 'condiciones';
+
+const EMPLOYMENT_TAB_PATHS: Record<EmploymentTab, string> = {
+  resumen: '',
+  conceptos: '/conceptos',
+  vacaciones: '/vacaciones',
+  pagos: '/pagos',
+  acuerdo: '/acuerdo',
+  condiciones: '/condiciones'
+};
+
+/**
+ * El destino de una pestaña del expediente, con la persona elegida y, si hace
+ * falta, el ancla. Un único constructor porque la cadena `?empleada=` se
+ * escribía a mano en cuatro sitios: basta con que uno escape distinto —o se
+ * olvide de escapar— para que el enlace aterrice en el expediente de otra
+ * persona, o en ninguno.
+ */
+export function employmentTabHref(
+  householdId: string,
+  tab: EmploymentTab,
+  empleada?: string | null,
+  anchor?: string | null
+): string {
+  const query = empleada ? `?empleada=${encodeURIComponent(empleada)}` : '';
+  return `/h/${householdId}/employment${EMPLOYMENT_TAB_PATHS[tab]}${query}${anchor ? `#${anchor}` : ''}`;
 }
 
 /**
@@ -964,10 +1000,16 @@ export function sourceAnchor(
       return `${bases?.resumen ?? ''}#anticipo-${sourceId}`;
     case 'gastos':
       return `${bases?.resumen ?? ''}#gasto-${sourceId}`;
-    // Los conceptos a mano sí viven enteros en Conceptos: la tarjeta lista
-    // también los ya apuntados, con su ancla `concepto-…`.
+    // Conceptos lista los que aún no ha aplicado ninguna nómina, con su ancla
+    // `concepto-…`; lo aplicado se lee en su nómina, en Pagos.
     case 'ajustes':
       return `${bases?.conceptos ?? ''}#concepto-${sourceId}`;
+    // Un concepto que una nómina cerrada ya materializó no está en Conceptos:
+    // esa pestaña es la bandeja de lo que queda por resolver. Su sitio pasa a
+    // ser el mes de Pagos donde se pagó, así que el ancla es la CUENTA, no el
+    // concepto, y `sourceId` es el id de la liquidación.
+    case 'ajustes-aplicados':
+      return `${bases?.pagos ?? ''}#cuenta-${sourceId}`;
     default:
       return null;
   }
@@ -1332,9 +1374,12 @@ export interface AccrualFacts {
   /** Complementos de la versión vigente el primer día del periodo. */
   supplements?: readonly RecurringSupplementRow[];
   /**
-   * Conceptos apuntados a mano IMPUTADOS a este mes y sin anular. Se filtran
-   * por el mes que decidió quien los apuntó, no por ninguna fecha de hecho:
-   * eso es exactamente lo que significa «que se contabilicen el mes que toque».
+   * Conceptos apuntados a mano IMPUTADOS a este mes. Se filtran por el mes que
+   * decidió quien los apuntó, no por ninguna fecha de hecho: eso es exactamente
+   * lo que significa «que se contabilicen el mes que toque». Vienen TODOS los
+   * del mes, también los que una nómina cerrada ya materializó: descartarlos
+   * haría que el total previsto dijera más de lo que se pagó de verdad. Lo
+   * anulado lo descarta este mismo cálculo, que solo cuenta lo `recorded`.
    */
   adjustments?: readonly ManualAdjustmentRow[];
   /** Sin bases, los orígenes enlazan como fragmento en la misma página. */
@@ -1421,6 +1466,16 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
   // calcula dinero y no tiene por qué saber quién apuntó la jornada.
   const originByExtraId = new Map(facts.extras.map((row) => [row.id, row.origin]));
 
+  // La cuenta que ya materializó cada concepto, si alguna lo hizo. Pasa entre
+  // cerrar la nómina del mes en curso y que el mes cambie: durante esos días
+  // el concepto sigue en el devengo (se pagó, y el total tiene que decirlo)
+  // pero ya no está en Conceptos, así que su enlace tiene que llevar a Pagos.
+  const settlementByAdjustmentId = new Map(
+    (facts.adjustments ?? [])
+      .filter((row) => row.settledSettlementId)
+      .map((row) => [row.id, row.settledSettlementId as string])
+  );
+
   const lines: AccrualLineView[] = projection.lines.map((line) => {
     const anchorId =
       line.sourceType === 'jornadas-extra'
@@ -1432,6 +1487,8 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
             : null;
     const origin =
       line.sourceType === 'jornadas-extra' ? originByExtraId.get(line.sourceId) : undefined;
+    const settledIn =
+      line.sourceType === 'ajustes' ? settlementByAdjustmentId.get(line.sourceId) : undefined;
     return {
       id: line.id,
       anchorId,
@@ -1442,7 +1499,9 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
       sourceType: line.sourceType,
       sourceId: line.sourceId,
-      href: sourceAnchor(line.sourceType, line.sourceId, facts.hrefBases),
+      href: settledIn
+        ? sourceAnchor('ajustes-aplicados', settledIn, facts.hrefBases)
+        : sourceAnchor(line.sourceType, line.sourceId, facts.hrefBases),
       originLabel: origin === undefined ? null : extraWorkOriginLabel(origin)
     };
   });
@@ -1480,9 +1539,11 @@ const TRANSFER_LABELS = {
 
 /**
  * Lista de conceptos apuntados a mano, del mes más reciente al más antiguo.
- * Los anulados vienen dentro, no fuera: la corrección es parte del rastro y
- * esconderla convertiría la lista en un resumen, que es justo lo contrario de
- * lo que un expediente append-only promete.
+ * Lo que llega aquí es, por construcción, lo que queda por resolver: quien
+ * decide qué entra es la consulta del servidor, que deja fuera lo anulado y lo
+ * que una nómina cerrada ya materializó. El expediente no pierde nada —sigue
+ * siendo append-only y lo aplicado se lee en su mes, en Pagos—; lo que cambia
+ * es que esta lista es una bandeja de decisiones y no un archivo.
  */
 export function buildManualAdjustmentViews(
   rows: readonly ManualAdjustmentRow[]
@@ -1501,12 +1562,7 @@ export function buildManualAdjustmentViews(
       transferLabel: row.addsToPay ? TRANSFER_LABELS.adds : TRANSFER_LABELS.noted,
       deferralNote: row.deferralNote,
       voided: row.status === 'voided',
-      voidReason: row.voidReason,
-      settled: row.settledPeriod !== null,
-      settledLabel:
-        row.settledPeriod === null
-          ? null
-          : `Aplicado en la nómina de ${periodLabel(row.settledPeriod).toLocaleLowerCase('es')}`
+      voidReason: row.voidReason
     }));
 }
 

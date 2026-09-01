@@ -20,6 +20,7 @@ import {
   currentLocalDate,
   currentPeriod,
   currentVacationYear,
+  employmentTabHref,
   type AdvanceRow,
   type AgreementRow,
   type AgreementVersionRow,
@@ -59,16 +60,15 @@ export function employmentHrefBases(
   householdId: string,
   empleada: string | null = null
 ): SourceHrefBases {
-  const base = `/h/${householdId}/employment`;
-  const query = empleada ? `?empleada=${encodeURIComponent(empleada)}` : '';
   // Algún llamante (y las pruebas de averías) trae un usuario con solo el id:
   // sin membresías nadie administra, y la base inocua es la de condiciones.
   const role = user && Array.isArray(user.memberships) ? membershipIn(user, householdId)?.role : undefined;
-  const contrato = can(role, 'agreement.write') ? `${base}/acuerdo` : `${base}/condiciones`;
+  const contrato = can(role, 'agreement.write') ? 'acuerdo' : 'condiciones';
   return {
-    conceptos: `${base}/conceptos${query}`,
-    resumen: `${base}${query}`,
-    contrato: `${contrato}${query}`
+    conceptos: employmentTabHref(householdId, 'conceptos', empleada),
+    resumen: employmentTabHref(householdId, 'resumen', empleada),
+    pagos: employmentTabHref(householdId, 'pagos', empleada),
+    contrato: employmentTabHref(householdId, contrato, empleada)
   };
 }
 
@@ -266,14 +266,59 @@ export async function loadEmploymentOverview(
         [householdId, agreement.id, `${vacationYear}-01-01`, `${vacationYear}-12-31`]
       );
 
-      // Conceptos apuntados a mano (0022). Se piden por `period_month` —el mes
-      // que decidió quien los apuntó— y no por la fecha en que se escribieron:
-      // un concepto de marzo apuntado en abril pertenece a la cuenta de marzo.
-      // La ventana llega hasta un año atrás y no corta por delante, porque un
-      // concepto puede estar imputado a un mes que aún no ha llegado (elegido a
-      // propósito o aplazado por un cierre). Los anulados vienen también: se
-      // listan tachados y el devengo los descarta.
-      const manualAdjustments = await client.query<ManualAdjustmentRow>(
+      // Conceptos apuntados a mano (0022) que TODAVÍA esperan decisión: es lo
+      // único que la página lista. Se piden por `period_month` —el mes que
+      // decidió quien los apuntó— y no por la fecha en que se escribieron: un
+      // concepto de marzo apuntado en abril pertenece a la cuenta de marzo. La
+      // ventana no corta por delante, porque un concepto puede estar imputado a
+      // un mes que aún no ha llegado (elegido a propósito o aplazado por un
+      // cierre); hacia atrás bastan tres meses, porque lo único que puede
+      // quedar viejo es un pendiente que nunca se cerró y el historial se lee
+      // en Pagos.
+      //
+      // Fuera lo anulado y fuera lo que una nómina CERRADA ya materializó: un
+      // adelanto de agosto ya descontado en la nómina de agosto no es un
+      // concepto de septiembre, y obligar a descartarlo cada mes es trabajo que
+      // esta pantalla no debería pedir. No se pierde nada: la nómina cerrada
+      // lista todas sus líneas en Pagos y el documento de pago las repite.
+      // `closed` y no cualquier estado: el enum admite 'void' (0003) y el día
+      // que se pueda anular una nómina sus conceptos tienen que volver aquí.
+      const pendingAdjustments = await client.query<ManualAdjustmentRow>(
+        `select id,
+                to_char(period_month, 'YYYY-MM') as "period",
+                to_char(requested_period_month, 'YYYY-MM') as "requestedPeriod",
+                label,
+                reason,
+                amount_cents::text as "amountCents",
+                adds_to_pay as "addsToPay",
+                deferral_note as "deferralNote",
+                status::text as "status",
+                void_reason as "voidReason"
+           from app.manual_adjustments
+          where household_id = $1 and agreement_id = $2
+            and status = 'recorded'
+            and period_month >= (date_trunc('month', $3::date) - interval '2 months')::date
+            and not exists (
+              select 1
+                from app.settlement_lines as linea
+                join app.settlements as nomina
+                  on nomina.household_id = linea.household_id
+                 and nomina.id = linea.settlement_id
+               where linea.household_id = manual_adjustments.household_id
+                 and linea.manual_adjustment_id = manual_adjustments.id
+                 and nomina.status = 'closed')
+          order by period_month desc, recorded_at desc`,
+        [householdId, agreement.id, first]
+      );
+
+      // Y aparte, los del MES EN CURSO para el devengo, que necesita otra cosa:
+      // trae también lo que una nómina cerrada de este mismo mes ya materializó.
+      // La cuenta se puede cerrar el 28 con tres días de mes por delante; si
+      // aquí faltara lo ya pagado, el «Total previsto del mes» diría más de lo
+      // que la nómina pagó de verdad, que es dinero mintiendo en pantalla.
+      // De ahí sale también a dónde enlaza cada línea: lo ya aplicado se lee en
+      // Pagos, no en Conceptos, donde ya no está.
+      const monthAdjustments = await client.query<ManualAdjustmentRow>(
         `select id,
                 to_char(period_month, 'YYYY-MM') as "period",
                 to_char(requested_period_month, 'YYYY-MM') as "requestedPeriod",
@@ -284,7 +329,7 @@ export async function loadEmploymentOverview(
                 deferral_note as "deferralNote",
                 status::text as "status",
                 void_reason as "voidReason",
-                (select to_char(nomina.period_start, 'YYYY-MM')
+                (select nomina.id
                    from app.settlement_lines as linea
                    join app.settlements as nomina
                      on nomina.household_id = linea.household_id
@@ -292,11 +337,11 @@ export async function loadEmploymentOverview(
                   where linea.household_id = manual_adjustments.household_id
                     and linea.manual_adjustment_id = manual_adjustments.id
                     and nomina.status = 'closed'
-                  limit 1) as "settledPeriod"
+                  limit 1) as "settledSettlementId"
            from app.manual_adjustments
           where household_id = $1 and agreement_id = $2
-            and period_month >= (date_trunc('month', $3::date) - interval '11 months')::date
-          order by period_month desc, recorded_at desc`,
+            and period_month = date_trunc('month', $3::date)::date
+          order by recorded_at`,
         [householdId, agreement.id, first]
       );
 
@@ -543,7 +588,7 @@ export async function loadEmploymentOverview(
           supplements: supplements.rows.filter(
             (row) => row.agreementVersionId === (versionInForce?.id ?? '')
           ),
-          adjustments: manualAdjustments.rows.filter((row) => row.period === period),
+          adjustments: monthAdjustments.rows,
           hrefBases
         }),
         settlements: buildSettlementViews(
@@ -570,7 +615,7 @@ export async function loadEmploymentOverview(
                 agreementEndsOn: agreement.endsOn,
                 periods: vacationPeriods.rows
               }),
-        manualAdjustments: buildManualAdjustmentViews(manualAdjustments.rows),
+        manualAdjustments: buildManualAdjustmentViews(pendingAdjustments.rows),
         balances: {
           compensation: buildCompensationBalanceViews(compensation.rows),
           advances: buildAdvanceBalanceViews(advances.rows)
@@ -718,6 +763,9 @@ export async function loadEmploymentPortada(
         [householdId, ids]
       );
 
+      // Sin la nómina que ya los materializó: la portada no pinta el origen de
+      // ninguna línea, así que esa subconsulta correlacionada se calculaba por
+      // cada concepto de cada empleada para tirarla a la basura.
       const adjustments = await client.query<ManualAdjustmentRow & { agreementId: string }>(
         `select agreement_id as "agreementId",
                 id,
@@ -729,16 +777,7 @@ export async function loadEmploymentPortada(
                 adds_to_pay as "addsToPay",
                 deferral_note as "deferralNote",
                 status::text as "status",
-                void_reason as "voidReason",
-                (select to_char(nomina.period_start, 'YYYY-MM')
-                   from app.settlement_lines as linea
-                   join app.settlements as nomina
-                     on nomina.household_id = linea.household_id
-                    and nomina.id = linea.settlement_id
-                  where linea.household_id = manual_adjustments.household_id
-                    and linea.manual_adjustment_id = manual_adjustments.id
-                    and nomina.status = 'closed'
-                  limit 1) as "settledPeriod"
+                void_reason as "voidReason"
            from app.manual_adjustments
           where household_id = $1 and agreement_id = any($2::uuid[])
             and period_month = date_trunc('month', $3::date)::date

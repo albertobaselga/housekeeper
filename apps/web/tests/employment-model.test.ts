@@ -20,6 +20,7 @@ import {
   currentLocalDate,
   currentPeriod,
   currentVacationYear,
+  employmentTabHref,
   formatCents,
   formatMinutes,
   parseCents,
@@ -272,8 +273,7 @@ describe('vacaciones del año en curso', () => {
       calendarDays: 15,
       note: 'Quincena de agosto',
       status: 'recorded' as const,
-      voidReason: null,
-      settledPeriod: null
+      voidReason: null
     },
     {
       id: 'p2',
@@ -282,8 +282,7 @@ describe('vacaciones del año en curso', () => {
       calendarDays: 5,
       note: 'Apuntado por error',
       status: 'voided' as const,
-      voidReason: 'Las fechas eran otras',
-      settledPeriod: null
+      voidReason: 'Las fechas eran otras'
     }
   ];
 
@@ -320,8 +319,7 @@ describe('vacaciones del año en curso', () => {
           calendarDays: 1,
           note: '',
           status: 'recorded' as const,
-          voidReason: null,
-          settledPeriod: null
+          voidReason: null
         }
       ]
     });
@@ -387,8 +385,7 @@ describe('vacaciones del año en curso', () => {
         calendarDays: 13,
         note: '',
         status: 'recorded' as const,
-        voidReason: null,
-        settledPeriod: null
+        voidReason: null
       }
     ];
     expect(
@@ -633,6 +630,7 @@ describe('liquidaciones y saldos', () => {
     const bases = {
       conceptos: '/h/H/employment/conceptos',
       resumen: '/h/H/employment',
+      pagos: '/h/H/employment/pagos',
       contrato: '/h/H/employment/acuerdo'
     };
     expect(sourceAnchor('jornadas-extra', 'e1', bases)).toBe('/h/H/employment#extra-e1');
@@ -656,8 +654,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: true,
       deferralNote: '',
       status: 'recorded',
-      voidReason: null,
-      settledPeriod: null
+      voidReason: null
     },
     {
       id: 'c2',
@@ -669,8 +666,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: false,
       deferralNote: '',
       status: 'recorded',
-      voidReason: null,
-      settledPeriod: null
+      voidReason: null
     },
     {
       id: 'c3',
@@ -682,8 +678,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: true,
       deferralNote: '',
       status: 'voided',
-      voidReason: 'Se apuntó dos veces',
-      settledPeriod: null
+      voidReason: 'Se apuntó dos veces'
     }
   ];
 
@@ -745,8 +740,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
         deferralNote:
           'Se pidió para agosto de 2026, pero esa cuenta ya estaba cerrada: se imputa a septiembre de 2026.',
         status: 'recorded',
-        voidReason: null,
-        settledPeriod: null
+        voidReason: null
       }
     ]);
     expect(views.map((view) => view.id)).toEqual(['c4', 'c3']);
@@ -889,43 +883,74 @@ describe('la portada del hogar', () => {
   });
 });
 
-describe('conceptos ya aplicados en una nómina', () => {
-  it('marca settled con la nómina que lo materializó, y lo demás queda pendiente', () => {
-    const views = buildManualAdjustmentViews([
-      {
-        id: 'c-ap',
-        period: '2026-08',
-        requestedPeriod: '2026-08',
-        label: 'Adelanto entregado',
-        reason: 'Entregado a cuenta',
-        amountCents: '-15000',
-        addsToPay: true,
-        deferralNote: '',
-        status: 'recorded',
-        voidReason: null,
-        // La nómina de agosto ya lo materializó como línea: no puede volver a
-        // ofrecerse como pendiente en septiembre.
-        settledPeriod: '2026-08'
-      },
-      {
-        id: 'c-pe',
-        period: '2026-09',
-        requestedPeriod: '2026-09',
-        label: 'Gratificación de verano',
-        reason: 'Acordada al volver',
-        amountCents: '5000',
-        addsToPay: true,
-        deferralNote: '',
-        status: 'recorded',
-        voidReason: null,
-        settledPeriod: null
-      }
-    ]);
-    const aplicado = views.find((view) => view.id === 'c-ap')!;
-    expect(aplicado.settled).toBe(true);
-    expect(aplicado.settledLabel).toBe('Aplicado en la nómina de agosto 2026');
-    const pendiente = views.find((view) => view.id === 'c-pe')!;
-    expect(pendiente.settled).toBe(false);
-    expect(pendiente.settledLabel).toBeNull();
+describe('el destino de cada pestaña', () => {
+  it('escribe la persona elegida siempre igual, y la escapa', () => {
+    expect(employmentTabHref('H', 'resumen')).toBe('/h/H/employment');
+    expect(employmentTabHref('H', 'conceptos', 'a 1')).toBe(
+      '/h/H/employment/conceptos?empleada=a%201'
+    );
+    expect(employmentTabHref('H', 'pagos', 'a1', 'cuenta-s1')).toBe(
+      '/h/H/employment/pagos?empleada=a1#cuenta-s1'
+    );
+    // Sin persona no hay pregunta: el hogar de una sola empleada no arrastra
+    // una cadena vacía detrás de cada enlace.
+    expect(employmentTabHref('H', 'vacaciones', null)).toBe('/h/H/employment/vacaciones');
+    expect(employmentTabHref('H', 'acuerdo', 'a1')).toBe('/h/H/employment/acuerdo?empleada=a1');
+  });
+
+  it('el origen de un concepto ya aplicado lleva a su mes de Pagos', () => {
+    // Entre cerrar la cuenta del mes en curso y que cambie el mes, el concepto
+    // sigue en el devengo pero ya no está en Conceptos. Enlazarlo allí sería
+    // mandar al lector a una página que no lo tiene.
+    const bases = {
+      conceptos: '/h/H/employment/conceptos',
+      resumen: '/h/H/employment',
+      pagos: '/h/H/employment/pagos?empleada=a1',
+      contrato: '/h/H/employment/acuerdo'
+    };
+    const accrual = buildAccrual({
+      period: '2026-08',
+      versions: VERSIONS,
+      extras: [],
+      advances: [],
+      expenses: [],
+      adjustments: [
+        {
+          id: 'c-ap',
+          period: '2026-08',
+          requestedPeriod: '2026-08',
+          label: 'Adelanto entregado',
+          reason: 'Entregado a cuenta',
+          amountCents: '-15000',
+          addsToPay: true,
+          deferralNote: '',
+          status: 'recorded',
+          voidReason: null,
+          settledSettlementId: 's1'
+        },
+        {
+          id: 'c-pe',
+          period: '2026-08',
+          requestedPeriod: '2026-08',
+          label: 'Gratificación de verano',
+          reason: 'Acordada al volver',
+          amountCents: '5000',
+          addsToPay: true,
+          deferralNote: '',
+          status: 'recorded',
+          voidReason: null
+        }
+      ],
+      hrefBases: bases
+    });
+    // Los dos siguen contando en el total: la nómina cerrada del propio mes ya
+    // pagó el adelanto, y descontarlo del devengo lo haría decir de más.
+    expect(accrual!.lines.filter((line) => line.kind === 'adjustment')).toHaveLength(2);
+    expect(accrual!.lines.find((line) => line.sourceId === 'c-ap')!.href).toBe(
+      '/h/H/employment/pagos?empleada=a1#cuenta-s1'
+    );
+    expect(accrual!.lines.find((line) => line.sourceId === 'c-pe')!.href).toBe(
+      '/h/H/employment/conceptos#concepto-c-pe'
+    );
   });
 });

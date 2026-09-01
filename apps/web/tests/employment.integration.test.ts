@@ -265,12 +265,15 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
       }
     ]);
 
-    // La lista los trae todos, anulado incluido, con su mes y su explicación.
+    // Ella ve los suyos con su mes y su explicación, incluido el que se aplazó
+    // desde un mes cerrado. El anulado NO está: ninguna nómina lo llegó a
+    // aplicar y ya no hay nada que decidir sobre él, así que deja de ocupar
+    // sitio en una pantalla que solo enseña lo que sigue vivo. Su rastro sigue
+    // entero en la base: la tabla es append-only y nada se ha borrado.
     expect(overview!.manualAdjustments.map((row) => row.id)).toEqual([
       'eb100000-0000-4000-8000-000000000001',
       'eb100000-0000-4000-8000-000000000002',
-      'eb100000-0000-4000-8000-000000000003',
-      'eb100000-0000-4000-8000-000000000004'
+      'eb100000-0000-4000-8000-000000000003'
     ]);
     expect(overview!.manualAdjustments[0]).toMatchObject({
       periodLabel: 'Agosto 2026',
@@ -279,10 +282,7 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     });
     expect(overview!.manualAdjustments[1]!.transferLabel).toBe('Consta, no se transfiere');
     expect(overview!.manualAdjustments[2]!.deferralNote).toContain('ya estaba cerrada');
-    expect(overview!.manualAdjustments[3]).toMatchObject({
-      voided: true,
-      voidReason: 'Se apuntó dos veces'
-    });
+    expect(overview!.manualAdjustments.some((row) => row.voided)).toBe(false);
 
     // Y a quien no le corresponde verlos, RLS no le devuelve ninguno.
     const member = await loadEmploymentOverview(

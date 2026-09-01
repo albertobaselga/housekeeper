@@ -105,14 +105,6 @@
     )
   );
 
-  // Lo ya materializado en una nómina cerrada no puede volver a ofrecerse como
-  // pendiente: un adelanto de agosto ya descontado en la nómina de agosto no
-  // es un concepto de septiembre. Se pliega como rastro, sin acciones —anular
-  // uno aplicado lo rechazaría igualmente el servidor—; lo pendiente (y lo
-  // anulado sin aplicar) sigue en la lista de siempre.
-  const pendingAdjustments = $derived(adjustments.filter((row) => !row.settled));
-  const settledAdjustments = $derived(adjustments.filter((row) => row.settled));
-
   const MESSAGE_OVERRIDES = {
     adjustment_before_agreement: 'Ese mes es anterior al primer día de trabajo del acuerdo.',
     adjustment_after_agreement: 'Ese mes es posterior al último día de trabajo del acuerdo.',
@@ -208,11 +200,17 @@
   <p class="audit-note">
     Para lo que no nace de una jornada, un gasto ni el acuerdo: una gratificación, un descuento
     hablado, la parte proporcional de algo. Se apunta con su motivo y cuenta en el mes que elijas.
+    Aquí queda lo que aún no ha entrado en ninguna cuenta cerrada; lo ya aplicado se lee en su mes,
+    en Pagos.
   </p>
 
   <div class="ledger-list">
-    {#each pendingAdjustments as adjustment (adjustment.id)}
-      {@const isVoided = adjustment.voided || voided.includes(adjustment.id)}
+    <!-- Lo que llega ya viene decidido por el servidor: ni lo anulado ni lo que
+         una nómina cerrada materializó. Lo único anulado que puede verse aquí
+         es lo que se acaba de anular en este dispositivo, hasta que los datos
+         frescos lo retiren de la lista. -->
+    {#each adjustments as adjustment (adjustment.id)}
+      {@const isVoided = voided.includes(adjustment.id)}
       <div id={`concepto-${adjustment.id}`}>
         <span>
           <strong>{adjustment.label}</strong>
@@ -229,8 +227,8 @@
         </span>
         <span class="inline-actions">
           <strong>{isVoided ? '—' : adjustment.amountLabel}</strong>
-          {#if canRecord && !adjustment.voided}
-            {#if voided.includes(adjustment.id)}
+          {#if canRecord}
+            {#if isVoided}
               <span class="status-chip success">Anulado</span>
             {:else}
               <button
@@ -246,7 +244,7 @@
           {/if}
         </span>
       </div>
-      {#if canRecord && voidOpenId === adjustment.id && !adjustment.voided && !voided.includes(adjustment.id)}
+      {#if canRecord && voidOpenId === adjustment.id && !isVoided}
         <form
           class="action-form"
           onsubmit={(event) => {
@@ -281,11 +279,7 @@
       {#if pendingDrafts.length === 0}
         <div>
           <span>
-            <strong>
-              {settledAdjustments.length > 0
-                ? 'Nada pendiente de aplicar'
-                : 'Todavía no hay conceptos apuntados a mano'}
-            </strong>
+            <strong>Todavía no hay conceptos apuntados a mano</strong>
             <p class="audit-note">Cuando se apunte uno, aparecerá aquí y en la cuenta de su mes.</p>
           </span>
         </div>
@@ -301,39 +295,6 @@
       </div>
     {/each}
   </div>
-
-  <!-- El rastro de lo ya aplicado, plegado y sin acciones: consta —esa es la
-       regla de la casa—, pero ya contó en su nómina y no puede leerse como
-       pendiente de este mes. Para corregir uno, el camino de siempre: apuntar
-       el concepto contrario en un mes abierto. -->
-  {#if settledAdjustments.length > 0}
-    <details class="settled-trail">
-      <summary>
-        Ya aplicados en una nómina ({settledAdjustments.length})
-      </summary>
-      <div class="ledger-list">
-        {#each settledAdjustments as adjustment (adjustment.id)}
-          <div id={`concepto-${adjustment.id}`}>
-            <span>
-              <strong>{adjustment.label}</strong>
-              <small>
-                {adjustment.periodLabel} · {adjustment.reason}
-                {#if adjustment.voided}
-                  · Anulado{adjustment.voidReason ? `: ${adjustment.voidReason}` : ''}
-                {:else}
-                  · {adjustment.settledLabel}
-                {/if}
-                {#if adjustment.deferralNote}<br />{adjustment.deferralNote}{/if}
-              </small>
-            </span>
-            <span class="inline-actions">
-              <strong>{adjustment.voided ? '—' : adjustment.amountLabel}</strong>
-            </span>
-          </div>
-        {/each}
-      </div>
-    </details>
-  {/if}
 
   {#if canRecord}
     <form class="action-form" onsubmit={record}>
@@ -419,19 +380,3 @@
 
   <ActionStatus status={actionStatus} />
 </article>
-
-<style>
-  .settled-trail {
-    margin-top: var(--space-4);
-  }
-
-  .settled-trail summary {
-    color: var(--ink-soft);
-    font-size: var(--text-meta);
-    cursor: pointer;
-  }
-
-  .settled-trail .ledger-list {
-    margin-top: var(--space-2);
-  }
-</style>
