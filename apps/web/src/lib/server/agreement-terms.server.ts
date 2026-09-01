@@ -458,7 +458,13 @@ async function insertVersion(
         overtime_hourly_rate_cents, worked_rest_day_rate_cents, worked_rest_day_credit_minutes,
         contracted_weekly_minutes, annual_vacation_days, unused_vacation_day_rate_cents,
         terms, reason, created_by_membership_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+             coalesce((select previa.terms
+                         from app.agreement_versions as previa
+                        where previa.household_id = $1 and previa.agreement_id = $2
+                        order by previa.version_number desc
+                        limit 1), '{}'::jsonb) || $12::jsonb,
+             $13, $14)
      returning id`,
     [
       householdId,
@@ -478,6 +484,13 @@ async function insertVersion(
       // `terms` deja de ser el `{}` que nadie escribía: aquí entra la política
       // de caducidad de los días arrastrados, con la forma que la CHECK de la
       // 0034 admite y el esquema zod valida.
+      //
+      // Se MEZCLA sobre los términos de la versión anterior (el `||` de arriba),
+      // no se reemplaza el jsonb entero. Hoy da igual porque sólo hay una clave,
+      // pero el día que entre una segunda —vacaciones tiene tarea abierta— un
+      // escritor que reemplace la borraría al apilar, y la fila es inmutable: se
+      // perdería sin poder corregirse. La regla es conservar lo que no se
+      // escribe, que es la que ya sigue el comando de vacaciones.
       JSON.stringify({ vacationCarryoverExpiry: terms.vacationCarryoverExpiry }),
       terms.reason,
       actorMembershipId
@@ -594,6 +607,48 @@ async function insertVersion(
 }
 
 /**
+ * Traduce el rechazo del esquema a algo que una persona pueda corregir, EN
+ * CASTELLANO.
+ *
+ * Devolver `issue.message` en crudo escribía «Invalid input: expected number,
+ * received NaN» en una pantalla que está en castellano hasta el último
+ * `aria-label`, y además no decía qué campo ni qué hacer. Se traduce por el
+ * primer tramo de la ruta, que es el nombre del campo: la regla la sigue
+ * decidiendo zod, aquí sólo se le pone nombre, igual que `explain` hace con los
+ * códigos de Postgres.
+ */
+export function explainTermsIssue(issue: { path: PropertyKey[] } | undefined): string {
+  switch (issue?.path[0]) {
+    case 'effectiveFrom':
+      return 'La fecha de entrada en vigor no es una fecha válida.';
+    case 'monthlySalaryCents':
+      return 'El salario mensual no es un importe válido.';
+    case 'contractedWeeklyMinutes':
+      return 'La jornada semanal tiene que ser un número de minutos entre 1 y 10.080.';
+    case 'annualVacationDays':
+      return 'Los días de vacaciones al año tienen que ser un número entre 0 y 365.';
+    case 'unusedVacationDayRateCents':
+      return 'El precio del día de vacaciones no disfrutado no es un importe válido.';
+    case 'vacationCarryoverExpiry':
+      return 'Di qué pasa con los días arrastrados: o caducan pasados unos meses (entre 1 y 120), o no expiran nunca.';
+    case 'reason':
+      return 'Escribe por qué se pacta así: el motivo es obligatorio y queda en el historial.';
+    case 'extraWorkTypes':
+      return 'Revisa el catálogo de trabajo extra: cada concepto necesita código, nombre y, si se paga por jornada, de cuántos minutos es.';
+    case 'supplements':
+      return 'Revisa los complementos: cada uno necesita código, nombre y quién lo cobra, y su vigencia no puede acabar antes de empezar.';
+    case 'schedule':
+      return 'Revisa el horario: la jornada no puede terminar antes de empezar y el descanso tiene que caber dentro.';
+    case 'employeeMembershipId':
+      return 'No hemos entendido de quién es este contrato. Vuelve a la lista de personas y elígela otra vez.';
+    case 'startsOn':
+      return 'La fecha de inicio del contrato no es una fecha válida.';
+    default:
+      return 'Hay algún dato de las condiciones que no es válido. Revísalos e inténtalo otra vez.';
+  }
+}
+
+/**
  * Traduce el fallo de Postgres a algo que una persona pueda corregir. Los
  * códigos vienen de los disparadores y CHECK de 0002, 0021 y 0025, que son
  * quienes mandan: aquí no se duplica ninguna regla, solo se le pone nombre.
@@ -665,6 +720,38 @@ export async function createAgreement(
         return {
           ok: false,
           message: 'La primera versión no puede entrar en vigor antes del inicio del acuerdo.'
+        };
+      }
+      /*
+       * UN CONTRATO SÓLO EXISTE SOBRE UNA EMPLEADA INTERNA. No lo impedía nada
+       * —ni una CHECK, ni la RLS, ni este código—, así que un identificador de
+       * membresía de apoyo del hogar o de visor colado en un campo oculto creaba
+       * un acuerdo de pleno derecho, y con él una línea en la lista de personas
+       * empleadas. El diseño dice literalmente que el apoyo del hogar «no genera
+       * contrato ni línea en esta lista», y esto es lo que lo cumple.
+       *
+       * La comprobación va aquí, en el único sitio por el que pasan las dos
+       * puertas, y no en la pantalla: la pantalla ya lo dice con palabras, pero
+       * las palabras no son una reja.
+       */
+      const empleada = await client.query<{ role: string }>(
+        `select role::text as "role"
+           from app.household_memberships
+          where household_id = $1 and id = $2 and revoked_at is null`,
+        [householdId, input.employeeMembershipId]
+      );
+      const role = empleada.rows[0]?.role;
+      if (role === undefined) {
+        return {
+          ok: false,
+          message: 'Esa persona no está dada de alta en este hogar, o ya no tiene acceso.'
+        };
+      }
+      if (role !== 'employee_live_in') {
+        return {
+          ok: false,
+          message:
+            'Sólo una empleada interna tiene contrato. El apoyo del hogar no genera contrato ni aparece en la lista de personas empleadas.'
         };
       }
       const { agreementId, versionId } = await insertAgreementWithFirstVersion(

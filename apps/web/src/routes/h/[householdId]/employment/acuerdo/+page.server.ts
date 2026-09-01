@@ -12,7 +12,11 @@ import { agreementTermsInputSchema } from '@casa-clara/contracts/schemas';
 
 import { parseEuroInput } from '$lib/employment/commands';
 import { PAYER_CHOICES } from '$lib/employment/payer';
-import { loadAgreementAdmin, stackAgreementVersion } from '$lib/server/agreement-terms.server';
+import {
+  explainTermsIssue,
+  loadAgreementAdmin,
+  stackAgreementVersion
+} from '$lib/server/agreement-terms.server';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
@@ -250,7 +254,8 @@ function readTerms(form: FormData): AgreementTermsInputV1 | { message: string } 
   };
   const parsed = agreementTermsInputSchema.safeParse(candidate);
   if (!parsed.success) {
-    return { message: parsed.error.issues[0]?.message ?? 'Revisa las condiciones.' };
+    // En castellano y diciendo qué campo: ver `explainTermsIssue`.
+    return { message: explainTermsIssue(parsed.error.issues[0]) };
   }
   return parsed.data as AgreementTermsInputV1;
 }

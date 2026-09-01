@@ -3,7 +3,11 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import { agreementCreateInputSchema } from '@casa-clara/contracts/schemas';
 
 import { employmentTabHref } from '$lib/employment/model';
-import { createAgreement, loadHireContext } from '$lib/server/agreement-terms.server';
+import {
+  createAgreement,
+  explainTermsIssue,
+  loadHireContext
+} from '$lib/server/agreement-terms.server';
 import { getAuth } from '$lib/server/auth.server';
 import {
   hireFromForm,
@@ -107,7 +111,24 @@ export const actions: Actions = {
       await request.formData(),
       request.headers
     );
-    if (!result.ok) return fail(400, { hireError: result.message, draft: result.draft });
+    if (!result.ok) {
+      /*
+       * `persona` es lo que mantiene la pantalla EN LA ETAPA 2. Sin ella, un
+       * fallo aquí devolvía a la etapa 1 y borraba el contrato recién tecleado:
+       * fecha de inicio, salario, jornada, vacaciones, motivo, tarifa y
+       * caducidad. Y el fallo más probable es justo el que la etapa 1 no puede
+       * detectar porque no toca la base de identidad —«ya hay una cuenta con ese
+       * correo», «ese usuario está cogido»—, así que la pérdida caía sobre quien
+       * no había hecho nada mal. De propina, un salario mal tecleado pintaba «El
+       * salario mensual no es un importe válido» sobre un formulario que no
+       * tiene campo de salario.
+       */
+      return fail(400, {
+        hireError: result.message,
+        draft: result.draft,
+        persona: result.draft
+      });
+    }
     // Sin redirección a propósito: la contraseña provisional se enseña UNA vez
     // y hay que leerla en voz alta. La entrada al expediente recién creado es el
     // botón principal de esa misma respuesta.
@@ -124,6 +145,29 @@ export const actions: Actions = {
     const form = await request.formData();
     const employeeMembershipId = text(form, 'employeeMembershipId');
     const startsOn = text(form, 'startsOn');
+
+    /*
+     * El identificador llega en un campo OCULTO, así que no vale fiarse de él:
+     * se contrasta contra la misma lista de candidatas que valida el `load`.
+     * `readEmployeeCandidates` sólo devuelve empleadas internas no revocadas y
+     * sin contrato activo, de modo que esto cierra de una vez tres cosas: un
+     * apoyo del hogar o un visor colados a mano, alguien de otro hogar, y una
+     * segunda pulsación que crearía un contrato duplicado. `createAgreement`
+     * vuelve a comprobar el papel por su cuenta bajo RLS: esto es la puerta,
+     * aquélla es la cerradura.
+     */
+    const contexto = await loadHireContext({ id: locals.user.id }, params.householdId);
+    const candidata = contexto?.candidates.find(
+      (candidate) => candidate.membershipId === employeeMembershipId
+    );
+    if (!candidata) {
+      return fail(400, {
+        createError:
+          'Esa persona no está entre las que tienen acceso y les falta contrato. Vuelve a la lista de personas y elígela de nuevo.',
+        employeeMembershipId
+      });
+    }
+
     const terms = readHireAgreementTerms(form, startsOn);
     if (!terms.ok) return fail(400, { createError: terms.message, employeeMembershipId });
 
@@ -134,7 +178,7 @@ export const actions: Actions = {
     });
     if (!parsed.success) {
       return fail(400, {
-        createError: parsed.error.issues[0]?.message ?? 'Revisa los datos del contrato.',
+        createError: explainTermsIssue(parsed.error.issues[0]),
         employeeMembershipId
       });
     }

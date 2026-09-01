@@ -5,7 +5,11 @@ import type { CommandAckV1, CommandEnvelopeV1 } from '@casa-clara/contracts';
 import { employmentCommandHandlers, processSyncBatch } from '@casa-clara/server';
 
 import { buildExtraWorkTypeView } from '../src/lib/employment/model';
-import { createAgreement, loadAgreementAdmin } from '../src/lib/server/agreement-terms.server';
+import {
+  createAgreement,
+  loadAgreementAdmin,
+  stackAgreementVersion
+} from '../src/lib/server/agreement-terms.server';
 import { loadEmploymentOverview } from '../src/lib/server/employment.server';
 
 /*
@@ -40,9 +44,12 @@ const ALTA_DB = 'casaclara_alta_it';
 const HOUSEHOLD = '7a000000-0000-4000-8000-000000000001';
 const ADMIN_MEMBERSHIP = '7a000000-0000-4000-8000-000000000002';
 const EMPLOYEE_MEMBERSHIP = '7a000000-0000-4000-8000-000000000003';
+/** Apoyo del hogar: existe en la casa y NO puede tener contrato. */
+const HELPER_MEMBERSHIP = '7a000000-0000-4000-8000-000000000004';
 
 const ADMIN_USER = { id: 'fixture:alta:admin' };
 const EMPLOYEE_USER = { id: 'fixture:alta:employee' };
+const HELPER_USER = { id: 'fixture:alta:helper' };
 /** `processSyncBatch` pide un principal, no el `{ id }` de los cargadores. */
 const EMPLOYEE_PRINCIPAL = { userId: EMPLOYEE_USER.id };
 
@@ -61,11 +68,13 @@ VALUES ('${HOUSEHOLD}', 'casa-de-la-prueba', 'Casa de la Prueba');
 
 INSERT INTO app.user_profiles (user_id, display_name, email) VALUES
   ('${ADMIN_USER.id}', 'Prueba Administradora', 'admin@ejemplo.test'),
-  ('${EMPLOYEE_USER.id}', 'Prueba Empleada', 'empleada@ejemplo.test');
+  ('${EMPLOYEE_USER.id}', 'Prueba Empleada', 'empleada@ejemplo.test'),
+  ('${HELPER_USER.id}', 'Prueba Apoyo', 'apoyo@ejemplo.test');
 
 INSERT INTO app.household_memberships (id, household_id, user_id, role) VALUES
   ('${ADMIN_MEMBERSHIP}', '${HOUSEHOLD}', '${ADMIN_USER.id}', 'family_admin'),
-  ('${EMPLOYEE_MEMBERSHIP}', '${HOUSEHOLD}', '${EMPLOYEE_USER.id}', 'employee_live_in');
+  ('${EMPLOYEE_MEMBERSHIP}', '${HOUSEHOLD}', '${EMPLOYEE_USER.id}', 'employee_live_in'),
+  ('${HELPER_MEMBERSHIP}', '${HOUSEHOLD}', '${HELPER_USER.id}', 'helper');
 
 COMMIT;
 `;
@@ -240,6 +249,50 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo desde cero, con su catálogo
     expect(supplements.rows).toEqual([{ code: 'antiguedad', adds_to_pay: true }]);
   });
 
+  it('el apoyo del hogar no puede acabar con contrato, aunque le cuelen su identificador', async () => {
+    /*
+     * El identificador de la persona viaja en un campo OCULTO del formulario, y
+     * la pantalla sólo lo desaconseja con prosa: los dos botones de la etapa 2
+     * eran igual de pulsables con cualquier papel. Demostrado en revisión: un
+     * alta con `role=helper` y «Dar de alta con su contrato» creaba el acuerdo y
+     * la línea en la lista de personas empleadas, que es exactamente lo que el
+     * diseño prohíbe («no genera contrato ni línea en esta lista»).
+     *
+     * La reja está en el servidor, no en la plantilla.
+     */
+    const result = await createAgreement(
+      ADMIN_USER,
+      HOUSEHOLD,
+      { ...realCaseInput(), employeeMembershipId: HELPER_MEMBERSHIP } as never,
+      appPool
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('Sólo una empleada interna tiene contrato');
+
+    // Y no ha escrito NADA: ni acuerdo, ni versión, ni catálogo.
+    const escrito = await adminPool.query(
+      `select 1 from app.employment_agreements where employee_membership_id = $1`,
+      [HELPER_MEMBERSHIP]
+    );
+    expect(escrito.rows).toEqual([]);
+  });
+
+  it('una membresía que no existe en el hogar tampoco estrena contrato', async () => {
+    const result = await createAgreement(
+      ADMIN_USER,
+      HOUSEHOLD,
+      {
+        ...realCaseInput(),
+        employeeMembershipId: '7a000000-0000-4000-8000-0000000000ff'
+      } as never,
+      appPool
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('no está dada de alta en este hogar');
+  });
+
   it('la empleada puede registrar una jornada extra el mismo día del alta', async () => {
     const overview = await loadEmploymentOverview(EMPLOYEE_USER, HOUSEHOLD, appPool, TODAY);
     expect(overview).not.toBeNull();
@@ -365,5 +418,53 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo desde cero, con su catálogo
       await client.query('rollback').catch(() => {});
       client.release();
     }
+  });
+
+  it('apilar una versión CONSERVA las claves de `terms` que no escribe', async () => {
+    /*
+     * `terms` es un jsonb compartido: hoy sólo lleva la política de caducidad,
+     * pero vacaciones tiene tarea abierta y va a meter más. Un escritor que
+     * REEMPLACE el objeto entero borra en silencio lo que puso otro, y la fila
+     * es inmutable: lo borrado no se recupera, sólo se tapa apilando otra
+     * versión. La regla es conservar lo que no se escribe.
+     *
+     * Se siembra una versión con una clave ajena —por SQL directo, porque el
+     * disparador de 0002 prohíbe todo UPDATE— y se apila encima con el camino
+     * de verdad.
+     */
+    await adminPool.query(
+      `insert into app.agreement_versions
+         (household_id, agreement_id, version_number, effective_from, monthly_salary_cents,
+          overtime_hourly_rate_cents, worked_rest_day_rate_cents, contracted_weekly_minutes,
+          annual_vacation_days, reason, created_by_membership_id, terms)
+       values ($1, $2, 2, date '2029-02-01', 150000, 0, 5000, 2400, 30,
+               'Siembra de una clave ajena', $3,
+               '{"vacationCarryoverExpiry":{"mode":"never"},"vacacionesDeOtraTarea":{"x":1}}'::jsonb)`,
+      [HOUSEHOLD, agreementId, ADMIN_MEMBERSHIP]
+    );
+
+    const stacked = await stackAgreementVersion(
+      ADMIN_USER,
+      HOUSEHOLD,
+      agreementId,
+      {
+        ...realCaseInput().terms,
+        effectiveFrom: '2029-03-01',
+        reason: 'Cambia sólo la caducidad',
+        vacationCarryoverExpiry: { mode: 'months', months: 12 }
+      } as never,
+      appPool
+    );
+    expect(stacked).toMatchObject({ ok: true });
+
+    const written = await adminPool.query<{ terms: Record<string, unknown> }>(
+      `select terms from app.agreement_versions
+        where agreement_id = $1 and version_number = 3`,
+      [agreementId]
+    );
+    // Lo que esta pantalla escribe, actualizado…
+    expect(written.rows[0]!.terms.vacationCarryoverExpiry).toEqual({ mode: 'months', months: 12 });
+    // …y lo que no escribe, intacto.
+    expect(written.rows[0]!.terms.vacacionesDeOtraTarea).toEqual({ x: 1 });
   });
 });

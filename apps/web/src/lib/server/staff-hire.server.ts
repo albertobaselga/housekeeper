@@ -8,7 +8,11 @@ import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction 
 
 import { parseEuroInput } from '$lib/employment/commands';
 
-import { explain, insertAgreementWithFirstVersion } from './agreement-terms.server';
+import {
+  explain,
+  explainTermsIssue,
+  insertAgreementWithFirstVersion
+} from './agreement-terms.server';
 import { AUTH_MEMBER_ROLE, type AuthInstance } from './auth-core';
 import { getAuth } from './auth.server';
 import { getDatabasePool } from './db.server';
@@ -94,6 +98,16 @@ export function validateHireInput(input: HireInput): string | null {
   }
   if (!(HIREABLE_ROLES as readonly string[]).includes(input.role)) {
     return 'Elige si entra como empleada interna o como apoyo del hogar.';
+  }
+  /*
+   * EL APOYO DEL HOGAR NO GENERA CONTRATO. Lo dice el diseño con esas palabras,
+   * y hasta aquí sólo lo decía la pantalla: los dos botones de la etapa 2 eran
+   * igual de pulsables con cualquier papel, y «Dar de alta con su contrato»
+   * sobre un apoyo creaba el acuerdo y la línea en la lista de personas
+   * empleadas. Se cierra en el servidor, que es donde una regla es una regla.
+   */
+  if (input.agreement && input.role !== 'employee_live_in') {
+    return 'El apoyo del hogar no tiene contrato: créale sólo el acceso, o dala de alta como empleada interna.';
   }
   if (input.agreement) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.agreement.startsOn)) {
@@ -332,10 +346,10 @@ export function readHireAgreementTerms(
     supplements: []
   });
   if (!parsed.success) {
-    return {
-      ok: false,
-      message: parsed.error.issues[0]?.message ?? 'Revisa las condiciones del contrato.'
-    };
+    // En castellano y diciendo qué campo: el mensaje crudo de zod es
+    // «Invalid input: expected number, received NaN», que no es de esta casa ni
+    // le dice a quien administra qué tiene que arreglar.
+    return { ok: false, message: explainTermsIssue(parsed.error.issues[0]) };
   }
   return { ok: true, terms: parsed.data as AgreementCreateInputV1['terms'] };
 }
