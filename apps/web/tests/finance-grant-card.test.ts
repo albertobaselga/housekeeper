@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { financeRowText } from '../src/lib/finance/grant-row';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 /**
@@ -161,33 +162,26 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     expect(card).toContain('{#each data.finance.admins as admin (admin.membershipId)}');
   });
 
-  it('el estado pintado sale de la concesión, y en la dirección correcta', () => {
-    // Invertir cualquiera de las dos correspondencias deja la tarjeta diciendo
-    // «Activado» a quien el layout no deja entrar en el módulo.
-    //
-    // Esta es además la red que cubre lo que ningún cierre del despacho puede
-    // cubrir: `apply` nunca fue la única manera de pintar antes de tiempo —se
-    // puede pintar sin gancho ninguno, con estado local de la página—. Las dos
-    // expresiones exigen que lo que se ve salga de `admin.granted` y de nada
-    // más, así que cualquier suplantación (`override[id] ?? admin.granted`)
-    // rompe aquí.
-    expect(card).toMatch(
-      /\{#if granted\}[^{]*<span class="status-chip success">Activado<\/span> \{:else\}[^{]*<span class="status-chip">Apagado<\/span>/
-    );
-    expect(card).toMatch(/granted \? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'/);
-    // Y las tres superficies salen de la MISMA fuente: leyendo cada una por su
-    // cuenta se podían contradecir, y una fila que dice «Apagado» con un botón
-    // que ofrece «Desactivar Finanzas» no deja saber cuál de las dos es verdad.
-    expect(card).toContain('{@const granted = admin.granted}');
-    expect(card).toMatch(/\{granted \? 'Desactivar Finanzas' : 'Activar Finanzas'\}/);
+  it('las cuatro superficies del estado salen de la presentación única', () => {
+    // Ya no se vigila con expresiones regulares que cuatro lecturas de
+    // `granted` coincidan: esa era una convención, y una convención vigilada
+    // así se derrota envolviendo el literal en vez de sustituirlo. Ahora la
+    // fila se construye de una vez (`financeRowText`, probado ejecutándolo en
+    // el describe de abajo) y lo único que hace falta afirmar sobre la pantalla
+    // es que las cuatro superficies CONSUMEN esa presentación.
+    expect(card).toContain('{@const fila = financeRowText(admin)}');
+    expect(card).toContain('<small>{fila.detalle}</small>');
+    expect(card).toContain('<span class="status-chip" class:success={fila.destacado}>{fila.estado}</span>');
+    expect(card).toContain('aria-label={fila.accionCompleta}');
+    expect(card).toContain('{fila.accion}');
   });
 
   it('el interruptor envía el comando de la fila, con su estado real', () => {
     expect(card).toContain('onclick={() => askFinance(admin)}');
-    // Y dice a quién se lo hace: en una lista de administraciones, «Activar
-    // Finanzas» a secas no dice cuál (patrón de fila de rutinas).
-    expect(card).toContain('`Desactivar Finanzas a ${admin.name}`');
-    expect(card).toContain('`Activar Finanzas a ${admin.name}`');
+    // Que el botón diga a quién se lo hace («Activar Finanzas» a secas no dice
+    // cuál, en una lista de administraciones) lo garantiza `financeRowText`
+    // construyendo el nombre accesible a partir del visible y del nombre; se
+    // prueba ejecutándolo, en el describe del final.
     expect(script).toContain("from '$lib/finance/commands'");
     expect(script).toContain('financeGrantToggle');
     // El estado que elige entre conceder y revocar es el de ESTA fila, no una
@@ -294,5 +288,57 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     // null salvo para la administración, y la tarjeta no se pinta.
     expect(scriptCode).not.toMatch(/\bcan\(/);
     expect(scriptCode).not.toContain('context.role');
+  });
+});
+
+/**
+ * La presentación de la fila, probada EJECUTÁNDOLA. Sustituye a las cuatro
+ * expresiones regulares que vigilaban que cuatro lecturas de `granted`
+ * coincidieran: aquello era una convención, y las convenciones vigiladas por
+ * expresiones regulares se derrotan envolviendo el literal en vez de
+ * sustituirlo. Aquí no hay campos que calcular por separado —hay dos objetos
+ * completos y se devuelve uno entero—, así que divergir no es difícil: es que
+ * no hay de dónde.
+ */
+describe('la fila de concesión se construye de una vez', () => {
+  const ADA = { name: 'Ada Concesión', granted: false };
+
+  it('con la concesión viva, las cuatro superficies dicen lo mismo', () => {
+    expect(financeRowText({ ...ADA, granted: true })).toEqual({
+      estado: 'Activado',
+      destacado: true,
+      detalle: 'Ve el módulo de Finanzas',
+      accion: 'Desactivar Finanzas',
+      accionCompleta: 'Desactivar Finanzas a Ada Concesión'
+    });
+  });
+
+  it('sin concesión, las cuatro dicen lo contrario, y entero', () => {
+    expect(financeRowText(ADA)).toEqual({
+      estado: 'Apagado',
+      destacado: false,
+      detalle: 'No ve el módulo de Finanzas',
+      accion: 'Activar Finanzas',
+      accionCompleta: 'Activar Finanzas a Ada Concesión'
+    });
+  });
+
+  it('el nombre accesible contiene siempre el texto visible (WCAG 2.5.3)', () => {
+    // Se construye a partir de él, así que no es algo que haya que recordar:
+    // quien maneja la casa por voz dice lo que lee. Con cualquier nombre.
+    for (const granted of [true, false]) {
+      for (const name of ['Ada Concesión', 'Ana', 'Fixture Segunda Admin Roble']) {
+        const fila = financeRowText({ name, granted });
+        expect(fila.accionCompleta, `${name}/${granted}`).toContain(fila.accion);
+        expect(fila.accionCompleta, `${name}/${granted}`).toContain(name);
+      }
+    }
+  });
+
+  it('el tono de logro es exactamente el de la concesión viva', () => {
+    // El chip verde dice «esta cuenta ve las finanzas». Desatarlo del estado
+    // pintaría de logro una cuenta apagada, o al revés.
+    expect(financeRowText({ ...ADA, granted: true }).destacado).toBe(true);
+    expect(financeRowText(ADA).destacado).toBe(false);
   });
 });

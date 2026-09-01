@@ -9,6 +9,7 @@
   import { revokeMembership, setMembershipExpiry } from '$lib/access/commands';
   import { financeGrantToggle } from '$lib/finance/commands';
   import { createFinanceGrantDispatch } from '$lib/finance/grant-dispatch';
+  import { financeRowText } from '$lib/finance/grant-row';
   import type { ActionData, PageData } from './$types';
 
   import { useAppContext } from '$lib/auth/context';
@@ -331,18 +332,17 @@
         </p>
         <ul class="wiki-recent" data-lista="finanzas">
           {#each data.finance.admins as admin (admin.membershipId)}
-            <!-- Las TRES superficies que hablan del estado de esta fila —el
-                 chip, la frase y la etiqueta del botón— salen de aquí y de
-                 ningún otro sitio. Leyendo cada una por su cuenta se podían
-                 contradecir entre sí, y una fila que dice «Apagado» mientras su
-                 botón ofrece «Desactivar Finanzas» no es media verdad: no hay
-                 forma de saber cuál de las dos es. -->
-            {@const granted = admin.granted}
+            <!-- Las CUATRO superficies que hablan del estado de esta fila —el
+                 chip, la frase, el texto visible del botón y su nombre
+                 accesible— se construyen de una vez en `financeRowText`, que
+                 devuelve un objeto entero por estado. No es que coincidan por
+                 convención: es que no hay de dónde divergir. -->
+            {@const fila = financeRowText(admin)}
             <li>
               <div class="fila-accion">
                 <span class="fila-cuerpo">
                   <strong>{admin.name}</strong>
-                  <small>{granted ? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'}</small>
+                  <small>{fila.detalle}</small>
                 </span>
                 <span class="fila-fin">
                   <!-- Mientras el comando viaja, el estado sigue siendo el de
@@ -352,11 +352,7 @@
                   {#if financePendingId === admin.membershipId}
                     <span class="status-chip">Enviando…</span>
                   {/if}
-                  {#if granted}
-                    <span class="status-chip success">Activado</span>
-                  {:else}
-                    <span class="status-chip">Apagado</span>
-                  {/if}
+                  <span class="status-chip" class:success={fila.destacado}>{fila.estado}</span>
                   {#if admin.isSelf}<span class="status-chip">Tu cuenta</span>{/if}
                   <!-- Patrón de fila de la casa (rutinas): el botón nombra a su
                        sujeto para el lector de pantalla, no en dos líneas de
@@ -366,12 +362,10 @@
                     class="button secondary small-button"
                     type="button"
                     disabled={busy}
-                    aria-label={granted
-                      ? `Desactivar Finanzas a ${admin.name}`
-                      : `Activar Finanzas a ${admin.name}`}
+                    aria-label={fila.accionCompleta}
                     onclick={() => askFinance(admin)}
                   >
-                    {granted ? 'Desactivar Finanzas' : 'Activar Finanzas'}
+                    {fila.accion}
                   </button>
                 </span>
               </div>
