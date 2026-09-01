@@ -758,6 +758,23 @@ async function handleFinanceGrantCommand(
 2. **Sustituye** el cuerpo de `financeCommandHandler` por el dispatcher del final de este paso (delega en `handleFinanceGrantCommand` los dos kinds de fase 1 y exige `requireFinanceAdmin` para todos los demás).
 3. `financeCommandHandlers` NO se toca: sigue apuntando al mismo `financeCommandHandler`, ya ampliado.
 
+> **Exigencia añadida tras revisar la fase 1 (2026-09-01): el cerrojo debe ser ESTRUCTURAL, no una
+> línea que haya que acordarse de escribir.** La revisión de la Task 5 de la fase 1 demostró que la
+> prueba que congela los kinds del agregado avisa hoy, pero deja de avisar en cuanto tú añadas tus
+> `case` y actualices el array: a partir de ahí, olvidar `await requireFinanceAdmin(...)` en un
+> comando vuelve a compilar y a pasar en verde, y el olvido se manifiesta como «cero filas» —
+> indistinguible de «no hay datos», que es justo el fallo que nadie detecta.
+>
+> Por eso el dispatcher NO puede ser un `switch` con una llamada repetida en cada rama. Estructúralo
+> así: los dos kinds de concesión (`finance.grant.write`, `finance.revoke.write`) se atienden en su
+> propia rama —quien concede todavía no tiene concesión, así que no pueden pasar por el cerrojo— y
+> **todo lo demás cae en una sola rama que aplica `await requireFinanceAdmin(client, membership)`
+> ANTES de despachar** a un mapa `financeAdminHandlers` tipado como
+> `Record<Exclude<FinanceCommandKind, "finance.grant.write" | "finance.revoke.write">, FinanceAdminHandler>`.
+> Con esa forma, olvidar el cerrojo deja de ser posible por omisión, y si falta una clave del mapa el
+> compilador lo caza (error de tipos, no un test que alguien puede actualizar sin pensar).
+> Añade una prueba que lo congele: que todo kind que no sea de concesión pasa por el cerrojo.
+
 Añade (imports arriba, resto al final del fichero):
 
 ```ts
