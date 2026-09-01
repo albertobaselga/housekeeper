@@ -273,6 +273,18 @@ acepta).
 
 ---
 
+## Cabos sueltos anotados durante la ejecución
+
+- **Cobertura de densidad y desbordamiento para Pagos.** `apps/web/e2e/mobile-densidad.dbe2e.ts`
+  y `mobile-overflow.dbe2e.ts` recorren una lista de rutas y hoy no incluyen
+  `employment/pagos`. La tabla plegada ya trae `data-lista="principal"` y `.cifra`,
+  o sea que esas baterías la medirían solas con sólo añadir la ruta. Se midió a
+  mano a 320 px y no desborda, pero sin la ruta en la lista nada lo guarda de una
+  regresión futura. Va en el cierre.
+- **`app.css`**: el bloque de la fila de mes vive en el `<style>` del `.svelte`.
+  Pasa el mismo linter de tokens. Si se quiere consolidar en `app.css`, se mueve
+  tal cual.
+
 ## Cierre
 
 Con las tres tandas dentro: `pnpm typecheck`, `pnpm lint`, `pnpm test`,
