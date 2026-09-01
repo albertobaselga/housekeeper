@@ -49,10 +49,18 @@ dist/
 # Los patrones van con `**/`: los ayudantes escriben su estado también en
 # subdirectorios (apps/web/.omc, apps/web/.claude…), y anclarlos a la raíz
 # dejó colarse una sesión entera en un commit.
+#
+# EL ORDEN IMPORTA Y NO ES DECORATIVO: `**/` casa también con cero directorios,
+# así que `**/.claude/*` vuelve a excluir `.claude/skills/` de la raíz. Con la
+# reinclusión ANTES de esa línea, la última regla ganaba y las skills quedaban
+# ignoradas en silencio: las cuatro ya versionadas seguían en su sitio (el
+# .gitignore no alcanza a lo ya rastreado) pero cualquier fichero NUEVO en una
+# skill no lo habría añadido `git add`, y nadie se habría enterado. La
+# reinclusión va la última.
 .claude/*
-!.claude/skills/
 **/.claude/*
 **/.omc/
+!.claude/skills/
 ace-pitfalls-playbook.md
 ace-strategies-playbook.md
 .codex/
