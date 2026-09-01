@@ -272,14 +272,19 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(hers!.decisions.map((item) => item.key)).not.toContain(`extra-${EXTRA_SEGUNDA}`);
   });
 
-  it('family_member: gastos y huecos, sin jornadas ni liquidaciones', async () => {
+  it('family_member: huecos del menú y nada más; ni gastos, ni jornadas, ni liquidaciones', async () => {
     const overview = await loadTodayOverview(MEMBER_USER, FIXTURE_HOUSEHOLD, appPool);
     expect(overview).not.toBeNull();
     const keys = overview!.decisions.map((item) => item.key);
-    expect(keys).toContain(`gasto-${EXPENSE_PENDING}`);
     expect(keys).toContain('menu-unconfirmed');
     expect(keys.some((key) => key.startsWith('extra-'))).toBe(false);
     expect(keys.some((key) => key.startsWith('liquidacion-'))).toBe(false);
+    // Los gastos SALIERON de esta lista con la migración 0036. Antes estaban, y
+    // el detalle traía el importe formateado: la portada era el segundo sitio
+    // por el que la familia no administradora leía lo que la empleada se había
+    // adelantado. Lo corta la RLS —`expenses_read` ya no incluye a
+    // `family_member`— y el bloque de arriba lo repite en TypeScript.
+    expect(keys).not.toContain(`gasto-${EXPENSE_PENDING}`);
   });
 
   it('empleada: su jornada aceptada y sus rutinas de hoy; nada de gastos ni huecos', async () => {

@@ -406,7 +406,19 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
     }
   }
 
-  if (isAdmin || isMember) {
+  /*
+   * Los gastos, SOLO a quien administra. Este bloque decía `isAdmin || isMember`
+   * y el detalle pinta el importe con `formatCents`: la portada le enseñaba a la
+   * familia no administradora la descripción, la fecha y los euros de lo que la
+   * empleada se había adelantado —y encima con un «Revisar» que esa persona no
+   * puede ejecutar, porque aprobar un gasto no está entre sus capacidades—.
+   *
+   * Quien corta el dato de verdad es la RLS (migración 0036: `expenses_read`
+   * pasó a `include_family_member => false`, así que `facts.pendingExpenses`
+   * llega vacío). Esto es la defensa de arriba, para que la pantalla no vuelva a
+   * afirmar un derecho que la base ya no concede.
+   */
+  if (isAdmin) {
     for (const expense of facts.pendingExpenses) {
       items.push({
         key: `gasto-${expense.id}`,
@@ -416,6 +428,9 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
         cta: 'Revisar'
       });
     }
+  }
+
+  if (isAdmin || isMember) {
     if (facts.unconfirmedSlots.length > 0) {
       const sorted = [...facts.unconfirmedSlots].sort((a, b) => a.onDate.localeCompare(b.onDate));
       const first = sorted[0]!;
