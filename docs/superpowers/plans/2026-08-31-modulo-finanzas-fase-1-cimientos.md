@@ -215,13 +215,15 @@ git commit -m "feat(contracts): sobres de comandos finance.grant/revoke.write"
 
 Un solo fichero `BEGIN;…COMMIT;`, siguiente número libre (0034). Patrones a calcar del repo: tabla con RLS+GRANT+auditoría de `packages/db/migrations/0013_contacts.sql`; bucles `DO … FOREACH` de RLS y auditoría de `0005_rls.sql` (líneas 32-48) y `0004_audit_and_jobs.sql` (líneas 263-284); trigger-reja de `0030_personal_y_altas.sql` (`enforce_password_flag_transition`). El runner (`migrate.mjs` + `0018_rls_force_compat.sql`) ya gestiona FORCE en Supabase: la migración pone `ENABLE + FORCE` sin condicionales, como 0032. El test rojo es la primera versión de `tests/030_finance_rls.sql` (bloque estructural); la matriz de filas llega en la Task 4. Nota: el nombre `030_finance_rls.sql` convive con `030_menu_week_templates.sql` — el runner ordena por nombre y ejecuta ambos; el nombre lo fija el doc de interfaces.
 
+**Divergencia registrada con la spec §4 (deliberada):** la matriz negativa de finanzas NO se añade dentro de `tests/020_rls_matrix.sql`, sino que vive en su propio fichero `tests/030_finance_rls.sql`. El motivo: la suite necesita encender y apagar el módulo (conceder, revocar, sembrar) sin perturbar los conteos de la matriz general, y así se puede cablear por nombre a `pnpm test:rls` junto a `020` (Task 4, Step 5). El doc de interfaces ya fija ese nombre.
+
 **Files:**
 - Create: `packages/db/migrations/0034_finance.sql`
 - Test (create): `packages/db/tests/030_finance_rls.sql`
 
 **Interfaces:**
-- Consumes: `app.households`, `app.household_memberships`, `app.tenant_context_matches(uuid)`, `app.current_household_role()`, `app.current_household_id()`, `app.current_membership_id()`, `app_private.write_audit_event()`, rol `casa_clara_app`.
-- Produces: tablas `app.finance_module_grants` (membership_id, granted_by_membership_id, granted_at, revoked_at, revoked_by_membership_id) · `finance_accounts` (name, bank, kind, owner_label, bank_ref, owner_aliases jsonb, transfer_refs jsonb, archived_at) · `finance_categories` (parent_id, name, kind) · `finance_rules` (rule_type, pattern, category_id, priority, origin) · `finance_import_batches` (filename, bank, imported_at, new_count, dup_count) · `finance_transactions` (account_id, batch_id, op_date, value_date, concept, provider, provider_norm, amount_cents, balance_cents, code_common, code_own, category_id, status, transfer_group_id, dedup_hash, recurrence, recurrence_manual, bank_category, raw jsonb, currency_code CHECK='EUR') · `finance_provider_aliases` (provider_norm, display) · `finance_events` (name) · `finance_transaction_events` (transaction_id, event_id) · `finance_event_rules` (event_id, provider_norm, concept_norm, category_id); todas con `household_id uuid NOT NULL REFERENCES app.households`, `id uuid DEFAULT gen_random_uuid()`, PK `(household_id, id)`, RLS ENABLE+FORCE, GRANT a `casa_clara_app`, trigger de auditoría. Función `app.finance_enabled() RETURNS boolean`.
+- Consumes: `app.households`, `app.household_memberships`, `app.tenant_context_matches(uuid)`, `app.current_household_role()`, `app.current_household_id()`, `app.current_membership_id()`, `app.context_is_complete()`, `app_private.write_audit_event()`, rol `casa_clara_app`.
+- Produces: tablas `app.finance_module_grants` (membership_id, granted_by_membership_id, granted_at, revoked_at, revoked_by_membership_id) · `finance_accounts` (name, bank, kind, owner_label, bank_ref, owner_aliases jsonb, transfer_refs jsonb, archived_at) · `finance_categories` (parent_id, name, kind) · `finance_rules` (rule_type, pattern, category_id, priority, origin) · `finance_import_batches` (filename, bank, imported_at, new_count, dup_count) · `finance_transactions` (account_id, batch_id, op_date, value_date, concept, provider, provider_norm, amount_cents, balance_cents, code_common, code_own, category_id, status, transfer_group_id, dedup_hash, recurrence, recurrence_manual, bank_category, raw jsonb, currency_code CHECK='EUR') · `finance_provider_aliases` (provider_norm, display) · `finance_events` (name) · `finance_transaction_events` (transaction_id, event_id) · `finance_event_rules` (event_id, provider_norm, concept_norm, category_id); todas con `household_id uuid NOT NULL REFERENCES app.households`, `id uuid DEFAULT gen_random_uuid()`, PK `(household_id, id)`, RLS ENABLE+FORCE, GRANT a `casa_clara_app`, trigger de auditoría. Función `app.finance_enabled() RETURNS boolean`. Rejas del árbol de categorías: `UNIQUE NULLS NOT DISTINCT (household_id, parent_id, name)` (PostgreSQL 15+; el clúster es 18.4) y trigger `finance_categories_depth_guard` que prohíbe el tercer nivel (spec §5: árbol de DOS niveles). Reja de las concesiones: `finance_module_grants_target_guard` `BEFORE INSERT OR UPDATE`, que solo admite membresías `family_admin` VIVAS. Semilla: `app.seed_finance_categories() RETURNS integer` (SECURITY DEFINER, idempotente, portada de `home-finance/backend/app/seed.py`), que llama el comando `finance.grant.write` de la Task 5.
 
 - [ ] **Step 1: Escribir el test estructural que falla.** Crea `packages/db/tests/030_finance_rls.sql` con EXACTAMENTE este contenido inicial:
 
@@ -259,6 +261,39 @@ BEGIN
 
   IF to_regprocedure('app.finance_enabled()') IS NULL THEN
     RAISE EXCEPTION 'app.finance_enabled() is missing';
+  END IF;
+  IF to_regprocedure('app.seed_finance_categories()') IS NULL THEN
+    RAISE EXCEPTION 'app.seed_finance_categories() is missing';
+  END IF;
+
+  -- Árbol de categorías blindado (spec §5), y la migración es append-only: si
+  -- estas dos rejas no entran en 0034, corregirlas cuesta un 0035.
+  IF NOT EXISTS (
+    SELECT 1
+      FROM pg_catalog.pg_index AS index_row
+      JOIN pg_catalog.pg_class AS index_relation ON index_relation.oid = index_row.indexrelid
+     WHERE index_relation.relname = 'finance_categories_household_id_parent_id_name_key'
+       AND index_row.indnullsnotdistinct
+  ) THEN
+    RAISE EXCEPTION 'finance_categories needs UNIQUE NULLS NOT DISTINCT (household_id, parent_id, name)';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_trigger
+     WHERE tgrelid = to_regclass('app.finance_categories')
+       AND tgname = 'finance_categories_depth_guard'
+  ) THEN
+    RAISE EXCEPTION 'missing finance_categories_depth_guard trigger';
+  END IF;
+
+  -- La reja de concesiones vigila también los UPDATE (bit 16 de tgtype): sin
+  -- eso, re-apuntar membership_id a quien no administra pasaría desapercibido.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_trigger
+     WHERE tgrelid = to_regclass('app.finance_module_grants')
+       AND tgname = 'finance_module_grants_target_guard'
+       AND (tgtype & 16) <> 0
+  ) THEN
+    RAISE EXCEPTION 'finance_module_grants_target_guard must also fire BEFORE UPDATE';
   END IF;
 
   -- Doble cerrojo: TODAS las políticas de finance_* exigen finance_enabled(),
@@ -311,7 +346,7 @@ pnpm test:db
 
 Salida esperada: `not ok N - tests/030_finance_rls.sql` con `# missing finance table app.finance_module_grants`.
 
-- [ ] **Step 3: Escribir la primera mitad de la migración (concesiones, cerrojo y tablas).** Crea `packages/db/migrations/0034_finance.sql`:
+- [ ] **Step 3: Escribir la primera mitad de la migración (concesiones, cerrojo, tablas y semilla).** Crea `packages/db/migrations/0034_finance.sql`:
 
 ```sql
 BEGIN;
@@ -354,7 +389,12 @@ CREATE UNIQUE INDEX finance_module_grants_live_idx
   ON app.finance_module_grants (household_id, membership_id)
   WHERE revoked_at IS NULL;
 
--- Reja: solo se concede a membresías family_admin (patrón 0030).
+-- Reja: solo se concede a membresías family_admin VIVAS (patrón 0030). Vigila
+-- INSERT *y* UPDATE: sin el UPDATE, re-apuntar `membership_id` a quien no
+-- administra abriría Finanzas por la puerta de atrás. El filtro de vigencia es
+-- el idioma del repo (0001/0032): ni revocada ni caducada. Si la membresía no
+-- existe o no está viva, `target_role` queda NULL y el IS DISTINCT FROM
+-- también dispara el 23514.
 CREATE FUNCTION app.enforce_finance_grant_target()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -363,11 +403,20 @@ AS $$
 DECLARE
   target_role app.household_role;
 BEGIN
-  SELECT role INTO target_role
-    FROM app.household_memberships
-   WHERE household_id = NEW.household_id AND id = NEW.membership_id;
+  -- Revocar NUNCA se bloquea: apagar Finanzas debe poder hacerse aunque la
+  -- membresía de destino ya esté revocada o caducada. La reja solo mira las
+  -- filas que quedan VIVAS (alta o reapuntado).
+  IF TG_OP = 'UPDATE' AND NEW.revoked_at IS NOT NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT membership.role INTO target_role
+    FROM app.household_memberships AS membership
+   WHERE membership.household_id = NEW.household_id
+     AND membership.id = NEW.membership_id
+     AND membership.revoked_at IS NULL
+     AND (membership.expires_at IS NULL OR membership.expires_at > statement_timestamp());
   IF target_role IS DISTINCT FROM 'family_admin' THEN
-    RAISE EXCEPTION 'finance access can only be granted to a family_admin membership'
+    RAISE EXCEPTION 'finance access can only be granted to a live family_admin membership'
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
@@ -375,7 +424,7 @@ END
 $$;
 
 CREATE TRIGGER finance_module_grants_target_guard
-BEFORE INSERT ON app.finance_module_grants
+BEFORE INSERT OR UPDATE ON app.finance_module_grants
 FOR EACH ROW EXECUTE FUNCTION app.enforce_finance_grant_target();
 
 -- ── 2. El cerrojo ────────────────────────────────────────────────────────────
@@ -429,13 +478,55 @@ CREATE TABLE app.finance_categories (
   PRIMARY KEY (household_id, id),
   FOREIGN KEY (household_id, parent_id)
     REFERENCES app.finance_categories(household_id, id) ON DELETE RESTRICT,
-  UNIQUE (household_id, parent_id, name)
+  -- NULLS NOT DISTINCT (PostgreSQL 15+, el clúster es 18.4) es la diferencia
+  -- entre proteger el árbol y no protegerlo: con el UNIQUE clásico los
+  -- `parent_id IS NULL` son distintos entre sí y el hogar podría acabar con
+  -- dos raíces «Casa». Aquí, dos raíces con el mismo nombre chocan (23505).
+  UNIQUE NULLS NOT DISTINCT (household_id, parent_id, name)
 );
 
--- Invariante del origen: exactamente UNA categoría raíz `transferencia` por hogar.
+-- Invariante del origen: COMO MUCHO una categoría raíz `transferencia` por
+-- hogar. Que EXISTA no lo garantiza este índice, sino la semilla del §4 de este
+-- mismo fichero, que corre al conceder Finanzas por primera vez en el hogar (y,
+-- para un hogar migrado, el ETL de la fase 3). El pipeline post-import de la
+-- fase 2 la necesita para vincular transferencias, efectivo e inversiones.
 CREATE UNIQUE INDEX finance_categories_one_transfer_root_idx
   ON app.finance_categories (household_id)
   WHERE kind = 'transferencia' AND parent_id IS NULL;
+
+-- Reja de profundidad: el árbol tiene DOS niveles (spec §5) y las fases 3
+-- (ETL) y 5 (Ajustes) dan esa invariante por hecha. Un padre con padre queda
+-- prohibido en la base, no solo en el código que escribe hoy.
+CREATE FUNCTION app.enforce_finance_category_depth()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, app
+AS $$
+DECLARE
+  grandparent_id uuid;
+  parent_exists boolean;
+BEGIN
+  IF NEW.parent_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+  SELECT true, parent.parent_id INTO parent_exists, grandparent_id
+    FROM app.finance_categories AS parent
+   WHERE parent.household_id = NEW.household_id AND parent.id = NEW.parent_id;
+  IF NOT coalesce(parent_exists, false) THEN
+    RAISE EXCEPTION 'finance category parent % does not exist in this household', NEW.parent_id
+      USING ERRCODE = '23514';
+  END IF;
+  IF grandparent_id IS NOT NULL THEN
+    RAISE EXCEPTION 'finance categories are a two-level tree: % cannot hang from a subcategory', NEW.name
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER finance_categories_depth_guard
+BEFORE INSERT OR UPDATE ON app.finance_categories
+FOR EACH ROW EXECUTE FUNCTION app.enforce_finance_category_depth();
 
 CREATE TABLE app.finance_rules (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -455,7 +546,11 @@ CREATE TABLE app.finance_import_batches (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   household_id uuid NOT NULL REFERENCES app.households(id) ON DELETE RESTRICT,
   filename text NOT NULL CHECK (length(btrim(filename)) BETWEEN 1 AND 255),
-  bank text NOT NULL CHECK (bank IN ('caixabank', 'deutsche_bank', 'openbank', 'amex')),
+  -- Aquí SÍ entra 'manual' (doc de interfaces, resolución 6): un lote puede
+  -- venir de un extracto de banco o de apuntes hechos a mano. En
+  -- `finance_accounts.bank`, en cambio, solo caben los cuatro bancos reales o
+  -- NULL.
+  bank text NOT NULL CHECK (bank IN ('caixabank', 'deutsche_bank', 'openbank', 'amex', 'manual')),
   imported_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   new_count integer NOT NULL DEFAULT 0 CHECK (new_count >= 0),
   dup_count integer NOT NULL DEFAULT 0 CHECK (dup_count >= 0),
@@ -510,6 +605,10 @@ CREATE TABLE app.finance_provider_aliases (
   provider_norm text NOT NULL CHECK (length(btrim(provider_norm)) BETWEEN 1 AND 200),
   display text NOT NULL CHECK (length(btrim(display)) BETWEEN 1 AND 200),
   PRIMARY KEY (household_id, id),
+  -- Un alias por proveedor normalizado y hogar. NO es cosmético: las lecturas
+  -- de la fase 4 hacen `left join` a esta tabla para pintar el nombre bonito;
+  -- con dos alias del mismo `provider_norm` el join multiplicaría filas e
+  -- inflaría los `count(*)` y los `sum(amount_cents)` de los totales.
   UNIQUE (household_id, provider_norm)
 );
 
@@ -553,6 +652,97 @@ CREATE TABLE app.finance_event_rules (
   CHECK (provider_norm IS NOT NULL OR category_id IS NOT NULL)
 );
 
+-- ── 4. Semilla del árbol de categorías por hogar ─────────────────────────────
+-- La spec §5 exige que la semilla del origen «se replique como datos por hogar
+-- al activar el módulo o migrar». El ETL (fase 3) cubre «o migrar»; esto cubre
+-- «al activar»: la llama el comando `finance.grant.write` la PRIMERA vez que se
+-- concede Finanzas en un hogar. Portada literalmente de la ONTOLOGY de
+-- `home-finance/backend/app/seed.py`: 21 raíces (16 de gasto, 4 de ingreso y la
+-- ÚNICA raíz de transferencia) y 29 subcategorías = 50 filas.
+--
+-- Idempotente: si el hogar ya tiene una sola categoría, devuelve 0 sin tocar
+-- nada (así el hogar migrado por el ETL conserva su árbol y las fixtures no se
+-- descuadran). SECURITY DEFINER con row_security off, patrón de
+-- `app.mark_vacations_seen` (0028): quien concede puede no tener concesión
+-- propia todavía, y sin ella las políticas `finance_*` no le dejarían escribir
+-- ni la primera categoría. Nunca acepta un hogar por parámetro: siembra el del
+-- contexto de la transacción, y solo si quien llama administra ese hogar.
+-- (En Postgres gestionado, `SET row_security = off` dentro de un CREATE
+-- FUNCTION exige que el propietario no esté sometido a FORCE: de eso ya se
+-- encarga `0018_rls_force_compat.sql`, que el runner reaplica antes de cada
+-- migración pendiente — es el mismo camino de las diez SECURITY DEFINER
+-- anteriores, `app.mark_vacations_seen` incluida.)
+CREATE FUNCTION app.seed_finance_categories()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, app
+SET row_security = off
+AS $$
+DECLARE
+  target_household uuid;
+  ontology_row record;
+  parent_key uuid;
+  inserted integer := 0;
+BEGIN
+  IF NOT app.context_is_complete() THEN
+    RAISE EXCEPTION 'contexto de transacción incompleto' USING ERRCODE = '42501';
+  END IF;
+  IF app.current_household_role() <> 'family_admin' THEN
+    RAISE EXCEPTION 'solo la familia administradora siembra categorías de finanzas'
+      USING ERRCODE = '42501';
+  END IF;
+  target_household := app.current_household_id();
+
+  IF EXISTS (
+    SELECT 1 FROM app.finance_categories WHERE household_id = target_household
+  ) THEN
+    RETURN 0;
+  END IF;
+
+  FOR ontology_row IN
+    SELECT * FROM (VALUES
+      ('Vivienda'::text, 'gasto'::text, ARRAY['Hipoteca/préstamo', 'Suministros', 'Comunidad', 'Seguridad/alarma', 'Mantenimiento']::text[]),
+      ('Alimentación', 'gasto', ARRAY['Supermercado', 'Restaurantes y bares', 'Comida a domicilio', 'Comidas de trabajo']),
+      ('Transporte', 'gasto', ARRAY['Combustible', 'Transporte público', 'Parking y peajes', 'Mantenimiento vehículo']),
+      ('Salud', 'gasto', ARRAY['Médicos', 'Farmacia']),
+      ('Hijos y educación', 'gasto', ARRAY['Colegio', 'Actividades', 'Cuidado']),
+      ('Ocio y cultura', 'gasto', ARRAY[]::text[]),
+      ('Ropa y cuidado personal', 'gasto', ARRAY[]::text[]),
+      ('Telecomunicaciones y suscripciones', 'gasto', ARRAY['Telefonía e internet', 'Streaming y medios', 'Software y servicios digitales']),
+      ('Seguros', 'gasto', ARRAY['Auto', 'Hogar', 'Vida', 'Salud', 'Otros seguros']),
+      ('Impuestos y tasas', 'gasto', ARRAY[]::text[]),
+      ('Regalos y donaciones', 'gasto', ARRAY[]::text[]),
+      ('Viajes', 'gasto', ARRAY[]::text[]),
+      ('Bancario', 'gasto', ARRAY['Comisiones', 'Intereses', 'Financiación y aplazados']),
+      ('Compras', 'gasto', ARRAY[]::text[]),
+      ('Otros gastos', 'gasto', ARRAY[]::text[]),
+      ('Efectivo', 'gasto', ARRAY[]::text[]),
+      ('Nómina', 'ingreso', ARRAY[]::text[]),
+      ('Ingresos de alquiler', 'ingreso', ARRAY[]::text[]),
+      ('Aportaciones a Cuenta Común', 'ingreso', ARRAY[]::text[]),
+      ('Otros ingresos', 'ingreso', ARRAY[]::text[]),
+      ('Transferencia interna', 'transferencia', ARRAY[]::text[])
+    ) AS ontology(name, kind, children)
+  LOOP
+    INSERT INTO app.finance_categories (household_id, parent_id, name, kind)
+    VALUES (target_household, NULL, ontology_row.name, ontology_row.kind)
+    RETURNING id INTO parent_key;
+    inserted := inserted + 1;
+
+    INSERT INTO app.finance_categories (household_id, parent_id, name, kind)
+    SELECT target_household, parent_key, child, ontology_row.kind
+      FROM unnest(ontology_row.children) AS child;
+    inserted := inserted + coalesce(array_length(ontology_row.children, 1), 0);
+  END LOOP;
+
+  RETURN inserted;
+END
+$$;
+
+REVOKE ALL ON FUNCTION app.seed_finance_categories() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.seed_finance_categories() TO casa_clara_app;
+
 COMMIT;
 ```
 
@@ -561,7 +751,7 @@ COMMIT;
 - [ ] **Step 5: Completar la migración (RLS, grants y auditoría).** ANTES del `COMMIT;` final de `0034_finance.sql`, añade:
 
 ```sql
--- ── 4. RLS: doble cerrojo en todo, salvo las concesiones ────────────────────
+-- ── 5. RLS: doble cerrojo en todo, salvo las concesiones ────────────────────
 DO $enable_rls$
 DECLARE
   table_name text;
@@ -620,7 +810,7 @@ BEGIN
 END
 $finance_policies$;
 
--- ── 5. Grants y auditoría ────────────────────────────────────────────────────
+-- ── 6. Grants y auditoría ────────────────────────────────────────────────────
 GRANT SELECT, INSERT, UPDATE ON app.finance_module_grants TO casa_clara_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON
   app.finance_accounts, app.finance_categories, app.finance_rules,
@@ -670,7 +860,7 @@ git commit -m "feat(db): migración 0034 — esquema de finanzas con doble cerro
 
 ### Task 4: Fixtures `002_finance.sql` y matriz negativa completa
 
-Los tres runners de fixtures del repo (`packages/db/scripts/run-sql-tests.mjs`, `packages/server/test-support/global-setup.mjs`, `apps/web/e2e/db-global-setup.ts`) recorren `packages/db/fixtures/*.sql` ordenado: `002_finance.sql` se carga solo con existir — NO hay que extender ningún runner (verifícalo en el Step 6). La matriz sigue el idioma de `tests/020_rls_matrix.sql`: bloques `BEGIN; SET LOCAL ROLE casa_clara_app; … COMMIT;`, `set_config` + `app.set_household_context`, y fallos esperados capturados con `EXCEPTION WHEN`. Prefijos de UUID exclusivos: `f1*` (roble), `f2*` (olivo), `fa*` (sembrado del test).
+Los tres runners de fixtures del repo (`packages/db/scripts/run-sql-tests.mjs`, `packages/server/test-support/global-setup.mjs`, `apps/web/e2e/db-global-setup.ts`) recorren `packages/db/fixtures/*.sql` ordenado: `002_finance.sql` se carga solo con existir — NO hay que extender ningún runner (verifícalo en el Step 6). La matriz sigue el idioma de `tests/020_rls_matrix.sql`: bloques `BEGIN; SET LOCAL ROLE casa_clara_app; … COMMIT;`, `set_config` + `app.set_household_context`, y fallos esperados capturados con `EXCEPTION WHEN`. Prefijos de UUID: `f1*` (roble) y `f2*` (olivo) para la fixture; para lo que siembra el propio test, prefijo `fa9*`, libre en el árbol (`packages/db/tests/170_push_subscriptions.sql` ya ocupa `fa1*` y `fa2*`, así que `fa*` a secas NO es exclusivo).
 
 **Files:**
 - Create: `packages/db/fixtures/002_finance.sql`
@@ -679,31 +869,41 @@ Los tres runners de fixtures del repo (`packages/db/scripts/run-sql-tests.mjs`, 
 
 **Interfaces:**
 - Consumes: esquema 0034; hogares/membresías de `fixtures/001_two_households.sql` (roble `10000000-…-0001`, admin roble `11000000-…-0001`, family `…-0002`, employee `…-0003`, helper `…-0004`, viewer `…-0005`; olivo `20000000-…-0001`, admin olivo `21000000-…-0001`).
-- Produces: datos sintéticos de finanzas en ambos hogares + concesión viva SOLO para el admin de roble (`f1900000-0000-4000-8000-000000000001`); suite `tests/030_finance_rls.sql` completa, ejecutada por `pnpm test:db` y `pnpm test:rls`.
+- Produces: datos sintéticos de finanzas en ambos hogares + concesión viva SOLO para el admin de roble (`f1900000-0000-4000-8000-000000000001`); suite `tests/030_finance_rls.sql` completa —matriz de los seis papeles, rejas del árbol de categorías (raíz duplicada y tercer nivel), concesión a membresía revocada y semilla idempotente de `app.seed_finance_categories()`—, ejecutada por `pnpm test:db` y `pnpm test:rls`.
 
 - [ ] **Step 1: Escribir la matriz que falla.** Añade AL FINAL de `packages/db/tests/030_finance_rls.sql`:
 
 ```sql
 -- ─────────────────────────────────────────────────────────────────────────────
--- Sembrado propio del fichero (prefijo fa*): una SEGUNDA administración del
--- roble SIN concesión — la fila que demuestra que el rol solo no abre nada.
--- Se elimina al final para no alterar los conteos de las suites posteriores.
+-- Sembrado propio del fichero (prefijo fa9*, libre: 170_push_subscriptions.sql
+-- ya ocupa fa1*/fa2*): una SEGUNDA administración del roble SIN concesión — la
+-- fila que demuestra que el rol solo no abre nada — y una TERCERA ya revocada,
+-- para probar que la reja del disparador tampoco admite membresías muertas.
+-- Ambas se eliminan al final para no alterar los conteos de las suites
+-- posteriores.
 -- ─────────────────────────────────────────────────────────────────────────────
 BEGIN;
 SET LOCAL row_security = off;
 INSERT INTO app.user_profiles (user_id, display_name) VALUES
-  ('fixture:roble:admin2', 'Fixture Segunda Admin Roble');
+  ('fixture:roble:admin2', 'Fixture Segunda Admin Roble'),
+  ('fixture:roble:admin3', 'Fixture Admin Roble Revocada');
 INSERT INTO app.household_memberships (id, household_id, user_id, role) VALUES
   ('fa900000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-   'fixture:roble:admin2', 'family_admin');
+   'fixture:roble:admin2', 'family_admin'),
+  ('fa900000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
+   'fixture:roble:admin3', 'family_admin');
+UPDATE app.household_memberships
+   SET revoked_at = statement_timestamp()
+ WHERE id = 'fa900000-0000-4000-8000-000000000002';
 COMMIT;
 
 BEGIN;
 SET LOCAL ROLE casa_clara_app;
 
--- Admin del roble CON concesión: ve lo suyo, nada del olivo, y las rejas
--- estructurales (cruce de hogar, segunda raíz de transferencia, concesión a
--- quien no administra) fallan con su SQLSTATE exacto.
+-- Admin del roble CON concesión: ve lo suyo, nada del olivo, y las seis rejas
+-- estructurales (cruce de hogar; segunda raíz de transferencia; concesión a
+-- quien no administra; concesión a una administración revocada; raíz repetida
+-- por nombre; tercer nivel del árbol) fallan con su SQLSTATE exacto.
 SELECT set_config('app.user_id', 'fixture:roble:admin', true);
 SELECT app.set_household_context(
   '10000000-0000-4000-8000-000000000001',
@@ -756,6 +956,37 @@ BEGIN
             '11000000-0000-4000-8000-000000000004',
             '11000000-0000-4000-8000-000000000001');
     RAISE EXCEPTION 'granting finance to a helper unexpectedly succeeded';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  -- Conceder a una administración REVOCADA: la reja mira también la vigencia
+  -- de la membresía, no solo su papel (23514).
+  BEGIN
+    INSERT INTO app.finance_module_grants (household_id, membership_id, granted_by_membership_id)
+    VALUES ('10000000-0000-4000-8000-000000000001',
+            'fa900000-0000-4000-8000-000000000002',
+            '11000000-0000-4000-8000-000000000001');
+    RAISE EXCEPTION 'granting finance to a revoked admin unexpectedly succeeded';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+
+  -- Segunda raíz con el MISMO nombre: la mata UNIQUE NULLS NOT DISTINCT
+  -- (23505); con el UNIQUE clásico esta fila entraría.
+  BEGIN
+    INSERT INTO app.finance_categories (household_id, name, kind)
+    VALUES ('10000000-0000-4000-8000-000000000001', 'Casa', 'gasto');
+    RAISE EXCEPTION 'duplicate root category name unexpectedly succeeded';
+  EXCEPTION WHEN unique_violation THEN NULL;
+  END;
+
+  -- Tercer nivel: «Supermercado» ya cuelga de «Casa» en la fixture, así que
+  -- colgar de él sería el tercer piso — lo prohíbe la reja de profundidad
+  -- (23514), porque la spec §5 fija un árbol de DOS niveles.
+  BEGIN
+    INSERT INTO app.finance_categories (household_id, parent_id, name, kind)
+    VALUES ('10000000-0000-4000-8000-000000000001',
+            'f1c00000-0000-4000-8000-000000000002', 'Fruta', 'gasto');
+    RAISE EXCEPTION 'third-level finance category unexpectedly succeeded';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
 END
@@ -882,6 +1113,58 @@ END
 $assert_revocation_is_immediate$;
 ROLLBACK;
 
+-- La semilla del árbol de categorías (spec §5, portada de seed.py): siembra
+-- 50 filas la primera vez y 0 la segunda. Se prueba sobre el OLIVO —cuyo admin
+-- NO tiene concesión, que es justo el caso real: se siembra al conceder, antes
+-- de que el cerrojo se abra— dentro de una transacción que se revierte.
+BEGIN;
+SET LOCAL row_security = off;
+DELETE FROM app.finance_categories
+ WHERE household_id = '20000000-0000-4000-8000-000000000001';
+SET LOCAL row_security = on;
+SET LOCAL ROLE casa_clara_app;
+SELECT set_config('app.user_id', 'fixture:olivo:admin', true);
+SELECT set_config('app.household_id', '', true);
+SELECT set_config('app.membership_id', '', true);
+SELECT set_config('app.role', '', true);
+SELECT app.set_household_context(
+  '20000000-0000-4000-8000-000000000001',
+  '21000000-0000-4000-8000-000000000001'
+);
+DO $assert_category_seed$
+DECLARE
+  first_run integer;
+  second_run integer;
+BEGIN
+  first_run := app.seed_finance_categories();
+  second_run := app.seed_finance_categories();
+  IF first_run <> 50 OR second_run <> 0 THEN
+    RAISE EXCEPTION 'category seed inserted % rows and % on the second run (expected 50 and 0)',
+      first_run, second_run;
+  END IF;
+END
+$assert_category_seed$;
+RESET ROLE;
+DO $assert_seeded_tree$
+BEGIN
+  -- Se leen como propietario (superusuario del clúster de pruebas): el admin
+  -- del olivo sigue sin concesión y la RLS no le enseñaría ni una fila.
+  IF (SELECT count(*) FROM app.finance_categories
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 50
+     OR (SELECT count(*) FROM app.finance_categories
+          WHERE household_id = '20000000-0000-4000-8000-000000000001'
+            AND parent_id IS NOT NULL) <> 29 THEN
+    RAISE EXCEPTION 'seeded category tree has the wrong shape';
+  END IF;
+  IF (SELECT count(*) FROM app.finance_categories
+       WHERE household_id = '20000000-0000-4000-8000-000000000001'
+         AND kind = 'transferencia' AND parent_id IS NULL) <> 1 THEN
+    RAISE EXCEPTION 'the seed must leave exactly one transferencia root';
+  END IF;
+END
+$assert_seeded_tree$;
+ROLLBACK;
+
 -- El emisor de trabajos no tiene GRANT sobre finanzas: ni una fila.
 BEGIN;
 SET LOCAL ROLE casa_clara_worker;
@@ -900,8 +1183,10 @@ COMMIT;
 BEGIN;
 SET LOCAL row_security = off;
 DELETE FROM app.household_memberships
- WHERE id = 'fa900000-0000-4000-8000-000000000001';
-DELETE FROM app.user_profiles WHERE user_id = 'fixture:roble:admin2';
+ WHERE id IN ('fa900000-0000-4000-8000-000000000001',
+              'fa900000-0000-4000-8000-000000000002');
+DELETE FROM app.user_profiles
+ WHERE user_id IN ('fixture:roble:admin2', 'fixture:roble:admin3');
 COMMIT;
 ```
 
@@ -1041,6 +1326,11 @@ git commit -m "test(db): fixtures sintéticas de finanzas y matriz negativa 030 
 
 Patrón a calcar: `packages/server/src/commands/membership.ts` (handler + `CommandRejectedError` + validación zod del payload) y `packages/server/src/access.integration.test.ts` (suite contra Postgres real con el login `it_casa_clara_app_login` que provisiona `test-support/global-setup.mjs`). Los comandos `finance.grant.write`/`finance.revoke.write` exigen emisor `family_admin` con `access.manage` (NO exigen concesión propia: cualquier admin concede o revoca, y un admin puede revocarse a sí mismo). `requireFinanceAdmin` es el cerrojo que usarán TODOS los demás handlers y endpoints de fases posteriores.
 
+Dos reglas que esta tarea deja escritas para las fases siguientes:
+
+1. **La autorización va DENTRO de cada `case`, nunca antes del `switch`.** La unión `financeCommandPayloadSchema` crece en la fase 5 con 22 kinds más; si la puerta de `grant`/`revoke` (solo `access.manage`, SIN concesión viva) quedara al principio del handler, todos esos comandos la heredarían en silencio y el doble cerrojo desaparecería de la capa de servidor, quedando solo la RLS.
+2. **Conceder por primera vez en un hogar siembra el árbol de categorías** (spec §5, `app.seed_finance_categories()` de la Task 3): sin esa semilla no existe la raíz `kind='transferencia'` que necesitan las transferencias, el efectivo, las inversiones y el pipeline post-import de la fase 2 —y el comando de creación de categorías de la fase 5 solo admite `gasto`/`ingreso`, así que a mano no se puede crear.
+
 **Files:**
 - Create: `packages/server/src/commands/finance.ts`
 - Modify: `packages/server/src/index.ts`
@@ -1048,7 +1338,7 @@ Patrón a calcar: `packages/server/src/commands/membership.ts` (handler + `Comma
 - Test (create): `packages/server/src/finance-grants.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `financeCommandPayloadSchema` (`@casa-clara/contracts/schemas`), `hasCapability` (`@casa-clara/contracts/capabilities`), `ActiveMembership`/`withAuthorizedTransaction` (`./database.js`), `CommandRejectedError`/`CommandHandler`/`CommandHandlers`/`processSyncBatch` (`./sync.js`), `app.finance_enabled()` (0034).
+- Consumes: `financeCommandPayloadSchema` (`@casa-clara/contracts/schemas`), `hasCapability` (`@casa-clara/contracts/capabilities`), `ActiveMembership`/`withAuthorizedTransaction` (`./database.js`), `CommandRejectedError`/`CommandHandler`/`CommandHandlers`/`processSyncBatch` (`./sync.js`), `app.finance_enabled()` y `app.seed_finance_categories()` (0034).
 - Produces: `export async function requireFinanceAdmin(client: PoolClient, membership: ActiveMembership): Promise<void>` (lanza `CommandRejectedError("not_allowed")` sin rol, `CommandRejectedError("finance_not_granted")` sin concesión viva); `export const financeCommandHandlers: CommandHandlers` con la clave `finance`.
 
 - [ ] **Step 1: Escribir el test que falla.** Crea `packages/server/src/finance-grants.integration.test.ts`:
@@ -1064,6 +1354,7 @@ import {
   type CommandAckV1,
   type CommandEnvelopeV1,
 } from "@casa-clara/contracts";
+import { financeCommandPayloadSchema } from "@casa-clara/contracts/schemas";
 
 import { financeCommandHandlers, requireFinanceAdmin } from "./commands/finance.js";
 import { withAuthorizedTransaction, type AuthenticatedPrincipal } from "./database.js";
@@ -1136,6 +1427,18 @@ describe.runIf(Boolean(adminUrl))("concesión y revocación de Finanzas sobre Po
   });
 
   afterAll(async () => {
+    // El paquete corre con fileParallelism: false y sequencer alfabético: esta
+    // base la heredan food, guide-reading, rhythm, sync, vacation, wiki… Dejar
+    // un family_admin de más en el roble les cambiaría el reparto por debajo,
+    // así que la suite se lleva TODO lo que sembró (patrón de
+    // access.integration.test.ts, que además siembra un viewer, no un admin).
+    await adminPool.query("delete from app.finance_module_grants where membership_id = $1", [
+      SECOND_ADMIN_MEMBERSHIP,
+    ]);
+    await adminPool.query("delete from app.household_memberships where id = $1", [
+      SECOND_ADMIN_MEMBERSHIP,
+    ]);
+    await adminPool.query("delete from app.user_profiles where user_id = $1", [SECOND_ADMIN_USER]);
     await appPool?.end();
     await adminPool?.end();
   });
@@ -1150,6 +1453,16 @@ describe.runIf(Boolean(adminUrl))("concesión y revocación de Finanzas sobre Po
     expect(granted.status).toBe("accepted");
     expect(granted.resourceId).toBeTruthy();
     expect(await financeEnabledFor(SECOND_ADMIN)).toBe(true);
+
+    // Conceder siembra el árbol de categorías SOLO si el hogar está vacío
+    // (spec §5). El roble ya trae las cuatro de la fixture: la semilla no
+    // duplica nada. El caso «hogar virgen → 50 categorías» lo prueba la matriz
+    // SQL de la Task 4, que puede vaciar un hogar y revertir.
+    const categories = await adminPool.query<{ total: string }>(
+      "select count(*) as total from app.finance_categories where household_id = $1",
+      [ROBLE],
+    );
+    expect(Number(categories.rows[0].total)).toBe(4);
 
     const repeated = await run(
       ADMIN,
@@ -1206,6 +1519,16 @@ describe.runIf(Boolean(adminUrl))("concesión y revocación de Finanzas sobre Po
         requireFinanceAdmin(client, membership),
       ),
     ).rejects.toMatchObject({ errorCode: "not_allowed" });
+  });
+});
+
+// FUERA del describe con base de datos: esta regla se congela siempre, haya
+// Postgres delante o no.
+describe("la puerta del agregado finance", () => {
+  it("solo tiene dos kinds en esta fase: quien añada uno nuevo abre requireFinanceAdmin, no la puerta de conceder", () => {
+    expect(
+      financeCommandPayloadSchema.options.map((option) => option.shape.kind.value).sort(),
+    ).toEqual(["finance.grant.write", "finance.revoke.write"]);
   });
 });
 ```
@@ -1286,7 +1609,8 @@ async function grantFinance(
     // regla en la base; aquí se rechaza con un código legible antes de chocar.
     throw new CommandRejectedError(
       "grant_target_not_admin",
-      "Finanzas solo se concede a la familia administradora",    );
+      "Finanzas solo se concede a la familia administradora",
+    );
   }
   const live = await client.query<{ id: string }>(
     `select id from app.finance_module_grants
@@ -1302,6 +1626,15 @@ async function grantFinance(
      returning id`,
     [householdId, membershipId, actor.id],
   );
+  // Activar el módulo en un hogar por primera vez le siembra su árbol de
+  // categorías (spec §5: «la semilla del origen se replica como datos por
+  // hogar al activar el módulo o migrar»). Es idempotente y devuelve 0 si el
+  // hogar ya tiene categorías —el que llega por el ETL de la fase 3, o
+  // cualquier concesión posterior—, y bypasea RLS a propósito: quien concede
+  // puede no tener concesión propia todavía. Sin esta línea, un hogar recién
+  // activado se queda sin la raíz `transferencia` y no se pueden vincular
+  // transferencias, efectivo ni inversiones.
+  await client.query("select app.seed_finance_categories()");
   return { resourceId: inserted.rows[0].id as UUID };
 }
 
@@ -1330,12 +1663,20 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
   if (!parsed.success) {
     throw new CommandRejectedError("invalid_payload", parsed.error.issues[0]?.message);
   }
-  requireAccessManagingAdmin(membership);
   const payload = parsed.data;
+  // La autorización va DENTRO de cada `case`, NUNCA antes del `switch`.
+  // `requireAccessManagingAdmin` es la puerta de conceder/revocar: rol
+  // administrador con access.manage, SIN concesión propia. Cualquier kind que
+  // añadan las fases siguientes (transacciones, importación, eventos…) empieza
+  // por `await requireFinanceAdmin(client, membership)` — el doble cerrojo. Si
+  // esta llamada estuviera antes del switch, todos esos comandos heredarían la
+  // puerta floja en silencio y en el servidor solo quedaría la RLS.
   switch (payload.kind) {
     case "finance.grant.write":
+      requireAccessManagingAdmin(membership);
       return grantFinance(client, envelope.householdId, membership, payload.membershipId);
     case "finance.revoke.write":
+      requireAccessManagingAdmin(membership);
       return revokeFinance(client, envelope.householdId, membership, payload.membershipId);
   }
 };
@@ -1361,7 +1702,7 @@ pnpm --filter @casa-clara/server exec vitest run src/finance-grants.integration.
 pnpm --filter @casa-clara/server typecheck
 ```
 
-Esperado: `Test Files 1 passed`, `Tests 3 passed`.
+Esperado: `Test Files 1 passed`, `Tests 4 passed` (las tres de la base más la que congela los dos kinds del agregado).
 
 - [ ] **Step 5: Registrar el dispatcher en la ruta de sync.** En `apps/web/src/routes/api/v1/sync/+server.ts`: añade `financeCommandHandlers,` a la lista de imports de `'@casa-clara/server'` (orden alfabético, tras `employmentCommandHandlers`) y añade `...financeCommandHandlers,` dentro del objeto `handlers` (tras `...accessCommandHandlers,`). Verifica:
 
@@ -1481,12 +1822,14 @@ Ejecuta el comando del Step 2: ahora los dos ficheros en verde.
     finanzas: { module: 'finanzas', label: 'Finanzas', short: 'Finanzas', capability: 'finance.access' },
 ```
 
-(b) en los dos órdenes, inserta `'finanzas'` tras `'employment'`:
+(b) en los dos órdenes, inserta `'finanzas'` — en `handsOnOrder` tras `'employment'`, y en `familyOrder` DESPUÉS de `'calendar'`:
 
 ```ts
   const handsOnOrder = ['today', 'routines', 'menu', 'wiki', 'employment', 'finanzas', 'calendar', 'contacts'];
-  const familyOrder = ['today', 'menu', 'employment', 'finanzas', 'calendar', 'wiki', 'routines', 'contacts'];
+  const familyOrder = ['today', 'menu', 'employment', 'calendar', 'finanzas', 'wiki', 'routines', 'contacts'];
 ```
+
+**El sitio en `familyOrder` importa y no es negociable sin decirlo.** La barra inferior de móvil es `mobilePrimary = mobileOrder.slice(0, 4)`: poner `'finanzas'` en cuarta posición dejaría a la administración con Hoy / Menú / Contrato / Finanzas y empujaría **Calendario** a la hoja «Más», deshaciendo el orden que el comentario del propio fichero justifica con el informe heurístico (H-02/H-12) y cambiando lo que afirman `mobile-nav.e2e.ts` y `mobile-densidad.dbe2e.ts`. Detrás de `'calendar'`, Finanzas queda igual de alcanzable en la hoja «Más» —que es donde vive Ajustes, su pantalla hermana— y nada se mueve de sitio. En `handsOnOrder` cae en sexta posición, así que la barra de quien trabaja la casa tampoco cambia; y da igual en la práctica, porque ese orden solo lo ven papeles que jamás tendrán `finance.access`.
 
 En `apps/web/src/lib/components/NavIcon.svelte`, en el objeto `paths`, tras `employment`, añade:
 
@@ -1502,6 +1845,8 @@ export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 pnpm --filter @casa-clara/web exec vitest run tests/routing.test.ts tests/app-title.test.ts tests/capabilities.test.ts
 pnpm --filter @casa-clara/web check
 ```
+
+Aviso para los gates de navegación de la Task 10 (Step 4): sin base de datos, `financeAccessGranted` devuelve `true` (modo maqueta), así que la entrada «Finanzas» aparece en TODA la suite e2e y a11y de la administración. Si `mobile-nav.e2e.ts` o `mobile-densidad.dbe2e.ts` se quejan, el arreglo vuelve AQUÍ (al orden de esta tarea), nunca a la aserción del test.
 
 - [ ] **Step 7: Commit.**
 
@@ -1817,7 +2162,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 };
 ```
 
-- [ ] **Step 4: Los 7 `+page.svelte`.** Cada uno lleva EXACTAMENTE esta estructura, sustituyendo los tres huecos «TÍTULO», «COPY_VACÍO» y «COPY_PENDIENTE» por la fila de su ruta en la tabla de abajo:
+- [ ] **Step 4: Los 7 `+page.svelte`.** Cada uno lleva EXACTAMENTE esta estructura, sustituyendo los tres huecos `TITULO`, `COPY_VACIO` y `COPY_PENDIENTE` por la fila de su ruta en la tabla de abajo. Los huecos van en mayúsculas y SIN comillas de ningún tipo: se reemplaza el hueco entero por el texto de la tabla, tal cual (nada de guillemets ni comillas alrededor del copy en la pantalla final):
 
 ```svelte
 <script lang="ts">
@@ -1828,24 +2173,24 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 </script>
 
 <div class="page-wrap">
-  <PageHeader eyebrow="Finanzas" title="«TÍTULO»" />
+  <PageHeader eyebrow="Finanzas" title="TITULO" />
   <section class="empty-state">
     <span aria-hidden="true">€</span>
     {#if data.status.transactionCount === 0}
       <h2>Aún no hay datos de finanzas</h2>
-      <p>«COPY_VACÍO»</p>
+      <p>COPY_VACIO</p>
     {:else}
       <h2>Esta pantalla está en construcción</h2>
       <p>
         Hay {data.status.transactionCount} movimientos guardados en
-        {data.status.accountCount} cuentas. «COPY_PENDIENTE»
+        {data.status.accountCount} cuentas. COPY_PENDIENTE
       </p>
     {/if}
   </section>
 </div>
 ```
 
-| Ruta | «TÍTULO» | «COPY_VACÍO» | «COPY_PENDIENTE» |
+| Ruta | TITULO | COPY_VACIO | COPY_PENDIENTE |
 |---|---|---|---|
 | `finanzas/+page.svelte` | `Finanzas de la casa` | `Cuando se importe el primer extracto, aquí estarán los indicadores del mes: ingresos, gastos, ahorro e inversión.` | `Los indicadores y las gráficas del panel llegan en una fase posterior del módulo.` |
 | `analitica/+page.svelte` | `Analítica` | `Cuando haya movimientos importados, aquí vivirán los indicadores ampliados, el resumen mensual y el pivot completo.` | `El pivot y las gráficas de esta pantalla llegan en una fase posterior del módulo.` |
@@ -1876,6 +2221,8 @@ git commit -m "feat(web): páginas esqueleto de las siete rutas de Finanzas"
 ### Task 9: Tarjeta «Finanzas» en Ajustes del hogar
 
 La concesión por admin vive en los Ajustes GENERALES (spec §4), junto a la sección de accesos. Patrones a calcar: constructores de envelopes de `apps/web/src/lib/access/commands.ts`; test de constructores de `apps/web/tests/access-commands.test.ts`; despacho con `OptimisticActions` + `messageOverrides` y tarjeta de `settings/+page.svelte`; lectura bajo RLS de `loadAccessOverview` (`access.server.ts`).
+
+**Propiedad de ficheros (doc de interfaces, «Resoluciones canónicas» §4):** esta fase CREA `apps/web/src/lib/finance/commands.ts` y `apps/web/tests/finance-commands.test.ts` con `grantFinanceAccess`/`revokeFinanceAccess` y su `describe`. La fase 5 los **modifica** para añadir `financeCommand` junto a lo que ya hay; no los reescribe. Lo mismo con el import de finanzas que esta tarea mete en `settings/+page.svelte`: es una excepción conocida y deliberada al grep de fuga de bundle de la fase 7 (la concesión vive en Ajustes por diseño y Ajustes no entra en el grafo de arranque de Hoy; quien decide de verdad es `verify:bundle`, que mide alcanzabilidad real).
 
 **Files:**
 - Create: `apps/web/src/lib/finance/commands.ts`
@@ -2135,6 +2482,11 @@ Verde: repetir la suite de integración.
           <h2 id="finance-grants-title">Quién puede ver las finanzas de la casa</h2>
         </div>
       </div>
+      <!-- Sin `{:else}`: esta tarjeta va DENTRO del `{#if access}` de la
+           pantalla, y `loadFinanceGrantOverview` devuelve null exactamente en
+           los mismos casos en que `loadAccessOverview` lo devuelve (sin pool o
+           sin rol de administración). Una rama alternativa aquí sería marcado
+           inalcanzable. -->
       {#if data.finance}
         <p class="audit-note">
           Finanzas se activa cuenta a cuenta y solo para la familia administradora: quien no lo
@@ -2168,10 +2520,6 @@ Verde: repetir la suite de integración.
             </li>
           {/each}
         </ul>
-      {:else}
-        <p class="audit-note">
-          La concesión de Finanzas se gestiona con la base de datos del hogar conectada.
-        </p>
       {/if}
     </section>
 ```
@@ -2196,7 +2544,7 @@ git commit -m "feat(web): tarjeta de concesiones de Finanzas en Ajustes del hoga
 
 ### Task 10: Verificación de cierre de fase
 
-Ningún fichero nuevo: se comprueba que la rama queda con TODOS los gates en verde y que el presupuesto de arranque de Hoy no se ha movido (la matriz de capacidades sigue fuera de la raíz de contracts; la entrada de navegación es texto en el AppShell).
+Ningún fichero nuevo: se comprueba que la rama queda con TODOS los gates en verde y que el presupuesto de arranque de Hoy no se ha movido (la matriz de capacidades sigue fuera de la raíz de contracts; la entrada de navegación es texto en el AppShell). «Todos» son los seis de la rama (`lint`, `typecheck`, `check`, `test`, `test:db`, `test:rls`) MÁS los tres de navegador (`test:e2e`, `test:a11y`, `test:e2e:db`), que esta fase mueve de lleno.
 
 **Files:**
 - Ninguno (solo ejecución; si algo falla, se arregla en la tarea correspondiente antes de cerrar).
@@ -2231,7 +2579,24 @@ pnpm --filter @casa-clara/server test
 pnpm --filter @casa-clara/web test
 ```
 
-- [ ] **Step 4: Presupuesto de arranque.**
+- [ ] **Step 4: Navegador — e2e, accesibilidad y e2e con base.** Esta fase toca justo lo que estas tres suites vigilan: la composición de la navegación (AppShell + NavIcon + los dos órdenes), el marcado nuevo dentro de `{#if access}` en Ajustes, siete rutas nuevas, y una fixture (`002_finance.sql`) que ahora cargan TODOS los runners de dbe2e, encendiendo Finanzas a la administración del roble en cada ejecución. La spec §12 exige la rama verde en todos los gates de CI, y estos tres jobs existen en `.github/workflows/ci.yml`.
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+pnpm test:e2e && pnpm test:a11y
+```
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+export E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u"
+pnpm test:e2e:db
+```
+
+`E2E_DATABASE_URL` se exporta SIEMPRE de forma explícita: el valor por omisión de `apps/web/package.json` apunta al puerto 54329, que en esta máquina es la base de otra aplicación.
+
+Un fallo aquí NO se arregla tocando la aserción: si se queja la barra de navegación (`mobile-nav.e2e.ts`, `mobile-densidad.dbe2e.ts`), el arreglo va a la Task 6 (orden de `familyOrder`); si se queja Ajustes o el eje de accesibilidad, a la Task 9 (marcado de la tarjeta); si se queja una ruta de Finanzas, a la Task 8.
+
+- [ ] **Step 5: Presupuesto de arranque.**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
@@ -2240,4 +2605,4 @@ pnpm --filter @casa-clara/web build && pnpm --filter @casa-clara/web verify:bund
 
 Esperado: la construcción pasa y `verify-today-bundle.mjs` confirma que la matriz de capacidades sigue fuera del grafo inicial de Hoy.
 
-- [ ] **Step 5: Commit de cierre solo si hubo arreglos.** Si los pasos anteriores obligaron a tocar algo, committea el arreglo con su ámbito real (`fix(web): …`, `fix(db): …`). Si no, la fase queda cerrada con el commit de la Task 9.
+- [ ] **Step 6: Commit de cierre solo si hubo arreglos.** Si los pasos anteriores obligaron a tocar algo, committea el arreglo con su ámbito real (`fix(web): …`, `fix(db): …`). Si no, la fase queda cerrada con el commit de la Task 9.

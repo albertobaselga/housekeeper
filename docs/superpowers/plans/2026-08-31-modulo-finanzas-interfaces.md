@@ -276,6 +276,71 @@ Función de cerrojo: `app.finance_enabled() RETURNS boolean` (rol `family_admin`
 viva para `app.current_membership_id()`). Todas las políticas `finance_*` la exigen salvo
 `finance_module_grants` (legible por cualquier admin del hogar; mutable solo vía comandos).
 
+## Resoluciones canónicas (auditoría del 2026-09-01) — MANDAN sobre lo que diga cualquier plan
+
+La auditoría cruzada de los 7 planes encontró contradicciones entre fases. Estas son las
+decisiones firmes; cada plan se corrigió para cumplirlas. Ante cualquier duda futura, esta
+sección gana.
+
+1. **Imports del dominio**: SIEMPRE por el subpath `@casa-clara/domain/finance`, nunca desde
+   la raíz `@casa-clara/domain` (que no reexporta finanzas, por presupuesto de bundle).
+2. **Lecturas de Analítica y pivot**: las produce la FASE 4 en
+   `packages/server/src/finance/queries.ts`, con estas firmas exactas, y la fase 6 solo las consume:
+   - `readFinanceAnalytics(client, householdId, filters): Promise<{ rows: AnalyticsRow[] }>`
+     donde `AnalyticsRow = { kind: 'gasto'|'ingreso'|'inversion'; monthly: Record<string, { totalCents: string; recCents: string; extCents: string }> }`
+   - `readFinancePivot(client, householdId, filters): Promise<{ months: string[]; rows: PivotSourceRow[] }>`
+   La fase 4 crea también `apps/web/src/routes/api/v1/finance/analytics/+server.ts` y
+   `.../pivot/+server.ts` (este parsea `dims` y `dupev`) y sus métodos en `$lib/finance/api.ts`.
+3. **`buildPivotTree`**: tercer argumento `{ monthsCount: number; dupEventIds?: ReadonlySet<string> }`
+   (nunca `{ months }`).
+4. **Propiedad de ficheros compartidos** (quien CREA / quien MODIFICA):
+   - `apps/web/src/lib/finance/commands.ts` → crea fase 1 (`grantFinanceAccess`,
+     `revokeFinanceAccess`); fase 5 lo **modifica** para añadir `financeCommand`.
+   - `apps/web/tests/finance-commands.test.ts` → crea fase 1; fase 5 lo **modifica**.
+   - `apps/web/src/lib/finance/pivot-state.ts` → crea fase 4 con
+     `PIVOT_DIMENSIONS`, `DEFAULT_DIMS`, `parseDims(param): PivotDimension[]`,
+     `serializeDims(dims): string | null`; fase 6 lo **modifica** conservando esos nombres y
+     el retorno `string | null` (nada de `ALL_DIMS`/`dimsToParam`).
+   - `apps/web/e2e/finanzas.e2e.ts` → crea fase 4; fase 7 lo **modifica** (añade al final).
+   - `apps/web/e2e/finanzas-importar.dbe2e.ts` → crea fase 5; fase 7 lo **modifica** o lo
+     omite (nunca lo reescribe).
+5. **Payloads de comando** (manda el esquema Zod de la fase 5; la fase 6 se alinea):
+   - `finance.transactions.bulk`: `{ kind, transactionIds: string[], categoryId?, status? }` —
+     `status` es **opcional** (permite cambiar solo la categoría en bloque).
+   - `finance.transaction.invest`: `{ kind, transactionId, accountId }` (nunca `txId`).
+   - Añadir evento en bloque → `finance.event.assignTransactions`
+     `{ kind, eventId, transactionIds, action: 'add'|'remove' }`; fijar naturaleza →
+     `finance.transactions.assignConceptRecurrence`.
+6. **Vocabulario de `bank`**: `finance_accounts.bank` es NULL para cuentas sin banco
+   (Efectivo, inversión, manuales) y el CHECK admite solo los cuatro bancos reales;
+   `finance_import_batches.bank` admite además `'manual'`. El ETL (fase 3) **traduce**
+   `efectivo`/`inversion`/`manual` del origen a NULL en cuentas y falla con mensaje claro ante
+   un valor no contemplado. El dominio (fase 2) identifica la cuenta de inversión por
+   `kind === 'inversion'` y la de efectivo por `cashAccountId` explícito (nunca por `bank`).
+7. **Categorías**: `UNIQUE NULLS NOT DISTINCT (household_id, parent_id, name)` y trigger que
+   impide un tercer nivel (árbol de 2 niveles, spec §5). La **fase 1** siembra de forma
+   idempotente el árbol de categorías del hogar —incluida la única raíz `kind='transferencia'`—
+   al conceder Finanzas por primera vez en ese hogar (portando `home-finance/backend/app/seed.py`).
+8. **`raw`**: la columna es `jsonb NOT NULL DEFAULT '{}'`; el ETL coalesce `NULL → '{}'`.
+9. **`FinanceTxView` completo en las lecturas**: `queries.ts` debe traer `code_common`,
+   `code_own` y el `kind` de la categoría (`categoryKind`) y tipar sin aserciones `as`;
+   `computeRangeSummary` recibe TODAS las transacciones del hogar (el filtrado es interno).
+10. **`SummaryOptions`** son exactamente `{ from, to, accounts, accountIds?, eventId?,
+    excludeEventIds?, eventIdsByTx? }`.
+11. **Códigos de error de acceso**: **403** en ruta declarada sin capacidad («Esta parte la
+    lleva la familia.»); **404** solo en ruta hija NO declarada. Todos los e2e se alinean.
+12. **CLI del ETL** (produce fase 3, consume fase 7):
+    `node packages/db/scripts/migrar-home-finance.mjs --sqlite <ruta> --database-url <url>
+    --household <slug> --backup-dir <dir> [--dry-run|--verify-only]`. `--sqlite` y
+    `--database-url` son obligatorios; el guion NO lee `DATABASE_URL` del entorno.
+13. **Runbook de migración**: `docs/runbooks/migracion-home-finance.md` (nombre único).
+14. **Muestras de extractos**: se GENERAN por código
+    (`packages/server/src/finance/parsers/synthetic-samples.ts`); nunca ficheros binarios en git.
+    Los e2e cargan el fichero en memoria con `setInputFiles({ name, mimeType, buffer })`.
+15. **`E2E_DATABASE_URL` explícita siempre** antes de `pnpm test:e2e:db`
+    (`postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u`): el valor por
+    omisión del `package.json` apunta al 54329 prohibido.
+
 ## Dependencias entre fases
 
 | Fase | Consume | Produce |

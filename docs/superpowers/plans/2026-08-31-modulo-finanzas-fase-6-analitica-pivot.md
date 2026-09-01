@@ -30,7 +30,13 @@
 **Notas comunes a TODAS las tareas de este plan:**
 
 - Los tests unitarios nuevos van en `apps/web/tests/*.test.ts` y los e2e en `apps/web/e2e/*.e2e.ts`: ambos globs ya están cableados en `.github/workflows/ci.yml` (`--specs 'apps/web::tests/*.test.ts'` y `--specs 'apps/web/e2e::*.e2e.ts'`), así que NO hay que tocar el workflow — `assert-suite-coverage.py` los recogerá solo.
-- Este plan consume artefactos de fases anteriores fijados en el doc de interfaces: `buildPivotTree` y los tipos `PivotDimension`/`PivotSourceRow`/`PivotOptions`/`PivotTree` (fase 2, `packages/domain/src/finance/pivot.ts`), `$lib/finance/{filters,api,format}.ts` y los componentes `FinanceFilterBar.svelte`/`FinanceDetailPanel.svelte` (fase 4), los endpoints GET de `/api/v1/finance/*` (fase 4) y los comandos `finance.*` (fase 5). Donde una tarea asuma un detalle NO fijado por el doc de interfaces (nombre de campo de un payload, forma exacta de un tipo del dominio), la tarea lo dice y su PRIMER paso es leer el fichero real y alinear los nombres: **los nombres del repo mandan sobre los asumidos por este plan**.
+- Este plan consume artefactos de fases anteriores fijados en el doc de interfaces: `buildPivotTree` y los tipos `PivotDimension`/`PivotSourceRow`/`PivotOptions`/`PivotTree` (fase 2, `packages/domain/src/finance/pivot.ts`), `$lib/finance/{filters,api,format,breakdown,pivot-state}.ts` y los componentes `FinanceFilterBar.svelte`/`FinanceDetailPanel.svelte` (fase 4), los endpoints GET de `/api/v1/finance/*` y las lecturas de `packages/server/src/finance/queries.ts` (fase 4) y los comandos `finance.*` (fase 5). Donde una tarea asuma un detalle NO fijado por el doc de interfaces (nombre de campo de un payload, forma exacta de un tipo del dominio), la tarea lo dice y su PRIMER paso es leer el fichero real y alinear los nombres: **los nombres del repo mandan sobre los asumidos por este plan**.
+- **Resoluciones canónicas que atan a esta fase** (sección «Resoluciones canónicas» del doc de interfaces; mandan sobre cualquier cosa que diga este plan):
+  1. Los símbolos del dominio se importan SIEMPRE por el subpath `@casa-clara/domain/finance`, nunca desde la raíz `@casa-clara/domain`.
+  2. `readFinanceAnalytics` y `readFinancePivot` (y los endpoints `/api/v1/finance/analytics` y `/pivot`) los **produce la fase 4**; esta fase solo los consume con las firmas exactas de la Task 8. Si al empezar la Task 8 no existen, la fase 4 no está cerrada: párate y avísalo, no los escribas aquí.
+  3. `buildPivotTree(rows, dims, { monthsCount, dupEventIds? })` — el tercer argumento lleva `monthsCount`, nunca `months`.
+  4. `apps/web/src/lib/finance/pivot-state.ts` lo **crea la fase 4** con `PIVOT_DIMENSIONS`, `DEFAULT_DIMS`, `parseDims` y `serializeDims(dims): string | null`; esta fase lo MODIFICA conservando esos nombres (nada de `ALL_DIMS`/`dimsToParam`).
+  5. Payloads de comando: `transactionIds`/`transactionId` (jamás `txIds`/`txId`); `finance.transactions.bulk` solo admite `categoryId?` y `status?`; para evento en bloque, `finance.event.assignTransactions`; para naturaleza por concepto, `finance.transactions.assignConceptRecurrence`.
 - Convención de este plan para céntimos en cliente: propiedades `*Cents` de tipo `bigint`; `formatCents` (reexportado por `$lib/finance/format.ts`, fase 4) para pintar. `Number(...)` sobre céntimos SOLO para geometría SVG y porcentajes, nunca para almacenar ni sumar dinero.
 
 ---
@@ -54,6 +60,8 @@
   - `interface SummaryRowDef { label: string; cls: ''|'pos'|'neg'; strong?: boolean; sep?: boolean; value(p: NatureChartPoint): bigint }` y `SUMMARY_ROWS: SummaryRowDef[]`
 
 Este módulo porta la intención de `/home/abf/github/home-finance/frontend/src/features/analytics/chartData.ts` y del `monthsInRange`/`SUMMARY_ROWS` de `/home/abf/github/home-finance/frontend/src/features/analytics/Analitica.tsx`, con céntimos `bigint`.
+
+**Nota anti-duplicado (etiquetas de mes):** la fase 4 ya produce `bucketLabel(bucket)` en `$lib/finance/format.ts` con el formato CORTO de las gráficas del Dashboard («ene 26»). `monthLabel` es SOLO la variante larga («ene 2026») que necesitan las cabeceras del resumen mensual y del pivot: no reimplementes la corta ni cambies `bucketLabel`. Si al abrir `$lib/finance/format.ts` ves que la fase 4 ya expone una etiqueta larga, importa esa y borra `monthLabel` de este módulo (deja los tests apuntando a la de la fase 4).
 
 - [ ] **Step 1: escribe el test que falla.** Crea `apps/web/tests/finance-chart-data.test.ts`:
 
@@ -306,51 +314,62 @@ git commit -m "feat(finanzas): datos puros de la gráfica por naturaleza y resum
 
 ---
 
-### Task 2: `pivot-state.ts` — dimensiones reordenables y orden de columnas
+### Task 2: `pivot-state.ts` — etiquetas, reordenación de dimensiones y orden de columnas
 
 **Files:**
-- Create: `apps/web/src/lib/finance/pivot-state.ts`
-- Test: `apps/web/tests/finance-pivot-dims.test.ts`
+- Modify: `apps/web/src/lib/finance/pivot-state.ts` — **lo CREA la fase 4** (Task 4, «Stub de estado del pivot») con `PIVOT_DIMENSIONS`, `DEFAULT_DIMS`, `parseDims(param)` y `serializeDims(dims): string | null`. Esta tarea AÑADE al final del fichero; no borra ni renombra nada de lo que ya hay (resolución canónica nº 4 del doc de interfaces: «nada de `ALL_DIMS`/`dimsToParam`»).
+- Test: `apps/web/tests/finance-pivot-dims.test.ts` (nuevo; el `apps/web/tests/finance-pivot-state.test.ts` de la fase 4 sigue existiendo y debe seguir en verde)
 
 **Interfaces:**
-- Consumes: `type PivotDimension = 'cat'|'sub'|'nat'|'prov'|'concept'|'movement'` de `@casa-clara/domain` (canónico, fase 2). **Step 0 obligatorio:** abre `packages/domain/src/finance/pivot.ts` y `packages/domain/package.json` y confirma el subpath de import (`@casa-clara/domain` o el subpath que exporte finance); usa ese import en todo el fichero.
-- Produces (todo puro, sin runas):
-  - `ALL_DIMS`, `DEFAULT_DIMS: readonly PivotDimension[]`, `DIM_LABELS: Record<PivotDimension, string>`
-  - `parseDims(raw: string | null): PivotDimension[]` · `dimsToParam(dims): string`
+- Consumes:
+  - `type PivotDimension = 'cat'|'sub'|'nat'|'prov'|'concept'|'movement'` de `@casa-clara/domain/finance` (canónico, fase 2; resolución canónica nº 1: los símbolos de finanzas SIEMPRE por el subpath, nunca desde la raíz `@casa-clara/domain`).
+  - Del propio `pivot-state.ts` (stub de la fase 4): `PIVOT_DIMENSIONS: readonly PivotDimension[]`, `DEFAULT_DIMS: readonly PivotDimension[]`, `parseDims(param: string | null): PivotDimension[]`, `serializeDims(dims): string | null` (`null` para el orden por defecto ⇒ URL limpia).
+- Produces (todo puro, sin runas, AÑADIDO al fichero existente):
+  - `DIM_LABELS: Record<PivotDimension, string>`
   - `moveDim(dims, index, dir: -1|1)` · `removeDim(dims, dim)` · `addDim(dims, dim)`
   - `type PivotSortKey = 'label'|'total'|'avg'|'ticket'|{ month: string }` · `type SortDir = 'asc'|'desc'`
   - `interface SortableNodeLike { label: string; totalCents: bigint; avgCents: bigint; ticketCents: bigint; monthly: Record<string, bigint> }`
   - `sameSortKey(a, b): boolean` · `sortTree<T extends SortableNodeLike & { children: T[] }>(nodes, key, dir): T[]`
 
-Porta la intención de `parseDims`/`sortSections` de `/home/abf/github/home-finance/frontend/src/features/analytics/pivotTree.ts` (las claves de URL `dims`, `q`, `dupev` son contrato del doc de interfaces). El árbol lo construye el dominio; aquí solo se reordena, de forma estructural, sin tocar subtotales.
+Porta la intención de `sortSections` de `/home/abf/github/home-finance/frontend/src/features/analytics/pivotTree.ts` (las claves de URL `dims`, `q`, `dupev` son contrato del doc de interfaces). El árbol lo construye el dominio; aquí solo se reordena, de forma estructural, sin tocar subtotales.
 
-- [ ] **Step 1: test que falla.** Crea `apps/web/tests/finance-pivot-dims.test.ts`:
+- [ ] **Step 1: alinear con el repo antes de escribir nada.** Abre y anota:
+  1. `packages/domain/package.json` → confirma el subpath `"./finance": "./src/finance/index.ts"`; el import de este plan es `@casa-clara/domain/finance`.
+  2. `packages/domain/src/finance/pivot.ts` → anota si el dominio ya exporta una ordenación recursiva (`sortPivotTree`) y su tipo de clave (`SortKey`). Si existe, IMPORTA la del dominio y no escribas `sortTree`/`PivotSortKey` locales: reexpórtalos desde `pivot-state.ts` con esos mismos nombres para que el resto del plan compile sin cambios.
+  3. `apps/web/src/lib/finance/pivot-state.ts` (stub de la fase 4) y `apps/web/tests/finance-pivot-state.test.ts` → anota las firmas exactas de `PIVOT_DIMENSIONS`, `DEFAULT_DIMS`, `parseDims` y `serializeDims`. Este plan las USA tal cual; si tocas alguna, el test de la fase 4 se pone rojo y `pnpm test` (Task 16) no cierra.
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+cat packages/domain/package.json
+sed -n '1,80p' apps/web/src/lib/finance/pivot-state.ts
+grep -n "export" packages/domain/src/finance/pivot.ts
+```
+
+- [ ] **Step 2: test que falla.** Crea `apps/web/tests/finance-pivot-dims.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
 
 import {
-  addDim, DEFAULT_DIMS, dimsToParam, moveDim, parseDims, removeDim, sameSortKey, sortTree,
-  type SortableNodeLike
+  addDim, DEFAULT_DIMS, DIM_LABELS, moveDim, parseDims, PIVOT_DIMENSIONS, removeDim, sameSortKey,
+  serializeDims, sortTree, type SortableNodeLike
 } from '../src/lib/finance/pivot-state';
 
 type Node = SortableNodeLike & { children: Node[] };
 const node = (label: string, totalCents: bigint, children: Node[] = [], monthly: Record<string, bigint> = {}): Node =>
   ({ label, totalCents, avgCents: totalCents, ticketCents: totalCents, monthly, children });
 
-describe('parseDims / dimsToParam (persistencia en ?dims=)', () => {
-  it('sin parámetro devuelve las dims por defecto', () => {
+describe('contrato heredado del stub de la fase 4 (no se renombra ni se cambia)', () => {
+  it('parseDims sin parámetro devuelve las dims por defecto', () => {
     expect(parseDims(null)).toEqual([...DEFAULT_DIMS]);
   });
-  it('filtra valores desconocidos y deduplica', () => {
-    expect(parseDims('cat,zzz,cat,prov')).toEqual(['cat', 'prov']);
+  it('serializeDims devuelve null para el orden por defecto (URL limpia) y CSV para el resto', () => {
+    expect(serializeDims([...DEFAULT_DIMS])).toBeNull();
+    expect(serializeDims(['sub', 'cat'])).toBe('sub,cat');
   });
-  it('todo inválido → por defecto', () => {
-    expect(parseDims('zzz')).toEqual([...DEFAULT_DIMS]);
-  });
-  it('las dims por defecto serializan a cadena vacía (URL limpia)', () => {
-    expect(dimsToParam(['cat', 'sub'])).toBe('');
-    expect(dimsToParam(['sub', 'cat'])).toBe('sub,cat');
+  it('hay una etiqueta en español para cada dimensión publicada', () => {
+    for (const dim of PIVOT_DIMENSIONS) expect(DIM_LABELS[dim].length).toBeGreaterThan(0);
   });
 });
 
@@ -402,7 +421,7 @@ describe('sameSortKey', () => {
 });
 ```
 
-- [ ] **Step 2: rojo.**
+- [ ] **Step 3: rojo.**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
@@ -410,24 +429,18 @@ cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas/apps/web
 pnpm vitest run tests/finance-pivot-dims.test.ts
 ```
 
-Salida esperada: fallo de carga del módulo `pivot-state`.
+Salida esperada: errores de export inexistente (`DIM_LABELS`, `moveDim`, `sortTree`… no están todavía en el stub de la fase 4).
 
-- [ ] **Step 3: implementación mínima.** Crea `apps/web/src/lib/finance/pivot-state.ts` (primer bloque del fichero; las tareas 3–5 AÑADEN secciones):
+- [ ] **Step 4: implementación mínima.** AÑADE al final de `apps/web/src/lib/finance/pivot-state.ts` (fichero de la fase 4: **no toques** la cabecera de imports salvo para añadir la tuya, ni `PIVOT_DIMENSIONS`/`DEFAULT_DIMS`/`parseDims`/`serializeDims`, que ya están ahí y tienen su propio test):
 
 ```ts
-import type { PivotDimension } from '@casa-clara/domain'; // Step 0: confirma este subpath
+// ── Etiquetas y reordenación de dimensiones (fase 6) ─────────────────────────
+// El fichero lo creó la fase 4 con PIVOT_DIMENSIONS / DEFAULT_DIMS / parseDims /
+// serializeDims (?dims=, contrato del doc de interfaces). Aquí solo se AÑADE.
+// El tipo PivotDimension llega del dominio por su subpath canónico:
+//   import type { PivotDimension } from '@casa-clara/domain/finance';
+// (si el stub de la fase 4 ya lo importa, reutiliza ese import: uno solo).
 
-/**
- * Estado cliente del pivot de Analítica: dims, orden, selección, chips y dnd.
- * Puro (sin runas, sin fetch, sin reloj): los componentes guardan el $state y
- * delegan aquí toda la lógica, que es lo que cubren los tests unitarios.
- * Porta la intención de pivotTree/useSelection/search/dnd del original.
- */
-
-// ── Dimensiones (persistidas en ?dims=, contrato del doc de interfaces) ──────
-
-export const ALL_DIMS: readonly PivotDimension[] = ['cat', 'sub', 'nat', 'prov', 'concept', 'movement'];
-export const DEFAULT_DIMS: readonly PivotDimension[] = ['cat', 'sub'];
 export const DIM_LABELS: Record<PivotDimension, string> = {
   cat: 'Categoría',
   sub: 'Subcategoría',
@@ -436,18 +449,6 @@ export const DIM_LABELS: Record<PivotDimension, string> = {
   concept: 'Concepto',
   movement: 'Movimiento'
 };
-
-export function parseDims(raw: string | null): PivotDimension[] {
-  if (!raw) return [...DEFAULT_DIMS];
-  const parsed = raw.split(',').filter((d): d is PivotDimension => (ALL_DIMS as readonly string[]).includes(d));
-  const deduped = [...new Set(parsed)];
-  return deduped.length ? deduped : [...DEFAULT_DIMS];
-}
-
-export function dimsToParam(dims: readonly PivotDimension[]): string {
-  const isDefault = dims.length === DEFAULT_DIMS.length && dims.every((d, i) => d === DEFAULT_DIMS[i]);
-  return isDefault ? '' : dims.join(',');
-}
 
 export function moveDim(dims: readonly PivotDimension[], index: number, dir: -1 | 1): PivotDimension[] {
   const next = [...dims];
@@ -466,6 +467,10 @@ export function addDim(dims: readonly PivotDimension[], dim: PivotDimension): Pi
 }
 
 // ── Orden de columnas (Acumulado/Promedio/Ticket/mes, recursivo) ─────────────
+// Si el dominio (fase 2) exporta `sortPivotTree`/`SortKey` equivalentes, borra
+// este bloque y reexpórtalos con estos nombres (ver Step 1):
+//   export { sortPivotTree as sortTree } from '@casa-clara/domain/finance';
+//   export type { SortKey as PivotSortKey } from '@casa-clara/domain/finance';
 
 export type PivotSortKey = 'label' | 'total' | 'avg' | 'ticket' | { month: string };
 export type SortDir = 'asc' | 'desc';
@@ -509,22 +514,22 @@ export function sortTree<T extends SortableNodeLike & { children: T[] }>(
 }
 ```
 
-Nota DRY: si `packages/domain/src/finance/pivot.ts` (fase 2) ya exporta una ordenación recursiva equivalente, impórtala y borra `sortTree` local (deja los tests apuntando a la del dominio a través de este módulo).
-
-- [ ] **Step 4: verde.**
+- [ ] **Step 5: verde, incluido el test que ya existía de la fase 4.**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas/apps/web
-pnpm vitest run tests/finance-pivot-dims.test.ts
+pnpm vitest run tests/finance-pivot-dims.test.ts tests/finance-pivot-state.test.ts
 ```
 
-- [ ] **Step 5: commit.**
+Salida esperada: los dos ficheros en verde. Si `finance-pivot-state.test.ts` (fase 4) se pone rojo, has renombrado o cambiado algo del stub: revierte ese cambio, no el test.
+
+- [ ] **Step 6: commit.**
 
 ```bash
 cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
 git add apps/web/src/lib/finance/pivot-state.ts apps/web/tests/finance-pivot-dims.test.ts
-git commit -m "feat(finanzas): dims reordenables y orden recursivo del pivot (estado cliente puro)"
+git commit -m "feat(finanzas): etiquetas, reordenación de dims y orden recursivo del pivot"
 ```
 
 ---
@@ -536,14 +541,16 @@ git commit -m "feat(finanzas): dims reordenables y orden recursivo del pivot (es
 - Test: `apps/web/tests/finance-pivot-selection.test.ts`
 
 **Interfaces:**
-- Consumes: `PivotDimension` del dominio; `SortableNodeLike` (tarea 2).
+- Consumes: `PivotDimension` de `@casa-clara/domain/finance` (subpath canónico, resolución nº 1); `SortableNodeLike` (tarea 2).
 - Produces:
   - `interface PivotMovLike { id: string; date: string; cents: bigint }`
   - `interface PivotNodeLike extends SortableNodeLike { key: string; depth: number; count: number; catId: string | null; nat: 'recurrente'|'extraordinario'|null; provider: string | null; concept: string | null; movs: PivotMovLike[]; children: PivotNodeLike[] }`
   - `interface SelectableItem { key; parentKey; provider: string; concept: string | null; count: number; categoryId?: string; label?: string; txId?: string }`
-  - `parentKeyOf`, `toSelectable`, `isCategoryAggregateNode`, `toCategorySelectable`, `isMovementLeaf`, `toMovementSelectable`, `toAnySelectable`, `selectableListAny`, `collectLeafItems`, `rangeBetween`, `toggleInMap`, `collectNodeMovIds(roots: readonly PivotNodeLike[]): Map<string, string[]>`, `resolveSelectionIds(items, nodeMovIds): string[]`
+  - `parentKeyOf`, `toSelectable`, `isCategoryAggregateNode`, `toCategorySelectable`, `isMovementLeaf`, `toMovementSelectable`, `toAnySelectable`, `selectableListAny`, `collectLeafItems`, `rangeBetween`, `toggleInMap`, `collectMovIdsByKey(roots: readonly PivotNodeLike[]): Map<string, string[]>`, `resolveSelectionIds(items, movIdsByKey): string[]`
 
-Porta la intención de `/home/abf/github/home-finance/frontend/src/features/analytics/useSelection.ts` (ids `string` en vez de `number`; tipado estructural para no acoplarse al nombre del tipo de nodo del dominio). `collectNodeMovIds` porta el del `pivotTree.ts` original, genérico sobre raíces.
+Porta la intención de `/home/abf/github/home-finance/frontend/src/features/analytics/useSelection.ts` (ids `string` en vez de `number`; tipado estructural para no acoplarse al nombre del tipo de nodo del dominio).
+
+**Nombre distinto a propósito:** el dominio (fase 2) exporta `collectNodeMovIds(tree)`, que recorre un `PivotTree` completo. Aquí hace falta la variante que recorre una LISTA de raíces ya ordenada y filtrada por sección, así que se llama `collectMovIdsByKey(roots)` para que `PivotTable.svelte` pueda importar ambas sin colisión. Si al abrir `packages/domain/src/finance/pivot.ts` (Step 1) compruebas que la del dominio acepta también un array de raíces, borra la local y usa la del dominio en todo el plan. Anota además si el dominio cualifica la `key` de cada nodo por sección (p. ej. `gastos/cat:Casa` frente a `evento:e1/cat:Casa`): si NO lo hace, dos nodos homónimos de secciones distintas colisionarían en el mapa y la barra de acciones actuaría sobre los movimientos equivocados — en ese caso cualifica la clave al construir el mapa con el prefijo de sección que ya usa `PivotTable` y déjalo escrito en un comentario.
 
 - [ ] **Step 1: test que falla.** Crea `apps/web/tests/finance-pivot-selection.test.ts`:
 
@@ -551,7 +558,7 @@ Porta la intención de `/home/abf/github/home-finance/frontend/src/features/anal
 import { describe, expect, it } from 'vitest';
 
 import {
-  collectLeafItems, collectNodeMovIds, isCategoryAggregateNode, isMovementLeaf, parentKeyOf,
+  collectLeafItems, collectMovIdsByKey, isCategoryAggregateNode, isMovementLeaf, parentKeyOf,
   rangeBetween, resolveSelectionIds, selectableListAny, toAnySelectable, toCategorySelectable,
   toggleInMap, toMovementSelectable, toSelectable,
   type PivotNodeLike, type SelectableItem
@@ -641,7 +648,7 @@ describe('rangeBetween / toggleInMap (Shift+clic)', () => {
   });
 });
 
-describe('collectNodeMovIds / resolveSelectionIds', () => {
+describe('collectMovIdsByKey / resolveSelectionIds', () => {
   const roots: PivotNodeLike[] = [
     node({
       key: '/cat:O', movs: [{ id: 't1', date: 'x', cents: -1n }, { id: 't2', date: 'y', cents: -2n }],
@@ -649,12 +656,12 @@ describe('collectNodeMovIds / resolveSelectionIds', () => {
     })
   ];
   it('mapea cada nodo (agregado y hoja) a los ids de sus movimientos', () => {
-    const map = collectNodeMovIds(roots);
+    const map = collectMovIdsByKey(roots);
     expect(map.get('/cat:O')).toEqual(['t1', 't2']);
     expect(map.get('/cat:O/prov:A')).toEqual(['t1']);
   });
   it('resuelve una selección mixta deduplicando ids', () => {
-    const map = collectNodeMovIds(roots);
+    const map = collectMovIdsByKey(roots);
     const items: SelectableItem[] = [
       { key: '/cat:O', parentKey: '', provider: '', concept: null, count: 2, categoryId: 'c1' },
       { key: '/cat:O/movement:t2', parentKey: '/cat:O', provider: '', concept: null, count: 1, txId: 't2' }
@@ -792,8 +799,12 @@ export function toggleInMap(map: ReadonlyMap<string, SelectableItem>, item: Sele
   return next;
 }
 
-/** Mapa key→ids de TODO el bosque (recursivo). Resuelve selecciones a tx_id exactos. */
-export function collectNodeMovIds(roots: readonly PivotNodeLike[]): Map<string, string[]> {
+/**
+ * Mapa key→ids recorriendo una LISTA de raíces (recursivo). Se llama distinto
+ * que el `collectNodeMovIds(tree)` del dominio a propósito: allí la entrada es
+ * el `PivotTree` entero, aquí son las raíces ya ordenadas de cada sección.
+ */
+export function collectMovIdsByKey(roots: readonly PivotNodeLike[]): Map<string, string[]> {
   const map = new Map<string, string[]>();
   const walk = (n: PivotNodeLike) => {
     map.set(n.key, n.movs.map((m) => m.id));
@@ -805,9 +816,9 @@ export function collectNodeMovIds(roots: readonly PivotNodeLike[]): Map<string, 
 
 export function resolveSelectionIds(
   items: readonly SelectableItem[],
-  nodeMovIds: ReadonlyMap<string, string[]>
+  movIdsByKey: ReadonlyMap<string, string[]>
 ): string[] {
-  return [...new Set(items.flatMap((i) => (i.txId != null ? [i.txId] : (nodeMovIds.get(i.key) ?? []))))];
+  return [...new Set(items.flatMap((i) => (i.txId != null ? [i.txId] : (movIdsByKey.get(i.key) ?? []))))];
 }
 ```
 
@@ -857,7 +868,8 @@ import {
   type SearchChip
 } from '../src/lib/finance/pivot-state';
 
-const catPathOf = (id: string) => (id === 'c1' ? 'Ocio > Bares' : 'Otra');
+// Doble de `categoryPath` de la fase 4 (separador «›», el del repo).
+const catPathOf = (id: string) => (id === 'c1' ? 'Ocio › Bares' : 'Otra');
 
 const row = (partial: Partial<Parameters<typeof rowMatchesChips>[0]> & { totalCents?: bigint; count?: number } = {}) => ({
   cat: 'Ocio', sub: 'Bares', catId: 'c1', prov: 'Bar Manolo', concept: 'CAÑAS', event: null,
@@ -882,7 +894,7 @@ describe('suggestChips', () => {
     const groups = suggestChips([row()], catPathOf, 'bares');
     const cats = groups.find((g) => g.group === 'Categorías')!;
     expect(cats.items[0].chip).toEqual({ type: 'cat', value: 'c1' });
-    expect(cats.items[0].label).toBe('Ocio > Bares');
+    expect(cats.items[0].label).toBe('Ocio › Bares');
   });
 });
 
@@ -927,12 +939,16 @@ cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas/apps/web
 pnpm vitest run tests/finance-pivot-search.test.ts
 ```
 
-- [ ] **Step 3: implementación mínima.** AÑADE al final de `apps/web/src/lib/finance/pivot-state.ts`:
+- [ ] **Step 3a: el import, en la cabecera del fichero.** En `apps/web/src/lib/finance/pivot-state.ts`, junto a los imports que ya hay ARRIBA del todo (los del stub de la fase 4 y el `PivotDimension` del dominio), añade esta línea y nada más:
+
+```ts
+import { formatCents } from './format';
+```
+
+- [ ] **Step 3b: la sección del buscador, al final del fichero.** AÑADE al final de `apps/web/src/lib/finance/pivot-state.ts` (sin ningún `import` en este bloque: el de `formatCents` ya está arriba por el Step 3a):
 
 ```ts
 // ── Buscador con chips tipados (?q=, contrato del doc de interfaces) ─────────
-
-import { formatCents } from './format';
 
 export type SearchChip = { type: 'prov' | 'concept' | 'event' | 'cat' | 'free'; value: string; prov?: string };
 
@@ -1106,8 +1122,6 @@ export function parseChips(q: string | null): SearchChip[] {
   return chips;
 }
 ```
-
-Nota: el `import { formatCents } from './format';` debe quedar ARRIBA del fichero junto al import de `PivotDimension` (los imports van al principio; muévelo al añadir la sección).
 
 - [ ] **Step 4: verde.**
 
@@ -1302,13 +1316,34 @@ git commit -m "feat(finanzas): payload y resúmenes del dnd del pivot; codecs ex
 - Test: `apps/web/tests/finance-pivot-actions.test.ts`
 
 **Interfaces:**
-- Consumes: `createCommandEnvelope` de `$lib/offline/schema`; `queueCommand`, `QueueCommandResult` de `$lib/offline/queue-command` (existen hoy en el repo); `SelectableItem` de `./pivot-state`; kinds canónicos del doc de interfaces: `finance.category.assignConcept`, `finance.event.assignConcept`, `finance.event.create`, `finance.transactions.bulk`, `finance.transactions.assignConceptRecurrence`, `finance.transaction.invest`.
+- Consumes: `createCommandEnvelope` de `$lib/offline/schema`; `queueCommand`, `QueueCommandResult` de `$lib/offline/queue-command` (existen hoy en el repo); `SelectableItem` de `./pivot-state`; kinds canónicos del doc de interfaces: `finance.category.assignConcept`, `finance.event.assignConcept`, `finance.event.create`, `finance.event.assignTransactions`, `finance.transactions.bulk`, `finance.transactions.assignConceptRecurrence`, `finance.transaction.update`, `finance.transaction.invest`.
 - Produces:
   - `sendFinanceCommand(householdId: string, payload: Record<string, unknown>): Promise<QueueCommandResult>`
-  - Constructores puros de payloads: `assignConceptToCategory`, `assignConceptToEvent`, `undoEventAssign`, `assignConceptRecurrence`, `bulkByIds`, `investTransaction`, `createEventPayload`, `conceptTargetOf`
-  - `buildTxCategoryIndex(rows): Map<string, string | null>` y `planCategoryUndo(items, nodeMovIds, txCat): CategoryUndo`
+  - Constructores puros de payloads: `assignConceptToCategory`, `assignConceptToEvent`, `undoEventAssign`, `assignConceptRecurrence`, `bulkByIds`, `assignTransactionsToEvent`, `updateTransactionRecurrence`, `investTransaction`, `createEventPayload`, `conceptTargetOf`
+  - `buildTxCategoryIndex(rows): Map<string, string | null>` y `planCategoryUndo(items, movIdsByKey, txCat): CategoryUndo`
 
-**⚠ Step 1 obligatorio (alineación con fases 1 y 5):** antes de escribir código, abre (a) `packages/contracts/src/index.ts` y localiza el valor que la fase 1 añadió a `AggregateType` para finanzas, (b) los esquemas de payloads `finance.*` en `packages/contracts` (la fase 1/5 los dejó donde están los de `expense.*`), y (c) `apps/web/src/routes/h/[householdId]/finanzas/revision/+page.svelte` (fase 5) para ver cómo esa página construye y encola sus envelopes. El código de esta tarea asume `aggregateType: 'finance'` y payloads `{ kind: '<nombre canónico>', …campos camelCase }`; si el repo real difiere en el aggregateType o en el nombre de algún CAMPO, usa los del repo (los `kind` son canónicos y no se tocan).
+**Formas de payload FIJADAS por el doc de interfaces (resolución canónica nº 5) — la fase 5 es la dueña del esquema Zod y esta fase se alinea, no al revés:**
+
+| kind | payload exacto |
+|---|---|
+| `finance.transactions.bulk` | `{ kind, transactionIds: string[], categoryId?, status? }` — **nunca `txIds`**; `status` es OPCIONAL (permite cambiar solo la categoría en bloque); NO admite `addEventId` ni `recurrence` |
+| `finance.event.assignTransactions` | `{ kind, eventId, transactionIds: string[], action: 'add' \| 'remove' }` — es la vía para añadir/quitar evento por ids exactos |
+| `finance.transaction.invest` | `{ kind, transactionId, accountId }` — **nunca `txId`** |
+| `finance.transactions.assignConceptRecurrence` | `{ kind, ...ConceptTarget, recurrence }` — fijar naturaleza POR CONCEPTO |
+| `finance.transaction.update` | `{ kind, transactionId, ...campos a cambiar }` — fijar naturaleza de una hoja de movimiento suelta |
+
+- [ ] **Step 1: alinear con fases 1 y 5 antes de escribir código.** Abre y anota:
+  1. `packages/contracts/src/index.ts` → el valor que la fase 1 añadió a `AggregateType` para finanzas (este plan asume `'finance'`).
+  2. Los esquemas Zod de payloads `finance.*` de la fase 5 (donde el repo tenga los de `expense.*`) → copia literalmente los nombres de campo de `financeTransactionsBulkPayloadSchema`, `financeTransactionInvestPayloadSchema`, `financeEventAssignTransactionsPayloadSchema`, `financeTransactionUpdatePayloadSchema` y `financeEventCreatePayloadSchema`. La tabla de arriba es el contrato acordado; si el esquema real difiere en algún campo, manda el esquema y hay que ajustar AQUÍ (un solo sitio) y sus tests.
+  3. `apps/web/src/routes/h/[householdId]/finanzas/revision/+page.svelte` (fase 5) → cómo construye y encola sus envelopes.
+  4. `financeEventCreatePayloadSchema` en particular: este plan encadena «crear evento + asignarle movimientos» sin esperar al ACK, así que **genera el id del evento en el cliente** (`crypto.randomUUID()`) y lo manda en `finance.event.create`. Es el patrón del outbox del repo (el cliente ya genera ids para poder encadenar comandos); si el esquema de la fase 5 aún no admite ese campo `id`, añádelo allí antes de seguir y anótalo en el commit.
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+grep -rn "finance\.\(transactions\.bulk\|transaction\.invest\|event\.create\|event\.assignTransactions\|transaction\.update\)" packages/contracts/src
+grep -rn "AggregateType" packages/contracts/src/index.ts
+```
 
 - [ ] **Step 2: test que falla.** Crea `apps/web/tests/finance-pivot-actions.test.ts`:
 
@@ -1316,8 +1351,9 @@ git commit -m "feat(finanzas): payload y resúmenes del dnd del pivot; codecs ex
 import { describe, expect, it } from 'vitest';
 
 import {
-  assignConceptRecurrence, assignConceptToCategory, assignConceptToEvent, buildTxCategoryIndex,
-  bulkByIds, conceptTargetOf, createEventPayload, investTransaction, planCategoryUndo, undoEventAssign
+  assignConceptRecurrence, assignConceptToCategory, assignConceptToEvent, assignTransactionsToEvent,
+  buildTxCategoryIndex, bulkByIds, conceptTargetOf, createEventPayload, investTransaction,
+  planCategoryUndo, undoEventAssign, updateTransactionRecurrence
 } from '../src/lib/finance/pivot-actions';
 import type { SelectableItem } from '../src/lib/finance/pivot-state';
 
@@ -1345,14 +1381,26 @@ describe('constructores de payloads (kinds canónicos del doc de interfaces)', (
     expect(assignConceptRecurrence({ categoryId: 'c1' }, 'recurrente'))
       .toEqual({ kind: 'finance.transactions.assignConceptRecurrence', categoryId: 'c1', recurrence: 'recurrente' });
   });
-  it('acciones por ids exactos: bulk, invertir, crear evento', () => {
+  it('acciones por ids exactos: bulk usa transactionIds (nunca txIds) y status es opcional', () => {
     expect(bulkByIds(['t1', 't2'], { categoryId: 'c1' }))
-      .toEqual({ kind: 'finance.transactions.bulk', txIds: ['t1', 't2'], categoryId: 'c1' });
-    expect(bulkByIds(['t1'], { addEventId: 'e1' }))
-      .toEqual({ kind: 'finance.transactions.bulk', txIds: ['t1'], addEventId: 'e1' });
+      .toEqual({ kind: 'finance.transactions.bulk', transactionIds: ['t1', 't2'], categoryId: 'c1' });
+    expect(bulkByIds(['t1'], { categoryId: 'c1', status: 'confirmada' }))
+      .toEqual({ kind: 'finance.transactions.bulk', transactionIds: ['t1'], categoryId: 'c1', status: 'confirmada' });
+  });
+  it('añadir/quitar evento por ids exactos va por finance.event.assignTransactions', () => {
+    expect(assignTransactionsToEvent('e1', ['t1', 't2'], 'add'))
+      .toEqual({ kind: 'finance.event.assignTransactions', eventId: 'e1', transactionIds: ['t1', 't2'], action: 'add' });
+    expect(assignTransactionsToEvent('e1', ['t1'], 'remove'))
+      .toEqual({ kind: 'finance.event.assignTransactions', eventId: 'e1', transactionIds: ['t1'], action: 'remove' });
+  });
+  it('naturaleza de una hoja suelta va por finance.transaction.update', () => {
+    expect(updateTransactionRecurrence('t1', 'extraordinario'))
+      .toEqual({ kind: 'finance.transaction.update', transactionId: 't1', recurrence: 'extraordinario' });
+  });
+  it('invertir usa transactionId (nunca txId) y crear evento lleva el id del cliente', () => {
     expect(investTransaction('t1', 'a1'))
-      .toEqual({ kind: 'finance.transaction.invest', txId: 't1', accountId: 'a1' });
-    expect(createEventPayload('Boda')).toEqual({ kind: 'finance.event.create', name: 'Boda' });
+      .toEqual({ kind: 'finance.transaction.invest', transactionId: 't1', accountId: 'a1' });
+    expect(createEventPayload('ev-1', 'Boda')).toEqual({ kind: 'finance.event.create', id: 'ev-1', name: 'Boda' });
   });
 });
 
@@ -1370,20 +1418,20 @@ describe('plan de deshacer una recategorización', () => {
   });
 
   it('categoría previa única → volver a asignar el concepto (revierte también la regla)', () => {
-    const nodeMovIds = new Map([['/cat:X/prov:P', ['t1', 't2']]]);
-    const plan = planCategoryUndo([item({ key: '/cat:X/prov:P', provider: 'P', count: 2 })], nodeMovIds, txCat);
+    const movIdsByKey = new Map([['/cat:X/prov:P', ['t1', 't2']]]);
+    const plan = planCategoryUndo([item({ key: '/cat:X/prov:P', provider: 'P', count: 2 })], movIdsByKey, txCat);
     expect(plan.reassignments).toEqual([{ provider: 'P', concept: null, categoryId: 'c1' }]);
     expect(plan.bulkRestores).toEqual([]);
     expect(plan.skipped).toBe(0);
   });
 
-  it('previas mixtas → restauración por ids agrupada; las previas null se saltan y se cuentan', () => {
-    const nodeMovIds = new Map([['/cat:X/prov:P', ['t1', 't3', 't4']]]);
-    const plan = planCategoryUndo([item({ key: '/cat:X/prov:P', provider: 'P', count: 3 })], nodeMovIds, txCat);
+  it('previas mixtas → restauración por ids agrupada (transactionIds); las previas null se saltan y se cuentan', () => {
+    const movIdsByKey = new Map([['/cat:X/prov:P', ['t1', 't3', 't4']]]);
+    const plan = planCategoryUndo([item({ key: '/cat:X/prov:P', provider: 'P', count: 3 })], movIdsByKey, txCat);
     expect(plan.reassignments).toEqual([]);
     expect(plan.bulkRestores).toEqual([
-      { txIds: ['t1'], categoryId: 'c1' },
-      { txIds: ['t3'], categoryId: 'c2' }
+      { transactionIds: ['t1'], categoryId: 'c1' },
+      { transactionIds: ['t3'], categoryId: 'c2' }
     ]);
     expect(plan.skipped).toBe(1);
   });
@@ -1408,6 +1456,7 @@ pnpm vitest run tests/finance-pivot-actions.test.ts
 
 ```ts
 import type { AggregateType } from '@casa-clara/contracts';
+import type { FinanceTransactionStatus } from '@casa-clara/domain/finance';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import { queueCommand, type QueueCommandResult } from '$lib/offline/queue-command';
@@ -1416,9 +1465,10 @@ import type { SelectableItem } from './pivot-state';
 
 /**
  * Comandos de sync que dispara el pivot (dnd y barra de acciones) y el plan de
- * «Deshacer». Los `kind` son los canónicos del doc de interfaces; el sobre y
- * los nombres de campo replican los de la fase 5 (ver Revisión) — si el repo
- * usa otro aggregateType o algún campo distinto, alinéalo AQUÍ, en un solo sitio.
+ * «Deshacer». Los `kind` y los nombres de campo son los canónicos del doc de
+ * interfaces (resolución nº 5: `transactionIds`/`transactionId`, nunca `txIds`
+ * /`txId`); el esquema Zod de la fase 5 manda — si algo difiere, se alinea AQUÍ,
+ * en un solo sitio.
  */
 const FINANCE_AGGREGATE = 'finance' as AggregateType; // Step 1: confirmado contra contracts
 
@@ -1476,19 +1526,46 @@ export function assignConceptRecurrence(
   return { kind: 'finance.transactions.assignConceptRecurrence', ...target, recurrence };
 }
 
+/**
+ * Cambio en bloque por ids exactos. Contrato de la fase 5 (resolución canónica
+ * nº 5): el campo es `transactionIds` y solo admite `categoryId` y `status`
+ * (ambos opcionales, pero manda al menos uno). Para evento y naturaleza hay
+ * comandos propios: `assignTransactionsToEvent` y `updateTransactionRecurrence`.
+ */
 export function bulkByIds(
-  txIds: readonly string[],
-  set: { categoryId?: string; addEventId?: string; recurrence?: 'recurrente' | 'extraordinario' }
+  transactionIds: readonly string[],
+  set: { categoryId?: string; status?: FinanceTransactionStatus }
 ): Record<string, unknown> {
-  return { kind: 'finance.transactions.bulk', txIds: [...txIds], ...set };
+  return { kind: 'finance.transactions.bulk', transactionIds: [...transactionIds], ...set };
 }
 
-export function investTransaction(txId: string, accountId: string): Record<string, unknown> {
-  return { kind: 'finance.transaction.invest', txId, accountId };
+/** Añadir o quitar movimientos concretos de un evento (kind canónico propio). */
+export function assignTransactionsToEvent(
+  eventId: string,
+  transactionIds: readonly string[],
+  action: 'add' | 'remove'
+): Record<string, unknown> {
+  return { kind: 'finance.event.assignTransactions', eventId, transactionIds: [...transactionIds], action };
 }
 
-export function createEventPayload(name: string): Record<string, unknown> {
-  return { kind: 'finance.event.create', name };
+/** Naturaleza de UNA hoja de movimiento (por concepto se usa assignConceptRecurrence). */
+export function updateTransactionRecurrence(
+  transactionId: string,
+  recurrence: 'recurrente' | 'extraordinario'
+): Record<string, unknown> {
+  return { kind: 'finance.transaction.update', transactionId, recurrence };
+}
+
+export function investTransaction(transactionId: string, accountId: string): Record<string, unknown> {
+  return { kind: 'finance.transaction.invest', transactionId, accountId };
+}
+
+/**
+ * El id lo genera el cliente (`crypto.randomUUID()`) para poder encadenar
+ * «crear evento → asignarle movimientos» sin esperar al ACK del sync.
+ */
+export function createEventPayload(id: string, name: string): Record<string, unknown> {
+  return { kind: 'finance.event.create', id, name };
 }
 
 // ── Deshacer una recategorización ────────────────────────────────────────────
@@ -1508,20 +1585,21 @@ export function buildTxCategoryIndex(
 
 export interface CategoryUndo {
   reassignments: { provider: string; concept: string | null; categoryId: string }[];
-  bulkRestores: { txIds: string[]; categoryId: string }[];
+  /** Se manda con `bulkByIds`, así que el campo se llama ya `transactionIds`. */
+  bulkRestores: { transactionIds: string[]; categoryId: string }[];
   /** Movimientos cuya categoría previa se desconoce (null): no se restauran. */
   skipped: number;
 }
 
 export function planCategoryUndo(
   items: readonly SelectableItem[],
-  nodeMovIds: ReadonlyMap<string, string[]>,
+  movIdsByKey: ReadonlyMap<string, string[]>,
   txCat: ReadonlyMap<string, string | null>
 ): CategoryUndo {
   const plan: CategoryUndo = { reassignments: [], bulkRestores: [], skipped: 0 };
   for (const item of items) {
     if (item.categoryId != null) continue; // el drop no procesa categorías: nada que deshacer
-    const ids = item.txId != null ? [item.txId] : (nodeMovIds.get(item.key) ?? []);
+    const ids = item.txId != null ? [item.txId] : (movIdsByKey.get(item.key) ?? []);
     const prevs = new Set(ids.map((id) => txCat.get(id) ?? null));
     const [only] = [...prevs];
     if (prevs.size === 1 && only != null && item.provider) {
@@ -1537,7 +1615,7 @@ export function planCategoryUndo(
       }
       groups.set(prev, [...(groups.get(prev) ?? []), id]);
     }
-    for (const [categoryId, txIds] of groups) plan.bulkRestores.push({ txIds, categoryId });
+    for (const [categoryId, transactionIds] of groups) plan.bulkRestores.push({ transactionIds, categoryId });
   }
   return plan;
 }
@@ -1722,26 +1800,55 @@ git commit -m "feat(finanzas): gráfica apilada por naturaleza con líneas de ah
 
 **Files:**
 - Create: `apps/web/src/lib/finance/analitica-data.ts` (tipos compartidos cliente/servidor)
-- Create: `apps/web/src/lib/server/finanzas-analitica-demo.server.ts`
+- Modify: `apps/web/src/lib/server/fixtures.server.ts` — corpus demo del repo; **lo modifica antes la fase 4** (`getFinanceDashboardFixture`, `getFinanceMovimientosFixture`). AÑADE al final `getFinanceAnaliticaFixture` reutilizando sus cuentas y categorías; no borres ni reescribas nada de lo que ya hay.
+- Modify: `apps/web/src/lib/server/finance.server.ts` — **lo crea la fase 4** con `loadFinanceDashboard`. AÑADE al final `loadFinanceAnalitica` con el mismo patrón (lectura bajo RLS + mapeo DTO→`bigint`); no toques `loadFinanceDashboard`.
 - Modify: `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.server.ts` (esqueleto de fase 1)
 - Modify: `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte` (esqueleto de fase 1)
+- Modify: `apps/web/tests/no-fixtures-with-database.test.ts` — red de seguridad del repo con lista fija de `+page.server.ts`: añade la ruta de Analítica a esa lista (sin tocar el resto).
 - Test: `apps/web/tests/finanzas-analitica-demo.test.ts`
 
 **Interfaces:**
-- Consumes: `demoOrUnavailable`, `unreadable` de `$lib/server/data-source.server`; funciones de lectura de `packages/server/src/finance/queries.ts` (fase 4) — **las MISMAS que usan los endpoints** `apps/web/src/routes/api/v1/finance/{summary,analytics,pivot,events-summary}/+server.ts`; helpers de filtros de `$lib/finance/filters.ts` (fase 4); `FinanceFilterBar.svelte` (fase 4); `monthsInRange`, `perMonth`, `pctOf`, `buildNatureChartData` (tarea 1); `parseIdList`/`serializeIdList` (tarea 5); `formatCents`.
-- Produces: `interface AnaliticaData` (abajo) devuelta por el `load` como `{ analitica: AnaliticaData }`; página con testids `kpi-analitica`, `partidas-tabla`.
+- Consumes:
+  - `demoOrUnavailable`, `unreadable`, `demoOnly` de `$lib/server/data-source.server`.
+  - Lecturas SQL de `packages/server/src/finance/queries.ts`, **que produce la fase 4** con estas firmas exactas (resolución canónica nº 2 del doc de interfaces):
+    - `readFinanceSummary(client, householdId, filters): Promise<FinanceSummaryDto | null>`
+    - `readFinanceAnalytics(client, householdId, filters): Promise<{ rows: AnalyticsRow[] }>` con
+      `AnalyticsRow = { kind: 'gasto'|'ingreso'|'inversion'; monthly: Record<string, { totalCents: string; recCents: string; extCents: string }> }`
+    - `readFinancePivot(client, householdId, filters): Promise<{ months: string[]; rows: PivotSourceRow[] }>`
+    - `readFinanceEventsSummary(client, householdId, filters): Promise<FinanceEventSummaryDto[]>`
+    - `readFinanceCategories(client, householdId): Promise<FinanceCategoryDto[]>`
+    - `readFinanceAccounts(client, householdId): Promise<FinanceAccountDto[]>`
+  - `parseFilters(params: URLSearchParams, today: string): FinanceFilters` y `todayLocal()` de `$lib/finance/filters` (fase 4).
+  - `FinanceFilterBar.svelte` (fase 4), props `{ filters: FinanceFilters; accounts: { id; name; kind }[] }`.
+  - `monthsInRange`, `perMonth`, `pctOf`, `buildNatureChartData` (tarea 1); `parseIdList`/`serializeIdList` (tarea 5); `formatCents` y `categoryPath` (fase 4).
+- Produces: `interface AnaliticaData` (abajo) devuelta por el `load` como `{ analitica: AnaliticaData; demo: boolean }`; `loadFinanceAnalitica` en `$lib/server/finance.server.ts`; `getFinanceAnaliticaFixture` en `fixtures.server.ts`; página con testids `kpi-analitica`, `partidas-tabla`.
 
-**⚠ Step 1 obligatorio (alineación con fase 4):** abre `apps/web/src/routes/h/[householdId]/finanzas/+page.server.ts` (Dashboard, fase 4) y los cuatro endpoints GET citados. Copia del Dashboard: (a) cómo lee los filtros de URL con `$lib/finance/filters.ts` y sus valores por defecto, (b) cómo llama a queries bajo la sesión/membresía, (c) cómo construye su rama `demoOrUnavailable()` y qué módulo de maqueta reutiliza (si la fase 4 dejó un módulo de maqueta de finanzas, REUTILIZA sus cuentas/categorías y añade allí lo que falte en vez de duplicar). Los nombres exactos de las funciones de `queries.ts` los da ese código; el `load` de abajo marca con `// fase 4` cada punto a alinear.
+**Frontera de tipos (importante):** la frontera SQL→cliente del repo entrega los céntimos como **cadena** (`FinanceSummaryDto.incomeCents: string`, `FinanceEventSummaryDto.netCents: string`, `AnalyticsRow.monthly[m].totalCents: string`) y `kind` como `string`. `AnaliticaData` los quiere como `bigint` y con las uniones estrechadas: la conversión ocurre UNA sola vez, en `loadFinanceAnalitica` (Step 6), con los mapeadores explícitos que ahí se escriben. `BigInt(v)` acepta tanto `string` como `bigint`, así que el mapeo vale igual si alguna lectura ya devuelve `bigint`.
+
+- [ ] **Step 1: alinear con la fase 4 antes de escribir código.** Abre y anota:
+  1. `apps/web/src/routes/h/[householdId]/finanzas/+page.server.ts` (Dashboard) → cómo declara `depends('cc:finance')`, cómo lee filtros (`parseFilters(url.searchParams, todayLocal())`), cómo llama a `loadFinanceDashboard` y cómo devuelve `{ …, demo }`.
+  2. `apps/web/src/lib/server/finance.server.ts` → la firma de `loadFinanceDashboard` (cliente/pool, `householdId`, filtros) y su `try/catch → unreadable(...)`. `loadFinanceAnalitica` la calca.
+  3. `packages/server/src/finance/queries.ts` → los tipos DTO reales (`FinanceSummaryDto`, `FinanceEventSummaryDto`, `FinanceCategoryDto`, `FinanceAccountDto`, `AnalyticsRow`) y las firmas de `readFinanceAnalytics`/`readFinancePivot`. Son de la fase 4: si no están, la fase 4 no está terminada — **no las escribas aquí**, párate y avísalo.
+  4. `apps/web/src/lib/server/fixtures.server.ts` → nombres de cuentas y categorías del corpus de finanzas para REUTILIZARLOS, y el envoltorio `demoOnly`.
+  5. `packages/domain/src/finance/pivot.ts` → la forma real de `PivotSourceRow` (nombres de campo y si los importes son `bigint`), que es lo que devuelve `readFinancePivot`.
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+grep -n "export \(async \)\?function read\|Dto\b" packages/server/src/finance/queries.ts | head -60
+grep -n "loadFinanceDashboard\|unreadable\|demoOrUnavailable" apps/web/src/lib/server/finance.server.ts
+grep -n "getFinance.*Fixture\|demoOnly" apps/web/src/lib/server/fixtures.server.ts
+```
 
 - [ ] **Step 2: test que falla (coherencia de la maqueta).** Crea `apps/web/tests/finanzas-analitica-demo.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
 
-import { buildAnaliticaDemo } from '../src/lib/server/finanzas-analitica-demo.server';
+import { getFinanceAnaliticaFixture } from '../src/lib/server/fixtures.server';
 
 describe('maqueta sintética de Analítica (modo demo, datos inventados)', () => {
-  const demo = buildAnaliticaDemo();
+  const demo = getFinanceAnaliticaFixture();
 
   it('cubre las cinco secciones del pivot y tres meses', () => {
     expect(demo.months).toEqual(['2026-01', '2026-02', '2026-03']);
@@ -1768,6 +1875,14 @@ describe('maqueta sintética de Analítica (modo demo, datos inventados)', () =>
     expect(demo.categories.some((c) => c.name === 'Restaurantes')).toBe(true);
     expect(demo.eventsSummary.some((e) => e.name === 'Cumple Leo' && e.txCount === 0)).toBe(true);
   });
+
+  it('trae cuentas para la barra de filtros y al menos una de inversión', () => {
+    expect(demo.accounts.length).toBeGreaterThan(0);
+    expect(demo.accounts.some((acc) => acc.kind === 'inversion')).toBe(true);
+    expect(demo.invAccounts).toEqual(
+      demo.accounts.filter((acc) => acc.kind === 'inversion').map((acc) => ({ id: acc.id, name: acc.name }))
+    );
+  });
 });
 ```
 
@@ -1782,7 +1897,10 @@ pnpm vitest run tests/finanzas-analitica-demo.test.ts
 - [ ] **Step 4: tipos + maqueta.** Crea `apps/web/src/lib/finance/analitica-data.ts`:
 
 ```ts
+import type { FinanceAccountKind } from '@casa-clara/domain/finance';
+
 import type { AnalyticsRowLike } from './chart-data';
+import type { FinanceFilters } from './filters';
 
 /** Contrato del load de Analítica (real y demo). Céntimos SIEMPRE bigint. */
 
@@ -1844,37 +1962,46 @@ export interface AnaliticaCategory {
   kind: 'gasto' | 'ingreso' | 'transferencia';
 }
 
+export interface AnaliticaAccount {
+  id: string;
+  name: string;
+  kind: FinanceAccountKind;
+}
+
 export interface AnaliticaData {
   from: string;
   to: string;
   months: string[];
+  /** Filtros ya parseados: los necesita `FinanceFilterBar` (fase 4) tal cual. */
+  filters: FinanceFilters;
   summary: AnaliticaSummary;
   analyticsRows: AnalyticsRowLike[];
   pivotRows: AnaliticaPivotRow[];
   eventsSummary: AnaliticaEventSummary[];
   categories: AnaliticaCategory[];
+  accounts: AnaliticaAccount[];
+  /** Subconjunto `kind === 'inversion'` precalculado: lo usa la barra de acciones. */
   invAccounts: { id: string; name: string }[];
-}
-
-/** Ruta legible de una categoría («Padre > Hija»). */
-export function categoryPathOf(categories: readonly AnaliticaCategory[], id: string): string {
-  const cat = categories.find((c) => c.id === id);
-  if (!cat) return id;
-  if (cat.parentId === null) return cat.name;
-  const parent = categories.find((c) => c.id === cat.parentId);
-  return parent ? `${parent.name} > ${cat.name}` : cat.name;
 }
 ```
 
-Crea `apps/web/src/lib/server/finanzas-analitica-demo.server.ts` (datos 100 % inventados; si la fase 4 dejó un módulo de maqueta de finanzas, importa de él cuentas/categorías comunes y conserva aquí solo lo propio de Analítica):
+**Ruta de categoría:** NO se escribe aquí. La única ruta legible del módulo es `categoryPath(categories, id)` de la fase 4 (`$lib/finance/breakdown`, separador «›»); la Analítica la importa de allí. Si su firma pide otra forma de categoría que la de `AnaliticaCategory`, adapta la llamada (`categoryPath(a.categories, id)`), nunca dupliques la función.
+
+Ahora AÑADE al final de `apps/web/src/lib/server/fixtures.server.ts` (datos 100 % inventados; reutiliza las cuentas y categorías que la fase 4 ya dejó en ese fichero y conserva aquí solo lo propio de Analítica):
 
 ```ts
-import { demoOnly } from '$lib/server/data-source.server';
-import type { AnaliticaData, AnaliticaPivotRow } from '$lib/finance/analitica-data';
+// ── Maqueta de Analítica (fase 6) ────────────────────────────────────────────
+// (el import `import type { AnaliticaData, AnaliticaPivotRow } from '$lib/finance/analitica-data';`
+//  va ARRIBA, con los demás imports del fichero; `demoOnly` ya está importado
+//  por la fase 4.)
+// Los filtros NO viajan en la maqueta: los calcula el load a partir de la URL y
+// los inyecta, igual en la rama real y en la demo.
+export type AnaliticaFixture = Omit<AnaliticaData, 'filters'>;
 
-const mov = (id: string, date: string, cents: bigint) => ({ id, date, cents });
+const analiticaMov = (id: string, date: string, cents: bigint) => ({ id, date, cents });
 
-function rows(): AnaliticaPivotRow[] {
+function analiticaPivotRows(): AnaliticaPivotRow[] {
+  const mov = analiticaMov;
   const base = {
     sub: null, event: null, eventId: null, nat: null as AnaliticaPivotRow['nat']
   };
@@ -1925,8 +2052,8 @@ function rows(): AnaliticaPivotRow[] {
 }
 
 /** Maqueta de Analítica: solo existe sin base de datos (demoOnly la protege). */
-export const buildAnaliticaDemo = demoOnly('finanzas-analitica', (): AnaliticaData => {
-  const pivotRows = rows();
+export const getFinanceAnaliticaFixture = demoOnly('finanzas-analitica', (): AnaliticaFixture => {
+  const pivotRows = analiticaPivotRows();
   return {
     from: '2026-01-01',
     to: '2026-03-31',
@@ -1974,9 +2101,30 @@ export const buildAnaliticaDemo = demoOnly('finanzas-analitica', (): AnaliticaDa
       { id: 'demo-cat-viajes', parentId: null, name: 'Viajes', kind: 'gasto' },
       { id: 'demo-cat-nomina', parentId: null, name: 'Nómina', kind: 'ingreso' }
     ],
+    accounts: [
+      { id: 'demo-acc-comun', name: 'Cuenta Común', kind: 'comun' },
+      { id: 'demo-acc-nomina', name: 'Cuenta Nómina', kind: 'personal' },
+      { id: 'demo-acc-indexa', name: 'Indexa Capital', kind: 'inversion' }
+    ],
     invAccounts: [{ id: 'demo-acc-indexa', name: 'Indexa Capital' }]
   };
 });
+```
+
+Si el corpus de finanzas de la fase 4 ya define esas tres cuentas (`getFinanceDashboardFixture`), reutiliza SUS constantes en vez de repetir los literales: una sola lista de cuentas demo en el fichero.
+
+- [ ] **Step 4b: registra la ruta en la red de seguridad.** En `apps/web/tests/no-fixtures-with-database.test.ts` la lista fija de `+page.server.ts` vigilados NO incluye Analítica. Añade su ruta a esa lista (una línea, junto a las de finanzas que dejó la fase 4), sin tocar nada más:
+
+```ts
+  'src/routes/h/[householdId]/finanzas/analitica/+page.server.ts',
+```
+
+Comprueba a continuación que la red muerde:
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas/apps/web
+pnpm vitest run tests/no-fixtures-with-database.test.ts
 ```
 
 - [ ] **Step 5: verde de la maqueta.**
@@ -1987,50 +2135,176 @@ cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas/apps/web
 pnpm vitest run tests/finanzas-analitica-demo.test.ts
 ```
 
-- [ ] **Step 6: el load.** Sustituye `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.server.ts`:
+- [ ] **Step 6: el lector del servidor.** AÑADE al final de `apps/web/src/lib/server/finance.server.ts` (fichero de la fase 4: `loadFinanceDashboard` se queda intacto). Aquí ocurre la ÚNICA conversión cadena→`bigint` de toda la pantalla:
 
 ```ts
-import { demoOrUnavailable } from '$lib/server/data-source.server';
-import { buildAnaliticaDemo } from '$lib/server/finanzas-analitica-demo.server';
-import type { AnaliticaData } from '$lib/finance/analitica-data';
+// ── Analítica (fase 6) ───────────────────────────────────────────────────────
+// Mismo patrón que loadFinanceDashboard: lectura bajo RLS con el cliente
+// autorizado y mapeo explícito de los DTO (céntimos como cadena) al contrato de
+// cliente (céntimos bigint). `BigInt(v)` acepta cadena y bigint, así que el
+// mapeo vale aunque alguna lectura ya devuelva bigint.
+
+import type {
+  AnaliticaCategory, AnaliticaData, AnaliticaEventSummary, AnaliticaPivotRow, AnaliticaSummary
+} from '$lib/finance/analitica-data';
+import type { AnalyticsRowLike } from '$lib/finance/chart-data';
+import {
+  readFinanceAccounts, readFinanceAnalytics, readFinanceCategories, readFinanceEventsSummary,
+  readFinancePivot, readFinanceSummary
+} from '@casa-clara/server/finance/queries'; // Step 1: usa el subpath real del paquete
+
+function toAnaliticaSummary(dto: Awaited<ReturnType<typeof readFinanceSummary>>): AnaliticaSummary {
+  if (!dto) throw new Error('summary vacío'); // el llamador ya lo comprueba
+  return {
+    incomeCents: BigInt(dto.incomeCents),
+    expenseCents: BigInt(dto.expenseCents),
+    recurringExpenseCents: BigInt(dto.recurringExpenseCents),
+    extraordinaryExpenseCents: BigInt(dto.extraordinaryExpenseCents),
+    unclassifiedExpenseCents: BigInt(dto.unclassifiedExpenseCents),
+    savingsCents: BigInt(dto.savingsCents),
+    netSavingsRate: dto.netSavingsRate,
+    grossSavingsRate: dto.grossSavingsRate,
+    investedCents: BigInt(dto.investedCents),
+    investmentRate: dto.investmentRate,
+    freeCashFlowCents: BigInt(dto.freeCashFlowCents),
+    opsCashFlowCents: BigInt(dto.opsCashFlowCents),
+    receivedContributionsCents: BigInt(dto.receivedContributionsCents),
+    outgoingTransfersCents: BigInt(dto.outgoingTransfersCents),
+    pendingCount: dto.pendingCount
+  };
+}
+
+function toAnaliticaEvents(
+  dtos: Awaited<ReturnType<typeof readFinanceEventsSummary>>
+): AnaliticaEventSummary[] {
+  return dtos.map((e) => ({
+    id: e.id,
+    name: e.name,
+    txCount: e.txCount,
+    netCents: BigInt(e.netCents),
+    incomeCents: BigInt(e.incomeCents),
+    expenseCents: BigInt(e.expenseCents)
+  }));
+}
+
+const CATEGORY_KINDS = ['gasto', 'ingreso', 'transferencia'] as const;
+
+function toAnaliticaCategories(
+  dtos: Awaited<ReturnType<typeof readFinanceCategories>>
+): AnaliticaCategory[] {
+  return dtos.map((c) => {
+    const kind = CATEGORY_KINDS.find((k) => k === c.kind);
+    if (!kind) throw new Error(`kind de categoría desconocido: ${c.kind}`);
+    return { id: c.id, parentId: c.parentId, name: c.name, kind };
+  });
+}
+
+function toAnalyticsRows(
+  rows: Awaited<ReturnType<typeof readFinanceAnalytics>>['rows']
+): AnalyticsRowLike[] {
+  return rows.map((r) => ({
+    kind: r.kind,
+    monthly: Object.fromEntries(
+      Object.entries(r.monthly).map(([month, m]) => [
+        month,
+        { totalCents: BigInt(m.totalCents), recCents: BigInt(m.recCents), extCents: BigInt(m.extCents) }
+      ])
+    )
+  }));
+}
+
+function toAnaliticaPivotRows(
+  rows: Awaited<ReturnType<typeof readFinancePivot>>['rows']
+): AnaliticaPivotRow[] {
+  // PivotSourceRow del dominio ya trae bigint; BigInt(...) lo deja igual y
+  // protege si alguna lectura devolviera cadena. Los NOMBRES son los del
+  // dominio: si difieren de los de AnaliticaPivotRow, adapta AQUÍ (Step 1).
+  return rows.map((r) => ({
+    cat: r.cat,
+    sub: r.sub,
+    catId: r.catId,
+    nat: r.nat,
+    prov: r.prov,
+    concept: r.concept,
+    event: r.event,
+    eventId: r.eventId,
+    kind: r.kind,
+    month: r.month,
+    totalCents: BigInt(r.totalCents),
+    count: r.count,
+    movs: r.movs.map((m) => ({ id: m.id, date: m.date, cents: BigInt(m.cents) }))
+  }));
+}
+
+/** Devuelve null si la membresía no tiene el módulo concedido (RLS: 0 filas). */
+export async function loadFinanceAnalitica(
+  client: FinanceClient, // el mismo tipo que usa loadFinanceDashboard
+  householdId: string,
+  filters: FinanceFilters
+): Promise<Omit<AnaliticaData, 'filters'> | null> {
+  const summary = await readFinanceSummary(client, householdId, filters);
+  if (!summary) return null;
+  const [analytics, pivot, events, categories, accounts] = await Promise.all([
+    readFinanceAnalytics(client, householdId, filters),
+    readFinancePivot(client, householdId, filters),
+    readFinanceEventsSummary(client, householdId, filters),
+    readFinanceCategories(client, householdId),
+    readFinanceAccounts(client, householdId)
+  ]);
+  const cuentas = accounts.map((acc) => ({ id: acc.id, name: acc.name, kind: acc.kind }));
+  return {
+    from: filters.from,
+    to: filters.to,
+    months: pivot.months,
+    summary: toAnaliticaSummary(summary),
+    analyticsRows: toAnalyticsRows(analytics.rows),
+    pivotRows: toAnaliticaPivotRows(pivot.rows),
+    eventsSummary: toAnaliticaEvents(events),
+    categories: toAnaliticaCategories(categories),
+    accounts: cuentas,
+    invAccounts: cuentas.filter((acc) => acc.kind === 'inversion').map((acc) => ({ id: acc.id, name: acc.name }))
+  };
+}
+```
+
+`FinanceClient` y `FinanceFilters` son los tipos que ya usa `loadFinanceDashboard` en ese fichero: reutiliza sus imports, no añadas otros. El `dims`/`dupev` de la URL NO llega aquí: son agrupación de cliente (`PivotTable`), no cambian la consulta; `exev` sí viaja dentro de `filters` (clave `excludeEventIds`), como en el Dashboard.
+
+- [ ] **Step 7: el load de la ruta.** Sustituye `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.server.ts`:
+
+```ts
+import { demoOrUnavailable, unreadable } from '$lib/server/data-source.server';
+import { getFinanceAnaliticaFixture } from '$lib/server/fixtures.server';
+import { loadFinanceAnalitica } from '$lib/server/finance.server';
+import { parseFilters, todayLocal } from '$lib/finance/filters';
 import type { PageServerLoad } from './$types';
 
-// fase 4: importa AQUÍ exactamente las funciones de queries que usan los
-// endpoints GET summary/analytics/pivot/events-summary y el helper de filtros
-// de $lib/finance/filters.ts que usa el Dashboard (mismos nombres, mismos
-// valores por defecto de from/to/g/acc/ev/exev).
+export const load: PageServerLoad = async ({ depends, locals, params, url }) => {
+  // Token canónico de invalidación del módulo (doc de interfaces): lo dispara
+  // el pivot tras cada comando con invalidate('cc:finance').
+  depends('cc:finance');
 
-export const load: PageServerLoad = async ({ locals, params, url }) => {
+  const filters = parseFilters(url.searchParams, todayLocal());
+
   if (locals.user) {
-    // Rama real, bajo RLS y con la MISMA lectura de filtros que el Dashboard
-    // (fase 4). exev se pasa a summary/analytics; el pivot recibe también
-    // dims/dupev tal cual llegan en la URL. Mapea el resultado a AnaliticaData
-    // (los nombres de campo del dominio mandan; ver analitica-data.ts).
-    // Estructura (rellena con las funciones reales de queries.ts):
-    //
-    //   const filters = parseFinanceFilters(url.searchParams);          // fase 4
-    //   const summary = await readFinanceSummary(...);                  // fase 4
-    //   const analytics = await readFinanceAnalytics(...);              // fase 4
-    //   const pivot = await readFinancePivot(...);                      // fase 4
-    //   const events = await readFinanceEventsSummary(...);             // fase 4
-    //   const categories = await readFinanceCategories(...);            // fase 4 (la usa Movimientos)
-    //   const accounts = await readFinanceAccounts(...);                // fase 4 (Ajustes/FilterBar)
-    //   if (summary) {
-    //     const analitica: AnaliticaData = { from: filters.from, to: filters.to,
-    //       months: pivot.months, summary, analyticsRows: analytics.rows,
-    //       pivotRows: pivot.rows, eventsSummary: events,
-    //       categories, invAccounts: accounts.filter((a) => a.kind === 'inversion') };
-    //     return { analitica };
-    //   }
-    //   // null ⇒ sin autorización: cae al 503/maqueta de abajo igual que Contactos.
+    try {
+      const analitica = await loadFinanceAnalitica(locals.financeClient, params.householdId, filters);
+      if (analitica) return { analitica: { ...analitica, filters }, demo: false };
+      // null ⇒ sin concesión viva: cae a la maqueta/503 de abajo, como Contactos.
+    } catch (cause) {
+      throw unreadable(locals.log, 'finanzas/analitica', cause);
+    }
   }
-  return demoOrUnavailable(() => ({ analitica: buildAnaliticaDemo() satisfies AnaliticaData }));
+
+  return demoOrUnavailable(() => ({
+    analitica: { ...getFinanceAnaliticaFixture(), filters },
+    demo: true
+  }));
 };
 ```
 
-Completa la rama real con los imports y llamadas reales (el bloque comentado es la forma; los nombres, los del repo). Patrón a imitar: `apps/web/src/routes/h/[householdId]/contacts/+page.server.ts` (rama real → maqueta) y el `+page.server.ts` del Dashboard de finanzas.
+`locals.financeClient` y `locals.log` son marcadores del patrón: usa EXACTAMENTE la forma que el Dashboard (fase 4) emplea para obtener el cliente autorizado y el logger, y su misma llamada a `unreadable(...)`. Patrón de referencia: `apps/web/src/routes/h/[householdId]/contacts/+page.server.ts` (rama real → maqueta) y el `+page.server.ts` del Dashboard de finanzas.
 
-- [ ] **Step 7: la página (KPIs + medias + partidas).** Sustituye `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte`:
+- [ ] **Step 8: la página (KPIs + medias + partidas).** Sustituye `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte`:
 
 ```svelte
 <script lang="ts">
@@ -2075,9 +2349,9 @@ Completa la rama real con los imports y llamadas reales (el bloque comentado es 
 
 <PageHeader eyebrow="Finanzas" title="Analítica" support={`${a.from} → ${a.to}`} />
 
-<FinanceFilterBar />
-<!-- ↑ fase 4: copia la instanciación EXACTA (props incluidas) del Dashboard
-     apps/web/src/routes/h/[householdId]/finanzas/+page.svelte -->
+<FinanceFilterBar filters={a.filters} accounts={a.accounts} />
+<!-- ↑ props canónicas de la fase 4: { filters: FinanceFilters; accounts: {id;name;kind}[] },
+     las mismas que el Dashboard (apps/web/src/routes/h/[householdId]/finanzas/+page.svelte). -->
 
 <section class="kpi-grid" data-testid="kpi-analitica" aria-label="Indicadores del periodo">
   <article class="kpi"><span>Ingresos</span><strong class="cifra pos">{formatCents(a.summary.incomeCents)}</strong>
@@ -2181,19 +2455,19 @@ Completa la rama real con los imports y llamadas reales (el bloque comentado es 
 </style>
 ```
 
-- [ ] **Step 8: verde de tipos.**
+- [ ] **Step 9: verde de tipos.**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas/apps/web
-pnpm check && pnpm vitest run tests/finanzas-analitica-demo.test.ts
+pnpm check && pnpm vitest run tests/finanzas-analitica-demo.test.ts tests/no-fixtures-with-database.test.ts
 ```
 
-- [ ] **Step 9: commit.**
+- [ ] **Step 10: commit.**
 
 ```bash
 cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
-git add apps/web/src/lib/finance/analitica-data.ts apps/web/src/lib/server/finanzas-analitica-demo.server.ts "apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.server.ts" "apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte" apps/web/tests/finanzas-analitica-demo.test.ts
+git add apps/web/src/lib/finance/analitica-data.ts apps/web/src/lib/server/fixtures.server.ts apps/web/src/lib/server/finance.server.ts "apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.server.ts" "apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte" apps/web/tests/finanzas-analitica-demo.test.ts apps/web/tests/no-fixtures-with-database.test.ts
 git commit -m "feat(finanzas): Analítica con KPIs ampliados, medias por meses completos y partidas excluibles"
 ```
 
@@ -2285,10 +2559,25 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
 - Modify: `apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte` (integración + filtro de naturaleza)
 
 **Interfaces:**
-- Consumes: `buildPivotTree` y `INTERNA_DIMS`/`INVERSION_DIMS` de `@casa-clara/domain` (fase 2); todo `$lib/finance/pivot-state`; `formatCents`; `monthLabel`; tipos de `$lib/finance/analitica-data`.
+- Consumes: `buildPivotTree` y `INTERNA_DIMS`/`INVERSION_DIMS` de `@casa-clara/domain/finance` (fase 2, subpath canónico); todo `$lib/finance/pivot-state` (incluidos `PIVOT_DIMENSIONS`, `parseDims` y `serializeDims`, del stub de la fase 4); `formatCents` y `categoryPath` (fase 4); `monthLabel`; tipos de `$lib/finance/analitica-data`.
 - Produces: componente `PivotTable` con props `{ rows, months, categories, events, invAccounts, householdId, onOpenIds }` y testids `pivot-table`, `pivot-banda-*`, `pivot-total-neto`.
+- `invAccounts` y `householdId` no se usan todavía en esta tarea: los consume la Task 12 (barra de acciones y envío de comandos). No los borres cuando `pnpm check` avise de props sin usar; si el aviso rompe el gate, deja el `// eslint-disable-next-line` que use el repo para ese caso y quítalo en la Task 12.
 
-**⚠ Step 1 obligatorio (alineación con el dominio, fase 2):** abre `packages/domain/src/finance/pivot.ts` y anota: (a) la firma real de `buildPivotTree(rows, dims, opts)` — qué lleva `opts` (este plan asume `{ months: string[]; dupEventIds?: ReadonlySet<string> }`); (b) la forma del árbol devuelto — este plan asume el port fiel del original: `{ gastos, ingresos, internas, inversiones, eventos, subtotales }` con nodos `{ key, label, depth, count, totalCents, avgCents, ticketCents, monthly, catId, nat, provider, concept, movs, children }` y eventos `{ eventId, name, count, netCents, avgCents, ticketCents, monthly, children }`; (c) si exporta `INTERNA_DIMS`/`INVERSION_DIMS`. Cualquier diferencia de nombre se resuelve A FAVOR del dominio en el código de abajo (y en `PivotNodeLike` de pivot-state si afecta a propiedades).
+**Firma canónica del dominio (resolución nº 3 del doc de interfaces):**
+`buildPivotTree(rows, dims, { monthsCount: number; dupEventIds?: ReadonlySet<string> })` — el tercer argumento lleva `monthsCount`, **nunca** `months`. El dominio divide por `monthsCount` para el promedio: pasarle otra cosa deja todos los `avgCents` a 0.
+
+- [ ] **Step 1: alinear con el dominio (fase 2) antes de escribir código.** Abre `packages/domain/src/finance/pivot.ts` y anota:
+  1. La forma del árbol devuelto — este plan asume el port fiel del original: `{ gastos, ingresos, internas, inversiones, eventos, subtotales }` con nodos `{ key, label, depth, count, totalCents, avgCents, ticketCents, monthly, catId, nat, provider, concept, movs, children }` y eventos `{ eventId, name, count, netCents, avgCents, ticketCents, monthly, children }`.
+  2. Si exporta `INTERNA_DIMS`/`INVERSION_DIMS` y con qué tipo (se esperan `readonly PivotDimension[]`).
+  3. Si las `key` de los nodos están cualificadas por sección (ver la nota de la Task 3).
+
+Cualquier diferencia de nombre se resuelve A FAVOR del dominio en el código de abajo (y en `PivotNodeLike` de `pivot-state` si afecta a propiedades).
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+grep -n "export \|interface \|monthsCount" packages/domain/src/finance/pivot.ts | head -60
+```
 
 - [ ] **Step 2: implementación.** Crea `apps/web/src/lib/components/finance/PivotTable.svelte`:
 
@@ -2296,15 +2585,16 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
 <script lang="ts">
   import { replaceState } from '$app/navigation';
   import { page } from '$app/state';
-  import { buildPivotTree, INTERNA_DIMS, INVERSION_DIMS, type PivotDimension } from '@casa-clara/domain';
+  import { buildPivotTree, INTERNA_DIMS, INVERSION_DIMS, type PivotDimension } from '@casa-clara/domain/finance';
   import { monthLabel } from '$lib/finance/chart-data';
+  import { categoryPath } from '$lib/finance/breakdown';
   import { formatCents } from '$lib/finance/format';
   import {
-    addDim, ALL_DIMS, DIM_LABELS, dimsToParam, moveDim, parseChips, parseDims, parseIdList,
-    removeDim, sameSortKey, serializeIdList, sortTree, rowMatchesChips,
+    addDim, DIM_LABELS, moveDim, parseChips, parseDims, parseIdList, PIVOT_DIMENSIONS,
+    removeDim, sameSortKey, serializeDims, serializeIdList, sortTree, rowMatchesChips,
     type PivotNodeLike, type PivotSortKey, type SortDir
   } from '$lib/finance/pivot-state';
-  import { categoryPathOf, type AnaliticaCategory, type AnaliticaEventSummary, type AnaliticaPivotRow } from '$lib/finance/analitica-data';
+  import type { AnaliticaCategory, AnaliticaEventSummary, AnaliticaPivotRow } from '$lib/finance/analitica-data';
 
   let {
     rows, months, categories, events, invAccounts, householdId, onOpenIds
@@ -2318,7 +2608,8 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
     onOpenIds: (ids: string[], label: string, sub: string) => void;
   } = $props();
 
-  const catPathOf = (id: string) => categoryPathOf(categories, id);
+  // Ruta de categoría: la única del módulo es la de la fase 4 (separador «›»).
+  const catPathOf = (id: string) => categoryPath(categories, id);
 
   // dims y dupev viven en la URL (merge no destructivo) con routing superficial:
   // no cambian los datos del servidor, solo la agrupación cliente.
@@ -2332,7 +2623,8 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
     else url.searchParams.delete(key);
     replaceState(url, {});
   }
-  const setDims = (next: PivotDimension[]) => setShallowParam('dims', dimsToParam(next));
+  // serializeDims (fase 4) devuelve null para el orden por defecto ⇒ URL limpia.
+  const setDims = (next: PivotDimension[]) => setShallowParam('dims', serializeDims(next) ?? '');
   const toggleDupEvent = (id: string) => {
     const next = dupEventIds.includes(id) ? dupEventIds.filter((x) => x !== id) : [...dupEventIds, id];
     setShallowParam('dupev', serializeIdList(next));
@@ -2358,7 +2650,11 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
 
   // Árbol del dominio (fase 2); dupev duplica eventos bajo su categoría sin
   // alterar el TOTAL NETO (invariante del dominio, testeada allí).
-  const tree = $derived(buildPivotTree(filteredRows, dims, { months, dupEventIds: new Set(dupEventIds) }));
+  // opts canónico: { monthsCount, dupEventIds } — con `months` los promedios
+  // saldrían todos a 0 (el dominio divide por monthsCount).
+  const tree = $derived(
+    buildPivotTree(filteredRows, dims, { monthsCount: months.length, dupEventIds: new Set(dupEventIds) })
+  );
 
   // Gastos: ascendente = mayor gasto primero. Ingresos/eventos: dirección
   // contraria salvo por etiqueta, que ordena igual en las tres secciones.
@@ -2394,8 +2690,8 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
     onOpenIds(node.movs.map((m) => m.id), node.label, `${node.movs.length} ${node.movs.length === 1 ? 'movimiento' : 'movimientos'}`);
 </script>
 
-{#snippet subtotalRow(label: string, data: { count: number; totalCents: bigint; avgCents: bigint; ticketCents: bigint; monthly: Record<string, bigint> }, tone: '' | 'ok' | 'warn', tooltip: string)}
-  <tr class="subtotal" class:aviso={tone === 'warn'} title={tooltip || undefined}>
+{#snippet subtotalRow(label: string, data: { count: number; totalCents: bigint; avgCents: bigint; ticketCents: bigint; monthly: Record<string, bigint> }, tone: '' | 'ok' | 'warn', tooltip: string, testid = '')}
+  <tr class="subtotal" class:aviso={tone === 'warn'} title={tooltip || undefined} data-testid={testid || undefined}>
     <td class="arbol" class:ok={tone === 'ok'}>{label}{tone === 'warn' ? ' ⚠' : ''}{hasSearch ? ' (filtrado)' : ''} <small>({data.count})</small></td>
     <td class="importe cifra">{cellText(data.totalCents)}</td>
     <td class="importe cifra">{cellText(data.avgCents)}</td>
@@ -2404,7 +2700,7 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
   </tr>
 {/snippet}
 
-{#snippet nodeRow(node: PivotNodeLike, kind: 'gasto' | 'ingreso' | 'evento' | 'transferencia' | 'inversion', nodeDims: PivotDimension[])}
+{#snippet nodeRow(node: PivotNodeLike, kind: 'gasto' | 'ingreso' | 'evento' | 'transferencia' | 'inversion', nodeDims: readonly PivotDimension[])}
   {@const isExpanded = forceExpand || expanded.has(node.key)}
   {@const hasChildren = node.children.length > 0}
   {@const canOpen = !hasChildren && node.movs.length > 0}
@@ -2413,7 +2709,16 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
     : ''}
   <tr style={tintFor(node.depth)} class:clicable={hasChildren} onclick={() => hasChildren && toggle(node.key)}>
     <td class="arbol" style={`padding-left: calc(var(--space-3) + ${node.depth} * var(--space-4));`}>
-      <span class="flecha" aria-hidden="true">{hasChildren ? (isExpanded ? '▾' : '▸') : ''}</span>
+      <!-- El disparador de expansión es un BOTÓN: con teclado y lector de
+           pantalla el árbol tiene que ser operable (spec §8, axe 0 serious).
+           El onclick del <tr> queda solo como atajo de ratón. -->
+      {#if hasChildren}
+        <button type="button" class="flecha" aria-expanded={isExpanded}
+          aria-label={`desplegar ${node.label}`}
+          onclick={(e) => { e.stopPropagation(); toggle(node.key); }}>{isExpanded ? '▾' : '▸'}</button>
+      {:else}
+        <span class="flecha" aria-hidden="true"></span>
+      {/if}
       {#if canOpen}
         <button type="button" class="abrir" title="abrir ficha"
           onclick={(e) => { e.stopPropagation(); openLeaf(node); }}>{node.label}</button>
@@ -2444,7 +2749,7 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
         <button type="button" disabled={dims.length <= 1} aria-label={`quitar ${DIM_LABELS[d]}`} onclick={() => setDims(removeDim(dims, d))}>×</button>
       </span>
     {/each}
-    {#each ALL_DIMS.filter((d) => !dims.includes(d)) as d (d)}
+    {#each PIVOT_DIMENSIONS.filter((d) => !dims.includes(d)) as d (d)}
       <button type="button" class="chip" onclick={() => setDims(addDim(dims, d))}>{DIM_LABELS[d]}</button>
     {/each}
   </div>
@@ -2483,7 +2788,13 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
           {@const evExpanded = forceExpand || expanded.has(key)}
           <tr class="clicable" onclick={() => event.children.length > 0 && toggle(key)}>
             <td class="arbol">
-              <span class="flecha" aria-hidden="true">{event.children.length > 0 ? (evExpanded ? '▾' : '▸') : ''}</span>
+              {#if event.children.length > 0}
+                <button type="button" class="flecha" aria-expanded={evExpanded}
+                  aria-label={`desplegar ${event.name}`}
+                  onclick={(e) => { e.stopPropagation(); toggle(key); }}>{evExpanded ? '▾' : '▸'}</button>
+              {:else}
+                <span class="flecha" aria-hidden="true"></span>
+              {/if}
               <input type="checkbox" checked={dupEventIds.includes(event.eventId)} disabled={event.children.length === 0}
                 title="Ver los movimientos de este evento también dentro de sus categorías en GASTOS/INGRESOS"
                 onclick={(e) => e.stopPropagation()} onchange={() => toggleDupEvent(event.eventId)} />
@@ -2514,8 +2825,7 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
           {@render subtotalRow('Subtotal inversión', tree.subtotales.inversiones, '', '')}
         {/if}
         {#if gastoTree.length > 0 || ingresoTree.length > 0 || displayEventos.length > 0}
-          <tr data-testid="pivot-total-neto" class="oculta-fila"></tr>
-          {@render subtotalRow('TOTAL NETO', tree.subtotales.totalNeto, '', '')}
+          {@render subtotalRow('TOTAL NETO', tree.subtotales.totalNeto, '', '', 'pivot-total-neto')}
         {/if}
       </tbody>
     </table>
@@ -2541,7 +2851,8 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
   .pivot .arbol { position: sticky; left: 0; background: inherit; }
   .pivot tr { background: var(--surface); }
   .pivot tr.clicable { cursor: pointer; }
-  .flecha { display: inline-block; width: var(--space-4); color: var(--ink-faint); }
+  .flecha { display: inline-block; width: var(--space-4); color: var(--ink-faint); border: 0; background: transparent; font: inherit; padding: 0; text-align: left; }
+  button.flecha { cursor: pointer; }
   .abrir { border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0; text-decoration: underline dotted; }
   .banda td { background: var(--canvas-deep); font-weight: 700; font-size: var(--text-micro); letter-spacing: .06em; }
   .subtotal { background: var(--canvas); font-weight: 500; }
@@ -2550,7 +2861,6 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
   .pos { color: var(--success); }
   .neg { color: var(--danger); }
   .suave { color: var(--ink-soft); }
-  .oculta-fila { display: none; }
   .vacio, .nota { color: var(--ink-soft); font-size: var(--text-meta); margin-top: var(--space-2); }
   small { color: var(--ink-faint); }
 </style>
@@ -2573,30 +2883,38 @@ git commit -m "feat(finanzas): evolución apilada y resumen mensual transpuesto 
       events={a.eventsSummary}
       invAccounts={a.invAccounts}
       householdId={page.params.householdId ?? ''}
-      onOpenIds={(ids, label, sub) => (panel = { ids, label, sub })}
+      onOpenIds={(ids, label, sub) => (panel = { kind: 'ids', ids, label, sub })}
     />
   </section>
 
   {#if panel}
-    <FinanceDetailPanel />
-    <!-- ↑ fase 4: copia la instanciación EXACTA (props: ids/label/sub/onClose o
-         las que use Movimientos en apps/web/src/routes/h/[householdId]/finanzas/movimientos/+page.svelte)
-         y pásale panel.ids, panel.label, panel.sub y onClose={() => (panel = null)} -->
+    <FinanceDetailPanel mode={panel} householdId={page.params.householdId ?? ''}
+      live={!data.demo} onClose={() => (panel = null)} />
   {/if}
 ```
+
+Props canónicas de la fase 4: `FinanceDetailPanel { mode: FinanceDetailMode | null; householdId: string; live?: boolean; onClose: () => void }`, con `FinanceDetailMode = { kind: 'ids'; ids: string[]; label: string; sub?: string } | …`. Por eso `panel` se tipa con ese tipo y `onOpenIds` construye `{ kind: 'ids', … }`; `live={!data.demo}` es lo mismo que hace Movimientos.
 
 Y en el `<script>` de la página añade:
 
 ```ts
   import PivotTable from '$lib/components/finance/PivotTable.svelte';
-  import FinanceDetailPanel from '$lib/components/finance/FinanceDetailPanel.svelte';
+  import FinanceDetailPanel, { type FinanceDetailMode } from '$lib/components/finance/FinanceDetailPanel.svelte';
 
   let recurrence = $state<'recurrente' | 'extraordinario' | null>(null);
-  let panel = $state<{ ids: string[]; label: string; sub: string } | null>(null);
+  let panel = $state<FinanceDetailMode | null>(null);
   const pivotRows = $derived(a.pivotRows.filter((r) => !recurrence || r.nat === recurrence));
 ```
 
-más la clase `.chips-naturaleza { display: flex; gap: var(--space-2); margin: var(--space-2) 0; }` y las reglas `.chip`/`.chip.activa` iguales a las del PivotTable en el `<style>` de la página.
+(Si la fase 4 exporta `FinanceDetailMode` desde un módulo `.ts` en vez de desde el propio `.svelte`, importa el tipo de allí; el nombre del tipo es el canónico y no cambia.)
+
+Y en el `<style>` de la página añade estas reglas literales (las mismas que usa `PivotTable` para sus chips, para que los dos grupos se vean igual):
+
+```css
+  .chips-naturaleza { display: flex; gap: var(--space-2); margin: var(--space-2) 0; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); border-radius: var(--r-full); background: var(--surface); padding: var(--space-1) var(--space-2); font-size: var(--text-meta); cursor: pointer; }
+  .chip.activa { border-color: var(--primary); background: var(--primary-soft); font-weight: 700; }
+```
 
 - [ ] **Step 4: verde de tipos y tokens.**
 
@@ -2765,7 +3083,11 @@ En el `{#if isEmpty}` añade el botón de limpiar búsqueda:
     <button type="button" class="limpiar" onclick={() => setShallowParam('q', '')}>limpiar búsqueda</button></p>
 ```
 
-(y la clase `.limpiar` igual que en PivotSearch en el `<style>` de PivotTable).
+y en el `<style>` de `PivotTable.svelte` añade la regla literal del botón:
+
+```css
+  .limpiar { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); text-decoration: underline; }
+```
 
 - [ ] **Step 3: verde.**
 
@@ -2792,8 +3114,12 @@ git commit -m "feat(finanzas): buscador del pivot con chips tipados y atajo «/�
 - Modify: `apps/web/src/lib/components/finance/PivotTable.svelte`
 
 **Interfaces:**
-- Consumes: helpers de selección de `$lib/finance/pivot-state` (tarea 3); `sendFinanceCommand` y constructores de `$lib/finance/pivot-actions` (tarea 6); `invalidateAll` de `$app/navigation`.
-- Produces: `PivotActionBar` con props `{ concepts, movs, events, categories, invAccounts, categoryOnlySelection, onMoveToEvent, onNewEvent, onMoveToCategory, onSetRecurrence, onInvest, onOpenPanel, onClear }`; toast `.pivot-toast` con botón «Deshacer» en PivotTable.
+- Consumes: helpers de selección de `$lib/finance/pivot-state` (tarea 3); `sendFinanceCommand` y constructores de `$lib/finance/pivot-actions` (tarea 6); `invalidate` de `$app/navigation`.
+- Produces: `PivotActionBar` con props `{ concepts, movs, events, categories, invAccounts, categoryOnlySelection, onMoveToEvent, onNewEvent, onMoveToCategory, onSetRecurrence, onInvest, onOpenPanel, onClear }`; los aplicadores compartidos `applyEventAssignment`, `applyNewEventAssignment` y `applyCategoryAssignment` (los reutiliza el dnd de la tarea 13); toast `.pivot-toast` con botón «Deshacer» en PivotTable.
+
+**Dos reglas que este plan NO puede saltarse:**
+1. **Acuse veraz.** `QueueCommandResult.outcome` es `'synced' | 'queued' | 'rejected' | 'conflict'`. `queued` es un ÉXITO (el comando queda persistido en el outbox) y hay que decirlo con su copy propio; solo `rejected`/`conflict` cortan el envío. Y si al final no se envía NINGÚN comando, el toast lo dice («No hay nada que asignar»), nunca un resumen de éxito.
+2. **Invalidación por el token canónico.** El `load` de Analítica declara `depends('cc:finance')` (Task 8), así que tras un `synced` se refresca con `invalidate('cc:finance')` y no con `invalidateAll()`: solo hay que recargar los datos de finanzas, no toda la página. Se usa `queueCommand` (y no `OptimisticActions` como la fase 5) porque aquí un gesto dispara N comandos encadenados cuyo desenlace hay que agregar en un solo acuse; la invalidación se hace UNA vez al final, con el mismo token.
 
 - [ ] **Step 1: la barra.** Crea `apps/web/src/lib/components/finance/PivotActionBar.svelte` (menús con `<details>`, nativos y accesibles; alternativa táctil/teclado completa al dnd):
 
@@ -2907,17 +3233,18 @@ git commit -m "feat(finanzas): buscador del pivot con chips tipados y atajo «/�
 (a) añade imports:
 
 ```ts
-  import { invalidateAll } from '$app/navigation';
+  import { invalidate } from '$app/navigation';
   import PivotActionBar from './PivotActionBar.svelte';
   import {
-    collectNodeMovIds, resolveSelectionIds, rangeBetween, selectableListAny, toAnySelectable,
+    collectMovIdsByKey, resolveSelectionIds, rangeBetween, selectableListAny, toAnySelectable,
     toggleInMap, toMovementSelectable, summarizeEventDrop, summarizeCategoryDrop,
     type SelectableItem
   } from '$lib/finance/pivot-state';
   import {
-    assignConceptRecurrence, assignConceptToCategory, assignConceptToEvent, buildTxCategoryIndex,
-    bulkByIds, conceptTargetOf, createEventPayload, investTransaction, planCategoryUndo,
-    sendFinanceCommand, undoEventAssign, type CategoryUndo
+    assignConceptRecurrence, assignConceptToCategory, assignConceptToEvent, assignTransactionsToEvent,
+    buildTxCategoryIndex, bulkByIds, conceptTargetOf, createEventPayload, investTransaction,
+    planCategoryUndo, sendFinanceCommand, undoEventAssign, updateTransactionRecurrence,
+    type CategoryUndo
   } from '$lib/finance/pivot-actions';
 ```
 
@@ -2949,103 +3276,181 @@ git commit -m "feat(finanzas): buscador del pivot con chips tipados y atajo «/�
     ...gastoTree, ...ingresoTree, ...internaTree, ...inversionTree,
     ...displayEventos.flatMap((e) => e.children)
   ] as PivotNodeLike[]);
-  const nodeMovIds = $derived(collectNodeMovIds(allRoots));
+  const movIdsByKey = $derived(collectMovIdsByKey(allRoots));
   const txCatIndex = $derived(buildTxCategoryIndex(rows));
 
   // ── Toast con Deshacer y envío secuencial de comandos ──────────────────────
+  // `queued` es ÉXITO (el comando vive en el outbox): se sigue enviando el resto
+  // y se acusa con su copy propio. Solo rejected/conflict cortan.
   let toast = $state<{ message: string; onUndo?: () => Promise<void> } | null>(null);
-  async function sendAll(payloads: Record<string, unknown>[]): Promise<{ ok: boolean; message: string }> {
+
+  interface SendOutcome { ok: boolean; sent: number; queued: boolean; message: string }
+  const COLA = 'Guardado en este dispositivo; se enviará al recuperar conexión';
+
+  async function sendAll(payloads: Record<string, unknown>[]): Promise<SendOutcome> {
+    let queued = false;
+    let synced = false;
     for (const payload of payloads) {
       const result = await sendFinanceCommand(householdId, payload);
-      if (result.outcome !== 'synced') return { ok: false, message: result.message };
+      if (result.outcome === 'rejected' || result.outcome === 'conflict') {
+        return { ok: false, sent: payloads.length, queued, message: result.message };
+      }
+      if (result.outcome === 'queued') queued = true;
+      else synced = true;
     }
-    await invalidateAll();
-    return { ok: true, message: '' };
+    // Token canónico del módulo; el load de Analítica declara depends('cc:finance').
+    if (synced) await invalidate('cc:finance');
+    return { ok: true, sent: payloads.length, queued, message: queued ? COLA : '' };
   }
+
+  /**
+   * Acuse veraz: si no se envió nada, se dice (y con el motivo concreto cuando
+   * lo hay); si algo quedó en cola, se dice; si no, el resumen a secas.
+   */
+  function acuse(r: SendOutcome, resumen: string, vacio = 'No hay nada que asignar'): string {
+    if (!r.ok) return r.message;
+    if (r.sent === 0) return vacio;
+    return r.queued ? `${resumen} · ${r.message}` : resumen;
+  }
+
   async function runCategoryUndo(plan: CategoryUndo): Promise<void> {
     const payloads = [
       ...plan.reassignments.map((r) => assignConceptToCategory(r.provider, r.concept, r.categoryId)),
-      ...plan.bulkRestores.map((g) => bulkByIds(g.txIds, { categoryId: g.categoryId }))
+      ...plan.bulkRestores.map((g) => bulkByIds(g.transactionIds, { categoryId: g.categoryId }))
     ];
     const r = await sendAll(payloads);
     const aviso = plan.bulkRestores.length > 0 ? ' · las reglas creadas se conservan (bórralas en Ajustes)' : '';
     const saltos = plan.skipped > 0 ? ` · ${plan.skipped} sin categoría previa` : '';
-    toast = { message: r.ok ? `Deshecho${aviso}${saltos}` : r.message };
+    toast = { message: acuse(r, `Deshecho${aviso}${saltos}`) };
   }
 
-  // ── Acciones de la barra (por concepto, o por ids exactos si hay hojas) ────
+  // ── Aplicadores compartidos ───────────────────────────────────────────────
+  // La barra de acciones y el drag-and-drop (tarea 13) son dos caminos para el
+  // MISMO gesto: comparten estas tres funciones para que no puedan divergir.
+
+  async function applyEventAssignment(
+    items: readonly SelectableItem[], eventId: string, eventName: string, omitted: number
+  ): Promise<void> {
+    const transactionIds = items.filter((i) => i.txId != null).map((i) => i.txId!);
+    const conceptItems = items.filter((i) => i.txId == null);
+    const movs = items.reduce((s, i) => s + i.count, 0);
+    const r = await sendAll([
+      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
+      ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'add')] : [])
+    ]);
+    toast = {
+      message: acuse(r, summarizeEventDrop(movs, eventName, omitted)),
+      ...(r.ok && (conceptItems.length > 0 || transactionIds.length > 0)
+        ? {
+            onUndo: async () => {
+              const u = await sendAll([
+                ...conceptItems.map((i) => undoEventAssign(conceptTargetOf(i))),
+                ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'remove')] : [])
+              ]);
+              toast = { message: acuse(u, 'Deshecho') };
+            }
+          }
+        : {})
+    };
+  }
+
+  /**
+   * Evento nuevo: el id lo genera el cliente para poder encadenar «crear» y
+   * «asignar» sin esperar al ACK. Así los movimientos sueltos (hojas con txId)
+   * también se asignan — antes se perdían en silencio con un toast de éxito.
+   */
+  async function applyNewEventAssignment(
+    items: readonly SelectableItem[], name: string, omitted: number
+  ): Promise<void> {
+    const existing = events.find((e) => e.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (existing) return applyEventAssignment(items, existing.id, existing.name, omitted);
+    const eventId = crypto.randomUUID();
+    const transactionIds = items.filter((i) => i.txId != null).map((i) => i.txId!);
+    const conceptItems = items.filter((i) => i.txId == null);
+    const movs = items.reduce((s, i) => s + i.count, 0);
+    const r = await sendAll([
+      createEventPayload(eventId, name),
+      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
+      ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'add')] : [])
+    ]);
+    toast = { message: acuse(r, summarizeEventDrop(movs, name, omitted)) };
+  }
+
+  async function applyCategoryAssignment(
+    items: readonly SelectableItem[], categoryId: string, omitted: number
+  ): Promise<void> {
+    const transactionIds = resolveSelectionIds(items.filter((i) => i.txId != null), movIdsByKey);
+    const conceptItems = items.filter((i) => i.txId == null && i.categoryId == null);
+    const omitidos = omitted + items.filter((i) => i.categoryId != null).length;
+    const plan = planCategoryUndo(conceptItems, movIdsByKey, txCatIndex);
+    const movidos = conceptItems.reduce((s, i) => s + i.count, 0) + transactionIds.length;
+    const r = await sendAll([
+      ...conceptItems.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
+      ...(transactionIds.length ? [bulkByIds(transactionIds, { categoryId })] : [])
+    ]);
+    toast = {
+      // Con 0 movidos, summarizeCategoryDrop ya explica POR QUÉ no se movió nada
+      // («las categorías no pueden soltarse sobre otra categoría»): ese texto es
+      // mejor acuse vacío que el genérico.
+      message: acuse(
+        r,
+        summarizeCategoryDrop(movidos, catPathOf(categoryId), omitidos),
+        summarizeCategoryDrop(0, catPathOf(categoryId), omitidos)
+      ),
+      ...(r.ok && movidos > 0 ? { onUndo: () => runCategoryUndo(plan) } : {})
+    };
+  }
+
+  // ── Acciones de la barra (delegan en los aplicadores) ──────────────────────
   async function actionMoveToEvent(eventId: string): Promise<void> {
     const items = selectionList;
     if (items.length === 0) return;
     const name = events.find((e) => e.id === eventId)?.name ?? '';
-    const txIds = items.filter((i) => i.txId != null).map((i) => i.txId!);
-    const conceptItems = items.filter((i) => i.txId == null);
-    const r = await sendAll([
-      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
-      ...(txIds.length ? [bulkByIds(txIds, { addEventId: eventId })] : [])
-    ]);
-    toast = r.ok
-      ? {
-          message: summarizeEventDrop(selectionMovs, name),
-          ...(conceptItems.length
-            ? { onUndo: async () => { const u = await sendAll(conceptItems.map((i) => undoEventAssign(conceptTargetOf(i)))); toast = { message: u.ok ? 'Deshecho' : u.message }; } }
-            : {})
-        }
-      : { message: r.message };
+    await applyEventAssignment(items, eventId, name, 0);
     clearSelection();
   }
   async function actionNewEvent(name: string): Promise<void> {
     const items = selectionList;
     if (items.length === 0) return;
-    const existing = events.find((e) => e.name.toLocaleLowerCase() === name.toLocaleLowerCase());
-    if (existing) return actionMoveToEvent(existing.id);
-    const conceptItems = items.filter((i) => i.txId == null);
-    const r = await sendAll(conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { newEventName: name })));
-    toast = r.ok ? { message: summarizeEventDrop(selectionMovs, name) } : { message: r.message };
+    await applyNewEventAssignment(items, name, 0);
     clearSelection();
   }
   async function actionMoveToCategory(categoryId: string): Promise<void> {
     const items = selectionList;
     if (items.length === 0) return;
-    const txIds = resolveSelectionIds(items.filter((i) => i.txId != null), nodeMovIds);
-    const conceptItems = items.filter((i) => i.txId == null && i.categoryId == null);
-    const omitted = items.filter((i) => i.categoryId != null).length;
-    const plan = planCategoryUndo(conceptItems, nodeMovIds, txCatIndex);
-    const r = await sendAll([
-      ...conceptItems.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
-      ...(txIds.length ? [bulkByIds(txIds, { categoryId })] : [])
-    ]);
-    const movidos = conceptItems.reduce((s, i) => s + i.count, 0) + txIds.length;
-    toast = r.ok
-      ? { message: summarizeCategoryDrop(movidos, catPathOf(categoryId), omitted), ...(movidos > 0 ? { onUndo: () => runCategoryUndo(plan) } : {}) }
-      : { message: r.message };
+    await applyCategoryAssignment(items, categoryId, 0);
     clearSelection();
   }
   async function actionSetRecurrence(rec: 'recurrente' | 'extraordinario'): Promise<void> {
     const items = selectionList;
     if (items.length === 0) return;
-    const txIds = items.filter((i) => i.txId != null).map((i) => i.txId!);
+    // Por concepto: assignConceptRecurrence. Hoja suelta: transaction.update
+    // (finance.transactions.bulk NO admite recurrence, resolución nº 5).
+    const transactionIds = items.filter((i) => i.txId != null).map((i) => i.txId!);
     const conceptItems = items.filter((i) => i.txId == null);
     const r = await sendAll([
       ...conceptItems.map((i) => assignConceptRecurrence(conceptTargetOf(i), rec)),
-      ...(txIds.length ? [bulkByIds(txIds, { recurrence: rec })] : [])
+      ...transactionIds.map((id) => updateTransactionRecurrence(id, rec))
     ]);
     const label = rec === 'recurrente' ? '♻ recurrente' : '✦ extraordinario';
-    toast = r.ok ? { message: `${selectionMovs} movimiento${selectionMovs === 1 ? '' : 's'} → ${label}` } : { message: r.message };
+    toast = { message: acuse(r, `${selectionMovs} movimiento${selectionMovs === 1 ? '' : 's'} → ${label}`) };
     clearSelection();
   }
   async function actionInvest(accountId: string): Promise<void> {
     // Solo cargos negativos sin cruzar (el servidor rechaza el resto): se envía
     // por id exacto resolviendo la selección completa.
-    const ids = resolveSelectionIds(selectionList, nodeMovIds);
-    if (ids.length === 0) return;
+    const ids = resolveSelectionIds(selectionList, movIdsByKey);
+    if (ids.length === 0) {
+      toast = { message: 'No hay nada que asignar' };
+      return;
+    }
     const name = invAccounts.find((a) => a.id === accountId)?.name ?? '';
     const r = await sendAll(ids.map((id) => investTransaction(id, accountId)));
-    toast = r.ok ? { message: `${ids.length} movimiento${ids.length === 1 ? '' : 's'} → inversión ${name}` } : { message: r.message };
+    toast = { message: acuse(r, `${ids.length} movimiento${ids.length === 1 ? '' : 's'} → inversión ${name}`) };
     clearSelection();
   }
   function actionOpenPanel(): void {
-    const ids = resolveSelectionIds(selectionList, nodeMovIds);
+    const ids = resolveSelectionIds(selectionList, movIdsByKey);
     const n = selectionList.length;
     onOpenIds(ids, `${n} seleccionado${n === 1 ? '' : 's'}`, `${ids.length} movimiento${ids.length === 1 ? '' : 's'}`);
   }
@@ -3054,7 +3459,7 @@ git commit -m "feat(finanzas): buscador del pivot con chips tipados y atajo «/�
 (c) sustituye el snippet `nodeRow` COMPLETO por esta versión con checkbox (todo lo demás igual):
 
 ```svelte
-{#snippet nodeRow(node: PivotNodeLike, kind: 'gasto' | 'ingreso' | 'evento' | 'transferencia' | 'inversion', nodeDims: PivotDimension[], siblings: SelectableItem[])}
+{#snippet nodeRow(node: PivotNodeLike, kind: 'gasto' | 'ingreso' | 'evento' | 'transferencia' | 'inversion', nodeDims: readonly PivotDimension[], siblings: SelectableItem[])}
   {@const isExpanded = forceExpand || expanded.has(node.key)}
   {@const hasChildren = node.children.length > 0}
   {@const canOpen = !hasChildren && node.movs.length > 0}
@@ -3065,7 +3470,13 @@ git commit -m "feat(finanzas): buscador del pivot con chips tipados y atajo «/�
     : ''}
   <tr style={tintFor(node.depth)} class:clicable={hasChildren} onclick={() => hasChildren && toggle(node.key)}>
     <td class="arbol" style={`padding-left: calc(var(--space-3) + ${node.depth} * var(--space-4));`}>
-      <span class="flecha" aria-hidden="true">{hasChildren ? (isExpanded ? '▾' : '▸') : ''}</span>
+      {#if hasChildren}
+        <button type="button" class="flecha" aria-expanded={isExpanded}
+          aria-label={`desplegar ${node.label}`}
+          onclick={(e) => { e.stopPropagation(); toggle(node.key); }}>{isExpanded ? '▾' : '▸'}</button>
+      {:else}
+        <span class="flecha" aria-hidden="true"></span>
+      {/if}
       <input type="checkbox" class="marca" style:visibility={item ? 'visible' : 'hidden'}
         tabindex={item ? 0 : -1} checked={item ? selected.has(node.key) : false}
         aria-label={`seleccionar ${node.label}`}
@@ -3091,7 +3502,24 @@ git commit -m "feat(finanzas): buscador del pivot con chips tipados y atajo «/�
 {/snippet}
 ```
 
-(d) actualiza TODAS las llamadas `{@render nodeRow(...)}` para pasar el cuarto argumento: en INGRESOS `selectableListAny(ingresoTree, dims)`, en GASTOS `selectableListAny(gastoTree, dims)`, en hijos de evento `selectableListAny(event.children, dims)`, en INTERNAS e INVERSIÓN `[]`.
+(d) actualiza las CINCO llamadas `{@render nodeRow(...)}` del `<tbody>` para pasar el cuarto argumento (`siblings`). Son exactamente estas, en este orden:
+
+```svelte
+        <!-- INGRESOS -->
+        {#each ingresoTree as node (node.key)}{@render nodeRow(node, 'ingreso', dims, selectableListAny(ingresoTree, dims))}{/each}
+
+        <!-- GASTOS -->
+        {#each gastoTree as node (node.key)}{@render nodeRow(node, 'gasto', dims, selectableListAny(gastoTree, dims))}{/each}
+
+        <!-- hijos de cada evento (dentro del {#if evExpanded}) -->
+            {#each event.children as child (child.key)}{@render nodeRow(child, 'evento', dims, selectableListAny(event.children, dims))}{/each}
+
+        <!-- INTERNAS (no seleccionables por hermanos: rango vacío) -->
+          {#each internaTree as node (node.key)}{@render nodeRow(node, 'transferencia', INTERNA_DIMS, [])}{/each}
+
+        <!-- INVERSIÓN -->
+          {#each inversionTree as node (node.key)}{@render nodeRow(node, 'inversion', INVERSION_DIMS, [])}{/each}
+```
 
 (e) tras el cierre del `{#if isEmpty}…{/if}` del componente añade la barra y el toast:
 
@@ -3121,6 +3549,12 @@ y en el `<style>`:
   .marca { margin-right: var(--space-1); }
   .pivot-toast { position: fixed; z-index: 50; bottom: calc(var(--bottom-nav-h) + var(--space-6) + var(--space-6)); inset-inline: 0; margin-inline: auto; width: fit-content; max-width: calc(100% - var(--space-6)); display: flex; align-items: center; gap: var(--space-3); background: var(--primary); color: var(--ink-on-primary); border-radius: var(--r-md); box-shadow: var(--shadow-over); padding: var(--space-2) var(--space-3); font-size: var(--text-meta); }
   .pivot-toast button { border: 0; background: transparent; color: var(--ink-on-primary); cursor: pointer; font-weight: 700; text-decoration: underline; }
+
+  /* Presupuesto de la spec §8: el módulo respeta prefers-reduced-motion. El
+     toast aparece y desaparece sin desplazamiento ni fundido para quien lo pide. */
+  @media (prefers-reduced-motion: reduce) {
+    .pivot-toast, .pivot-toast button { transition: none; animation: none; }
+  }
 ```
 
 - [ ] **Step 3: verde.**
@@ -3147,7 +3581,7 @@ git commit -m "feat(finanzas): selección con Shift y barra de acciones flotante
 - Modify: `apps/web/src/lib/components/finance/PivotTable.svelte`
 
 **Interfaces:**
-- Consumes: `buildDragPayload`, `dragGhostLabel`, `createDragGhostElement`, `collectLeafItems`, `type DragPayload` de `$lib/finance/pivot-state`; acciones de la tarea 12.
+- Consumes: `buildDragPayload`, `dragGhostLabel`, `createDragGhostElement`, `collectLeafItems`, `type DragPayload` de `$lib/finance/pivot-state`; los aplicadores compartidos `applyEventAssignment`, `applyNewEventAssignment` y `applyCategoryAssignment` de la tarea 12 — el dnd NO duplica su lógica: la spec promete que la barra de acciones es la alternativa accesible EQUIVALENTE al arrastre, y compartiendo estas funciones esa equivalencia queda garantizada por construcción.
 - Produces: asas `⠿` arrastrables en GASTOS/INGRESOS/EVENTOS; drop en filas con `catId`, en filas de evento y en la banda EVENTOS (= nuevo evento con popover); clases `dnd-target`/`dnd-dimmed` durante el arrastre; ghost global `.pivot-drag-ghost`.
 
 - [ ] **Step 1: estado y handlers.** En el `<script>` de `PivotTable.svelte` añade los imports (`buildDragPayload, collectLeafItems, createDragGhostElement, dragGhostLabel, type DragPayload` de pivot-state) y:
@@ -3158,7 +3592,7 @@ git commit -m "feat(finanzas): selección con Shift y barra de acciones flotante
   let newEventDrop = $state<DragPayload | null>(null);
   let newEventName = $state('');
 
-  function onDragStart(e: DragEvent, node: PivotNodeLike, nodeDims: PivotDimension[]): void {
+  function onDragStart(e: DragEvent, node: PivotNodeLike, nodeDims: readonly PivotDimension[]): void {
     const self = toAnySelectable(node, nodeDims);
     let items: SelectableItem[];
     let omitted = 0;
@@ -3181,42 +3615,21 @@ git commit -m "feat(finanzas): selección con Shift y barra de acciones flotante
   }
   const onDragEnd = () => (dragging = null);
 
+  // Los tres drops delegan en los aplicadores compartidos de la tarea 12: mismo
+  // reparto conceptos/ids, mismos payloads, mismo acuse y mismo Deshacer que la
+  // barra de acciones. Aquí solo se resuelve el gesto.
   async function onDropCategory(categoryId: string): Promise<void> {
     const payload = dragging;
     dragging = null;
     if (!payload || payload.items.length === 0) return;
-    const txIds = payload.items.filter((i) => i.txId != null).map((i) => i.txId!);
-    const conceptItems = payload.items.filter((i) => i.txId == null && i.categoryId == null);
-    const omitted = payload.omitted + payload.items.filter((i) => i.categoryId != null).length;
-    const plan = planCategoryUndo(conceptItems, nodeMovIds, txCatIndex);
-    const movidos = conceptItems.reduce((s, i) => s + i.count, 0) + txIds.length;
-    const r = await sendAll([
-      ...conceptItems.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
-      ...(txIds.length ? [bulkByIds(txIds, { categoryId })] : [])
-    ]);
-    toast = r.ok
-      ? { message: summarizeCategoryDrop(movidos, catPathOf(categoryId), omitted), ...(movidos > 0 ? { onUndo: () => runCategoryUndo(plan) } : {}) }
-      : { message: r.message };
+    await applyCategoryAssignment(payload.items, categoryId, payload.omitted);
   }
 
   async function onDropEvent(eventId: string, eventName: string): Promise<void> {
     const payload = dragging;
     dragging = null;
     if (!payload || payload.items.length === 0) return;
-    const txIds = payload.items.filter((i) => i.txId != null).map((i) => i.txId!);
-    const conceptItems = payload.items.filter((i) => i.txId == null);
-    const r = await sendAll([
-      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
-      ...(txIds.length ? [bulkByIds(txIds, { addEventId: eventId })] : [])
-    ]);
-    toast = r.ok
-      ? {
-          message: summarizeEventDrop(payload.movs, eventName, payload.omitted),
-          ...(conceptItems.length
-            ? { onUndo: async () => { const u = await sendAll(conceptItems.map((i) => undoEventAssign(conceptTargetOf(i)))); toast = { message: u.ok ? 'Deshecho' : u.message }; } }
-            : {})
-        }
-      : { message: r.message };
+    await applyEventAssignment(payload.items, eventId, eventName, payload.omitted);
   }
 
   function onDropNewEvent(): void {
@@ -3231,9 +3644,7 @@ git commit -m "feat(finanzas): selección con Shift y barra de acciones flotante
     const name = newEventName.trim();
     newEventDrop = null;
     if (!payload || !name) return;
-    const conceptItems = payload.items.filter((i) => i.txId == null);
-    const r = await sendAll(conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { newEventName: name })));
-    toast = r.ok ? { message: summarizeEventDrop(payload.movs, name, payload.omitted) } : { message: r.message };
+    await applyNewEventAssignment(payload.items, name, payload.omitted);
   }
 ```
 
@@ -3289,15 +3700,24 @@ y en el `<style>`:
   .popover-evento input { border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--space-1); font-size: max(1em, 1rem); }
   .popover-evento button { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--primary); color: var(--ink-on-primary); cursor: pointer; padding: var(--space-1) var(--space-2); }
   :global(.pivot-drag-ghost) { position: fixed; top: -1000px; left: -1000px; padding: var(--space-1) var(--space-3); border-radius: var(--r-full); background: var(--primary); color: var(--ink-on-primary); font-size: var(--text-micro); white-space: nowrap; pointer-events: none; }
+
+  /* Presupuesto de la spec §8: nada de movimiento para quien pide reducirlo.
+     El resalte del destino se queda (es información, no animación). */
+  @media (prefers-reduced-motion: reduce) {
+    tr.dnd-target, tr.dnd-dimmed, .popover-evento, :global(.pivot-drag-ghost) { transition: none; animation: none; }
+  }
 ```
 
-- [ ] **Step 3: verde.**
+- [ ] **Step 3: verde de tipos y presupuesto de movimiento.**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
 cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas/apps/web
 pnpm check
+grep -c "prefers-reduced-motion" src/lib/components/finance/PivotTable.svelte
 ```
+
+Salida esperada: `svelte-check found 0 errors` y el grep devolviendo `2` (toast de la tarea 12 y dnd de esta). Si devuelve menos, falta uno de los dos bloques: la spec §8 exige respetar `prefers-reduced-motion` en el módulo.
 
 - [ ] **Step 4: commit.**
 
@@ -3317,6 +3737,8 @@ git commit -m "feat(finanzas): drag-and-drop nativo del pivot con ghost, targets
 **Interfaces:**
 - Consumes: `loginAs`, `HOUSEHOLD` de `apps/web/e2e/helpers.ts`; la maqueta de la tarea 8 (datos deterministas); testids de las tareas 8–12. El servidor de Playwright corre SIN base de datos (modo fixture): las escrituras quedan en el outbox y el acuse honesto es «Guardado en este dispositivo…».
 
+**Por qué se navega con `?dims=cat,prov`:** las dims por defecto son `['cat','sub']` y TODAS las filas de la maqueta tienen `sub: null`, así que con el orden por defecto el árbol solo produce `Supermercado → (sin subcategoría)` y «Mercadona» (que es `prov`) no aparece NUNCA en la tabla. Con la dimensión de proveedor activa, expandir «Supermercado» sí enseña «Mercadona», que es lo que estas pruebas afirman.
+
 - [ ] **Step 1: escribe la spec.** Crea `apps/web/e2e/finanzas-pivot.e2e.ts`:
 
 ```ts
@@ -3324,9 +3746,13 @@ import { expect, test } from '@playwright/test';
 
 import { HOUSEHOLD, loginAs } from './helpers';
 
+// dims=cat,prov: con las dims por defecto (cat,sub) la maqueta no tiene
+// subcategorías y el proveedor no llegaría a pintarse nunca.
+const ANALITICA = `/h/${HOUSEHOLD}/finanzas/analitica?dims=cat,prov`;
+
 test.beforeEach(async ({ page }) => {
   await loginAs(page, 'admin');
-  await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
+  await page.goto(ANALITICA);
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Analítica');
 });
 
@@ -3342,7 +3768,9 @@ test('el pivot muestra las cinco bandas y el TOTAL NETO', async ({ page }) => {
   for (const banda of ['ingresos', 'gastos', 'eventos', 'internas', 'inversion']) {
     await expect(page.getByTestId(`pivot-banda-${banda}`)).toBeVisible();
   }
-  await expect(page.getByTestId('pivot-table')).toContainText('TOTAL NETO');
+  // El testid cuelga de la fila REAL del total, así que es visible y tiene cifra.
+  await expect(page.getByTestId('pivot-total-neto')).toBeVisible();
+  await expect(page.getByTestId('pivot-total-neto')).toContainText('TOTAL NETO');
   // El subtotal de internas de la maqueta suma 0: sin aviso ⚠.
   await expect(page.getByTestId('pivot-table').getByText('Subtotal internas ⚠')).toHaveCount(0);
 });
@@ -3371,22 +3799,34 @@ test('mover a evento por la barra da un acuse honesto en modo fixture (sin base 
 });
 
 test('el atajo «/» enfoca el buscador y un chip filtra el pivot expandiéndolo', async ({ page }) => {
+  const tabla = page.getByTestId('pivot-table');
+  await expect(tabla).toContainText('Viajes'); // antes del filtro sí está
   await page.keyboard.press('/');
   const buscador = page.getByLabel('Buscar');
   await expect(buscador).toBeFocused();
   await buscador.fill('merca');
   await page.getByRole('button', { name: /Mercadona/ }).first().click();
   await expect(page.getByText('🔍 Proveedor: Mercadona')).toBeVisible();
-  const tabla = page.getByTestId('pivot-table');
   await expect(tabla).toContainText('Mercadona'); // búsqueda activa fuerza expansión
-  await expect(tabla).not.toContainText('Cine Ideal');
+  // El aserto negativo muerde: «Viajes» se pintaba y el chip lo saca del árbol.
+  await expect(tabla).not.toContainText('Viajes');
 });
 
 test('las dims son reordenables y persisten en la URL', async ({ page }) => {
   await page.getByRole('button', { name: 'Naturaleza' }).click(); // añade la dim nat
-  await expect(page).toHaveURL(/dims=cat%2Csub%2Cnat|dims=cat,sub,nat/);
+  await expect(page).toHaveURL(/dims=cat%2Cprov%2Cnat|dims=cat,prov,nat/);
   await page.getByRole('button', { name: 'mover Naturaleza antes' }).click();
-  await expect(page).toHaveURL(/nat/);
+  await expect(page).toHaveURL(/nat%2Cprov|nat,prov/);
+});
+
+test('el árbol se despliega con teclado (camino accesible equivalente)', async ({ page }) => {
+  const tabla = page.getByTestId('pivot-table');
+  const disparador = tabla.getByRole('button', { name: 'desplegar Supermercado' });
+  await expect(disparador).toHaveAttribute('aria-expanded', 'false');
+  await disparador.focus();
+  await page.keyboard.press('Enter');
+  await expect(disparador).toHaveAttribute('aria-expanded', 'true');
+  await expect(tabla).toContainText('Mercadona');
 });
 ```
 
@@ -3425,11 +3865,15 @@ import { expect, test } from '@playwright/test';
 
 import { HOUSEHOLD, loginAs } from './helpers';
 
+// Misma razón que en finanzas-pivot.e2e.ts: sin la dimensión de proveedor
+// activa, «Mercadona» no se pinta nunca (la maqueta no tiene subcategorías).
+const ANALITICA = `/h/${HOUSEHOLD}/finanzas/analitica?dims=cat,prov`;
+
 test.beforeEach(async ({ page }) => {
   await loginAs(page, 'admin');
-  await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
+  await page.goto(ANALITICA);
   const tabla = page.getByTestId('pivot-table');
-  await tabla.getByText('Supermercado', { exact: false }).first().click();
+  await tabla.getByRole('button', { name: 'desplegar Supermercado' }).click();
   await expect(tabla).toContainText('Mercadona');
 });
 

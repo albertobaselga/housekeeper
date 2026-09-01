@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Dashboard y Movimientos de Finanzas leyendo datos reales bajo RLS: barra de filtros con merge no destructivo, KPIs con deltas, gráficas SVG artesanales, tabla ledger de lectura, panel de detalle accesible y endpoints GET `/api/v1/finance/*`, todo en verde con tests unitarios, de integración y e2e.
+**Goal:** Dashboard y Movimientos de Finanzas leyendo datos reales bajo RLS: barra de filtros con merge no destructivo, KPIs con deltas, gráficas SVG artesanales, tabla ledger de lectura, panel de detalle accesible y los NUEVE endpoints GET `/api/v1/finance/*` del doc de interfaces —incluidos `analytics` y `pivot`, cuyas lecturas produce esta fase para que la fase 6 solo tenga que consumirlas—, todo en verde con tests unitarios, de integración y e2e.
 
 **Architecture:** Las lecturas SQL viven en `packages/server/src/finance/queries.ts` y se ejecutan siempre dentro de `withAuthorizedTransaction` + `requireFinanceAdmin`; los `+page.server.ts` de Dashboard y Movimientos las consumen vía `apps/web/src/lib/server/finance.server.ts` (con `demoOrUnavailable` y fixtures sintéticas para el modo demo), y los endpoints REST GET las exponen para la interactividad del cliente (`$lib/finance/api.ts`, panel de detalle). La UI son componentes Svelte 5 con runas en `$lib/components/finance/`, con la geometría de las gráficas extraída a módulos puros testeables en `$lib/finance/`.
 
@@ -32,6 +32,8 @@
 - Esta fase corre DESPUÉS de las fases 1 y 2: el esquema `0034_finance.sql`, las fixtures `packages/db/fixtures/002_finance.sql` (datos sintéticos en roble y olivo, concesión viva SOLO para el admin de roble), `requireFinanceAdmin`, el routing/nav y las páginas esqueleto de `/h/[householdId]/finanzas/*` ya existen en el worktree, igual que `packages/domain/src/finance/` completo.
 - Patrón de load: `apps/web/src/routes/h/[householdId]/employment/+page.server.ts` (con `demoOrUnavailable` de `$lib/server/data-source.server`). Patrón de lector SQL bajo RLS: `apps/web/src/lib/server/employment.server.ts` (`withAuthorizedTransaction`, camelCase con `as "alias"`, céntimos como string). Patrón de endpoint: `apps/web/src/routes/api/v1/households/[householdId]/vacaciones/vistas/+server.ts`. Patrón de página Svelte 5: `apps/web/src/routes/h/[householdId]/employment/+page.svelte` (runas `$props/$state/$derived/$effect`, snippets, clases de `app.css`: `.page-wrap`, `.card`, `.chip`, `.summary-strip`, `.ledger-list`, `.cifra`).
 - Los importes viajan por JSON SIEMPRE como cadenas de céntimos (`"amountCents": "-4550"`); solo se convierten a `BigInt` para operar y a `Number` únicamente para coordenadas de píxel de las gráficas (nunca para dinero).
+- **Todo símbolo del dominio de finanzas se importa por el subpath `@casa-clara/domain/finance`**, jamás desde la raíz `@casa-clara/domain`: la fase 2 solo publica el subpath (la raíz no reexporta finanzas, por presupuesto de bundle) y un import a la raíz no resuelve y rompe `typecheck`/`build`.
+- Esta fase es la PRODUCTORA de las lecturas de Analítica y pivot (`readFinanceAnalytics`, `readFinancePivot` en `queries.ts` y los endpoints `analytics`/`pivot`). La fase 6 solo las consume con esos nombres exactos: si aquí no se crean, la pantalla de Analítica se queda sin fuente de datos.
 - Postgres local para integración: el mismo del worktree que usa `test:e2e:db`; exporta `TEST_DATABASE_URL=postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u` (ajústalo si tu instancia difiere). Sin la variable, las suites de integración se saltan (`describe.runIf`), así que ponla siempre.
 
 ---
@@ -827,7 +829,7 @@ export function categoryPath(
 - Test: `apps/web/tests/finance-pivot-state.test.ts`
 
 **Interfaces:**
-- Consumes: `PivotDimension` de `@casa-clara/domain` (canónico, fase 2: `"cat" | "sub" | "nat" | "prov" | "concept" | "movement"`), solo `import type`.
+- Consumes: `PivotDimension` del SUBPATH `@casa-clara/domain/finance` (canónico, fase 2: `"cat" | "sub" | "nat" | "prov" | "concept" | "movement"`), solo `import type`. La raíz `@casa-clara/domain` NO reexporta finanzas (presupuesto de bundle): todo símbolo de finanzas se importa siempre por el subpath.
 - Produces (stub: la fase 6 lo amplía; el contrato de URL — clave `dims`, CSV — queda fijado aquí):
 
 ```ts
@@ -836,6 +838,8 @@ export const DEFAULT_DIMS: readonly PivotDimension[]; // ['cat', 'sub']
 export function parseDims(value: string | null): PivotDimension[];       // filtra inválidos y duplicados; vacío → DEFAULT_DIMS
 export function serializeDims(dims: readonly PivotDimension[]): string | null; // null cuando es el orden por defecto (URL limpia)
 ```
+
+Estos cuatro nombres son PROPIEDAD de esta fase (resolución canónica del doc de interfaces): la fase 6 **modifica** este fichero y conserva `PIVOT_DIMENSIONS`, `DEFAULT_DIMS`, `parseDims` y `serializeDims` con este mismo retorno `string | null`. Nada de `ALL_DIMS`/`dimsToParam`. El endpoint `pivot/+server.ts` de la Task 8 también consume `parseDims` desde aquí.
 
 **Pasos:**
 
@@ -872,7 +876,7 @@ describe('pivot-state (stub, contrato de la clave dims)', () => {
  * solo fija el contrato de URL de la clave `dims` (CSV de dimensiones, del
  * doc de interfaces) para que filters.ts ya la conserve en el merge.
  */
-import type { PivotDimension } from '@casa-clara/domain';
+import type { PivotDimension } from '@casa-clara/domain/finance';
 
 export const PIVOT_DIMENSIONS: readonly PivotDimension[] = ['cat', 'sub', 'nat', 'prov', 'concept', 'movement'];
 
@@ -902,7 +906,7 @@ export function serializeDims(dims: readonly PivotDimension[]): string | null {
 
 **Files:**
 - Create: `packages/server/src/finance/queries.ts`
-- Modify: `packages/server/src/index.ts` (añadir `export * from "./finance/queries.js";` en orden alfabético, entre `commands/wiki.js` y `database.js` — sigue el estilo del fichero)
+- Modify: `packages/server/src/index.ts` (añadir `export * from "./finance/queries.js";` en orden alfabético, entre `database.js` e `idempotency.js` — «d» < «f» < «i»; sigue el estilo del fichero)
 - Test: `packages/server/src/finance/queries.test.ts` (puro, sin BD)
 - Test: `packages/server/src/finance/queries.integration.test.ts` (Postgres real, `describe.runIf`)
 
@@ -928,13 +932,14 @@ export interface FinanceTransactionsQuery extends FinanceReadFilters {
   status: string | null; ids: string[]; groupIds: string[]; limit: number; offset: number;
 }
 export interface FinanceTransactionsPage { total: number; sumCents: string; limit: number; offset: number; rows: FinanceTxDto[] }
-export function previousRange(from: string, to: string): { from: string; to: string };
 export function seriesWindow(to: string, months: number): string;
 export async function readFinanceAccounts(client: PoolClient, householdId: string): Promise<FinanceAccountDto[]>;
 export async function readFinanceCategories(client: PoolClient, householdId: string): Promise<FinanceCategoryDto[]>;
 export async function readFinanceEvents(client: PoolClient, householdId: string): Promise<FinanceEventDto[]>;
 export async function readFinanceTransactions(client: PoolClient, householdId: string, query: FinanceTransactionsQuery): Promise<FinanceTransactionsPage>;
 ```
+
+⚠️ La regla del «periodo anterior» NO se replica aquí: la fase 2 ya publica `prevRange(from, to)` en `packages/domain/src/finance/kpis.ts` y `computeRangeSummary` la usa por dentro para calcular `prev`. `queries.ts` no define ningún `previousRange` propio (dos copias de la misma regla divergen en silencio y dejan el `prev` del Dashboard incompleto). Lo único de rango que vive aquí es `seriesWindow`, que no existe en el dominio.
 
 **Pasos:**
 
@@ -943,17 +948,10 @@ export async function readFinanceTransactions(client: PoolClient, householdId: s
 ```ts
 import { describe, expect, it } from "vitest";
 
-import { previousRange, seriesWindow } from "./queries.js";
+import { seriesWindow } from "./queries.js";
 
-describe("previousRange: el periodo anterior alineado a meses (porta _prev_range de reports.py)", () => {
-  it("un bloque exacto de meses retrocede el mismo número de meses de calendario", () => {
-    expect(previousRange("2026-01-01", "2026-06-30")).toEqual({ from: "2025-07-01", to: "2025-12-31" });
-    expect(previousRange("2026-08-01", "2026-08-31")).toEqual({ from: "2026-07-01", to: "2026-07-31" });
-  });
-  it("un rango arbitrario retrocede su número exacto de días", () => {
-    expect(previousRange("2026-08-10", "2026-08-19")).toEqual({ from: "2026-07-31", to: "2026-08-09" });
-  });
-});
+// El periodo anterior (prevRange) lo prueba la fase 2 en packages/domain: aquí
+// no se replica ni se re-testea. Este fichero cubre solo lo propio de queries.ts.
 
 describe("seriesWindow: N cubos hacia atrás desde el final del rango", () => {
   it("empieza el día 1 del mes (months-1) meses antes", () => {
@@ -1028,38 +1026,14 @@ function isoOf(year: number, month: number, day: number): string {
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-
 function addMonths(year: number, month: number, delta: number): [number, number] {
   const index = year * 12 + (month - 1) + delta;
   return [Math.floor(index / 12), ((index % 12) + 12) % 12 + 1];
 }
 
-function addDays(iso: string, delta: number): string {
-  const [year, month, day] = splitIso(iso);
-  return new Date(Date.UTC(year, month - 1, day) + delta * 86_400_000).toISOString().slice(0, 10);
-}
-
-/**
- * Periodo inmediatamente anterior a [from, to]. Bloques exactos de meses de
- * calendario retroceden en meses de calendario; el resto, en días (porta
- * _prev_range de reports.py: la comparativa de KPIs depende de esto).
- */
-export function previousRange(from: string, to: string): { from: string; to: string } {
-  const [fromYear, fromMonth, fromDay] = splitIso(from);
-  const [toYear, toMonth, toDay] = splitIso(to);
-  if (fromDay === 1 && toDay === daysInMonth(toYear, toMonth)) {
-    const span = (toYear - fromYear) * 12 + (toMonth - fromMonth) + 1;
-    const [startYear, startMonth] = addMonths(fromYear, fromMonth, -span);
-    const [endYear, endMonth] = addMonths(fromYear, fromMonth, -1);
-    return { from: isoOf(startYear, startMonth, 1), to: isoOf(endYear, endMonth, daysInMonth(endYear, endMonth)) };
-  }
-  const spanDays =
-    Math.round((Date.UTC(toYear, toMonth - 1, toDay) - Date.UTC(fromYear, fromMonth - 1, fromDay)) / 86_400_000) + 1;
-  return { from: addDays(from, -spanDays), to: addDays(from, -1) };
-}
+// El periodo anterior NO se calcula aquí: es prevRange de @casa-clara/domain/finance
+// (fase 2) y computeRangeSummary ya lo aplica por dentro. Una segunda copia de
+// esa regla en este fichero divergiría en silencio.
 
 /** Día 1 del mes (months−1) meses antes del mes de `to`: la serie siempre mira hacia atrás. */
 export function seriesWindow(to: string, months: number): string {
@@ -1146,6 +1120,19 @@ export async function readFinanceEvents(client: PoolClient, householdId: string)
 
 // ── Movimientos con paginación explícita (§7: nunca truncar en silencio) ─────
 
+/**
+ * Alias del proveedor como subconsulta ESCALAR, nunca como join: el doc de
+ * interfaces no declara `(household_id, provider_norm)` único en
+ * `finance_provider_aliases`, y un join con dos alias del mismo `provider_norm`
+ * duplicaría filas inflando `total` y `sumCents` — justo el «total veraz» que
+ * esta lectura promete.
+ */
+const ALIAS_DISPLAY = `(select a.display
+                          from app.finance_provider_aliases a
+                         where a.household_id = tx.household_id
+                           and a.provider_norm = tx.provider_norm
+                         limit 1)`;
+
 export async function readFinanceTransactions(
   client: PoolClient,
   householdId: string,
@@ -1155,15 +1142,20 @@ export async function readFinanceTransactions(
   const params: unknown[] = [householdId];
   const where: string[] = ["tx.household_id = $1"];
   if (byIds) {
-    // Petición exacta (panel de detalle): sin rango ni filtros de periodo.
+    // Petición exacta (panel de detalle): sin rango ni filtros de periodo. Los
+    // dos criterios se unen con OR dentro del MISMO paréntesis: la semántica es
+    // «estos movimientos O los de estos grupos»; con AND casi siempre saldría
+    // cero filas cuando el cliente combinara ambos (trampa latente para fase 5).
+    const exact: string[] = [];
     if (query.ids.length > 0) {
       params.push(query.ids);
-      where.push(`tx.id = any($${params.length}::uuid[])`);
+      exact.push(`tx.id = any($${params.length}::uuid[])`);
     }
     if (query.groupIds.length > 0) {
       params.push(query.groupIds);
-      where.push(`tx.transfer_group_id = any($${params.length}::uuid[])`);
+      exact.push(`tx.transfer_group_id = any($${params.length}::uuid[])`);
     }
+    where.push(`(${exact.join(" or ")})`);
   } else {
     const base = txConditions(householdId, query);
     params.length = 0;
@@ -1174,7 +1166,7 @@ export async function readFinanceTransactions(
   if (query.q) {
     params.push(`%${query.q}%`);
     where.push(`(tx.concept ilike $${params.length} or tx.provider ilike $${params.length}
-                 or coalesce(alias.display, '') ilike $${params.length})`);
+                 or coalesce(${ALIAS_DISPLAY}, '') ilike $${params.length})`);
   }
   if (query.categoryId) {
     params.push(query.categoryId);
@@ -1195,8 +1187,6 @@ export async function readFinanceTransactions(
       on account.household_id = tx.household_id and account.id = tx.account_id
     left join app.finance_categories cat
       on cat.household_id = tx.household_id and cat.id = tx.category_id
-    left join app.finance_provider_aliases alias
-      on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
    where ${where.join("\n     and ")}`;
 
   // Total y suma en consulta propia: con offset fuera de rango la página no
@@ -1210,7 +1200,7 @@ export async function readFinanceTransactions(
     `select tx.id, tx.account_id as "accountId", account.name as "accountName",
             tx.op_date::text as "opDate", tx.value_date::text as "valueDate",
             tx.concept, tx.provider, tx.provider_norm as "providerNorm",
-            coalesce(alias.display, tx.provider) as "providerDisplay",
+            coalesce(${ALIAS_DISPLAY}, tx.provider) as "providerDisplay",
             tx.amount_cents::text as "amountCents", tx.balance_cents::text as "balanceCents",
             tx.code_common as "codeCommon", tx.code_own as "codeOwn",
             tx.category_id as "categoryId", cat.name as "categoryName",
@@ -1249,7 +1239,7 @@ export async function readFinanceTransactions(
 }
 ```
 
-Nota para ti: `kindedTx` y `txConditions` quedan sin usar hasta la Task 6 — expórtalos NO; si eslint protesta por «unused», añádelos ya con la Task 6 en mente o marca `// eslint-disable-next-line` temporal y retíralo en la Task 6 (mejor: implementa Task 6 antes de correr `pnpm lint`). Añade también el export en `packages/server/src/index.ts`.
+Nota para ti: `txConditions` YA se usa en esta tarea (dentro de `readFinanceTransactions`); el único que queda huérfano hasta la Task 6 es `kindedTx`. No lo exportes: es interno. Para no arrastrar un `eslint-disable` que luego haya que recordar retirar, implementa la Task 6 antes de correr `pnpm lint`. Añade también el export en `packages/server/src/index.ts`.
 
 - [ ] **Step 4: Puro en verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/queries.test.ts`
 - [ ] **Step 5: Test de integración que falla.** `packages/server/src/finance/queries.integration.test.ts` (patrón de `packages/server/src/employment.integration.test.ts`: el global setup ya migró 0001–0034 y cargó `fixtures/*.sql`, incluida `002_finance.sql`, y creó el rol `it_casa_clara_app_login`):
@@ -1347,14 +1337,32 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
 
 ---
 
-### Task 6: Lecturas SQL — summary, series, breakdown, providers y eventos
+### Task 6: Lecturas SQL — summary, series, breakdown, providers, eventos, analítica y pivot
 
 **Files:**
 - Modify: `packages/server/src/finance/queries.ts`
+- Test: `packages/server/src/finance/queries.test.ts` (ampliar: `monthsInRange`)
 - Test: `packages/server/src/finance/queries.integration.test.ts` (ampliar)
 
 **Interfaces:**
-- Consumes (canónicos, fase 2, desde `@casa-clara/domain`): `computeRangeSummary(txs: FinanceTxView[], opts: SummaryOptions): RangeSummary`, tipos `FinanceTxView`, `RangeSummary`, `SummaryOptions`. IMPORTANTE: los CAMPOS de `SummaryOptions` los fija `packages/domain/src/finance/types.ts` (ya está en el worktree): ábrelo antes de escribir la llamada y usa SUS nombres; lo que `queries.ts` debe procurarle, se llame como se llame allí, es: el rango [from, to], las cuentas del hogar (para inversión y aportaciones), las categorías (para el kind), el filtro de cuentas, los ids de transacciones del evento filtrado y de los excluidos, y el `pendingCount` global. La firma canónica de `computeRangeSummary` NO cambia jamás.
+- Consumes (canónicos, fase 2, SIEMPRE por el subpath `@casa-clara/domain/finance` — la raíz no reexporta finanzas): `computeRangeSummary(txs: readonly FinanceTxView[], opts: SummaryOptions): RangeSummary` y los tipos `FinanceTxView`, `FinanceAccountView`, `FinanceCategoryKind`, `FinanceRecurrence`, `FinanceTransactionStatus`, `PivotSourceRow`, `RangeSummary`, `SummaryOptions`. Sus formas exactas (fijadas por `packages/domain/src/finance/types.ts`, ya en el worktree) son:
+
+```ts
+// FinanceTxView incluye las tres extensiones de la fase 2 que las lecturas DEBEN rellenar:
+//   codeCommon: string | null · codeOwn: string | null · categoryKind: FinanceCategoryKind | null
+// categoryKind sale del join a app.finance_categories y es lo que usa el dominio para
+// EXCLUIR las patas con categoría 'transferencia' y para clasificar ingreso/gasto.
+export interface SummaryOptions {
+  from: string; to: string;
+  accountIds?: readonly string[] | null;
+  eventId?: string | null;
+  excludeEventIds?: readonly string[];
+  accounts: readonly FinanceAccountView[];
+  eventIdsByTx?: ReadonlyMap<string, readonly string[]>;
+}
+```
+
+Dos reglas del productor que esta tarea NO puede desobedecer: (1) `computeRangeSummary` recibe **todas** las transacciones del hogar —el filtrado de rango, cuentas y eventos es interno y hace falta para el periodo anterior, los cruces de transferencia y el `pendingCount` global—, así que la consulta no lleva ventana de fechas; (2) `SummaryOptions` no tiene `categories`, ni `eventTransactionIds`, ni `excludedTransactionIds`, ni `pendingCount`: nada de inventar campos y nada de aserciones `as`, que es justo lo que impide que el typecheck delate el desajuste.
 - Produces:
 
 ```ts
@@ -1372,8 +1380,22 @@ export interface FinanceCategoryRowDto { categoryId: string | null; name: string
 export interface FinanceProviderRowDto { provider: string; providerDisplay: string; totalCents: string; count: number }
 export interface FinanceEventSummaryDto { id: string; name: string; incomeCents: string; expenseCents: string; netCents: string; txCount: number }
 export interface FinanceEventDetailDto extends FinanceEventSummaryDto { categories: FinanceCategoryRowDto[] }
+export interface AnalyticsMonthTotals { totalCents: string; recCents: string; extCents: string }
+export interface AnalyticsRow { kind: 'gasto' | 'ingreso' | 'inversion'; monthly: Record<string, AnalyticsMonthTotals> }
+export interface FinancePivotMovDto { id: string; date: string; cents: string }
+export interface FinancePivotRowDto {
+  cat: string; sub: string | null; catId: string | null; nat: 'recurrente' | 'extraordinario' | null;
+  prov: string; concept: string; event: string | null; eventId: string | null;
+  kind: 'gasto' | 'ingreso' | 'transferencia' | 'inversion'; month: string;
+  totalCents: string; count: number; movs: FinancePivotMovDto[];
+}
+export function monthsInRange(from: string, to: string): string[];       // ['2026-01', '2026-02', …]
 export function serializeRangeSummary(summary: RangeSummary): FinanceSummaryDto;
+export function serializePivotRows(rows: readonly PivotSourceRow[]): FinancePivotRowDto[]; // bigint → céntimos-string
 export async function readFinanceSummary(client: PoolClient, householdId: string, filters: FinanceReadFilters): Promise<FinanceSummaryDto>;
+// Canónicas del doc de interfaces (§Resoluciones, punto 2): las produce ESTA fase y la fase 6 solo las consume.
+export async function readFinanceAnalytics(client: PoolClient, householdId: string, filters: FinanceReadFilters): Promise<{ rows: AnalyticsRow[] }>;
+export async function readFinancePivot(client: PoolClient, householdId: string, filters: FinanceReadFilters): Promise<{ months: string[]; rows: PivotSourceRow[] }>;
 export async function readFinanceSeries(client: PoolClient, householdId: string, filters: FinanceReadFilters, granularity: 'month' | 'quarter' | 'year', months?: number): Promise<FinanceSeriesPointDto[]>;
 export async function readFinanceBreakdown(client: PoolClient, householdId: string, filters: FinanceReadFilters): Promise<FinanceCategoryRowDto[]>;
 export async function readFinanceProviders(client: PoolClient, householdId: string, filters: FinanceReadFilters, limit?: number): Promise<FinanceProviderRowDto[]>;
@@ -1383,7 +1405,24 @@ export async function readFinanceEventDetail(client: PoolClient, householdId: st
 
 **Pasos:**
 
-- [ ] **Step 1: Amplía el test de integración (falla).** Añade al `describe.runIf` existente:
+- [ ] **Step 1: Amplía los tests (fallan).** Primero el puro, en `packages/server/src/finance/queries.test.ts` (añade `monthsInRange` al import de `./queries.js`):
+
+```ts
+describe("monthsInRange: los cubos de mes del pivot, calendario completo", () => {
+  it("incluye el mes de inicio y el de fin aunque no haya movimientos", () => {
+    expect(monthsInRange("2026-01-15", "2026-04-02")).toEqual(["2026-01", "2026-02", "2026-03", "2026-04"]);
+    expect(monthsInRange("2026-03-01", "2026-03-31")).toEqual(["2026-03"]);
+  });
+  it("cruza el fin de año sin saltarse diciembre", () => {
+    expect(monthsInRange("2025-11-20", "2026-02-01")).toEqual(["2025-11", "2025-12", "2026-01", "2026-02"]);
+  });
+  it("un rango invertido no devuelve nada", () => {
+    expect(monthsInRange("2026-05-01", "2026-04-01")).toEqual([]);
+  });
+});
+```
+
+Y después el de integración, añadiendo al `describe.runIf` existente:
 
 ```ts
 const RANGE = { from: "2020-01-01", to: "2030-12-31", accountIds: [], eventId: null, excludeEventIds: [] };
@@ -1433,6 +1472,40 @@ it("events-summary: net = income + expense; event-detail inexistente → null", 
   expect(missing).toBeNull();
 });
 
+it("analytics: las tres naturalezas y, en cada mes, |recurrente| + |extraordinario| ≤ |total|", async () => {
+  const abs = (value: string): bigint => (BigInt(value) < 0n ? -BigInt(value) : BigInt(value));
+  const { rows } = await as("fixture:roble:admin", ROBLE, (client) => readFinanceAnalytics(client, ROBLE, RANGE));
+  expect(rows.map((row) => row.kind)).toEqual(["ingreso", "gasto", "inversion"]);
+  for (const row of rows) {
+    for (const [month, totals] of Object.entries(row.monthly)) {
+      expect(month).toMatch(/^\d{4}-\d{2}$/);
+      // El resto hasta el total es «sin clasificar»: nunca puede ser negativo.
+      expect(abs(totals.recCents) + abs(totals.extCents) <= abs(totals.totalCents)).toBe(true);
+    }
+  }
+});
+
+it("pivot: meses de calendario completos y filas con la forma de PivotSourceRow", async () => {
+  const { months, rows } = await as("fixture:roble:admin", ROBLE, (client) =>
+    readFinancePivot(client, ROBLE, { ...RANGE, from: "2026-01-01", to: "2026-03-31" }));
+  expect(months).toEqual(["2026-01", "2026-02", "2026-03"]);
+  for (const row of rows) {
+    expect(months).toContain(row.month);
+    expect(typeof row.totalCents).toBe("bigint");
+    expect(row.cat.length).toBeGreaterThan(0);
+    expect(["gasto", "ingreso", "transferencia", "inversion"]).toContain(row.kind);
+    expect(row.movs.length).toBe(row.count);
+    expect(row.movs.reduce((acc, mov) => acc + mov.cents, 0n)).toBe(row.totalCents);
+  }
+});
+
+it("pivot y analytics del admin de olivo sin concesión: sin filas", async () => {
+  const analytics = await as("fixture:olivo:admin", OLIVO, (client) => readFinanceAnalytics(client, OLIVO, RANGE));
+  for (const row of analytics.rows) expect(Object.keys(row.monthly)).toEqual([]);
+  const pivot = await as("fixture:olivo:admin", OLIVO, (client) => readFinancePivot(client, OLIVO, RANGE));
+  expect(pivot.rows).toEqual([]);
+});
+
 it("summary para el admin de olivo sin concesión: todo a cero", async () => {
   const summary = await as("fixture:olivo:admin", OLIVO, (client) => readFinanceSummary(client, OLIVO, RANGE));
   expect(summary.incomeCents).toBe("0");
@@ -1441,16 +1514,44 @@ it("summary para el admin de olivo sin concesión: todo a cero", async () => {
 });
 ```
 
-Añade los imports nuevos (`readFinanceSummary`, `readFinanceSeries`, `readFinanceBreakdown`, `readFinanceProviders`, `readFinanceEventsSummary`, `readFinanceEventDetail`) al import de `./queries.js`.
+Añade los imports nuevos (`readFinanceSummary`, `readFinanceSeries`, `readFinanceBreakdown`, `readFinanceProviders`, `readFinanceEventsSummary`, `readFinanceEventDetail`, `readFinanceAnalytics`, `readFinancePivot`) al import de `./queries.js`.
 
 - [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.integration.test.ts` — `readFinanceSummary is not a function` (o error de import).
 - [ ] **Step 3: Implementa las lecturas agregadas en `queries.ts`.** Añade al final del fichero:
 
 ```ts
-import { computeRangeSummary, type RangeSummary, type SummaryOptions } from "@casa-clara/domain";
-// (mueve este import a la cabecera del fichero, junto al de pg)
+// (mueve este import a la cabecera del fichero, junto al de pg). SUBPATH
+// obligatorio: la raíz @casa-clara/domain no reexporta finanzas.
+import {
+  computeRangeSummary,
+  type FinanceAccountView,
+  type FinanceCategoryKind,
+  type FinanceRecurrence,
+  type FinanceTransactionStatus,
+  type FinanceTxView,
+  type PivotSourceRow,
+  type RangeSummary,
+  type SummaryOptions,
+} from "@casa-clara/domain/finance";
 
-export interface FinanceSummaryDto { /* … la interfaz del bloque Interfaces … */ }
+export interface FinanceSummaryDto {
+  incomeCents: string;
+  expenseCents: string;
+  recurringExpenseCents: string;
+  extraordinaryExpenseCents: string;
+  unclassifiedExpenseCents: string;
+  savingsCents: string;
+  netSavingsRate: number | null;
+  grossSavingsRate: number | null;
+  investedCents: string;
+  investmentRate: number | null;
+  freeCashFlowCents: string;
+  opsCashFlowCents: string;
+  receivedContributionsCents: string;
+  outgoingTransfersCents: string;
+  pendingCount: number;
+  prev: FinanceSummaryDto | null;
+}
 
 /** RangeSummary (bigint, canónico de fase 2) → DTO de cable (céntimos-string). */
 export function serializeRangeSummary(summary: RangeSummary): FinanceSummaryDto {
@@ -1474,71 +1575,93 @@ export function serializeRangeSummary(summary: RangeSummary): FinanceSummaryDto 
   };
 }
 
+/** Cuentas con la forma que pide el dominio (`FinanceAccountView`), no el DTO de cable. */
+async function readFinanceAccountViews(client: PoolClient, householdId: string): Promise<FinanceAccountView[]> {
+  // `bank` es NULL para efectivo/inversión/manuales (resolución canónica del doc
+  // de interfaces): el dominio identifica la inversión por `kind`, así que aquí
+  // basta con no romper el tipo `string`.
+  const result = await client.query<FinanceAccountView>(
+    `select account.id, account.name, coalesce(account.bank::text, '') as "bank",
+            account.kind::text as "kind", coalesce(account.bank_ref, '') as "bankRef",
+            coalesce(account.owner_aliases, '[]'::jsonb) as "ownerAliases",
+            coalesce(account.transfer_refs, '[]'::jsonb) as "transferRefs"
+       from app.finance_accounts account
+      where account.household_id = $1
+      order by account.name`,
+    [householdId],
+  );
+  return result.rows;
+}
+
+/**
+ * Resumen del periodo. Trae TODAS las transacciones del hogar, sin ventana de
+ * fechas: lo exige el productor (fase 2), porque `computeRangeSummary` filtra
+ * por dentro y necesita el corpus completo para el periodo anterior, para las
+ * patas de transferencia/inversión que cruzan el rango y para el `pendingCount`
+ * global (el chip «N sin revisar» del Dashboard cuenta TODO el hogar, no el
+ * periodo). Recortar la ventana aquí produce KPIs y pendientes falsos.
+ */
 export async function readFinanceSummary(
   client: PoolClient,
   householdId: string,
   filters: FinanceReadFilters,
 ): Promise<FinanceSummaryDto> {
-  // Ventana completa (periodo anterior + actual) y SIN excluir transferencias:
-  // el dominio necesita las patas internas para inversión y aportaciones.
-  const window = previousRange(filters.from, filters.to);
-  const params: unknown[] = [householdId, window.from, filters.to];
-  const conditions = ["tx.household_id = $1", "tx.op_date >= $2", "tx.op_date <= $3"];
-  if (filters.accountIds.length > 0) {
-    params.push(filters.accountIds);
-    conditions.push(`tx.account_id = any($${params.length}::uuid[])`);
-  }
   const txResult = await client.query<{
     id: string; accountId: string; opDate: string; concept: string; provider: string | null;
-    providerNorm: string | null; amountCents: string; categoryId: string | null; status: string;
-    transferGroupId: string | null; recurrence: "recurrente" | "extraordinario" | null;
-    recurrenceManual: boolean; dedupHash: string;
+    providerNorm: string | null; amountCents: string; categoryId: string | null;
+    status: FinanceTransactionStatus; transferGroupId: string | null;
+    recurrence: FinanceRecurrence; recurrenceManual: boolean; dedupHash: string;
+    codeCommon: string | null; codeOwn: string | null; categoryKind: FinanceCategoryKind | null;
   }>(
+    // El join a categorías NO es decorativo: `categoryKind` es lo que usa el
+    // dominio para excluir las patas 'transferencia' y para clasificar
+    // ingreso/gasto. Sin él, todo traspaso interno entraría como ingreso o gasto.
     `select tx.id, tx.account_id as "accountId", tx.op_date::text as "opDate", tx.concept,
             tx.provider, tx.provider_norm as "providerNorm", tx.amount_cents::text as "amountCents",
             tx.category_id as "categoryId", tx.status::text as "status",
             tx.transfer_group_id as "transferGroupId", tx.recurrence::text as "recurrence",
-            tx.recurrence_manual as "recurrenceManual", tx.dedup_hash as "dedupHash"
+            tx.recurrence_manual as "recurrenceManual", tx.dedup_hash as "dedupHash",
+            tx.code_common as "codeCommon", tx.code_own as "codeOwn",
+            cat.kind::text as "categoryKind"
        from app.finance_transactions tx
-      where ${conditions.join("\n        and ")}`,
-    params,
-  );
-  const txViews = txResult.rows.map((row) => ({ ...row, amountCents: BigInt(row.amountCents) }));
-
-  const accounts = await readFinanceAccounts(client, householdId);
-  const categories = await readFinanceCategories(client, householdId);
-  const eventTxIds = filters.eventId
-    ? (await client.query<{ id: string }>(
-        `select transaction_id as "id" from app.finance_transaction_events
-          where household_id = $1 and event_id = $2`, [householdId, filters.eventId])).rows.map((row) => row.id)
-    : [];
-  const excludedTxIds = filters.excludeEventIds.length > 0
-    ? (await client.query<{ id: string }>(
-        `select transaction_id as "id" from app.finance_transaction_events
-          where household_id = $1 and event_id = any($2::uuid[])`, [householdId, filters.excludeEventIds])).rows.map((row) => row.id)
-    : [];
-  const pending = await client.query<{ n: number }>(
-    `select count(*)::int as "n" from app.finance_transactions
-      where household_id = $1 and status in ('pendiente', 'sugerida_regla', 'sugerida_agente')`,
+       left join app.finance_categories cat
+         on cat.household_id = tx.household_id and cat.id = tx.category_id
+      where tx.household_id = $1`,
     [householdId],
   );
+  // Tipado explícito y SIN aserción `as`: si a `FinanceTxView` le falta o le
+  // sobra un campo, el typecheck lo canta aquí, que es donde se arregla.
+  const txs: FinanceTxView[] = txResult.rows.map((row) => ({ ...row, amountCents: BigInt(row.amountCents) }));
 
-  // ATENCIÓN: los nombres de los campos de SummaryOptions los fija
-  // packages/domain/src/finance/types.ts (fase 2). Si `pnpm --filter
-  // @casa-clara/server typecheck` acusa un nombre distinto, renombra AQUÍ el
-  // campo del objeto (nunca el de types.ts): la firma computeRangeSummary(txs,
-  // opts) es canónica y este objeto es su único punto de acople.
-  const summary = computeRangeSummary(txViews as Parameters<typeof computeRangeSummary>[0], {
+  const accounts = await readFinanceAccountViews(client, householdId);
+
+  const eventRows = await client.query<{ transactionId: string; eventId: string }>(
+    `select te.transaction_id as "transactionId", te.event_id as "eventId"
+       from app.finance_transaction_events te
+      where te.household_id = $1`,
+    [householdId],
+  );
+  const eventIdsByTx = new Map<string, string[]>();
+  for (const row of eventRows.rows) {
+    const list = eventIdsByTx.get(row.transactionId) ?? [];
+    list.push(row.eventId);
+    eventIdsByTx.set(row.transactionId, list);
+  }
+
+  // ANOTADO, no aserido: `SummaryOptions` (fase 2) tiene EXACTAMENTE estos
+  // campos; con `as` colarían nombres inventados en silencio y los filtros
+  // ev/exev se perderían sin que nada protestara. El `kind` de la categoría ya
+  // viaja en cada fila (`categoryKind`): no hay campo `categories`.
+  const options: SummaryOptions = {
     from: filters.from,
     to: filters.to,
     accounts,
-    categories,
     accountIds: filters.accountIds,
-    eventTransactionIds: eventTxIds,
-    excludedTransactionIds: excludedTxIds,
-    pendingCount: pending.rows[0]?.n ?? 0,
-  } as SummaryOptions);
-  return serializeRangeSummary(summary);
+    eventId: filters.eventId,
+    excludeEventIds: filters.excludeEventIds,
+    eventIdsByTx,
+  };
+  return serializeRangeSummary(computeRangeSummary(txs, options));
 }
 
 export interface FinanceSeriesPointDto { bucket: string; incomeCents: string; expenseCents: string; savingsCents: string }
@@ -1604,16 +1727,25 @@ export async function readFinanceProviders(
 ): Promise<FinanceProviderRowDto[]> {
   const { where, params } = txConditions(householdId, filters);
   const result = await client.query<FinanceProviderRowDto>(
+    // Se agrupa por `coalesce(provider_norm, provider)`: hay movimientos con
+    // proveedor y sin normalizar, y agrupar solo por provider_norm los colapsaría
+    // TODOS en una fila NULL rotulada con un `min(provider)` arbitrario. El alias
+    // entra por `left join lateral … limit 1` (nunca por join llano: no hay unicidad
+    // declarada de (household_id, provider_norm) y duplicaría count y suma).
     `with kt as (${kindedTx(where)})
-     select min(kt.provider) as "provider",
+     select coalesce(kt.provider_norm, kt.provider) as "provider",
             coalesce(max(alias.display), min(kt.provider)) as "providerDisplay",
             sum(kt.amount_cents)::text as "totalCents",
             count(*)::int as "count"
        from kt
-       left join app.finance_provider_aliases alias
-         on alias.household_id = $1 and alias.provider_norm = kt.provider_norm
+       left join lateral (
+              select a.display
+                from app.finance_provider_aliases a
+               where a.household_id = $1 and a.provider_norm = kt.provider_norm
+               limit 1
+            ) alias on true
       where kt.kind = 'gasto' and kt.provider is not null and kt.provider <> ''
-      group by kt.provider_norm
+      group by coalesce(kt.provider_norm, kt.provider)
      having sum(kt.amount_cents) < 0
       order by sum(kt.amount_cents) asc
       limit ${Math.max(1, Math.min(50, Math.trunc(limit)))}`,
@@ -1663,17 +1795,173 @@ export async function readFinanceEventDetail(
     [householdId, eventId],
   );
   if (event.rows.length === 0) return null;
-  const summary = (await readFinanceEventsSummary(client, householdId, filters))
+  // Cabecera y desglose miran EXACTAMENTE la misma población: si la petición
+  // trae `?ev=` de otro evento, con `filters` a secas el resumen quedaría
+  // restringido a ese otro evento y la cabecera saldría a cero contra un
+  // desglose lleno.
+  const scoped = { ...filters, eventId };
+  const summary = (await readFinanceEventsSummary(client, householdId, scoped))
     .find((row) => row.id === eventId) ?? {
       id: eventId, name: event.rows[0]!.name, incomeCents: "0", expenseCents: "0", netCents: "0", txCount: 0,
     };
-  const categories = await readFinanceBreakdown(client, householdId, { ...filters, eventId });
+  const categories = await readFinanceBreakdown(client, householdId, scoped);
   return { ...summary, categories };
+}
+
+// ── Analítica y pivot (canónicas del doc de interfaces; la fase 6 las consume) ─
+
+export interface AnalyticsMonthTotals { totalCents: string; recCents: string; extCents: string }
+export interface AnalyticsRow { kind: "gasto" | "ingreso" | "inversion"; monthly: Record<string, AnalyticsMonthTotals> }
+
+/** Meses de calendario del rango, ambos incluidos: las columnas del pivot. */
+export function monthsInRange(from: string, to: string): string[] {
+  const [fromYear, fromMonth] = splitIso(from);
+  const [toYear, toMonth] = splitIso(to);
+  const months: string[] = [];
+  for (let index = fromYear * 12 + (fromMonth - 1); index <= toYear * 12 + (toMonth - 1); index += 1) {
+    months.push(`${String(Math.floor(index / 12)).padStart(4, "0")}-${String((index % 12) + 1).padStart(2, "0")}`);
+  }
+  return months;
+}
+
+/**
+ * Filas mensuales por naturaleza para la pantalla de Analítica (fase 6).
+ * `ingreso`/`gasto` salen de `kt` (sin patas de transferencia); `inversion` son
+ * las entradas en cuentas `kind = 'inversion'`, que el dominio identifica por
+ * el kind de la cuenta y NUNCA por el banco.
+ */
+export async function readFinanceAnalytics(
+  client: PoolClient,
+  householdId: string,
+  filters: FinanceReadFilters,
+): Promise<{ rows: AnalyticsRow[] }> {
+  const { where, params } = txConditions(householdId, filters);
+  const flow = await client.query<{ kind: string; month: string; totalCents: string; recCents: string; extCents: string }>(
+    `with kt as (${kindedTx(where)})
+     select kt.kind,
+            to_char(kt.op_date, 'YYYY-MM') as "month",
+            sum(kt.amount_cents)::text as "totalCents",
+            coalesce(sum(kt.amount_cents) filter (where kt.recurrence = 'recurrente'), 0)::text as "recCents",
+            coalesce(sum(kt.amount_cents) filter (where kt.recurrence = 'extraordinario'), 0)::text as "extCents"
+       from kt
+      group by kt.kind, 2
+      order by 2`,
+    params,
+  );
+  const invested = await client.query<{ month: string; totalCents: string; recCents: string; extCents: string }>(
+    `select to_char(tx.op_date, 'YYYY-MM') as "month",
+            sum(tx.amount_cents)::text as "totalCents",
+            coalesce(sum(tx.amount_cents) filter (where tx.recurrence = 'recurrente'), 0)::text as "recCents",
+            coalesce(sum(tx.amount_cents) filter (where tx.recurrence = 'extraordinario'), 0)::text as "extCents"
+       from app.finance_transactions tx
+       join app.finance_accounts account
+         on account.household_id = tx.household_id and account.id = tx.account_id
+      where ${where}
+        and account.kind = 'inversion'
+        and tx.amount_cents > 0
+      group by 1
+      order by 1`,
+    params,
+  );
+
+  const empty = (): AnalyticsRow["monthly"] => ({});
+  const byKind: Record<AnalyticsRow["kind"], AnalyticsRow["monthly"]> = {
+    ingreso: empty(),
+    gasto: empty(),
+    inversion: empty(),
+  };
+  for (const row of flow.rows) {
+    if (row.kind !== "ingreso" && row.kind !== "gasto") continue;
+    byKind[row.kind][row.month] = { totalCents: row.totalCents, recCents: row.recCents, extCents: row.extCents };
+  }
+  for (const row of invested.rows) {
+    byKind.inversion[row.month] = { totalCents: row.totalCents, recCents: row.recCents, extCents: row.extCents };
+  }
+  // Orden FIJO: la Analítica pinta siempre las tres bandas, aunque estén vacías.
+  return { rows: [
+    { kind: "ingreso", monthly: byKind.ingreso },
+    { kind: "gasto", monthly: byKind.gasto },
+    { kind: "inversion", monthly: byKind.inversion },
+  ] };
+}
+
+export interface FinancePivotMovDto { id: string; date: string; cents: string }
+export interface FinancePivotRowDto extends Omit<PivotSourceRow, "totalCents" | "movs"> {
+  totalCents: string;
+  movs: FinancePivotMovDto[];
+}
+
+/** `PivotSourceRow` (bigint, canónico de fase 2) → DTO de cable (céntimos-string). */
+export function serializePivotRows(rows: readonly PivotSourceRow[]): FinancePivotRowDto[] {
+  return rows.map((row) => ({
+    ...row,
+    totalCents: row.totalCents.toString(),
+    movs: row.movs.map((mov) => ({ id: mov.id, date: mov.date, cents: mov.cents.toString() })),
+  }));
+}
+
+/**
+ * Filas fuente del pivot con la forma EXACTA de `PivotSourceRow` (fase 2), para
+ * que `buildPivotTree(rows, dims, { monthsCount, dupEventIds })` las coma tal
+ * cual. Una transacción con dos eventos produce DOS filas: es la duplicación
+ * que `dupEventIds` gobierna después, no un error de la consulta.
+ */
+export async function readFinancePivot(
+  client: PoolClient,
+  householdId: string,
+  filters: FinanceReadFilters,
+): Promise<{ months: string[]; rows: PivotSourceRow[] }> {
+  const { where, params } = txConditions(householdId, filters);
+  const result = await client.query<{
+    cat: string; sub: string | null; catId: string | null; nat: FinanceRecurrence;
+    prov: string; concept: string; event: string | null; eventId: string | null;
+    kind: PivotSourceRow["kind"]; month: string; totalCents: string; count: number;
+    movs: { id: string; date: string; cents: string }[];
+  }>(
+    `select coalesce(parent.name, cat.name, 'Sin categorizar') as "cat",
+            case when parent.id is null then null else cat.name end as "sub",
+            tx.category_id as "catId",
+            tx.recurrence::text as "nat",
+            coalesce(${ALIAS_DISPLAY}, tx.provider, '(sin proveedor)') as "prov",
+            tx.concept,
+            event.name as "event",
+            event.id as "eventId",
+            case when account.kind = 'inversion' then 'inversion'
+                 when cat.kind is not null then cat.kind::text
+                 when tx.amount_cents > 0 then 'ingreso' else 'gasto' end as "kind",
+            to_char(tx.op_date, 'YYYY-MM') as "month",
+            sum(tx.amount_cents)::text as "totalCents",
+            count(*)::int as "count",
+            json_agg(json_build_object(
+              'id', tx.id, 'date', tx.op_date::text, 'cents', tx.amount_cents::text
+            ) order by tx.op_date, tx.id) as "movs"
+       from app.finance_transactions tx
+       join app.finance_accounts account
+         on account.household_id = tx.household_id and account.id = tx.account_id
+       left join app.finance_categories cat
+         on cat.household_id = tx.household_id and cat.id = tx.category_id
+       left join app.finance_categories parent
+         on parent.household_id = cat.household_id and parent.id = cat.parent_id
+       left join app.finance_transaction_events te
+         on te.household_id = tx.household_id and te.transaction_id = tx.id
+       left join app.finance_events event
+         on event.household_id = te.household_id and event.id = te.event_id
+      where ${where}
+      group by 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+      order by 10, 1, 2, 6`,
+    params,
+  );
+  const rows: PivotSourceRow[] = result.rows.map((row) => ({
+    ...row,
+    totalCents: BigInt(row.totalCents),
+    movs: row.movs.map((mov) => ({ id: mov.id, date: mov.date, cents: BigInt(mov.cents) })),
+  }));
+  return { months: monthsInRange(filters.from, filters.to), rows };
 }
 ```
 
-- [ ] **Step 4: En verde (puro + integración + tipos).** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.test.ts src/finance/queries.integration.test.ts && pnpm --filter @casa-clara/server typecheck` — si el typecheck acusa los campos de `SummaryOptions`, reconcílialos contra `packages/domain/src/finance/types.ts` como dice el comentario.
-- [ ] **Step 5: Commit.** `git add packages/server/src/finance/queries.ts packages/server/src/finance/queries.integration.test.ts && git commit -m "feat(finanzas): lecturas agregadas (summary, series, breakdown, providers, eventos) sobre el dominio"`
+- [ ] **Step 4: En verde (puro + integración + tipos).** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL=${TEST_DATABASE_URL:-postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u} pnpm --filter @casa-clara/server test src/finance/queries.test.ts src/finance/queries.integration.test.ts && pnpm --filter @casa-clara/server typecheck` — el typecheck es aquí una comprobación de contrato, no un trámite: como ni `txs` ni `options` llevan aserciones, cualquier desajuste con `FinanceTxView`/`SummaryOptions` de `packages/domain/src/finance/types.ts` sale a la luz en este paso. Si sale alguno, corrige `queries.ts` contra `types.ts`, nunca al revés.
+- [ ] **Step 5: Commit.** `git add packages/server/src/finance/queries.ts packages/server/src/finance/queries.test.ts packages/server/src/finance/queries.integration.test.ts && git commit -m "feat(finanzas): lecturas agregadas (summary, series, desglose, proveedores, eventos, analitica y pivot) sobre el dominio"`
 
 ---
 
@@ -1926,8 +2214,17 @@ const log = createLogger('web:finance');
  * autorizada fija el contexto y `requireFinanceAdmin` corta en seco a quien no
  * es admin-con-concesión (cinturón además de la RLS, que ya devuelve cero
  * filas). Devuelve null cuando no hay pool (demo) o la membresía no autoriza:
- * la página cae entonces a la fixture o al 404 del guard.
+ * la página cae entonces a la fixture, o al 403 del guard de ruta si quien
+ * llega no tiene la capacidad `finance.access`.
  */
+
+/**
+ * Ventana de la serie EN MESES según la granularidad: `readFinanceSeries`
+ * recorta siempre por meses, así que con `g=quarter` una ventana de 12 meses
+ * daría 4 cubos y con `g=year`, uno solo. 12 cubos en cada granularidad son 12
+ * meses, 36 meses o 120 meses; el rótulo de la tarjeta acompaña (Task 12).
+ */
+const SERIES_MONTHS: Record<FinanceFilters['granularity'], number> = { month: 12, quarter: 36, year: 120 };
 
 const toReadFilters = (filters: FinanceFilters): FinanceReadFilters => ({
   from: filters.from,
@@ -1960,7 +2257,7 @@ export async function loadFinanceDashboard(
       await requireFinanceAdmin(client, membership);
       const read = toReadFilters(filters);
       const summary = await readFinanceSummary(client, householdId, read);
-      const series = await readFinanceSeries(client, householdId, read, filters.granularity, 12);
+      const series = await readFinanceSeries(client, householdId, read, filters.granularity, SERIES_MONTHS[filters.granularity]);
       const breakdown = await readFinanceBreakdown(client, householdId, read);
       const providers = await readFinanceProviders(client, householdId, read, 10);
       const accounts = await readFinanceAccounts(client, householdId);
@@ -2024,7 +2321,7 @@ export async function loadFinanceMovimientos(
 }
 ```
 
-Nota: si `requireFinanceAdmin` (fase 1) rechaza con un error propio distinto de `AuthorizationError` (por ejemplo `CommandRejectedError`), añade su captura junto a la de `AuthorizationError` devolviendo null — mira su implementación en `packages/server/src/commands/finance.ts`.
+Nota sobre `requireFinanceAdmin` (fase 1), que aquí se llama en dos sitios (Task 7 y Task 8): abre `packages/server/src/commands/finance.ts` antes de escribir la llamada y ajusta LA LLAMADA a su firma real, nunca al revés. Tres cosas que pueden diferir: (a) los parámetros —si pide además el `householdId`, pásaselo—; (b) la espera —el doc de interfaces la declara síncrona (`: void`) y la fase 1 la implementa `async`; si te la encuentras síncrona, quita el `await` o `@typescript-eslint/await-thenable` protestará—; (c) el error con el que rechaza —si es uno propio (`CommandRejectedError`) y no `AuthorizationError`, añade su captura junto a la de `AuthorizationError` devolviendo null.
 
 - [ ] **Step 5: En verde + tipos.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-fixtures.test.ts && pnpm --filter @casa-clara/web typecheck`
 - [ ] **Step 6: Commit.** `git add apps/web/src/lib/server/finance.server.ts apps/web/src/lib/server/fixtures.server.ts apps/web/tests/finance-fixtures.test.ts && git commit -m "feat(finanzas): cargadores bajo RLS con doble cerrojo y corpus demo sintetico"`
@@ -2038,6 +2335,8 @@ Nota: si `requireFinanceAdmin` (fase 1) rechaza con un error propio distinto de 
 - Create: `apps/web/src/routes/api/v1/finance/series/+server.ts`
 - Create: `apps/web/src/routes/api/v1/finance/breakdown/+server.ts`
 - Create: `apps/web/src/routes/api/v1/finance/providers/+server.ts`
+- Create: `apps/web/src/routes/api/v1/finance/analytics/+server.ts`
+- Create: `apps/web/src/routes/api/v1/finance/pivot/+server.ts`
 - Create: `apps/web/src/routes/api/v1/finance/transactions/+server.ts`
 - Create: `apps/web/src/routes/api/v1/finance/events-summary/+server.ts`
 - Create: `apps/web/src/routes/api/v1/finance/events/[id]/+server.ts`
@@ -2045,11 +2344,15 @@ Nota: si `requireFinanceAdmin` (fase 1) rechaza con un error propio distinto de 
 - Test: `apps/web/tests/finance-endpoints.test.ts`
 
 **Interfaces:**
-- Consumes: contrato canónico de rutas y parámetros del doc de interfaces (`household`, `from,to,g,acc,ev,exev`, `months`, `limit`, `q,cat,rec,status,ids,group_ids,limit/offset`); `belongsToHousehold` de `$lib/auth/membership`; lecturas de `@casa-clara/server`.
+- Consumes: contrato canónico de rutas y parámetros del doc de interfaces (`household`, `from,to,g,acc,ev,exev`, `months`, `limit`, `q,cat,rec,status,ids,group_ids,limit/offset`, `dims`, `dupev`); `belongsToHousehold` de `$lib/auth/membership`; lecturas de `@casa-clara/server`; `parseDims` de `$lib/finance/pivot-state` (Task 4).
+- Los NUEVE endpoints del doc de interfaces se crean aquí, incluidos `analytics` y `pivot`: la fase 6 los da por existentes y no crea ninguno. `pivot` es el único que además parsea `dims` y `dupev`.
 - Produces (añadidos a `finance.server.ts`):
 
 ```ts
-export function requireFinanceRequest(locals: App.Locals, url: URL): { user: { id: string }; householdId: string; pool: Pool };
+// El pool entra por parámetro (con el mismo valor por omisión que los loaders):
+// así el test del 503 puede pasar `null` explícito en vez de depender de que
+// DATABASE_URL esté vacía en el proceso de vitest.
+export function requireFinanceRequest(locals: App.Locals, url: URL, pool?: Pool | null): { user: { id: string }; householdId: string; pool: Pool };
 export function parseReadFilters(url: URL): FinanceReadFilters;          // 400 si from/to/uuids malformados
 export function parseTransactionsQuery(url: URL): FinanceTransactionsQuery;
 export async function financeRead<T>(locals: App.Locals, url: URL, reader: (client: PoolClient, householdId: string) => Promise<T>): Promise<Response>;
@@ -2060,10 +2363,14 @@ export async function financeRead<T>(locals: App.Locals, url: URL, reader: (clie
 - [ ] **Step 1: Test que falla.** `apps/web/tests/finance-endpoints.test.ts` (los caminos de guarda son puros de HTTP y se prueban sin base; las lecturas reales ya quedaron probadas en las tareas 5–6 contra Postgres):
 
 ```ts
+import type { Pool } from 'pg';
 import { describe, expect, it } from 'vitest';
 
 import { parseReadFilters, parseTransactionsQuery, requireFinanceRequest } from '../src/lib/server/finance.server';
 
+// Pool inyectado: el guard no debe depender de si DATABASE_URL está puesta en
+// el proceso de vitest. `FAKE_POOL` solo tiene que existir; nunca se usa.
+const FAKE_POOL = {} as Pool;
 const HOUSEHOLD = '10000000-0000-4000-8000-000000000001';
 const USER = {
   id: 'u1', name: 'Alberto', initials: 'A', email: 'a@casaclara.demo',
@@ -2077,17 +2384,22 @@ function statusOf(run: () => unknown): number | null {
 
 describe('guard de los endpoints GET /api/v1/finance/* (el hook no cubre /api)', () => {
   it('sin sesión: 401', () => {
-    expect(statusOf(() => requireFinanceRequest({ user: null } as unknown as App.Locals, urlOf(`household=${HOUSEHOLD}`)))).toBe(401);
+    expect(statusOf(() => requireFinanceRequest({ user: null } as unknown as App.Locals, urlOf(`household=${HOUSEHOLD}`), FAKE_POOL))).toBe(401);
   });
   it('household ausente o malformado: 400', () => {
-    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf('')))).toBe(400);
-    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf('household=patata')))).toBe(400);
+    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf(''), FAKE_POOL))).toBe(400);
+    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf('household=patata'), FAKE_POOL))).toBe(400);
   });
   it('hogar ajeno: 404, indistinguible de inexistente', () => {
-    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf('household=20000000-0000-4000-8000-000000000001')))).toBe(404);
+    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf('household=20000000-0000-4000-8000-000000000001'), FAKE_POOL))).toBe(404);
   });
-  it('con sesión y membresía pero sin base de datos configurada: 503 honesto', () => {
-    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf(`household=${HOUSEHOLD}`)))).toBe(503);
+  it('con sesión y membresía pero sin base de datos: 503 honesto', () => {
+    expect(statusOf(() => requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf(`household=${HOUSEHOLD}`), null))).toBe(503);
+  });
+  it('con sesión, membresía y pool: pasa y devuelve el hogar', () => {
+    const request = requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf(`household=${HOUSEHOLD}`), FAKE_POOL);
+    expect(request.householdId).toBe(HOUSEHOLD);
+    expect(request.user.id).toBe('u1');
   });
 });
 
@@ -2141,17 +2453,19 @@ function intParam(url: URL, name: string, fallback: number, min: number, max: nu
  * Guard común de los GET /api/v1/finance/* (§7): el hook de sesión no cubre
  * /api, así que sesión, hogar y membresía se comprueban aquí, explícitos y en
  * este orden. Sin base de datos no hay lectura REST que servir: 503 honesto,
- * nunca una maqueta (regla de data-source.server.ts).
+ * nunca una maqueta (regla de data-source.server.ts). El pool entra por
+ * parámetro —mismo patrón que los loaders— para que el test del 503 pueda
+ * pasar `null` explícito en vez de confiar en que DATABASE_URL esté vacía.
  */
 export function requireFinanceRequest(
   locals: App.Locals,
-  url: URL
+  url: URL,
+  pool: Pool | null = getDatabasePool()
 ): { user: { id: string }; householdId: string; pool: Pool } {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
   const householdId = url.searchParams.get('household') ?? '';
   if (!UUID_PATTERN.test(householdId)) error(400, 'Falta el hogar (household)');
   if (!belongsToHousehold(locals.user, householdId)) error(404, 'Hogar no encontrado');
-  const pool = getDatabasePool();
   if (!pool) error(DATA_UNAVAILABLE_STATUS, DATA_UNAVAILABLE_MESSAGE);
   return { user: { id: locals.user.id }, householdId, pool };
 }
@@ -2221,9 +2535,11 @@ export async function financeRead<T>(
 }
 ```
 
-(Como en Task 7: si `requireFinanceAdmin` rechaza con un error propio de fase 1, captúralo junto a `AuthorizationError` como 404.)
+(Como en Task 7: ajusta la llamada a `requireFinanceAdmin` a su firma real de fase 1 —parámetros, `await` solo si es `async`— y, si rechaza con un error propio suyo, captúralo junto a `AuthorizationError` como 404.)
 
-- [ ] **Step 4: Los siete endpoints.** Cada fichero es una llamada a `financeRead`; imita el estilo de `apps/web/src/routes/api/v1/households/[householdId]/vacaciones/vistas/+server.ts`:
+El cerrojo vive AQUÍ a propósito: los nueve `+server.ts` de `/api/v1/finance` son una sola llamada a `financeRead`, y `financeRead` es quien abre la transacción autorizada y llama a `requireFinanceAdmin`. Un `grep` de `requireFinanceAdmin` sobre los `+server.ts` sale vacío por diseño, no por olvido; la garantía se comprueba al revés: todo `+server.ts` de finanzas pasa por `financeRead`.
+
+- [ ] **Step 4: Los nueve endpoints.** Cada fichero es una llamada a `financeRead`; imita el estilo de `apps/web/src/routes/api/v1/households/[householdId]/vacaciones/vistas/+server.ts`. **Cada bloque lleva SUS imports completos**: no hay dos ficheros con la misma cabecera.
 
 ```ts
 // apps/web/src/routes/api/v1/finance/summary/+server.ts
@@ -2237,46 +2553,134 @@ export const GET: RequestHandler = async ({ locals, url }) =>
 ```
 
 ```ts
-// series/+server.ts — mismos imports, cuerpo:
+// apps/web/src/routes/api/v1/finance/series/+server.ts
+import { error } from '@sveltejs/kit';
+import { readFinanceSeries } from '@casa-clara/server';
+
+import { financeRead, parseReadFilters } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
 export const GET: RequestHandler = async ({ locals, url }) => {
   const granularity = url.searchParams.get('g') ?? 'month';
   if (!['month', 'quarter', 'year'].includes(granularity)) error(400, 'Parámetro g inválido');
+  // El tope es 240 meses: con g=year, 12 cubos son 120 meses (ver SERIES_MONTHS
+  // en finance.server.ts). Un tope de 60 dejaría fuera la vista anual.
   const months = Number(url.searchParams.get('months') ?? '12');
-  if (!Number.isInteger(months) || months < 1 || months > 60) error(400, 'Parámetro months inválido');
+  if (!Number.isInteger(months) || months < 1 || months > 240) error(400, 'Parámetro months inválido');
   return financeRead(locals, url, (client, householdId) =>
     readFinanceSeries(client, householdId, parseReadFilters(url), granularity as 'month' | 'quarter' | 'year', months));
 };
 ```
 
 ```ts
-// breakdown/+server.ts
+// apps/web/src/routes/api/v1/finance/breakdown/+server.ts
+import { readFinanceBreakdown } from '@casa-clara/server';
+
+import { financeRead, parseReadFilters } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
 export const GET: RequestHandler = async ({ locals, url }) =>
   financeRead(locals, url, (client, householdId) => readFinanceBreakdown(client, householdId, parseReadFilters(url)));
+```
 
-// providers/+server.ts
+```ts
+// apps/web/src/routes/api/v1/finance/providers/+server.ts
+import { error } from '@sveltejs/kit';
+import { readFinanceProviders } from '@casa-clara/server';
+
+import { financeRead, parseReadFilters } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
 export const GET: RequestHandler = async ({ locals, url }) => {
   const limit = Number(url.searchParams.get('limit') ?? '10');
   if (!Number.isInteger(limit) || limit < 1 || limit > 50) error(400, 'Parámetro limit inválido');
   return financeRead(locals, url, (client, householdId) =>
     readFinanceProviders(client, householdId, parseReadFilters(url), limit));
 };
+```
 
-// transactions/+server.ts
+```ts
+// apps/web/src/routes/api/v1/finance/transactions/+server.ts
+import { readFinanceTransactions } from '@casa-clara/server';
+
+import { financeRead, parseTransactionsQuery } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
 export const GET: RequestHandler = async ({ locals, url }) =>
   financeRead(locals, url, (client, householdId) =>
     readFinanceTransactions(client, householdId, parseTransactionsQuery(url)));
+```
 
-// events-summary/+server.ts
+```ts
+// apps/web/src/routes/api/v1/finance/events-summary/+server.ts
+import { readFinanceEventsSummary } from '@casa-clara/server';
+
+import { financeRead, parseReadFilters } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
 export const GET: RequestHandler = async ({ locals, url }) =>
   financeRead(locals, url, (client, householdId) => readFinanceEventsSummary(client, householdId, parseReadFilters(url)));
+```
 
-// events/[id]/+server.ts
+```ts
+// apps/web/src/routes/api/v1/finance/events/[id]/+server.ts
+import { error } from '@sveltejs/kit';
+import { readFinanceEventDetail } from '@casa-clara/server';
+
+import { financeRead, parseReadFilters } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const GET: RequestHandler = async ({ locals, url, params }) => {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.id)) error(404, 'Evento no encontrado');
+  if (!UUID.test(params.id)) error(404, 'Evento no encontrado');
   return financeRead(locals, url, async (client, householdId) => {
     const detail = await readFinanceEventDetail(client, householdId, params.id, parseReadFilters(url));
     if (!detail) error(404, 'Evento no encontrado');
     return detail;
+  });
+};
+```
+
+```ts
+// apps/web/src/routes/api/v1/finance/analytics/+server.ts
+// Lo consume la pantalla Analítica de la fase 6; se crea aquí porque aquí vive
+// su lectura (readFinanceAnalytics) y el doc de interfaces lo exige en la lista.
+import { readFinanceAnalytics } from '@casa-clara/server';
+
+import { financeRead, parseReadFilters } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ locals, url }) =>
+  financeRead(locals, url, (client, householdId) => readFinanceAnalytics(client, householdId, parseReadFilters(url)));
+```
+
+```ts
+// apps/web/src/routes/api/v1/finance/pivot/+server.ts
+// El ÚNICO endpoint que parsea `dims` y `dupev` (contrato del doc de
+// interfaces). Ambos se validan aquí y se devuelven junto a las filas: quien
+// pinta el pivot (fase 6) llama después a buildPivotTree(rows, dims,
+// { monthsCount: months.length, dupEventIds }).
+import { error } from '@sveltejs/kit';
+import { readFinancePivot, serializePivotRows } from '@casa-clara/server';
+
+import { parseDims } from '$lib/finance/pivot-state';
+import { financeRead, parseReadFilters } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const GET: RequestHandler = async ({ locals, url }) => {
+  const dims = parseDims(url.searchParams.get('dims'));
+  const dupEventIds = (url.searchParams.get('dupev') ?? '')
+    .split(',')
+    .map((piece) => piece.trim())
+    .filter(Boolean);
+  for (const id of dupEventIds) if (!UUID.test(id)) error(400, 'Parámetro dupev inválido');
+  return financeRead(locals, url, async (client, householdId) => {
+    const { months, rows } = await readFinancePivot(client, householdId, parseReadFilters(url));
+    // Los bigint no viajan por JSON: céntimos como cadena, como en todo el módulo.
+    return { months, dims, dupEventIds, rows: serializePivotRows(rows) };
   });
 };
 ```
@@ -2293,7 +2697,7 @@ export const GET: RequestHandler = async ({ locals, url, params }) => {
 - Test: `apps/web/tests/finance-api.test.ts`
 
 **Interfaces:**
-- Consumes: `apiQuery`, `FinanceFilters` de `./filters`; tipos DTO SOLO como `import type { … } from '@casa-clara/server'` (se borran al compilar: nada del paquete servidor llega al navegador).
+- Consumes: `apiQuery`, `FinanceFilters` de `./filters`; `serializeDims` y `PivotDimension` de `./pivot-state` (Task 4); tipos DTO SOLO como `import type { … } from '@casa-clara/server'` (se borran al compilar: nada del paquete servidor llega al navegador).
 - Produces:
 
 ```ts
@@ -2307,6 +2711,9 @@ export function financeApi(householdId: string, fetchFn?: typeof fetch): {
   series(filters: FinanceFilters, months?: number): Promise<FinanceSeriesPointDto[]>;
   breakdown(filters: FinanceFilters): Promise<FinanceCategoryRowDto[]>;
   providers(filters: FinanceFilters, limit?: number): Promise<FinanceProviderRowDto[]>;
+  analytics(filters: FinanceFilters): Promise<{ rows: AnalyticsRow[] }>;
+  pivot(filters: FinanceFilters, dims?: readonly PivotDimension[], dupEventIds?: string[]):
+    Promise<{ months: string[]; dims: PivotDimension[]; dupEventIds: string[]; rows: FinancePivotRowDto[] }>;
   transactions(filters: FinanceFilters, extra?: Record<string, string>): Promise<FinanceTransactionsPage>;
   transactionsByIds(ids: string[]): Promise<FinanceTransactionsPage>;
   transactionsByGroups(groupIds: string[]): Promise<FinanceTransactionsPage>;
@@ -2351,7 +2758,19 @@ describe('cliente de /api/v1/finance', () => {
     expect(calls[0]).toContain('g=month');
     expect(calls[0]).toContain('months=6');
     await api.transactionsByIds(['b1', 'b2']);
-    expect(calls[1]).toBe(`/api/v1/finance/transactions?household=${HOUSEHOLD}&ids=b1%2Cb2`);
+    // `ids` va PRIMERO: withHousehold hace `set('household', …)` sobre unos
+    // params que ya traen `ids`, y `set` de una clave nueva appendea al final.
+    expect(calls[1]).toBe(`/api/v1/finance/transactions?ids=b1%2Cb2&household=${HOUSEHOLD}`);
+  });
+
+  it('pivot manda dims solo cuando no es el orden por defecto y valida dupev', async () => {
+    const { calls, fetchFn } = stubFetch(200, { months: [], dims: [], dupEventIds: [], rows: [] });
+    const api = financeApi(HOUSEHOLD, fetchFn);
+    await api.pivot(FILTERS);
+    expect(calls[0]).not.toContain('dims=');
+    await api.pivot(FILTERS, ['prov', 'cat'], ['e1']);
+    expect(calls[1]).toContain('dims=prov%2Ccat');
+    expect(calls[1]).toContain('dupev=e1');
   });
 
   it('una respuesta no-ok se convierte en FinanceApiError con su status', async () => {
@@ -2373,17 +2792,21 @@ describe('cliente de /api/v1/finance', () => {
  * @casa-clara/server llega al navegador.
  */
 import type {
+  AnalyticsRow,
   FinanceCategoryRowDto,
   FinanceEventDetailDto,
   FinanceEventSummaryDto,
+  FinancePivotRowDto,
   FinanceProviderRowDto,
   FinanceSeriesPointDto,
   FinanceSummaryDto,
   FinanceTransactionsPage,
   FinanceTxDto
 } from '@casa-clara/server';
+import type { PivotDimension } from '@casa-clara/domain/finance';
 
 import { apiQuery, type FinanceFilters } from './filters';
+import { serializeDims } from './pivot-state';
 
 export class FinanceApiError extends Error {
   constructor(readonly status: number, message: string) {
@@ -2428,6 +2851,20 @@ export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {
       params.set('limit', String(limit));
       return getJson(fetchFn, 'providers', params);
     },
+    analytics: (filters: FinanceFilters): Promise<{ rows: AnalyticsRow[] }> =>
+      getJson(fetchFn, 'analytics', base(filters)),
+    pivot: (
+      filters: FinanceFilters,
+      dims: readonly PivotDimension[] = [],
+      dupEventIds: string[] = []
+    ): Promise<{ months: string[]; dims: PivotDimension[]; dupEventIds: string[]; rows: FinancePivotRowDto[] }> => {
+      const params = base(filters);
+      // serializeDims devuelve null para el orden por defecto: la URL se queda limpia.
+      const serialized = dims.length > 0 ? serializeDims(dims) : null;
+      if (serialized) params.set('dims', serialized);
+      if (dupEventIds.length > 0) params.set('dupev', dupEventIds.join(','));
+      return getJson(fetchFn, 'pivot', params);
+    },
     transactions: (filters: FinanceFilters, extra: Record<string, string> = {}): Promise<FinanceTransactionsPage> => {
       const params = base(filters);
       for (const [key, value] of Object.entries(extra)) if (value) params.set(key, value);
@@ -2443,7 +2880,7 @@ export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {
 }
 ```
 
-Ojo con el orden de parámetros del primer test (`apiQuery` primero, `household` después): la implementación de arriba lo produce tal cual.
+Ojo con el ORDEN de los parámetros en los tres tests de URL, porque `URLSearchParams.set` de una clave que aún no existe la APPENDEA al final: `summary` parte de `apiQuery(filters)` (from, to, acc…) y `household` queda el último; `transactionsByIds`/`transactionsByGroups` parten de `{ ids }` / `{ group_ids }`, así que también ahí `household` va detrás; en `pivot`, `dims` y `dupev` se añaden después de `household`. Las aserciones de arriba están escritas con ese orden exacto: si prefieres `household` delante, construye `withHousehold(new URLSearchParams())` y haz los `set` después — y entonces corrige los tres tests.
 
 - [ ] **Step 4: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test tests/finance-api.test.ts`
 - [ ] **Step 5: Commit.** `git add apps/web/src/lib/finance/api.ts apps/web/tests/finance-api.test.ts && git commit -m "feat(finanzas): cliente tipado de las lecturas REST"`
@@ -2462,6 +2899,7 @@ Ojo con el orden de parámetros del primer test (`apiQuery` primero, `household`
 - Consumes: `sparklinePoints`, `cashflowLayout`, `natureStackLayout` de `$lib/finance/chart-geometry`; `groupExpenseCategories` de `$lib/finance/breakdown`; `formatCents`, `bucketLabel` de `$lib/finance/format`. Tipos de entrada: `CashflowBucketInput[]`, `NatureBucketInput[]`, `BreakdownRowInput[]`.
 - Produces: props de cada componente (los consumen las tareas 12–13 y la fase 6): `FinanceSparkline { values: number[]; label: string; stroke?: string }` · `CashflowChart { buckets: CashflowBucketInput[] }` · `NatureStackChart { buckets: NatureBucketInput[] }` · `CategoryBars { rows: BreakdownRowInput[]; categories: { id: string; name: string; parentId: string | null }[]; movementsHref: (categoryId: string) => string }`.
 - La geometría ya está testeada (Task 3); aquí la verificación es `pnpm check` (svelte-check + linter de tokens CSS) y el e2e de las tareas 12–13. Colores SOLO tokens: ingresos `var(--success)`, gastos `var(--danger)`, línea de ahorro `var(--ink)`, rejilla `var(--line)`; en el apilado: recurrente `var(--primary)`, extraordinario `var(--info)`, sin clasificar `var(--line-strong)`. Nada de terracota (reservado a «ahora»).
+- Movimiento: la spec §8 exige respetar `prefers-reduced-motion` en todo el módulo. Estas cuatro gráficas se dibujan quietas a propósito: **sin `transition` ni `animation`**. Si en algún momento añades una (entrada de barras, hover), envuélvela obligatoriamente en `@media (prefers-reduced-motion: reduce) { … }` anulándola; lo mismo vale para los componentes de la Task 11.
 
 **Pasos:**
 
@@ -2532,9 +2970,9 @@ Ojo con el orden de parámetros del primer test (`apiQuery` primero, `household`
         {#each buckets as bucket (bucket.bucket)}
           <tr>
             <td>{bucket.bucket}</td>
-            <td>{formatCents(bucket.incomeCents)}</td>
-            <td>{formatCents(bucket.expenseCents)}</td>
-            <td>{formatCents(bucket.savingsCents)}</td>
+            <td>{formatCents(bucket.incomeCents.toString())}</td>
+            <td>{formatCents(bucket.expenseCents.toString())}</td>
+            <td>{formatCents(bucket.savingsCents.toString())}</td>
           </tr>
         {/each}
       </tbody>
@@ -2555,7 +2993,87 @@ Ojo con el orden de parámetros del primer test (`apiQuery` primero, `household`
 </style>
 ```
 
-- [ ] **Step 3: NatureStackChart.svelte.** Igual que el anterior pero con `natureStackLayout` y tres `rect` por grupo (`segment.nature`: `recurrente` → `var(--primary)`, `extraordinario` → `var(--info)`, `sin` → `var(--line-strong)`), la misma polyline de ahorro, leyenda «Recurrente / Extraordinario / Sin clasificar / Ahorro» y tabla `sr-only` con esas cuatro columnas. `aria-label="Gasto apilado por naturaleza y línea de ahorro"`. Lo consume Analítica en la fase 6; aquí queda construido y tipado.
+- [ ] **Step 3: NatureStackChart.svelte.** Calcado del anterior, con `natureStackLayout`, los segmentos apilados por naturaleza y la misma línea de ahorro. Lo consume Analítica en la fase 6; aquí queda construido y tipado.
+
+```svelte
+<script lang="ts">
+  import { natureStackLayout, type NatureBucketInput } from '$lib/finance/chart-geometry';
+  import { formatCents } from '$lib/finance/format';
+
+  let { buckets }: { buckets: NatureBucketInput[] } = $props();
+
+  const layout = $derived(natureStackLayout(buckets));
+
+  // Naturaleza → token. Nada de terracota: está reservada a «ahora».
+  const NATURE_FILL: Record<string, string> = {
+    recurrente: 'var(--primary)',
+    extraordinario: 'var(--info)',
+    sin: 'var(--line-strong)'
+  };
+</script>
+
+{#if buckets.length === 0}
+  <p class="audit-note">No hay gasto en este periodo.</p>
+{:else}
+  <figure class="naturestack">
+    <svg viewBox="0 0 {layout.width} {layout.height}" role="img"
+      aria-label="Gasto apilado por naturaleza y línea de ahorro">
+      {#each layout.ticks as tick (tick.value)}
+        <line x1={layout.plot.left} x2={layout.plot.right} y1={tick.y} y2={tick.y} stroke="var(--line)" />
+        <text class="naturestack-tick" x={layout.plot.left - 8} y={tick.y + 4} text-anchor="end">{tick.label}</text>
+      {/each}
+      {#each layout.groups as group (group.label)}
+        {#each group.segments as segment (segment.nature)}
+          <rect x={segment.bar.x} y={segment.bar.y} width={segment.bar.width} height={segment.bar.height} rx="2"
+            fill={NATURE_FILL[segment.nature] ?? 'var(--line-strong)'} />
+        {/each}
+        <text class="naturestack-tick" x={group.centerX} y={layout.height - 6} text-anchor="middle">{group.label}</text>
+      {/each}
+      <polyline points={layout.savings.map((point) => `${point.x},${point.y}`).join(' ')}
+        fill="none" stroke="var(--ink)" stroke-width="2" stroke-linejoin="round" />
+      {#each layout.savings as point, index (index)}
+        <circle cx={point.x} cy={point.y} r="2.5" fill="var(--ink)" />
+      {/each}
+    </svg>
+    <figcaption class="naturestack-legend">
+      <span><i class="dot recurrente" aria-hidden="true"></i>Recurrente</span>
+      <span><i class="dot extraordinario" aria-hidden="true"></i>Extraordinario</span>
+      <span><i class="dot sin" aria-hidden="true"></i>Sin clasificar</span>
+      <span><i class="dot ahorro" aria-hidden="true"></i>Ahorro</span>
+    </figcaption>
+    <table class="sr-only">
+      <caption>Gasto por naturaleza y ahorro, por periodo</caption>
+      <thead><tr><th>Periodo</th><th>Recurrente</th><th>Extraordinario</th><th>Sin clasificar</th><th>Ahorro</th></tr></thead>
+      <tbody>
+        {#each buckets as bucket (bucket.bucket)}
+          <tr>
+            <td>{bucket.bucket}</td>
+            <td>{formatCents(bucket.recurringCents.toString())}</td>
+            <td>{formatCents(bucket.extraordinaryCents.toString())}</td>
+            <td>{formatCents(bucket.unclassifiedCents.toString())}</td>
+            <td>{formatCents(bucket.savingsCents.toString())}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  </figure>
+{/if}
+
+<style>
+  .naturestack { margin: 0; }
+  .naturestack svg { width: 100%; height: auto; }
+  .naturestack-tick { font-size: var(--text-micro); fill: var(--ink-faint); }
+  .naturestack-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-2); color: var(--ink-soft); font-size: var(--text-meta); }
+  .naturestack-legend span { display: inline-flex; align-items: center; gap: var(--space-1); }
+  .dot { width: .6em; height: .6em; border-radius: var(--r-full); }
+  .dot.recurrente { background: var(--primary); }
+  .dot.extraordinario { background: var(--info); }
+  .dot.sin { background: var(--line-strong); }
+  .dot.ahorro { background: var(--ink); }
+</style>
+```
+
+Los nombres de campo (`segment.nature`, `group.segments`, `bucket.recurringCents`…) los fija `natureStackLayout` en la Task 3: ábrela y usa los suyos si difieren; la geometría manda sobre este dibujo.
 - [ ] **Step 4: CategoryBars.svelte.**
 
 ```svelte
@@ -2615,7 +3133,7 @@ Ojo con el orden de parámetros del primer test (`apiQuery` primero, `household`
 </style>
 ```
 
-- [ ] **Step 5: Verifica tokens y tipos.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check` — cero errores de svelte-check y cero violaciones del linter de tokens (si el linter acusa una longitud, sustitúyela por el token `--space-*`/`--text-*` más cercano).
+- [ ] **Step 5: Verifica tokens, tipos y movimiento.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check` — cero errores de svelte-check y cero violaciones del linter de tokens (si el linter acusa una longitud, sustitúyela por el token `--space-*`/`--text-*` más cercano). Después, `grep -rn "transition\|animation" apps/web/src/lib/components/finance` — cada coincidencia debe estar dentro de un bloque `@media (prefers-reduced-motion: reduce)` o tener uno que la anule; lo esperable aquí es salida vacía.
 - [ ] **Step 6: Commit.** `git add apps/web/src/lib/components/finance && git commit -m "feat(finanzas): graficas SVG artesanales con tokens de la casa"`
 
 ---
@@ -2623,32 +3141,77 @@ Ojo con el orden de parámetros del primer test (`apiQuery` primero, `household`
 ### Task 11: FinanceFilterBar, LedgerTable y FinanceDetailPanel
 
 **Files:**
-- Create: `apps/web/src/lib/components/finance/modal-dialog.ts`
+- Create: `apps/web/src/lib/components/modal-dialog.ts` (no es específico de finanzas: vive con el resto de componentes)
+- Modify: `apps/web/src/lib/components/AppShell.svelte` (pasa a importar la acción de ahí en vez de declararla)
 - Create: `apps/web/src/lib/components/finance/FinanceFilterBar.svelte`
 - Create: `apps/web/src/lib/components/finance/LedgerTable.svelte`
 - Create: `apps/web/src/lib/components/finance/FinanceDetailPanel.svelte`
 
 **Interfaces:**
-- Consumes: `mergeFilters`, `presetRanges`, `rangeLabel`, `shiftRange`, `todayLocal` de `$lib/finance/filters`; `financeApi`, `FinanceDetailMode` de `$lib/finance/api`; `formatCents`, `dateLabel`, `summarizeTxs` de `$lib/finance/format`; `import type { FinanceTxDto } from '@casa-clara/server'`; el patrón `modalDialog` de `apps/web/src/lib/components/AppShell.svelte` (líneas 137–183: cópialo tal cual a `modal-dialog.ts`, exportado, con un comentario que lo diga).
-- Produces: `FinanceFilterBar { filters: FinanceFilters; accounts: { id: string; name: string; kind: string }[] }` · `LedgerTable { rows: FinanceTxDto[]; eventNameById: Record<string, string>; onOpen: (tx: FinanceTxDto) => void }` · `FinanceDetailPanel { mode: FinanceDetailMode | null; householdId: string; live?: boolean; onClose: () => void }` · `export const modalDialog: Action<HTMLElement, { onClose: () => void }>`.
+- Consumes: `mergeFilters`, `presetRanges`, `rangeLabel`, `shiftRange`, `todayLocal` de `$lib/finance/filters`; `financeApi`, `FinanceDetailMode` de `$lib/finance/api`; `formatCents`, `dateLabel`, `summarizeTxs` de `$lib/finance/format`; `import type { FinanceTxDto } from '@casa-clara/server'`; la acción `modalDialog`, hoy declarada dentro de `apps/web/src/lib/components/AppShell.svelte` (líneas 137–182, comentario de cabecera incluido).
+- Produces: `FinanceFilterBar { filters: FinanceFilters; accounts: { id: string; name: string; kind: string }[] }` · `LedgerTable { rows: FinanceTxDto[]; eventNameById: Record<string, string>; onOpen: (tx: FinanceTxDto) => void }` · `FinanceDetailPanel { mode: FinanceDetailMode | null; householdId: string; live?: boolean; onClose: () => void }` · `export const modalDialog: Action<HTMLElement, { onClose: () => void }>` en `$lib/components/modal-dialog.ts`.
 
 **Pasos:**
 
-- [ ] **Step 1: `modal-dialog.ts`.** Copia LITERAL de la acción `modalDialog` del AppShell (foco inicial, ciclo de Tab, Escape cierra, bloqueo de scroll, foco de vuelta), con cabecera:
+- [ ] **Step 1: `modal-dialog.ts` (mover, no duplicar).** La acción sostiene toda la accesibilidad del panel (foco inicial, ciclo de Tab, Escape cierra, bloqueo de scroll del fondo, foco de vuelta) y de ella depende el `page.keyboard.press('Escape')` del e2e de la Task 13. Se MUEVE del AppShell a un módulo propio y ambos la consumen: dos copias divergirían y habría que corregirlas a la vez. Crea `apps/web/src/lib/components/modal-dialog.ts` con el cuerpo tal cual está hoy en el AppShell:
 
 ```ts
 import { tick } from 'svelte';
 import type { Action } from 'svelte/action';
 
 /**
- * El patrón modalDialog del AppShell (§8 de la spec ordena reutilizarlo),
- * extraído para los diálogos del módulo Finanzas. Si el AppShell lo corrige,
- * corrige aquí lo mismo: es el mismo contrato de accesibilidad.
+ * Diálogo accesible mínimo: foco inicial, ciclo de Tab dentro del nodo,
+ * Escape cierra, bloqueo de scroll del fondo y foco de vuelta al disparador.
+ * Vivía en AppShell.svelte; se extrae aquí porque el módulo Finanzas usa el
+ * mismo contrato (§8 de la spec ordena reutilizarlo) y una segunda copia se
+ * quedaría atrás en la primera corrección.
  */
 export const modalDialog: Action<HTMLElement, { onClose: () => void }> = (node, options) => {
-  /* …cuerpo idéntico al de AppShell.svelte… */
+  const previous = document.activeElement as HTMLElement | null;
+  const focusables = () =>
+    Array.from(
+      node.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
+      )
+    );
+  void tick().then(() => {
+    (node.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0] ?? node).focus();
+  });
+  const onKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      options.onClose();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const items = focusables();
+    if (items.length === 0) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    const current = document.activeElement;
+    if (event.shiftKey && (current === first || current === node)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && current === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+  node.addEventListener('keydown', onKeydown);
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  return {
+    destroy() {
+      node.removeEventListener('keydown', onKeydown);
+      document.body.style.overflow = previousOverflow;
+      previous?.focus?.();
+    }
+  };
 };
 ```
+
+Y en `AppShell.svelte`: borra el bloque `const modalDialog = …` con su comentario (líneas 137–182), añade `import { modalDialog } from './modal-dialog';` junto a `import NavIcon from './NavIcon.svelte';`, y limpia los imports que quedan huérfanos —`tick` de `svelte` (pasa a `import { onMount, type Snippet } from 'svelte';`) y la línea entera `import type { Action } from 'svelte/action';`—. Sus tres `use:modalDialog={{ onClose: … }}` siguen igual. `apps/web/src/lib/components/modal-dialog.ts` NO está bajo `$lib/finance/`, así que el presupuesto de arranque de Hoy (Task 14) no se mueve.
 
 - [ ] **Step 2: FinanceFilterBar.svelte.** Porta `FilterBar.tsx` del origen al idioma de la casa (chips y botones de `app.css`, `goto` con merge no destructivo):
 
@@ -2813,7 +3376,7 @@ export const modalDialog: Action<HTMLElement, { onClose: () => void }> = (node, 
   import type { FinanceTxDto } from '@casa-clara/server';
   import { financeApi, type FinanceDetailMode } from '$lib/finance/api';
   import { dateLabel, formatCents, summarizeTxs } from '$lib/finance/format';
-  import { modalDialog } from './modal-dialog';
+  import { modalDialog } from '$lib/components/modal-dialog';
 
   let { mode, householdId, live = true, onClose }: {
     mode: FinanceDetailMode | null;
@@ -2959,8 +3522,8 @@ export const modalDialog: Action<HTMLElement, { onClose: () => void }> = (node, 
 </style>
 ```
 
-- [ ] **Step 5: Verifica.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check`
-- [ ] **Step 6: Commit.** `git add apps/web/src/lib/components/finance && git commit -m "feat(finanzas): barra de filtros, ledger de lectura y panel de detalle accesible"`
+- [ ] **Step 5: Verifica.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e && pnpm --filter @casa-clara/web test:a11y` — el `check` cubre la extracción de `modalDialog` (si quedó un import huérfano en `AppShell.svelte`, sale aquí) y las suites existentes confirman que los tres diálogos del AppShell siguen comportándose igual tras el movimiento.
+- [ ] **Step 6: Commit.** `git add apps/web/src/lib/components/finance apps/web/src/lib/components/modal-dialog.ts apps/web/src/lib/components/AppShell.svelte && git commit -m "feat(finanzas): barra de filtros, ledger de lectura y panel de detalle accesible"`
 
 ---
 
@@ -2995,12 +3558,21 @@ test('admin en modo fixture: el Dashboard de Finanzas pinta KPIs, flujo de caja 
   await expect(page.getByRole('heading', { name: 'Top proveedores' })).toBeVisible();
 });
 
-test('la empleada no alcanza Finanzas: fail-closed con 404', async ({ page }) => {
+test('la empleada no alcanza Finanzas: 403 en ruta declarada sin capacidad', async ({ page }) => {
   await loginAs(page, 'employee');
   const response = await page.goto(`/h/${HOUSEHOLD}/finanzas`);
+  expect(response?.status()).toBe(403);
+  await expect(page.locator('body')).toContainText('no está incluida en tu acceso');
+});
+
+test('una ruta hija inventada de Finanzas sí es 404', async ({ page }) => {
+  await loginAs(page, 'admin');
+  const response = await page.goto(`/h/${HOUSEHOLD}/finanzas/inventada`);
   expect(response?.status()).toBe(404);
 });
 ```
+
+Este fichero lo CREA esta tarea; la fase 7 lo **amplía** al final (nunca lo reescribe). Los dos códigos son el contrato canónico del doc de interfaces: **403** cuando la ruta está declarada en `HOUSEHOLD_MODULES`/`MODULE_CAPABILITY` y falta la capacidad (`+layout.server.ts` de fase 1 lanza `error(403, 'Esta parte la lleva la familia.')`, y `+error.svelte` pinta «no está incluida en tu acceso»); **404** solo para una ruta hija que no existe.
 
 - [ ] **Step 2: Falla.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — el primer test falla (la página esqueleto no tiene `.finance-kpis`).
 - [ ] **Step 3: Load.** Sustituye el contenido de `finanzas/+page.server.ts` (calca el patrón de `employment/+page.server.ts`):
@@ -3060,6 +3632,16 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 
   const movementsHref = (categoryId: string): string =>
     `${base}/movimientos?${mergeParams(page.url.searchParams, { cat: categoryId })}`;
+
+  // El rótulo sigue a la granularidad: el load pide 12 cubos, no 12 meses
+  // (SERIES_MONTHS en finance.server.ts). «Últimos 12 periodos» a secas mentiría
+  // en cuanto el usuario cambiara a trimestres o años.
+  const SERIES_LABEL = {
+    month: 'Últimos 12 meses',
+    quarter: 'Últimos 12 trimestres',
+    year: 'Últimos 10 años'
+  } as const;
+  const seriesLabel = $derived(SERIES_LABEL[dashboard.filters.granularity]);
 </script>
 
 {#snippet delta(nowCents: string, prevCents: string | undefined, invert: boolean)}
@@ -3124,7 +3706,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
     </section>
 
     <article class="card">
-      <div class="section-heading"><div><p class="eyebrow">Últimos 12 periodos</p><h2>Flujo de caja</h2></div></div>
+      <div class="section-heading"><div><p class="eyebrow">{seriesLabel}</p><h2>Flujo de caja</h2></div></div>
       <CashflowChart buckets={cashflowBuckets} />
     </article>
 
@@ -3159,7 +3741,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 </style>
 ```
 
-- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — los dos tests pasan. Si el test de la empleada devuelve otro código, mira qué hace el guard de fase 1 en `src/lib/auth/routing.ts` y ajusta LA ASERCIÓN al comportamiento fail-closed real (404), nunca el guard.
+- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — los tres tests pasan. Si el de la empleada NO devuelve 403, el fallo está en el guard, no en la aserción: comprueba que la fase 1 declaró `finanzas` en `HOUSEHOLD_MODULES` y `MODULE_CAPABILITY` (`src/lib/auth/routing.ts`) y que `h/[householdId]/+layout.server.ts` lanza `error(403, 'Esta parte la lleva la familia.')` ante capacidad ausente. Un 404 ahí significa que la ruta no está declarada: arregla el guard, no el test. El 404 solo lo firma la ruta hija inexistente.
 - [ ] **Step 6: Commit.** `git add apps/web/src/routes/h/\[householdId\]/finanzas/+page.server.ts apps/web/src/routes/h/\[householdId\]/finanzas/+page.svelte apps/web/e2e/finanzas.e2e.ts && git commit -m "feat(finanzas): dashboard real con KPIs, deltas, flujo de caja y desglose"`
 
 ---
@@ -3321,7 +3903,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 </style>
 ```
 
-- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — los tres tests del spec pasan.
+- [ ] **Step 5: En verde.** `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e finanzas.e2e.ts` — los cuatro tests del spec pasan (los tres de la Task 12 más el de Movimientos que añade esta tarea).
 - [ ] **Step 6: Commit.** `git add apps/web/src/routes/h/\[householdId\]/finanzas/movimientos apps/web/e2e/finanzas.e2e.ts && git commit -m "feat(finanzas): movimientos con filtros locales, paginacion explicita y panel de detalle"`
 
 ---
@@ -3333,7 +3915,9 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
 
 **Interfaces:**
 - Consumes: todos los productos de las tareas 1–13.
-- Produces: rama en verde. Las specs nuevas quedan cableadas a CI SIN tocar `.github/workflows/ci.yml`: `finance-*.test.ts` caen en el glob del job «Unit and domain tests» y «Server, web and worker integration» (`pnpm test` / `pnpm --filter … test`), `queries.integration.test.ts` en el job de integración (que exporta `TEST_DATABASE_URL`), y `finanzas.e2e.ts` en el project `e2e` de Playwright del job «E2E and axe (fixture mode)»; `assert-suite-coverage.py` verificará que todas corrieron.
+- Produces: rama en verde. Cableado a CI, con una excepción declarada:
+  - `apps/web/tests/finance-*.test.ts` entran en el inventario del gate por el glob `apps/web::tests/*.test.ts` de `assert-suite-coverage.py`, y `apps/web/e2e/finanzas.e2e.ts` por el project `e2e` de Playwright del job «E2E and axe (fixture mode)». Estos SÍ quedan cubiertos sin tocar `.github/workflows/ci.yml`.
+  - `packages/server/src/finance/queries.test.ts` y `queries.integration.test.ts` **corren** en los jobs de `packages/server` (el de integración exporta `TEST_DATABASE_URL`), pero **no entran en el inventario del gate**: `assert-suite-coverage.py` se invoca con `--specs 'packages/server::src/*.test.ts'` (ci.yml, línea 321) y ese glob sin `**` no desciende a subdirectorios, así que `src/finance/*.test.ts` se le escapa. No lo arregles aquí: ampliar ese glob en `ci.yml` es tarea de la fase 7 (su plan lo documenta y lo tapa). Deja constancia en el commit de cierre si quieres, pero esta fase no toca `ci.yml`.
 
 **Pasos:**
 

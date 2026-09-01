@@ -27,7 +27,9 @@
 - Suites de BD en secuencia (bases/roles de nombre fijo); Postgres local 18.4 en Docker para db-tests/dbe2e; PRODUCCIÓN (Supabase) prohibida en fases 1–6; en fase 7 solo con confirmación explícita de Alberto.
 - Gates de la rama: `pnpm lint`, `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm test:db`, `pnpm test:rls` deben quedar en verde al cerrar cada tarea que los afecte.
 
-**Nota de coexistencia con la fase 1 (aplica a las tareas 1, 2 y 6):** la fase 1 dejó en `packages/contracts` el valor `"finance"` en el enum de `aggregateType`, y en `packages/server/src/commands/finance.ts` el helper `requireFinanceAdmin` y el manejo de `finance.grant.write`/`finance.revoke.write`. Ese código NO se toca: estas tareas AÑADEN kinds nuevos. Donde un paso diga «si ya existe X», compruébalo con el `grep` indicado y aplica solo la rama que corresponda.
+**Nota de coexistencia con la fase 1 (aplica a las tareas 1, 2, 6, 7 y 10–13):** la fase 1 dejó en `packages/contracts` el valor `"finance"` en el enum de `aggregateType`; en `packages/server/src/commands/finance.ts` el helper `requireFinanceAdmin` y el manejo de `finance.grant.write`/`finance.revoke.write` (con su registro en sync); y en `apps/web` los ficheros `src/lib/finance/commands.ts` (`grantFinanceAccess`/`revokeFinanceAccess`) y `tests/finance-commands.test.ts`. **Ninguna lógica de la fase 1 se borra ni se reescribe**: la Task 2 solo MUEVE el cuerpo de grant/revoke a una función con nombre para poder anteponerle el dispatcher, y las tareas 7 y 10–13 AÑADEN al final de ficheros que ya existen. Donde un paso diga «si ya existe X», compruébalo con el `grep` indicado y aplica solo la rama que corresponda.
+
+**Nota de fronteras (fases 4 y 6):** los símbolos del dominio de finanzas se importan SIEMPRE por el subpath `@casa-clara/domain/finance` (la raíz no los reexporta); la SQL de lectura vive en `packages/server/src/finance/queries.ts` o en `apps/web/src/lib/server/finance.server.ts`, nunca dentro de un `+page.server.ts`; y los ficheros compartidos que esta fase MODIFICA en vez de crear son `apps/web/src/lib/finance/commands.ts`, `apps/web/tests/finance-commands.test.ts`, `packages/server/src/finance/queries.ts`, `apps/web/src/lib/server/finance.server.ts`, `apps/web/src/lib/server/fixtures.server.ts` y `apps/web/src/lib/components/finance/LedgerTable.svelte`. Esta fase SÍ crea `apps/web/e2e/finanzas-importar.dbe2e.ts` (la fase 7 solo le añade casos).
 
 **Nota de CI:** ningún fichero de esta fase necesita tocar `.github/workflows/ci.yml`: los tests nuevos caen dentro de globs ya cableados (`packages/contracts` y `apps/web` corren con `pnpm -r test`; `packages/server::src/*.test.ts`, `apps/web::tests/*.test.ts` y `apps/web/e2e::*.dbe2e.ts` están inventariados por `assert-suite-coverage.py`).
 
@@ -46,6 +48,11 @@
   - `financeWritePayloadSchema` — `z.discriminatedUnion("kind", […22 esquemas])`, exportado de `@casa-clara/contracts/schemas`.
   - Un esquema exportado por comando: `financeAccountUpdatePayloadSchema`, `financeCategoryCreatePayloadSchema`, `financeCategoryUpdatePayloadSchema`, `financeCategoryDeletePayloadSchema`, `financeCategoryAssignConceptPayloadSchema`, `financeRuleCreatePayloadSchema`, `financeRuleDeletePayloadSchema`, `financeTransactionUpdatePayloadSchema`, `financeTransactionsBulkPayloadSchema`, `financeAssignConceptRecurrencePayloadSchema`, `financeManualCreatePayloadSchema`, `financeManualDeletePayloadSchema`, `financeTransactionInvestPayloadSchema`, `financeTransfersLinkPayloadSchema`, `financeTransfersUnlinkPayloadSchema`, `financeEventCreatePayloadSchema`, `financeEventUpdatePayloadSchema`, `financeEventDeletePayloadSchema`, `financeEventAssignTransactionsPayloadSchema`, `financeEventAssignConceptPayloadSchema`, `financeAliasUpdatePayloadSchema`, `financeImportUndoPayloadSchema`.
   - Tipos TS: `FinanceWritePayloadV1` (unión) y una interfaz por payload (mismo nombre con sufijo `PayloadV1`), exportados de `@casa-clara/contracts`.
+- Nombres de campo CANÓNICOS (esta tarea es la productora del contrato; la fase 6 los replica tal cual, resoluciones 5 del doc de interfaces):
+  - `finance.transactions.bulk` → `{ kind, transactionIds, categoryId?, status? }`. Nunca `txIds`; `status` es opcional (se puede cambiar solo la categoría en bloque) y NO existen `addEventId` ni `recurrence` aquí.
+  - `finance.transaction.invest` → `{ kind, transactionId, accountId }`. Nunca `txId`.
+  - Añadir/quitar evento en bloque → `finance.event.assignTransactions` `{ kind, eventId, transactionIds, action: 'add'|'remove' }`; fijar la naturaleza en bloque → `finance.transactions.assignConceptRecurrence`.
+- `financeCategoryCreatePayloadSchema` admite solo `categoryKind: 'gasto' | 'ingreso'` a propósito: la única raíz `kind='transferencia'` del hogar la siembra la fase 1 al conceder Finanzas por primera vez (resolución 7 del doc de interfaces), y no se crea ni se borra por comando.
 
 - [ ] **Step 1: Verifica que el enum de `aggregateType` incluye `"finance"`**
 
@@ -65,6 +72,7 @@ import { describe, expect, it } from "vitest";
 import {
   financeManualCreatePayloadSchema,
   financeTransactionUpdatePayloadSchema,
+  financeTransactionsBulkPayloadSchema,
   financeTransfersLinkPayloadSchema,
   financeWritePayloadSchema,
 } from "./schemas.js";
@@ -110,6 +118,22 @@ describe("payloads de escritura de finanzas", () => {
       financeTransfersLinkPayloadSchema.safeParse({
         kind: "finance.transfers.link",
         transactionIds: [TX, "ab300000-0000-4000-8000-000000000002"],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("el bloque acepta cambiar solo la categoría, con el estado ausente", () => {
+    const parsed = financeTransactionsBulkPayloadSchema.parse({
+      kind: "finance.transactions.bulk",
+      transactionIds: [TX],
+      categoryId: CAT,
+    });
+    expect(parsed.status).toBeUndefined();
+    expect(
+      financeTransactionsBulkPayloadSchema.safeParse({
+        kind: "finance.transactions.bulk",
+        transactionIds: [TX],
+        status: "confirmada",
       }).success,
     ).toBe(true);
   });
@@ -208,11 +232,15 @@ export const financeTransactionUpdatePayloadSchema = z.object({
   eventIds: z.array(uuidSchema).max(50).optional(),
 });
 
+// `status` es OPCIONAL a propósito: el pivot de la fase 6 cambia solo la
+// categoría en bloque. Que llegue al menos un campo de cambio (categoría o
+// estado) lo valida el handler (`invalid_payload`), no un refine: la unión
+// discriminada exige objetos planos.
 export const financeTransactionsBulkPayloadSchema = z.object({
   kind: z.literal("finance.transactions.bulk"),
   transactionIds: z.array(uuidSchema).min(1).max(500),
   categoryId: uuidSchema.optional(),
-  status: financeTxStatusSchema,
+  status: financeTxStatusSchema.optional(),
 });
 
 export const financeAssignConceptRecurrencePayloadSchema = z.object({
@@ -378,7 +406,7 @@ export interface FinanceTransactionsBulkPayloadV1 {
   kind: "finance.transactions.bulk";
   transactionIds: UUID[];
   categoryId?: UUID;
-  status: FinanceCommandTxStatus;
+  status?: FinanceCommandTxStatus;
 }
 export interface FinanceAssignConceptRecurrencePayloadV1 {
   kind: "finance.transactions.assignConceptRecurrence";
@@ -456,7 +484,7 @@ export type FinanceWritePayloadV1 =
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/contracts test finance-commands && pnpm --filter @casa-clara/contracts typecheck
 ```
 
-Expected: PASS (5 tests) y typecheck sin errores.
+Expected: PASS (6 tests) y typecheck sin errores.
 
 - [ ] **Step 7: Commit**
 
@@ -471,16 +499,15 @@ git commit -m "feat(finanzas): payloads de los comandos de escritura en contract
 
 **Files:**
 - Modify: `packages/server/src/commands/finance.ts` (existe desde fase 1: conserva `requireFinanceAdmin` y grant/revoke)
-- Modify: `packages/server/src/index.ts` (export)
-- Modify: `apps/web/src/routes/api/v1/sync/+server.ts` (registro)
+- Verify (no se editan, la fase 1 ya los dejó listos): `packages/server/src/index.ts` (export) y `apps/web/src/routes/api/v1/sync/+server.ts` (registro `...financeCommandHandlers`)
 - Test: `packages/server/src/finance-review.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `financeWritePayloadSchema` y tipos de la Task 1; `requireFinanceAdmin` (fase 1, doc de interfaces: verifica rol admin + concesión viva dentro de la transacción; llámalo con `await requireFinanceAdmin(client, membership)` y, si su firma de fase 1 pide además `envelope.householdId`, pásaselo — el contrato es que LANZA si no procede); `runPostImportPipeline(client: PoolClient, householdId: string): Promise<PipelineReport>` (fase 2, `packages/server/src/finance/pipeline.ts`); `CommandRejectedError`, `CommandHandler` de `../sync.js`.
+- Consumes: `financeWritePayloadSchema` y tipos de la Task 1; `requireFinanceAdmin` (fase 1) con su firma real y única: `async function requireFinanceAdmin(client: PoolClient, membership: ActiveMembership): Promise<void>` — verifica rol admin + concesión viva dentro de la transacción autorizada y LANZA `CommandRejectedError('not_allowed' | 'finance_not_granted')`; se llama siempre `await requireFinanceAdmin(client, membership)`, sin `householdId`; `runPostImportPipeline(client: PoolClient, householdId: string): Promise<PipelineReport>` (fase 2, `packages/server/src/finance/pipeline.ts`); `CommandRejectedError`, `CommandHandler` de `../sync.js`.
 - Produces:
   - `export const financeCommandHandler: CommandHandler` — despacha por `payload.kind`; los kinds de fase 1 (`finance.grant.write`/`finance.revoke.write`) siguen atendidos por su código de fase 1.
   - `export function financeNormText(value: string): string` y `export function financeNormConcept(value: string): string` (los reutilizan las tareas 4, 5 y 6).
-  - Helpers internos del fichero que las tareas 3–5 reutilizan: `requireFinanceTransaction(client, householdId, transactionId): Promise<FinanceTxRow>` (lanza `finance_transaction_not_found`; `FinanceTxRow` = `{ id, account_id, category_id, status, concept, provider, amount_cents (text), transfer_group_id, dedup_hash, batch_id, op_date }`), `requireFinanceCategory(client, householdId, categoryId): Promise<{ id: string; kind: string; parent_id: string | null }>` (lanza `finance_category_not_found`), `transferCategoryId(client, householdId): Promise<string>` (lanza `finance_category_not_found`), `matchingFinanceTxIds(client, householdId, selector: { provider?: string; concept?: string; categoryId?: string }): Promise<string[]>` (lanza `finance_selector_required`).
+  - Helpers internos del fichero que las tareas 3–5 reutilizan: `requireFinanceTransaction(client, householdId, transactionId): Promise<FinanceTxRow>` (lanza `finance_transaction_not_found`; `FinanceTxRow` = `{ id, account_id, category_id, status, concept, provider, amount_cents (text), transfer_group_id, dedup_hash, batch_id, op_date }`), `requireFinanceCategory(client, householdId, categoryId): Promise<{ id: string; kind: string; parent_id: string | null }>` (lanza `finance_category_not_found`), `transferCategoryId(client, householdId): Promise<string>` (lanza `finance_category_not_found`), `matchingFinanceTxIds(client, householdId, selector: { provider?: string; concept?: string; categoryId?: string }): Promise<string[]>` (lanza `finance_selector_required`). ⚠️ En ese selector `categoryId` es el filtro de ORIGEN (los movimientos que YA están en esa categoría o en sus hijas), nunca el destino: lo usan `finance.event.assignConcept` y `finance.transactions.assignConceptRecurrence`. Quien tenga un `categoryId` de destino (p. ej. `finance.category.assignConcept`) debe llamar con `{ provider, concept }` explícitos.
 
 - [ ] **Step 1: Escribe el test de integración que falla**
 
@@ -655,6 +682,18 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
     expect((await txRow(FIN.txPend2)).status).toBe("confirmada");
   });
 
+  it("en bloque se puede cambiar solo la categoría, sin tocar el estado", async () => {
+    const ack = await run(ADMIN, {
+      kind: "finance.transactions.bulk",
+      transactionIds: [FIN.txPend2],
+      categoryId: FIN.catRoot,
+    });
+    expect(ack.status).toBe("accepted");
+    const row = await txRow(FIN.txPend2);
+    expect(row.category_id).toBe(FIN.catRoot);
+    expect(row.status).toBe("confirmada"); // el caso anterior ya lo confirmó: el bloque no lo revierte
+  });
+
   it("fija la naturaleza en bloque por proveedor y marca el override manual", async () => {
     const ack = await run(ADMIN, {
       kind: "finance.transactions.assignConceptRecurrence",
@@ -697,14 +736,36 @@ Expected: FAIL — o bien `financeCommandHandler` no exportado, o bien los ack l
 
 - [ ] **Step 3: Implementación — helpers y handlers en `commands/finance.ts`**
 
-Comprueba primero cómo dejó la fase 1 el fichero: `grep -n "grant" packages/server/src/commands/finance.ts`. Si ya exporta un `CommandHandler` con `switch` por `kind`, añade dentro los `case` nuevos y estas funciones; si los dos kinds de fase 1 viven en funciones sueltas, crea el `financeCommandHandler` de abajo delegando en ellas para esos dos kinds. Añade (imports arriba, resto al final del fichero):
+La fase 1 dejó en este fichero `export const financeCommandHandler: CommandHandler` con la lógica de conceder/revocar EN LÍNEA: primero `financeCommandPayloadSchema.safeParse(envelope.payload)` (un esquema que solo conoce `finance.grant.write`/`finance.revoke.write`), luego `requireAccessManagingAdmin(membership)` y un `switch` con esos dos kinds; y `export const financeCommandHandlers: CommandHandlers = { finance: financeCommandHandler }`. Localiza ese cuerpo con `grep -n "financeCommandHandler" -A 30 packages/server/src/commands/finance.ts`.
+
+Haz exactamente esto, sin alternativas:
+
+1. **Extrae** el cuerpo actual del handler a una función privada nueva, sin tocar su contenido (conserva su `financeCommandPayloadSchema`, su `requireAccessManagingAdmin` y sus dos `case`):
+
+```ts
+/** [FASE 1] Concesión y revocación del módulo: puerta `access.manage`, no
+ * `requireFinanceAdmin` (quien concede todavía no tiene concesión). Cuerpo
+ * movido tal cual desde el `financeCommandHandler` original. */
+async function handleFinanceGrantCommand(
+  client: PoolClient,
+  membership: ActiveMembership,
+  envelope: CommandEnvelopeV1,
+): Promise<unknown> {
+  // …aquí va, sin cambios, lo que la fase 1 tenía dentro de financeCommandHandler…
+}
+```
+
+2. **Sustituye** el cuerpo de `financeCommandHandler` por el dispatcher del final de este paso (delega en `handleFinanceGrantCommand` los dos kinds de fase 1 y exige `requireFinanceAdmin` para todos los demás).
+3. `financeCommandHandlers` NO se toca: sigue apuntando al mismo `financeCommandHandler`, ya ampliado.
+
+Añade (imports arriba, resto al final del fichero):
 
 ```ts
 import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { CommandEnvelopeV1, UUID } from "@casa-clara/contracts";
 import { financeWritePayloadSchema } from "@casa-clara/contracts/schemas";
 import type {
   FinanceAssignConceptRecurrencePayloadV1,
@@ -712,6 +773,7 @@ import type {
   FinanceTransactionsBulkPayloadV1,
 } from "@casa-clara/contracts";
 
+import type { ActiveMembership } from "../database.js";
 import { runPostImportPipeline } from "../finance/pipeline.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";
 
@@ -919,12 +981,17 @@ async function bulkUpdateFinanceTransactions(
   householdId: UUID,
   payload: FinanceTransactionsBulkPayloadV1,
 ): Promise<Record<string, never>> {
+  // `status` es opcional (el pivot de la fase 6 cambia solo la categoría), pero
+  // un bloque sin ningún cambio es un payload inválido: se rechaza aquí.
+  if (payload.categoryId === undefined && payload.status === undefined) {
+    throw new CommandRejectedError("invalid_payload", "El cambio en bloque necesita categoría o estado");
+  }
   if (payload.categoryId) await requireFinanceCategory(client, householdId, payload.categoryId);
   const result = await client.query(
     `update app.finance_transactions
-        set status = $3, category_id = coalesce($4::uuid, category_id)
+        set status = coalesce($3, status), category_id = coalesce($4::uuid, category_id)
       where household_id = $1 and id = any($2::uuid[])`,
-    [householdId, payload.transactionIds, payload.status, payload.categoryId ?? null],
+    [householdId, payload.transactionIds, payload.status ?? null, payload.categoryId ?? null],
   );
   if ((result.rowCount ?? 0) === 0) {
     throw new CommandRejectedError("finance_transaction_not_found", "Ningún movimiento de la selección existe");
@@ -950,18 +1017,18 @@ async function assignConceptRecurrence(
 }
 ```
 
-Y el dispatcher (o los `case` añadidos al existente):
+Y el cuerpo NUEVO de `financeCommandHandler` (sustituye al que dejó la fase 1, cuyo contenido acaba de mudarse a `handleFinanceGrantCommand`):
 
 ```ts
 /**
  * `finance`: todas las escrituras del módulo, discriminadas por `payload.kind`.
- * grant/revoke (fase 1) conservan su camino; el resto exige rol admin +
- * concesión viva vía requireFinanceAdmin dentro de la transacción autorizada.
+ * grant/revoke (fase 1) conservan su puerta `access.manage`; TODO lo demás
+ * exige rol admin + concesión viva vía requireFinanceAdmin dentro de la
+ * transacción autorizada. Un kind nuevo entra por aquí y hereda ese cerrojo.
  */
 export const financeCommandHandler: CommandHandler = async (client, membership, envelope) => {
   const rawKind = (envelope.payload as { kind?: unknown } | null)?.kind;
   if (rawKind === "finance.grant.write" || rawKind === "finance.revoke.write") {
-    // [FASE 1] delega aquí en el manejo existente de concesiones, tal cual lo dejó la fase 1.
     return handleFinanceGrantCommand(client, membership, envelope);
   }
   const parsed = financeWritePayloadSchema.safeParse(envelope.payload);
@@ -983,30 +1050,16 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
 };
 ```
 
-(`handleFinanceGrantCommand` es el nombre que tenga la lógica de fase 1 en el fichero — localízala con el grep del inicio del paso y usa su nombre real; si la fase 1 ya exportaba el dispatcher, no crees uno nuevo: añade los `case`.)
+- [ ] **Step 4: Verifica el export y el registro (ya existen desde la fase 1)**
 
-- [ ] **Step 4: Exporta y registra**
+La fase 1 dejó `export * from "./commands/finance.js";` en `packages/server/src/index.ts` y el registro `...financeCommandHandlers,` en el mapa `handlers` de `apps/web/src/routes/api/v1/sync/+server.ts`. Como `financeCommandHandlers` apunta al mismo `financeCommandHandler` que esta tarea acaba de ampliar, **no hay nada que tocar en esos dos ficheros**: solo se comprueba que siguen ahí.
 
-En `packages/server/src/index.ts`, si `grep -n "commands/finance" packages/server/src/index.ts` no da resultado, añade en orden alfabético:
-
-```ts
-export * from "./commands/finance.js";
+```bash
+grep -n "commands/finance" packages/server/src/index.ts
+grep -n "financeCommandHandlers" "apps/web/src/routes/api/v1/sync/+server.ts"
 ```
 
-En `apps/web/src/routes/api/v1/sync/+server.ts`, si `grep -n "finance" apps/web/src/routes/api/v1/sync/+server.ts` no da resultado: añade `financeCommandHandler` al import de `@casa-clara/server` y la entrada al mapa:
-
-```ts
-const handlers: CommandHandlers = {
-  ...employmentCommandHandlers,
-  ...wikiCommandHandlers,
-  ...foodCommandHandlers,
-  ...rhythmCommandHandlers,
-  ...accessCommandHandlers,
-  ...contactCommandHandlers,
-  expense: submitExpenseHandler,
-  finance: financeCommandHandler
-};
-```
+Expected: una línea en cada uno. Si alguno viniera vacío (la fase 1 no lo dejó), añade `export * from "./commands/finance.js";` en orden alfabético en `index.ts` y `...financeCommandHandlers,` al mapa `handlers` del endpoint de sync, junto a `...contactCommandHandlers,` — nunca una entrada suelta `finance: financeCommandHandler`, que duplicaría el registro.
 
 - [ ] **Step 5: Verde**
 
@@ -1014,12 +1067,12 @@ const handlers: CommandHandlers = {
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-review && pnpm --filter @casa-clara/server typecheck
 ```
 
-Expected: PASS (6 tests).
+Expected: PASS (7 tests).
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add packages/server/src/commands/finance.ts packages/server/src/index.ts packages/server/src/finance-review.integration.test.ts "apps/web/src/routes/api/v1/sync/+server.ts"
+git add packages/server/src/commands/finance.ts packages/server/src/finance-review.integration.test.ts
 git commit -m "feat(finanzas): dispatcher de comandos y escritura de revisión con acuse"
 ```
 
@@ -1032,18 +1085,20 @@ git commit -m "feat(finanzas): dispatcher de comandos y escritura de revisión c
 - Test: `packages/server/src/finance-ledger.integration.test.ts`
 
 **Interfaces:**
-- Consumes (Task 2, mismo fichero): `requireFinanceTransaction`, `requireFinanceCategory`, `transferCategoryId`, `financeNormText`, el `switch` de `financeCommandHandler`; `runPostImportPipeline` (fase 2); tipos `FinanceManualCreatePayloadV1`, `FinanceManualDeletePayloadV1`, `FinanceTransactionInvestPayloadV1`, `FinanceTransfersLinkPayloadV1`, `FinanceTransfersUnlinkPayloadV1` (Task 1).
-- Produces: los `case` `finance.transaction.manual.create`, `finance.transaction.manual.delete`, `finance.transaction.invest`, `finance.transfers.link`, `finance.transfers.unlink` dentro del dispatcher. Deviación deliberada respecto al origen (documentada en el propio código): el manual exige `accountId` (la UI preselecciona «Efectivo» si existe) y NO existe el lote «manual» — un movimiento manual es `batch_id IS NULL` + prefijo `manual-`.
+- Consumes (Task 2, mismo fichero): `requireFinanceTransaction`, `requireFinanceCategory`, `transferCategoryId`, `financeNormText`, el `switch` de `financeCommandHandler`; `runPostImportPipeline` (fase 2); `cashCounterlegFor(expense: FinanceTxView, opts: { cashAccountId: string; efectivoCategoryId: string }): CashCounterleg | null` de `@casa-clara/domain/finance` (fase 2; el subpath es obligatorio — la raíz `@casa-clara/domain` no reexporta finanzas); tipos `FinanceManualCreatePayloadV1`, `FinanceManualDeletePayloadV1`, `FinanceTransactionInvestPayloadV1`, `FinanceTransfersLinkPayloadV1`, `FinanceTransfersUnlinkPayloadV1` (Task 1).
+- Produces: los `case` `finance.transaction.manual.create`, `finance.transaction.manual.delete`, `finance.transaction.invest`, `finance.transfers.link`, `finance.transfers.unlink` dentro del dispatcher, más los helpers `cashAccountId` y `cashCategoryId` del mismo fichero. Deviación deliberada respecto al origen (documentada en el propio código): el manual exige `accountId` (la UI preselecciona «Efectivo» si existe) y NO existe el lote «manual» — un movimiento manual es `batch_id IS NULL` + prefijo `manual-`.
+- **Único productor de la contrapartida de efectivo:** este comando. La fase 2 expone `cashCounterlegFor` declarándola «la consume `finance.transaction.manual.create` de fase 5», y el paso «efectivo» de `runPostImportPipeline` solo recategoriza retiradas de cajero: no inserta ninguna fila `cashpair-`. Por eso `createManualTransaction` la llama explícitamente; sin esto, la doble entrada del efectivo no existiría y el código `finance_cashpair_leg` sería inalcanzable.
 
 - [ ] **Step 1: Escribe el test de integración que falla**
 
-`packages/server/src/finance-ledger.integration.test.ts` — mismo harness y helpers `envelope`/`run`/`txRow` que la Task 3 copia de `finance-review.integration.test.ts` (cópialos: el ejecutor de esta tarea no ve aquella), con esta siembra y casos:
+`packages/server/src/finance-ledger.integration.test.ts` — copia el harness y los helpers `envelope`/`run`/`txRow` del fichero `packages/server/src/finance-review.integration.test.ts` que creó la Task 2 (el ejecutor de esta tarea no ve aquella tarea, pero sí ese fichero en el árbol: ábrelo y cópialos), con esta siembra y casos:
 
 ```ts
 const FIN = {
   accountA: "ac100000-0000-4000-8000-000000000001",
   accountB: "ac100000-0000-4000-8000-000000000002",
   fund: "ac100000-0000-4000-8000-000000000003",
+  cash: "ac100000-0000-4000-8000-000000000004",
   catGasto: "ac200000-0000-4000-8000-000000000001",
   batch: "ac500000-0000-4000-8000-000000000001",
   txImported: "ac300000-0000-4000-8000-000000000001",
@@ -1072,7 +1127,8 @@ INSERT INTO app.finance_accounts
   (household_id, id, name, bank, kind, owner_label, bank_ref, owner_aliases, transfer_refs) VALUES
   ('${HH}', '${FIN.accountA}', 'Cuenta IT Ledger A', 'caixabank', 'comun', 'familia', 'IT-LED-0001', '[]'::jsonb, '[]'::jsonb),
   ('${HH}', '${FIN.accountB}', 'Cuenta IT Ledger B', 'openbank', 'personal', 'padre', 'IT-LED-0002', '[]'::jsonb, '[]'::jsonb),
-  ('${HH}', '${FIN.fund}', 'Fondo IT Ledger', 'openbank', 'inversion', 'familia', 'IT-LED-0003', '[]'::jsonb, '[]'::jsonb);
+  ('${HH}', '${FIN.fund}', 'Fondo IT Ledger', 'openbank', 'inversion', 'familia', 'IT-LED-0003', '[]'::jsonb, '[]'::jsonb),
+  ('${HH}', '${FIN.cash}', 'Efectivo', NULL, 'comun', 'familia', 'IT-LED-CASH', '[]'::jsonb, '[]'::jsonb);
 
 INSERT INTO app.finance_import_batches (household_id, id, filename, bank, new_count, dup_count) VALUES
   ('${HH}', '${FIN.batch}', 'ledger-it.xls', 'caixabank', 1, 0);
@@ -1121,6 +1177,48 @@ Casos (`it(...)`, en este orden):
     expect(gone).toMatchObject({ status: "rejected", errorCode: "finance_transaction_not_found" });
     const imported = await run(ADMIN, { kind: "finance.transaction.manual.delete", transactionId: FIN.txImported });
     expect(imported).toMatchObject({ status: "rejected", errorCode: "finance_not_manual" });
+  });
+
+  it("un gasto manual en la cuenta Efectivo nace con su contrapartida cashpair-", async () => {
+    const ack = await run(ADMIN, {
+      kind: "finance.transaction.manual.create",
+      accountId: FIN.cash,
+      opDate: "2026-08-12",
+      concept: "Cañas del domingo IT",
+      amountCents: "-1500",
+      categoryId: FIN.catGasto,
+    });
+    expect(ack.status).toBe("accepted");
+    const pair = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select account_id, amount_cents::text as amount_cents, status, recurrence_manual, batch_id, concept
+           from app.finance_transactions
+          where household_id = $1
+            and dedup_hash = 'cashpair-' || (
+              select dedup_hash from app.finance_transactions where household_id = $1 and id = $2)`,
+        [HH, ack.resourceId],
+      );
+      return loaded.rows[0];
+    });
+    expect(pair).toMatchObject({
+      account_id: FIN.cash,
+      amount_cents: "1500",
+      status: "confirmada",
+      recurrence_manual: true,
+      batch_id: null,
+    });
+    expect(pair.concept).toBe("Contrapartida efectivo — Cañas del domingo IT");
+    // Y borrar el gasto se lleva su contrapartida por delante (cascada del Step 3).
+    expect((await run(ADMIN, { kind: "finance.transaction.manual.delete", transactionId: ack.resourceId as string })).status).toBe("accepted");
+    const left = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select count(*)::int as n from app.finance_transactions
+          where household_id = $1 and dedup_hash like 'cashpair-%'`,
+        [HH],
+      );
+      return loaded.rows[0].n as number;
+    });
+    expect(left).toBe(0);
   });
 
   it("marca un cargo como inversión creando la pata espejo invmirror-", async () => {
@@ -1185,6 +1283,14 @@ Expected: FAIL — ack `rejected` con `invalid_payload` («Comando de finanzas a
 
 - [ ] **Step 3: Implementación — funciones y `case` en `commands/finance.ts`**
 
+Añade arriba, junto a los imports que dejó la Task 2 (subpath obligatorio: la raíz `@casa-clara/domain` no reexporta finanzas):
+
+```ts
+import { cashCounterlegFor } from "@casa-clara/domain/finance";
+```
+
+Y el resto al final del fichero:
+
 ```ts
 async function requireFinanceAccount(
   client: PoolClient,
@@ -1200,14 +1306,53 @@ async function requireFinanceAccount(
   return row;
 }
 
+/**
+ * Cuenta «Efectivo» del hogar. Se identifica por el nombre normalizado y por
+ * `bank IS NULL`, NUNCA por `bank = 'efectivo'`: el CHECK de 0034 solo admite
+ * los cuatro bancos reales y deja NULL para las cuentas sin banco.
+ */
+async function cashAccountId(client: PoolClient, householdId: UUID): Promise<UUID | null> {
+  const result = await client.query<{ id: string }>(
+    `select id from app.finance_accounts
+      where household_id = $1 and bank is null and lower(name) = 'efectivo' and archived_at is null
+      order by name
+      limit 1`,
+    [householdId],
+  );
+  return (result.rows[0]?.id as UUID | undefined) ?? null;
+}
+
+/** Categoría raíz «Efectivo» (gasto) de la contrapartida; se siembra la primera vez. */
+async function cashCategoryId(client: PoolClient, householdId: UUID): Promise<UUID> {
+  const found = await client.query<{ id: string }>(
+    `select id from app.finance_categories
+      where household_id = $1 and parent_id is null and kind = 'gasto' and lower(name) = 'efectivo'
+      limit 1`,
+    [householdId],
+  );
+  const existing = found.rows[0]?.id;
+  if (existing) return existing as UUID;
+  const inserted = await client.query<{ id: string }>(
+    `insert into app.finance_categories (household_id, name, kind, parent_id)
+     values ($1, 'Efectivo', 'gasto', null) returning id`,
+    [householdId],
+  );
+  const id = inserted.rows[0]?.id;
+  if (!id) throw new Error("La inserción de la categoría Efectivo no devolvió identificador");
+  return id as UUID;
+}
+
 async function createManualTransaction(
   client: PoolClient,
   householdId: UUID,
   payload: FinanceManualCreatePayloadV1,
 ): Promise<{ resourceId: UUID }> {
   await requireFinanceAccount(client, householdId, payload.accountId);
-  if (payload.categoryId) await requireFinanceCategory(client, householdId, payload.categoryId);
+  const category = payload.categoryId
+    ? await requireFinanceCategory(client, householdId, payload.categoryId)
+    : null;
   const provider = (payload.provider ?? "").trim();
+  const dedupHash = `manual-${randomUUID().replace(/-/g, "")}`;
   const inserted = await client.query<{ id: string }>(
     `insert into app.finance_transactions
        (household_id, account_id, batch_id, op_date, value_date, concept, provider, provider_norm,
@@ -1225,15 +1370,67 @@ async function createManualTransaction(
       provider ? financeNormText(provider) : null,
       payload.amountCents,
       payload.categoryId ?? null,
-      `manual-${randomUUID().replace(/-/g, "")}`,
+      dedupHash,
       payload.recurrence ?? null,
       payload.recurrence != null,
     ],
   );
   const id = inserted.rows[0]?.id;
   if (!id) throw new Error("La inserción del manual no devolvió identificador");
-  // Una sola verdad post-escritura: el pipeline crea la contrapartida de
-  // efectivo (cashpair-) si toca y reevalúa recurrencia respetando el manual.
+
+  // Doble entrada del efectivo: un gasto EN la cuenta Efectivo nace con su
+  // contrapartida (+Efectivo, confirmada, recurrence_manual, hash `cashpair-`).
+  // La escribimos aquí porque este comando es su ÚNICO productor: el paso
+  // «efectivo» de runPostImportPipeline solo recategoriza retiradas de cajero.
+  const cashId = await cashAccountId(client, householdId);
+  if (cashId && payload.accountId === cashId && payload.categoryId && category) {
+    const efectivoCategoryId = await cashCategoryId(client, householdId);
+    const counterleg = cashCounterlegFor(
+      {
+        id: id as UUID,
+        accountId: payload.accountId,
+        opDate: payload.opDate,
+        concept: payload.concept,
+        provider: provider || null,
+        providerNorm: provider ? financeNormText(provider) : null,
+        amountCents: BigInt(payload.amountCents),
+        categoryId: payload.categoryId,
+        categoryKind: category.kind as "gasto" | "ingreso" | "transferencia",
+        status: "confirmada",
+        transferGroupId: null,
+        recurrence: payload.recurrence ?? null,
+        recurrenceManual: payload.recurrence != null,
+        codeCommon: null,
+        codeOwn: null,
+        dedupHash,
+      },
+      { cashAccountId: cashId, efectivoCategoryId },
+    );
+    if (counterleg) {
+      await client.query(
+        `insert into app.finance_transactions
+           (household_id, account_id, batch_id, op_date, value_date, concept, provider, provider_norm,
+            amount_cents, balance_cents, category_id, status, transfer_group_id, dedup_hash,
+            recurrence, recurrence_manual, raw, currency_code)
+         values ($1, $2, null, $3, null, $4, $5, $6, $7, null, $8, 'confirmada', null, $9,
+                 null, true, '{}'::jsonb, 'EUR')`,
+        [
+          householdId,
+          counterleg.accountId,
+          counterleg.opDate,
+          counterleg.concept,
+          counterleg.provider,
+          financeNormText(counterleg.provider),
+          counterleg.amountCents.toString(),
+          counterleg.categoryId,
+          counterleg.dedupHash,
+        ],
+      );
+    }
+  }
+
+  // Y después, la verdad post-escritura compartida: reglas, alias, espejos y
+  // recurrencia, respetando los overrides manuales.
   await runPostImportPipeline(client, householdId);
   return { resourceId: id as UUID };
 }
@@ -1366,10 +1563,12 @@ async function unlinkTransfers(
   if ((legs.rowCount ?? 0) === 0) {
     throw new CommandRejectedError("finance_transfer_group_not_found", "Esa transferencia ya no existe");
   }
-  // Grupos con pata espejo (efectivo/inversión): se borra el espejo y las patas
-  // reales vuelven a pendiente. Grupos normales: se desagrupan.
-  const mirrors = legs.rows.filter((row) => /^(mirror|invmirror)-/.test(row.dedup_hash)).map((row) => row.id);
-  const real = legs.rows.filter((row) => !/^(mirror|invmirror)-/.test(row.dedup_hash)).map((row) => row.id);
+  // Grupos con pata espejo de INVERSIÓN (`invmirror-`): se borra el espejo y la
+  // pata real vuelve a pendiente. Grupos normales: se desagrupan. Las
+  // contrapartidas de efectivo (`cashpair-`) no se agrupan nunca: no llevan
+  // transfer_group_id y se borran con su gasto manual (deleteManualTransaction).
+  const mirrors = legs.rows.filter((row) => row.dedup_hash.startsWith("invmirror-")).map((row) => row.id);
+  const real = legs.rows.filter((row) => !row.dedup_hash.startsWith("invmirror-")).map((row) => row.id);
   if (mirrors.length > 0) {
     await client.query(
       `delete from app.finance_transaction_events where household_id = $1 and transaction_id = any($2::uuid[])`,
@@ -1415,7 +1614,7 @@ Y en el `switch` del dispatcher, antes del `default`:
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm --filter @casa-clara/server test finance-ledger && pnpm --filter @casa-clara/server typecheck
 ```
 
-Expected: PASS (5 tests).
+Expected: PASS (6 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -1970,7 +2169,14 @@ async function assignConceptToCategory(
   if (target.kind === "transferencia") {
     throw new CommandRejectedError("finance_category_is_transfer", "No se puede recategorizar a transferencia");
   }
-  const ids = await matchingFinanceTxIds(client, householdId, payload);
+  // OJO: aquí `payload.categoryId` es la categoría DESTINO, no un selector. Si
+  // se le pasara el payload entero, `matchingFinanceTxIds` tomaría la rama
+  // `selector.categoryId` y recategorizaría los movimientos que YA están en el
+  // destino, sin tocar los del proveedor pedido. Selector explícito, siempre:
+  const ids = await matchingFinanceTxIds(client, householdId, {
+    provider: payload.provider,
+    concept: payload.concept,
+  });
   if (ids.length > 0) {
     // Los movimientos ya categorizados como transferencia no se tocan.
     await client.query(
@@ -2091,15 +2297,16 @@ git commit -m "feat(finanzas): comandos de ajustes del módulo y deshacer import
 - Test: `apps/web/tests/finance-imports.integration.test.ts`
 
 **Interfaces:**
-- Consumes: `parseStatement(bytes: Uint8Array, filename: string): ParsedStatement` y `FinanceParserError` (fase 2, exportados de `@casa-clara/server`; si `grep -n "finance/parsers" packages/server/src/index.ts` no muestra el export, añade `export * from "./finance/parsers/index.js";` y `export * from "./finance/dedup-hash.js";` y `export * from "./finance/pipeline.js";`); `computeDedupHash(row): string` (fase 2); `runPostImportPipeline` (fase 2); `requireFinanceAdmin`, `financeNormText`, `withAuthorizedTransaction`, `AuthorizationError`, `CommandRejectedError` de `@casa-clara/server`; tipos `ParsedStatement`/`ParsedRow`/`FinanceBank` de `@casa-clara/domain` (doc de interfaces).
+- Consumes: `parseStatement(bytes: Uint8Array, filename: string): ParsedStatement` y `FinanceParserError` (fase 2, exportados de `@casa-clara/server`; si `grep -n "finance/parsers" packages/server/src/index.ts` no muestra el export, añade `export * from "./finance/parsers/index.js";` y `export * from "./finance/dedup-hash.js";` y `export * from "./finance/pipeline.js";`); `computeDedupHash(row): string` (fase 2); `runPostImportPipeline` (fase 2); `requireFinanceAdmin`, `financeNormText`, `withAuthorizedTransaction`, `AuthorizationError`, `CommandRejectedError` de `@casa-clara/server`; tipos `ParsedStatement`/`ParsedRow`/`FinanceBank` del subpath `@casa-clara/domain/finance` (la raíz `@casa-clara/domain` NO reexporta finanzas: resolución 1 del doc de interfaces); `requireFinanceRequest(locals, url): { user, householdId, pool }` de `$lib/server/finance.server` (fase 4), que es la guarda ÚNICA de toda la familia `/api/v1/finance/*`.
 - Produces (los consume la Task 12):
   - `previewImport(user: { id: string }, householdId: string, bytes: Uint8Array, filename: string, pool?: Pool | null): Promise<ImportPreviewResult>` con `ImportPreviewResult = { bank: FinanceBank; newCount: number; dupCount: number; unknownRefs: string[]; sample: Array<{ opDate: string; concept: string; provider: string | null; amountCents: string }> }`.
   - `confirmImport(user: { id: string }, householdId: string, bytes: Uint8Array, filename: string, newAccounts: NewAccountInput[], pool?: Pool | null): Promise<ImportConfirmResult>` con `NewAccountInput = { bankRef: string; name: string; kind: "comun" | "personal" | "inversion"; ownerLabel: string }` e `ImportConfirmResult = { batchId: string | null; newCount: number; dupCount: number }`.
-  - `POST /api/v1/finance/imports/preview?household=<uuid>` (multipart `file`) → `{ apiVersion: 1, ...ImportPreviewResult }`; `POST /api/v1/finance/imports/confirm?household=<uuid>` (multipart `file` + campo `payload` JSON `{ newAccounts: NewAccountInput[] }`) → `{ apiVersion: 1, ...ImportConfirmResult }`. Errores: 401 sin sesión, 403 origen/membresía/concesión, 422 parser o cuentas sin cubrir, 503 sin pool.
+  - `POST /api/v1/finance/imports/preview?household=<uuid>` (multipart `file`) → `{ apiVersion: 1, ...ImportPreviewResult }`; `POST /api/v1/finance/imports/confirm?household=<uuid>` (multipart `file` + campo `payload` JSON `{ newAccounts: NewAccountInput[] }`) → `{ apiVersion: 1, ...ImportConfirmResult }`.
+  - **Códigos de error unificados con las lecturas GET de la fase 4** (los da `requireFinanceRequest`, no se reinventan aquí): 401 sin sesión · 400 `household` ausente o no-UUID · 404 sin membresía Y TAMBIÉN sin concesión (indistinguible de hogar inexistente: no se revela que el hogar existe) · 503 sin pool. Propios del multipart, y solo esos: 403 origen cruzado, 400 multipart ilegible, 422 fichero ausente, `FinanceParserError` o cuentas sin cubrir.
 
 - [ ] **Step 1: Escribe el test de integración que falla**
 
-`apps/web/tests/finance-imports.integration.test.ts` (patrón de base de datos PROPIA calcado de `apps/web/tests/contacts.integration.test.ts` — cópiale el `beforeAll` de creación de base `casaclara_finance_it`, migraciones + fixtures + rol `it_casa_clara_finance_login`):
+`apps/web/tests/finance-imports.integration.test.ts` (patrón de base de datos PROPIA calcado de `apps/web/tests/contacts.integration.test.ts`: base `casaclara_finance_it`, migraciones + fixtures + rol `it_casa_clara_finance_login`; el `beforeAll` va escrito entero más abajo, no hay nada que ir a buscar):
 
 ```ts
 import { readFile, readdir } from 'node:fs/promises';
@@ -2146,13 +2353,54 @@ WHERE NOT EXISTS (
 COMMIT;
 `;
 
+/** Misma URL del clúster, apuntando a la base propia de esta suite. */
+function financeUrlFor(base: string): string {
+  const url = new URL(base);
+  url.pathname = `/${FINANCE_DB}`;
+  return url.toString();
+}
+
 describe.runIf(Boolean(adminUrl))('ciclo importar → confirmar → deshacer sobre Postgres real', () => {
   let adminPool: pg.Pool;
   let appPool: pg.Pool;
 
   beforeAll(async () => {
-    // [copia aquí el beforeAll de contacts.integration.test.ts sustituyendo
-    //  CONTACTS_DB→FINANCE_DB, APP_LOGIN y CONTACTS_SEED→GRANT_SEED]
+    const cluster = new pg.Client({ connectionString: adminUrl });
+    await cluster.connect();
+    try {
+      await cluster.query(`drop database if exists ${FINANCE_DB} with (force)`);
+      await cluster.query(`create database ${FINANCE_DB}`);
+    } finally {
+      await cluster.end();
+    }
+
+    const admin = new pg.Client({ connectionString: financeUrlFor(adminUrl as string) });
+    await admin.connect();
+    try {
+      const dbWorkspace = new URL('../../../packages/db/', import.meta.url);
+      const migrateHref = new URL('scripts/migrate.mjs', dbWorkspace).href;
+      const { applyMigrations } = (await import(/* @vite-ignore */ migrateHref)) as {
+        applyMigrations: (client: pg.Client) => Promise<unknown>;
+      };
+      await applyMigrations(admin);
+      const fixturesDir = fileURLToPath(new URL('fixtures', dbWorkspace));
+      for (const fixture of (await readdir(fixturesDir)).filter((name) => name.endsWith('.sql')).sort()) {
+        await admin.query(await readFile(path.join(fixturesDir, fixture), 'utf8'));
+      }
+      await admin.query(GRANT_SEED);
+      await admin.query(`drop role if exists ${APP_LOGIN}`);
+      await admin.query(
+        `create role ${APP_LOGIN} login password 'integration-only' nosuperuser nobypassrls in role casa_clara_app`
+      );
+    } finally {
+      await admin.end();
+    }
+
+    adminPool = new pg.Pool({ connectionString: financeUrlFor(adminUrl as string), max: 2 });
+    const url = new URL(financeUrlFor(adminUrl as string));
+    url.username = APP_LOGIN;
+    url.password = 'integration-only';
+    appPool = new pg.Pool({ connectionString: url.toString(), max: 2 });
   }, 120_000);
 
   afterAll(async () => {
@@ -2221,7 +2469,8 @@ Expected: FAIL — `finance-imports.server` no existe.
 ```ts
 import type { Pool } from 'pg';
 
-import type { FinanceBank, ParsedRow } from '@casa-clara/domain';
+// Subpath obligatorio: la raíz `@casa-clara/domain` no reexporta finanzas.
+import type { FinanceBank, ParsedRow } from '@casa-clara/domain/finance';
 import {
   computeDedupHash,
   financeNormText,
@@ -2273,6 +2522,32 @@ function hashOf(row: ParsedRow): string {
 }
 
 /**
+ * Filas realmente nuevas de un extracto: ni ya presentes en el hogar ni
+ * repetidas DENTRO del propio fichero. Lo segundo no es teórico: `dedup_hash`
+ * es UNIQUE por hogar, así que dos apuntes idénticos en el mismo extracto
+ * reventarían la transacción entera con un 23505 y no se importaría nada.
+ * Preview y confirm cuentan con esta misma función para que la previsualización
+ * no mienta: los colapsados suman a `dupCount`.
+ */
+function splitFreshRows(
+  rows: readonly ParsedRow[],
+  hashes: readonly string[],
+  known: ReadonlySet<string>
+): { fresh: ParsedRow[]; freshHashes: string[]; dupCount: number } {
+  const seen = new Set<string>();
+  const fresh: ParsedRow[] = [];
+  const freshHashes: string[] = [];
+  rows.forEach((row, index) => {
+    const hash = hashes[index]!;
+    if (known.has(hash) || seen.has(hash)) return;
+    seen.add(hash);
+    fresh.push(row);
+    freshHashes.push(hash);
+  });
+  return { fresh, freshHashes, dupCount: rows.length - fresh.length };
+}
+
+/**
  * Previsualización sin estado: el fichero se parsea en memoria y solo se
  * consulta qué hashes ya existen y qué refs de cuenta faltan. Nada se persiste.
  */
@@ -2299,10 +2574,10 @@ export async function previewImport(
       [householdId]
     );
     const knownRefs = new Set(accounts.rows.map((row) => row.bank_ref));
-    const dupCount = hashes.filter((hash) => known.has(hash)).length;
+    const { fresh, dupCount } = splitFreshRows(statement.rows, hashes, known);
     return {
       bank: statement.bank,
-      newCount: hashes.length - dupCount,
+      newCount: fresh.length,
       dupCount,
       unknownRefs: statement.accountRefs.filter((ref) => !knownRefs.has(ref)),
       sample: statement.rows.slice(0, 20).map((row) => ({
@@ -2356,8 +2631,7 @@ export async function confirmImport(
       [householdId, hashes]
     );
     const known = new Set(existing.rows.map((row) => row.dedup_hash));
-    const fresh = statement.rows.filter((_, index) => !known.has(hashes[index]!));
-    const dupCount = statement.rows.length - fresh.length;
+    const { fresh, freshHashes, dupCount } = splitFreshRows(statement.rows, hashes, known);
     if (fresh.length === 0) return { batchId: null, newCount: 0, dupCount };
 
     const batch = await client.query<{ id: string }>(
@@ -2368,7 +2642,7 @@ export async function confirmImport(
     const batchId = batch.rows[0]?.id;
     if (!batchId) throw new Error('La inserción del lote no devolvió identificador');
 
-    for (const row of fresh) {
+    for (const [index, row] of fresh.entries()) {
       await client.query(
         `insert into app.finance_transactions
            (household_id, account_id, batch_id, op_date, value_date, concept, provider, provider_norm,
@@ -2389,7 +2663,7 @@ export async function confirmImport(
           row.balanceCents === null ? null : row.balanceCents.toString(),
           row.codeCommon,
           row.codeOwn,
-          hashOf(row),
+          freshHashes[index]!,
           JSON.stringify(row.raw)
         ]
       );
@@ -2402,6 +2676,8 @@ export async function confirmImport(
 
 - [ ] **Step 4: Implementación — endpoints**
 
+Las dos rutas usan la MISMA guarda que las lecturas GET de la fase 4 (`requireFinanceRequest`), para que `/api/v1/finance/*` tenga una sola semántica de errores: 401 sin sesión, 400 `household` ausente o no-UUID, 404 sin membresía, 503 sin pool. La concesión la comprueba `requireFinanceAdmin` dentro de `previewImport`/`confirmImport`, y su rechazo se traduce también a 404 (indistinguible de inexistente), igual que hace `financeRead`. Lo único propio de estas rutas es el POST: origen cruzado y multipart.
+
 `apps/web/src/routes/api/v1/finance/imports/preview/+server.ts`:
 
 ```ts
@@ -2410,62 +2686,72 @@ import { error, json } from '@sveltejs/kit';
 import { AuthorizationError, CommandRejectedError, FinanceParserError } from '@casa-clara/server';
 
 import { previewImport } from '$lib/server/finance-imports.server';
-import { getDatabasePool } from '$lib/server/db.server';
+import { requireFinanceRequest } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
 
-/** El guard del hook no cubre /api: sesión + membresía + concesión, explícitos. */
+/**
+ * El guard del hook no cubre /api. Sesión, hogar, membresía y pool los resuelve
+ * `requireFinanceRequest` (fase 4) con sus códigos; aquí solo se añade lo que es
+ * propio de una escritura multipart.
+ */
 export const POST: RequestHandler = async ({ locals, request, url }) => {
-  if (!locals.user) error(401, 'Inicia sesión para importar');
   const origin = request.headers.get('origin');
   if (origin && origin !== url.origin) error(403, 'Origen no permitido');
-  const householdId = url.searchParams.get('household');
-  if (!householdId) error(422, 'Falta el hogar');
-  const pool = getDatabasePool();
-  if (!pool) error(503, 'La importación requiere la base de datos del hogar');
+  const { user, householdId, pool } = requireFinanceRequest(locals, url);
 
-  let file: FormDataEntryValue | null;
-  try {
-    file = (await request.formData()).get('file');
-  } catch {
-    error(400, 'No se pudo leer el fichero');
-  }
-  if (!(file instanceof File)) error(422, 'No llegó ningún fichero');
-  const bytes = new Uint8Array(await file.arrayBuffer());
-
-  try {
-    const preview = await previewImport(locals.user, householdId, bytes, file.name, pool);
-    return json({ apiVersion: 1, ...preview }, { headers: { 'cache-control': 'no-store' } });
-  } catch (cause) {
-    if (cause instanceof FinanceParserError) error(422, cause.message);
-    if (cause instanceof AuthorizationError) error(403, 'No perteneces a este hogar');
-    if (cause instanceof CommandRejectedError) error(403, 'Finanzas no está activado para tu cuenta');
-    throw cause;
-  }
-};
-```
-
-`apps/web/src/routes/api/v1/finance/imports/confirm/+server.ts` — igual que el anterior con este cuerpo tras leer el form:
-
-```ts
   const form = await request.formData().catch(() => null);
   if (!form) error(400, 'No se pudo leer el fichero');
   const file = form.get('file');
   if (!(file instanceof File)) error(422, 'No llegó ningún fichero');
   const bytes = new Uint8Array(await file.arrayBuffer());
+
+  try {
+    const preview = await previewImport(user, householdId, bytes, file.name, pool);
+    return json({ apiVersion: 1, ...preview }, { headers: { 'cache-control': 'no-store' } });
+  } catch (cause) {
+    if (cause instanceof FinanceParserError) error(422, cause.message);
+    // Sin membresía o sin concesión: 404, como en las lecturas de la fase 4.
+    if (cause instanceof AuthorizationError) error(404, 'Hogar no encontrado');
+    if (cause instanceof CommandRejectedError) error(404, 'Hogar no encontrado');
+    throw cause;
+  }
+};
+```
+
+`apps/web/src/routes/api/v1/finance/imports/confirm/+server.ts` — misma cabecera de guarda, con estos imports y este cuerpo tras leer el form:
+
+```ts
+import { error, json } from '@sveltejs/kit';
+import { z } from 'zod';
+
+import { AuthorizationError, CommandRejectedError, FinanceParserError } from '@casa-clara/server';
+
+import { ImportUncoveredAccountsError, confirmImport } from '$lib/server/finance-imports.server';
+import { requireFinanceRequest } from '$lib/server/finance.server';
+import type { RequestHandler } from './$types';
+```
+
+```ts
   const rawPayload = form.get('payload');
-  const parsed = confirmPayloadSchema.safeParse(
-    typeof rawPayload === 'string' && rawPayload ? JSON.parse(rawPayload) : { newAccounts: [] }
-  );
+  let parsedJson: unknown = { newAccounts: [] };
+  if (typeof rawPayload === 'string' && rawPayload) {
+    try {
+      parsedJson = JSON.parse(rawPayload);
+    } catch {
+      error(422, 'Cuentas nuevas inválidas');
+    }
+  }
+  const parsed = confirmPayloadSchema.safeParse(parsedJson);
   if (!parsed.success) error(422, 'Cuentas nuevas inválidas');
 
   try {
-    const result = await confirmImport(locals.user, householdId, bytes, file.name, parsed.data.newAccounts, pool);
+    const result = await confirmImport(user, householdId, bytes, file.name, parsed.data.newAccounts, pool);
     return json({ apiVersion: 1, ...result }, { headers: { 'cache-control': 'no-store' } });
   } catch (cause) {
     if (cause instanceof FinanceParserError) error(422, cause.message);
     if (cause instanceof ImportUncoveredAccountsError) error(422, cause.message);
-    if (cause instanceof AuthorizationError) error(403, 'No perteneces a este hogar');
-    if (cause instanceof CommandRejectedError) error(403, 'Finanzas no está activado para tu cuenta');
+    if (cause instanceof AuthorizationError) error(404, 'Hogar no encontrado');
+    if (cause instanceof CommandRejectedError) error(404, 'Hogar no encontrado');
     throw cause;
   }
 ```
@@ -2507,11 +2793,11 @@ git commit -m "feat(finanzas): importación multipart sin estado con ciclo proba
 ### Task 7: Cliente — `financeCommand`, validaciones puras y diccionario de errores
 
 **Files:**
-- Create: `apps/web/src/lib/finance/commands.ts`
+- Modify: `apps/web/src/lib/finance/commands.ts` — **ya existe desde la fase 1**, con `grantFinanceAccess`/`revokeFinanceAccess` (los importa la tarjeta de concesiones de Ajustes generales). Esta tarea AÑADE `financeCommand` al fichero; no lo reescribe ni toca esas dos funciones.
 - Create: `apps/web/src/lib/finance/link-transfers.ts`
 - Create: `apps/web/src/lib/finance/manual-form.ts`
 - Modify: `apps/web/src/lib/offline/error-codes.ts`
-- Test: `apps/web/tests/finance-commands.test.ts`
+- Test (modify): `apps/web/tests/finance-commands.test.ts` — **ya existe desde la fase 1** (cubre los constructores de concesión). Esta tarea AÑADE sus `describe` al final; no sustituye el fichero.
 
 **Interfaces:**
 - Consumes: `createCommandEnvelope` de `$lib/offline/schema` (firma: `{ householdId, aggregateType, payload, operationId?, aggregateId?, baseRevision?, occurredAt? } → CommandEnvelopeV1`); `parseEuroInput(value: string): string | null` de `$lib/employment/commands`; tipos `FinanceWritePayloadV1`, `CommandEnvelopeV1` (Task 1); esquemas de Task 1 (solo en el test — zod jamás en el bundle del navegador).
@@ -2522,7 +2808,7 @@ git commit -m "feat(finanzas): importación multipart sin estado con ciclo proba
 
 - [ ] **Step 1: Escribe el test que falla**
 
-`apps/web/tests/finance-commands.test.ts`:
+`apps/web/tests/finance-commands.test.ts` **ya existe** (fase 1: describe de `grantFinanceAccess`/`revokeFinanceAccess`). AÑADE al final los tres `describe` de abajo y completa la cabecera de imports con lo que falte (`commandEnvelopeSchema`/`financeWritePayloadSchema` y los tres módulos nuevos); no borres nada de lo que ya hay:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2584,7 +2870,7 @@ Expected: FAIL — módulos `$lib/finance/commands` etc. inexistentes.
 
 - [ ] **Step 3: Implementación**
 
-`apps/web/src/lib/finance/commands.ts`:
+`apps/web/src/lib/finance/commands.ts` — el fichero ya existe desde la fase 1 con `grantFinanceAccess` y `revokeFinanceAccess`. AÑADE lo siguiente al final (y completa la línea de import de `@casa-clara/contracts` con los tipos que falten): las dos funciones de concesión se quedan tal cual, porque `settings/+page.svelte` las importa de aquí.
 
 ```ts
 import type { CommandEnvelopeV1, FinanceWritePayloadV1 } from '@casa-clara/contracts';
@@ -2660,7 +2946,14 @@ En `apps/web/src/lib/offline/error-codes.ts`, añade un bloque al diccionario (t
 
 ```ts
   // Finanzas
-  finance_not_enabled: 'Finanzas no está activado para tu cuenta',
+  // El más frecuente de todos: lo lanza requireFinanceAdmin (fase 1) cuando a un
+  // admin le revocan Finanzas a media sesión. Sin él, el acuse diría «No se pudo
+  // guardar el cambio.» sin causa, y la spec §7 exige acuse veraz.
+  finance_not_granted: 'Finanzas no está activado para tu cuenta',
+  not_granted: 'Esa persona ya no tenía Finanzas activado',
+  already_granted: 'Esa persona ya tenía Finanzas activado',
+  grant_target_not_admin: 'Solo se puede activar Finanzas a quien administra la casa',
+  membership_not_found: 'Esa persona ya no está en la casa',
   finance_account_not_found: 'La cuenta ya no existe',
   finance_category_not_found: 'La categoría ya no existe',
   finance_category_in_use: 'La categoría sigue en uso: vacíala antes de borrarla',
@@ -2681,7 +2974,7 @@ En `apps/web/src/lib/offline/error-codes.ts`, añade un bloque al diccionario (t
   finance_selector_required: 'Se necesita un proveedor o una categoría',
 ```
 
-(si la fase 1 ya añadió `finance_not_enabled` u otro código, no lo dupliques).
+(si la fase 1 ya añadió alguno de estos códigos —`finance_not_granted`, `not_granted`, `already_granted`, `grant_target_not_admin`, `membership_not_found`—, no lo dupliques: compruébalo con `grep -n "finance_not_granted\|grant_target_not_admin" apps/web/src/lib/offline/error-codes.ts` antes de escribir. `finance_not_enabled` NO existe: ningún handler lo lanza.)
 
 - [ ] **Step 4: Verde**
 
@@ -2698,7 +2991,9 @@ git add apps/web/src/lib/finance/commands.ts apps/web/src/lib/finance/link-trans
 git commit -m "feat(finanzas): constructor de envelopes, validaciones puras y causas traducidas"
 ```
 
----### Task 8: Componentes de edición — `CategorySelect`, `EventPicker`, `RecurrenceChip`, `ManualForm`
+---
+
+### Task 8: Componentes de edición — `CategorySelect`, `EventPicker`, `RecurrenceChip`, `ManualForm`
 
 **Files:**
 - Create: `apps/web/src/lib/finance/category-options.ts`
@@ -2741,7 +3036,39 @@ describe('categoryOptionGroups', () => {
     expect(groups[1]!.options).toEqual([{ id: 'r2', label: 'Nómina' }]);
   });
 });
+
+/**
+ * Los dbe2e de las tareas 10 y 12 buscan estos controles por su etiqueta
+ * accesible (`getByRole('combobox', { name: 'Categoría' })`, `'Tipo de gasto'`).
+ * La casa no monta componentes en vitest: se afirma sobre el fuente, como en
+ * `calendar-no-metrics.test.ts`.
+ */
+describe('etiquetas accesibles de los componentes de edición', () => {
+  const base = new URL('../src/lib/components/finance/', import.meta.url);
+
+  it('CategorySelect declara sus props y etiqueta por defecto «Categoría»', async () => {
+    const source = await readFile(new URL('CategorySelect.svelte', base), 'utf8');
+    expect(source).toContain("label = 'Categoría'");
+    expect(source).toContain('aria-label={label}');
+    for (const prop of ['categories', 'value', 'onchange']) expect(source).toContain(prop);
+  });
+
+  it('RecurrenceChip se etiqueta «Tipo de gasto» y ofrece el valor vacío', async () => {
+    const source = await readFile(new URL('RecurrenceChip.svelte', base), 'utf8');
+    expect(source).toContain('aria-label="Tipo de gasto"');
+    expect(source).toContain('<option value="">—</option>');
+  });
+
+  it('EventPicker es un popover, no un diálogo a medias', async () => {
+    const source = await readFile(new URL('EventPicker.svelte', base), 'utf8');
+    expect(source).not.toContain('role="dialog"');
+    expect(source).toContain('aria-controls');
+    expect(source).toContain("event.key === 'Escape'");
+  });
+});
 ```
+
+(añade `import { readFile } from 'node:fs/promises';` arriba del fichero de test.)
 
 - [ ] **Step 2: Rojo**
 
@@ -2749,7 +3076,7 @@ describe('categoryOptionGroups', () => {
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test finance-category-options
 ```
 
-Expected: FAIL — módulo inexistente.
+Expected: FAIL — módulo `category-options` inexistente y los tres componentes sin fichero.
 
 - [ ] **Step 3: Implementación — `category-options.ts`**
 
@@ -2787,13 +3114,9 @@ export function categoryOptionGroups(categories: readonly FinanceCategoryOptionS
 }
 ```
 
-- [ ] **Step 4: Verde del unit y componentes**
+- [ ] **Step 4: Implementación — los cuatro componentes**
 
-```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test finance-category-options
-```
-
-Expected: PASS. Ahora crea los cuatro componentes (Svelte 5 con runas, patrón de props de `PageHeader.svelte`):
+Svelte 5 con runas, patrón de props de `PageHeader.svelte`:
 
 `CategorySelect.svelte`:
 
@@ -2885,21 +3208,36 @@ Expected: PASS. Ahora crea los cuatro componentes (Svelte 5 con runas, patrón d
   let open = $state(false);
   let newName = $state('');
 
+  const panelId = $props.id();
+
   const names = $derived(
     events.filter((entry) => selectedIds.includes(entry.id)).map((entry) => entry.name).join(', ')
   );
 </script>
+
+<!--
+  Es un POPOVER, no un diálogo: no atrapa el foco ni bloquea el fondo, así que
+  no lleva `role="dialog"` (que prometería lo que no cumple y lo suspendería en
+  el axe de la fase 7). Se anuncia con aria-expanded/aria-controls y cierra con
+  Escape mientras está abierto, sin handlers en elementos estáticos.
+-->
+<svelte:window
+  onkeydown={(event) => {
+    if (event.key === 'Escape' && open) open = false;
+  }}
+/>
 
 <span class="event-picker">
   <button
     type="button"
     class="button secondary small-button"
     aria-expanded={open}
+    aria-controls={panelId}
     title={names || 'Asignar a eventos'}
     onclick={() => (open = !open)}
   >◈{selectedIds.length ? ` ${selectedIds.length}` : ''}</button>
   {#if open}
-    <div class="event-picker-panel" role="dialog" aria-label="Eventos del movimiento">
+    <div class="event-picker-panel" id={panelId}>
       {#each events as entry (entry.id)}
         <label class="check-row">
           <input
@@ -3060,7 +3398,15 @@ Expected: PASS. Ahora crea los cuatro componentes (Svelte 5 con runas, patrón d
 </form>
 ```
 
-- [ ] **Step 5: Comprobación estática y lint de tokens**
+- [ ] **Step 5: Verde**
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test finance-category-options
+```
+
+Expected: PASS (4 tests: la agrupación y las tres afirmaciones de etiquetas).
+
+- [ ] **Step 6: Comprobación estática y lint de tokens**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && node apps/web/scripts/lint-css-tokens.mjs
@@ -3068,7 +3414,7 @@ export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa
 
 Expected: sin errores.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add apps/web/src/lib/finance/category-options.ts apps/web/src/lib/components/finance/CategorySelect.svelte apps/web/src/lib/components/finance/EventPicker.svelte apps/web/src/lib/components/finance/RecurrenceChip.svelte apps/web/src/lib/components/finance/ManualForm.svelte apps/web/tests/finance-category-options.test.ts
@@ -3080,35 +3426,58 @@ git commit -m "feat(finanzas): componentes de edición reutilizables del módulo
 ### Task 9: Movimientos — edición inline, manuales y transferencias
 
 **Files:**
-- Modify: `apps/web/src/routes/h/[householdId]/finanzas/movimientos/+page.server.ts` (creado en fase 4)
+- Modify: `packages/server/src/finance/queries.ts` (creado en fase 4: `FinanceTxDto` + `readFinanceTransactions`)
+- Modify: `apps/web/src/lib/components/finance/LedgerTable.svelte` (creado en fase 4: se le añaden props OPCIONALES de edición)
 - Modify: `apps/web/src/routes/h/[householdId]/finanzas/movimientos/+page.svelte` (creado en fase 4)
+- Verify (sin cambios): `apps/web/src/lib/server/finance.server.ts` y `movimientos/+page.server.ts` — `loadFinanceMovimientos` ya devuelve `page`, `accounts`, `categories` y `events`, y el `load` ya declara `depends('cc:finance')`; los dos campos nuevos viajan solos al ampliar el DTO.
 
 **Interfaces:**
-- Consumes: `financeCommand`, `canLinkSelection` (Task 7); `CategorySelect`/`EventPicker`/`RecurrenceChip`/`ManualForm` (Task 8, props exactas de esa tarea); `OptimisticActions` (`new OptimisticActions({ householdId, invalidateToken: 'cc:finance' })`, métodos `run(envelope, hooks)`, `status`, `start()`); `ActionStatus.svelte` (`{ status: Writable<ActionFeedback | null> }`); kinds `finance.transaction.update`, `finance.transaction.manual.create`, `finance.transaction.manual.delete`, `finance.transfers.link`, `finance.transfers.unlink`, `finance.event.create`, `finance.event.assignTransactions` (Task 1).
-- Produces: la página de Movimientos con escritura completa. No introduce nombres nuevos para otras tareas.
+- Consumes: `financeCommand`, `canLinkSelection` (Task 7); `CategorySelect`/`EventPicker`/`RecurrenceChip`/`ManualForm` (Task 8, props exactas de esa tarea); `FinanceMovimientosData` de `$lib/server/finance.server` (fase 4: `{ householdId, filters, page: { total, sumCents, limit, offset, rows }, accounts, categories, events }`); `LedgerTable` (fase 4: props `{ rows, eventNameById, onOpen }`); `OptimisticActions` (`new OptimisticActions({ householdId, invalidateToken: 'cc:finance' })`, métodos `run(envelope, hooks)`, `status`, `start()`); `ActionStatus.svelte` (`{ status: Writable<ActionFeedback | null> }`); kinds `finance.transaction.update`, `finance.transaction.manual.create`, `finance.transaction.manual.delete`, `finance.transfers.link`, `finance.transfers.unlink`, `finance.event.create`, `finance.event.assignTransactions` (Task 1).
+- Produces:
+  - `FinanceTxDto` gana dos campos: `dedupHash: string` y `batchId: string | null` (los usa el botón «Borrar» del manual). Los consume también la fase 6 al leer el mismo DTO.
+  - `LedgerTable.svelte` gana props NUEVAS y TODAS OPCIONALES, para que la Analítica de la fase 6 y el Dashboard sigan usándolo igual que en la fase 4: `selectedIds?: ReadonlySet<string>`, `onToggleSelect?: (id: string, on: boolean) => void`, `categories?: readonly FinanceCategoryOptionSource[]`, `events?: ReadonlyArray<{ id: string; name: string }>`, `onSetCategory?: (id: string, categoryId: string) => void`, `onToggleEvent?: (tx: FinanceTxDto, eventId: string, add: boolean) => void`, `onCreateEvent?: (name: string) => void`, `onSetRecurrence?: (id: string, next: 'recurrente' | 'extraordinario' | null) => void`, `onDeleteManual?: (id: string) => void`, `onUnlink?: (transferGroupId: string) => void`. Sin ninguna de ellas el componente se comporta EXACTAMENTE como lo dejó la fase 4 (fila entera pulsable, sin controles).
 
-- [ ] **Step 1: Amplía el load de fase 4**
+- [ ] **Step 1: Amplía el DTO de lectura con `dedupHash` y `batchId`**
 
-Abre `movimientos/+page.server.ts` y comprueba que su `load` ya llama `depends('cc:finance')` (añádelo si falta) y que cada fila devuelta incluye TODOS estos campos (añade al `select` los que falten, con estos alias exactos): `id`, `opDate` (`op_date::text`), `accountName`, `accountId`, `concept`, `provider`, `providerNorm` (`provider_norm`), `providerDisplay` (join a `finance_provider_aliases`), `amountCents` (`amount_cents::text`), `categoryId`, `status`, `recurrence`, `transferGroupId` (`transfer_group_id`), `dedupHash` (`dedup_hash`), `batchId` (`batch_id`), `eventIds` (agregado: `coalesce((select json_agg(te.event_id order by te.event_id) from app.finance_transaction_events as te where te.household_id = tx.household_id and te.transaction_id = tx.id), '[]'::json)`). Añade también al objeto devuelto, si fase 4 no los cargaba ya: `accounts` (`select id, name, kind from app.finance_accounts where household_id = $1 and archived_at is null order by name`), `categories` (`select id, name, parent_id as "parentId", kind from app.finance_categories where household_id = $1 order by name`) y `events` (`select id, name from app.finance_events where household_id = $1 order by lower(name)`).
+Todo lo demás que necesita la pantalla (`accountName`, `providerDisplay`, `categoryId`, `status`, `recurrence`, `transferGroupId`, `eventIds`, y las listas `accounts`/`categories`/`events`) ya lo trae la fase 4. Faltan exactamente dos campos, y se añaden donde vive la SQL, no en la ruta. En `packages/server/src/finance/queries.ts`:
+
+```ts
+export interface FinanceTxDto {
+  id: string; accountId: string; accountName: string; opDate: string; valueDate: string | null;
+  concept: string; provider: string | null; providerNorm: string | null; providerDisplay: string | null;
+  amountCents: string; balanceCents: string | null; codeCommon: string | null; codeOwn: string | null;
+  categoryId: string | null; categoryName: string | null; status: string; transferGroupId: string | null;
+  recurrence: "recurrente" | "extraordinario" | null; recurrenceManual: boolean;
+  bankCategory: string | null; eventIds: string[]; raw: Record<string, string> | null;
+  // [FASE 5] Distinguir un manual borrable (batch_id null + hash `manual-`) de
+  // un importado exige estos dos; ninguna otra pantalla los pinta.
+  dedupHash: string; batchId: string | null;
+}
+```
+
+y en el `select` de `readFinanceTransactions`, junto a `tx.bank_category as "bankCategory", tx.raw`:
+
+```sql
+            tx.dedup_hash as "dedupHash", tx.batch_id as "batchId"
+```
 
 - [ ] **Step 2: Comprueba que sigue compilando**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server typecheck && pnpm --filter @casa-clara/web check
 ```
 
 Expected: sin errores.
 
 - [ ] **Step 3: Añade la maquinaria de escritura a `+page.svelte`**
 
-En el `<script>` de la página (respetando lo que dejó la fase 4), añade:
+En el `<script>` de la página (respetando lo que dejó la fase 4, que ya declara `let { data } = $props();` y `const movimientos = $derived(data.movimientos);`), añade:
 
 ```ts
+  import type { FinanceTxDto } from '@casa-clara/server';
+
   import ActionStatus from '$lib/components/ActionStatus.svelte';
-  import CategorySelect from '$lib/components/finance/CategorySelect.svelte';
-  import EventPicker from '$lib/components/finance/EventPicker.svelte';
   import ManualForm from '$lib/components/finance/ManualForm.svelte';
-  import RecurrenceChip from '$lib/components/finance/RecurrenceChip.svelte';
   import { useAppContext } from '$lib/auth/context';
   import { financeCommand } from '$lib/finance/commands';
   import { canLinkSelection } from '$lib/finance/link-transfers';
@@ -3125,7 +3494,11 @@ En el `<script>` de la página (respetando lo que dejó la fase 4), añade:
   const selectedSet = $derived(new Set(selected));
   const linkCheck = $derived(
     canLinkSelection(
-      rows.map((row) => ({ id: row.id, amountCents: row.amountCents, transferGroupId: row.transferGroupId })),
+      movimientos.page.rows.map((row) => ({
+        id: row.id,
+        amountCents: row.amountCents,
+        transferGroupId: row.transferGroupId
+      })),
       selectedSet
     )
   );
@@ -3140,29 +3513,26 @@ En el `<script>` de la página (respetando lo que dejó la fase 4), añade:
     );
   }
 
+  // `null` es un valor legítimo («—» del RecurrenceChip): devuelve el movimiento
+  // a sin clasificar. El esquema y el handler lo aceptan; no hay guarda que valga.
   function setRecurrence(rowId: string, recurrence: 'recurrente' | 'extraordinario' | null): void {
-    if (recurrence === null) return;
     void optimistic.run(
       financeCommand(context.household.id, { kind: 'finance.transaction.update', transactionId: rowId, recurrence })
     );
   }
 
-  function toggleEvent(row: { id: string; eventIds: string[] }, eventId: string, add: boolean): void {
+  function toggleEvent(row: FinanceTxDto, eventId: string, add: boolean): void {
     const eventIds = add ? [...row.eventIds, eventId] : row.eventIds.filter((id) => id !== eventId);
     void optimistic.run(
       financeCommand(context.household.id, { kind: 'finance.transaction.update', transactionId: row.id, eventIds })
     );
   }
 
-  function createEventFor(row: { id: string; eventIds: string[] }, name: string): void {
-    void (async () => {
-      const outcome = await optimistic.run(
-        financeCommand(context.household.id, { kind: 'finance.event.create', name })
-      );
-      if (outcome === 'synced') {
-        // el invalidate de cc:finance ya trajo el evento; asignarlo pide otra pasada del usuario
-      }
-    })();
+  // Crear un evento desde el selector de una fila: se crea y basta. El
+  // invalidate de `cc:finance` lo trae a la lista; asignarlo es la segunda
+  // pulsación del usuario (no encadenamos comandos con el id aún sin viajar).
+  function createEvent(name: string): void {
+    void optimistic.run(financeCommand(context.household.id, { kind: 'finance.event.create', name }));
   }
 
   function assignEventToSelection(eventId: string): void {
@@ -3219,21 +3589,146 @@ En el `<script>` de la página (respetando lo que dejó la fase 4), añade:
   }
 ```
 
-(`rows` es la lista de filas que ya pinta la fase 4 — usa el nombre real que tenga en la página; cada fila es un objeto con los campos del Step 1.)
+- [ ] **Step 4: Amplía `LedgerTable.svelte` con los controles (props opcionales)**
 
-- [ ] **Step 4: Añade los controles al marcado**
+La fase 4 NO dejó una tabla en la página: dejó `<LedgerTable rows={movimientos.page.rows} {eventNameById} onOpen={…} />`, una lista `.ledger-list` donde cada fila es un `<button class="finance-row">`. Los controles no pueden ir dentro de ese botón (interactivo dentro de interactivo es HTML inválido y lo canta el axe de la fase 7), así que la fila se envuelve: el botón conserva su contenido y su tamaño de toque, y los controles viven en una fila hermana que SOLO se pinta si llegan las props nuevas. Sin ellas —Dashboard (fase 4) y Analítica (fase 6)— el componente queda idéntico a como estaba.
 
-Sobre la tabla ledger que dejó la fase 4, aplica estos cambios concretos (los puntos de anclaje son semánticos; conserva todo lo demás):
+En el `<script>` de `LedgerTable.svelte`, sustituye la desestructuración de props por esta (mantén lo demás: `STATUS_LABEL`, `meta`, estilos):
+
+```svelte
+<script lang="ts">
+  import type { FinanceTxDto } from '@casa-clara/server';
+  import { dateLabel, formatCents } from '$lib/finance/format';
+  import type { FinanceCategoryOptionSource } from '$lib/finance/category-options';
+  import CategorySelect from './CategorySelect.svelte';
+  import EventPicker from './EventPicker.svelte';
+  import RecurrenceChip from './RecurrenceChip.svelte';
+
+  // [FASE 5] Todo lo de edición es OPCIONAL: quien no lo pasa (Dashboard,
+  // Analítica) recibe exactamente la lista de solo lectura de la fase 4.
+  let {
+    rows,
+    eventNameById,
+    onOpen,
+    selectedIds,
+    onToggleSelect,
+    categories,
+    events,
+    onSetCategory,
+    onToggleEvent,
+    onCreateEvent,
+    onSetRecurrence,
+    onDeleteManual,
+    onUnlink
+  }: {
+    rows: FinanceTxDto[];
+    eventNameById: Record<string, string>;
+    onOpen: (tx: FinanceTxDto) => void;
+    selectedIds?: ReadonlySet<string>;
+    onToggleSelect?: (id: string, on: boolean) => void;
+    categories?: readonly FinanceCategoryOptionSource[];
+    events?: ReadonlyArray<{ id: string; name: string }>;
+    onSetCategory?: (id: string, categoryId: string) => void;
+    onToggleEvent?: (tx: FinanceTxDto, eventId: string, add: boolean) => void;
+    onCreateEvent?: (name: string) => void;
+    onSetRecurrence?: (id: string, next: 'recurrente' | 'extraordinario' | null) => void;
+    onDeleteManual?: (id: string) => void;
+    onUnlink?: (transferGroupId: string) => void;
+  } = $props();
+
+  const editable = $derived(Boolean(onSetCategory || onToggleSelect || onSetRecurrence));
+  const isManual = (tx: FinanceTxDto): boolean => tx.batchId === null && tx.dedupHash.startsWith('manual-');
+</script>
+```
+
+Y en el marcado, envuelve cada fila (el `<button class="finance-row">` no cambia por dentro):
+
+```svelte
+{#each rows as tx (tx.id)}
+  <div class="finance-row-wrap">
+    <button type="button" class="finance-row" onclick={() => onOpen(tx)}>
+      <!-- …contenido tal cual lo dejó la fase 4… -->
+    </button>
+    {#if editable}
+      <div class="finance-row-tools">
+        {#if onToggleSelect}
+          <input
+            type="checkbox"
+            aria-label="Seleccionar movimiento"
+            checked={selectedIds?.has(tx.id) ?? false}
+            onchange={(event) => onToggleSelect(tx.id, event.currentTarget.checked)}
+          />
+        {/if}
+        {#if categories && onSetCategory}
+          <CategorySelect {categories} value={tx.categoryId} onchange={(categoryId) => onSetCategory(tx.id, categoryId)} />
+        {/if}
+        {#if events && onToggleEvent && onCreateEvent}
+          <EventPicker
+            {events}
+            selectedIds={tx.eventIds}
+            ontoggle={(eventId, add) => onToggleEvent(tx, eventId, add)}
+            oncreate={onCreateEvent}
+          />
+        {/if}
+        {#if onSetRecurrence}
+          <RecurrenceChip value={tx.recurrence} onchange={(next) => onSetRecurrence(tx.id, next)} />
+        {/if}
+        {#if onUnlink && tx.transferGroupId}
+          <button class="button secondary small-button" type="button" title="Desvincular transferencia"
+            onclick={() => onUnlink(tx.transferGroupId!)}>⇄</button>
+        {/if}
+        {#if tx.provider}
+          <a class="button secondary small-button" title="Editar alias del proveedor"
+            href={`ajustes?prov=${encodeURIComponent(tx.provider)}`}>✎</a>
+        {/if}
+        {#if onDeleteManual && isManual(tx)}
+          <button class="button danger small-button" type="button" onclick={() => onDeleteManual(tx.id)}>Borrar</button>
+        {/if}
+      </div>
+    {/if}
+  </div>
+{:else}
+  <div><span><strong>Sin movimientos</strong><small>No hay movimientos con estos filtros.</small></span></div>
+{/each}
+```
+
+con dos estilos locales más:
+
+```css
+  .finance-row-wrap { border-top: 1px solid var(--line); }
+  .finance-row-wrap:first-child { border-top: 0; }
+  .finance-row-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-bottom: var(--space-2); }
+```
+
+(y quita el `border-top` de `.finance-row`, que ahora lo pone el envoltorio, dejando `.finance-row { border: 0; }`).
+
+- [ ] **Step 5: Cablea la página de Movimientos**
+
+En `movimientos/+page.svelte`, sobre lo que dejó la fase 4:
 
 1. `<ActionStatus status={actionStatus} />` justo bajo el `PageHeader`.
-2. Botón «+ Añadir manual» junto a los filtros: `<button class="button secondary" type="button" onclick={() => (manualOpen = !manualOpen)}>+ Añadir manual</button>`, y debajo `{#if manualOpen}<ManualForm accounts={data.movimientos.accounts} categories={data.movimientos.categories} onsubmit={createManual} oncancel={() => (manualOpen = false)} />{/if}` (ajusta `data.movimientos` al nombre real del objeto del load).
-3. Primera celda de cada fila: `<td><input type="checkbox" aria-label="Seleccionar movimiento" checked={selectedSet.has(row.id)} onchange={(event) => toggleSelected(row.id, event.currentTarget.checked)} /></td>` (y un `<th></th>` en la cabecera).
-4. En la celda del concepto, tras el texto: si `row.transferGroupId`, `<button class="button secondary small-button" type="button" title="Desvincular transferencia" onclick={() => unlinkGroup(row.transferGroupId)}>⇄</button>`; si `row.provider`, el enlace de alias `<a href={`/h/${context.household.id}/finanzas/ajustes?prov=${encodeURIComponent(row.provider)}`} title="Editar alias del proveedor">✎</a>`.
-5. Celda de categoría: `<CategorySelect categories={data.movimientos.categories} value={row.categoryId} onchange={(categoryId) => setCategory(row.id, categoryId)} />`.
-6. Celda de eventos: `<EventPicker events={data.movimientos.events} selectedIds={row.eventIds} ontoggle={(eventId, add) => toggleEvent(row, eventId, add)} oncreate={(name) => createEventFor(row, name)} />`.
-7. Celda de tipo: `<RecurrenceChip value={row.recurrence} onchange={(next) => setRecurrence(row.id, next)} />`.
-8. Última celda: si `row.batchId === null && row.dedupHash.startsWith('manual-')`, `<button class="button danger small-button" type="button" onclick={() => deleteManual(row.id)}>Borrar</button>`.
-9. Barra de selección sobre la tabla:
+2. Botón «+ Añadir manual» junto a los filtros locales: `<button class="button secondary" type="button" onclick={() => (manualOpen = !manualOpen)}>+ Añadir manual</button>`, y debajo `{#if manualOpen}<ManualForm accounts={movimientos.accounts} categories={movimientos.categories} onsubmit={createManual} oncancel={() => (manualOpen = false)} />{/if}`.
+3. Pasa las props nuevas al `LedgerTable` que ya está en la página:
+
+```svelte
+<LedgerTable
+  rows={movimientos.page.rows}
+  {eventNameById}
+  onOpen={(tx) => (panelMode = { kind: 'movimiento', tx })}
+  selectedIds={selectedSet}
+  onToggleSelect={toggleSelected}
+  categories={movimientos.categories}
+  events={movimientos.events}
+  onSetCategory={setCategory}
+  onToggleEvent={toggleEvent}
+  onCreateEvent={createEvent}
+  onSetRecurrence={setRecurrence}
+  onDeleteManual={deleteManual}
+  onUnlink={unlinkGroup}
+/>
+```
+
+4. Barra de selección justo encima del `LedgerTable`:
 
 ```svelte
 {#if selected.length > 0}
@@ -3241,7 +3736,7 @@ Sobre la tabla ledger que dejó la fase 4, aplica estos cambios concretos (los p
     <span>{selected.length} seleccionados</span>
     <button class="button secondary small-button" type="button" disabled={!linkCheck.enabled}
       title={linkCheck.reason ?? 'Vincular como transferencia'} onclick={linkSelection}>⇄ Vincular transferencia</button>
-    {#each data.movimientos.events as entry (entry.id)}
+    {#each movimientos.events as entry (entry.id)}
       <button class="button secondary small-button" type="button" onclick={() => assignEventToSelection(entry.id)}>◈ {entry.name}</button>
     {/each}
     <button class="button secondary small-button" type="button" onclick={() => (selected = [])}>Quitar selección</button>
@@ -3251,18 +3746,18 @@ Sobre la tabla ledger que dejó la fase 4, aplica estos cambios concretos (los p
 
 con estilo local `.seleccion-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2); }`.
 
-- [ ] **Step 5: Verde estático**
+- [ ] **Step 6: Verde estático**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && node apps/web/scripts/lint-css-tokens.mjs && pnpm lint
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server typecheck && pnpm --filter @casa-clara/web check && node apps/web/scripts/lint-css-tokens.mjs && pnpm lint
 ```
 
-Expected: sin errores.
+Expected: sin errores (en particular, el Dashboard de la fase 4 sigue compilando con el `LedgerTable` sin props de edición).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add "apps/web/src/routes/h/[householdId]/finanzas/movimientos"
+git add packages/server/src/finance/queries.ts apps/web/src/lib/components/finance/LedgerTable.svelte "apps/web/src/routes/h/[householdId]/finanzas/movimientos"
 git commit -m "feat(finanzas): edición inline, manuales y transferencias en Movimientos"
 ```
 
@@ -3274,13 +3769,17 @@ git commit -m "feat(finanzas): edición inline, manuales y transferencias en Mov
 - Modify: `apps/web/e2e/helpers.ts` (constantes de semilla de finanzas)
 - Modify: `apps/web/e2e/db-global-setup.ts` (semilla de finanzas)
 - Create: `apps/web/e2e/finanzas-revision.dbe2e.ts`
+- Modify: `apps/web/src/lib/server/finance.server.ts` (creado en fase 4: se le añade `loadFinanceRevision`)
+- Modify: `apps/web/src/lib/server/fixtures.server.ts` (creado/ampliado en fase 4: se le añade `getFinanceRevisionFixture`)
 - Create/Modify: `apps/web/src/routes/h/[householdId]/finanzas/+layout.server.ts` (badge)
 - Modify: `apps/web/src/routes/h/[householdId]/finanzas/+layout.svelte` (chip del badge; si la fase 4 no lo creó, créalo)
 - Create/Modify: `apps/web/src/routes/h/[householdId]/finanzas/revision/+page.server.ts` y `+page.svelte` (sustituyen al esqueleto de fase 1/4)
 
 **Interfaces:**
-- Consumes: `financeCommand` (Task 7), `CategorySelect`/`RecurrenceChip` (Task 8), `OptimisticActions`/`ActionStatus`, `withAuthorizedTransaction`/`createLogger` de `@casa-clara/server`, `demoOrUnavailable`/`unreadable` de `$lib/server/data-source.server`, `getDatabasePool` de `$lib/server/db.server`, `formatCents(value: string | bigint, options?: { signed?: boolean }): string` de `$lib/finance/format` (fase 4), `useAppContext` de `$lib/auth/context`; kinds `finance.transaction.update`, `finance.transactions.bulk`.
-- Produces: `data.pendingReviewCount: number` en el layout de finanzas (badge `.revision-badge`); página Revisión completa.
+- Consumes: `financeCommand` (Task 7), `CategorySelect`/`RecurrenceChip` (Task 8), `OptimisticActions`/`ActionStatus`, `withAuthorizedTransaction`/`createLogger`/`AuthorizationError` de `@casa-clara/server`, `demoOrUnavailable`/`demoOnly`/`unreadable` de `$lib/server/data-source.server`, `getDatabasePool` de `$lib/server/db.server`, `formatCents(value: string | bigint, options?: { signed?: boolean }): string` de `$lib/finance/format` (fase 4), `useAppContext` de `$lib/auth/context`; kinds `finance.transaction.update`, `finance.transactions.bulk`.
+- Produces: `data.pendingReviewCount: number` en el layout de finanzas (badge `.revision-badge`); `loadFinanceRevision`/`FinanceRevisionData` en `$lib/server/finance.server`; `getFinanceRevisionFixture` en `$lib/server/fixtures.server`; página Revisión completa.
+
+**Dónde va cada cosa (patrón de la casa, el mismo de la fase 4):** la SQL de lectura vive en `$lib/server/finance.server.ts` (o en `packages/server/src/finance/queries.ts` si además la comparte un endpoint REST); las maquetas viven en `fixtures.server.ts` envueltas en `demoOnly`, que es el guardián que impide inventarse una casa cuando hay base de datos; y el `+page.server.ts` se queda en tres líneas. Nada de SQL ni de datos demo dentro de una ruta. Ojo también con el idioma: `unreadable(...)` DEVUELVE `null` o lanza 503 — se escribe `return unreadable(log, scope, cause);`, nunca `unreadable(...); return { x: null };`.
 
 - [ ] **Step 1: Semilla e2e de finanzas**
 
@@ -3366,8 +3865,10 @@ test('el admin con concesión confirma un pendiente desde Revisión', async ({ p
 - [ ] **Step 3: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test:e2e:db finanzas-revision.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-revision.dbe2e.ts
 ```
+
+`E2E_DATABASE_URL` se exporta SIEMPRE de forma explícita: el valor por omisión del `package.json` apunta al puerto 54329, que en esta máquina ocupa otra aplicación.
 
 Expected: FAIL — la página esqueleto no tiene tabla ni badge.
 
@@ -3376,9 +3877,8 @@ Expected: FAIL — la página esqueleto no tiene tabla ni badge.
 `+layout.server.ts` del módulo (si la fase 4 ya lo creó, AÑADE `pendingReviewCount` a su retorno con esta misma consulta):
 
 ```ts
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
 
-import { unreadable } from '$lib/server/data-source.server';
 import { getDatabasePool } from '$lib/server/db.server';
 import type { LayoutServerLoad } from './$types';
 
@@ -3405,7 +3905,10 @@ export const load: LayoutServerLoad = async ({ depends, locals, params }) => {
     );
     return { pendingReviewCount };
   } catch (cause) {
-    unreadable(log, 'finanzas:badge', cause);
+    // El badge es un adorno: si no se puede contar, el módulo sigue navegable.
+    // Se registra con su código estable pero NO se llama a `unreadable`, que
+    // lanzaría 503 y tumbaría TODAS las pantallas de Finanzas por un contador.
+    log.error('finanzas badge unavailable', { code: errorCode(cause) });
     return { pendingReviewCount: 0 };
   }
 };
@@ -3446,19 +3949,107 @@ En `+layout.svelte`: si la fase 4 dejó una navegación del módulo, añade dent
 </style>
 ```
 
-- [ ] **Step 5: Implementa la página Revisión**
+- [ ] **Step 5: Cargador, maqueta y ruta de Revisión**
 
-`revision/+page.server.ts`:
+Al final de `apps/web/src/lib/server/finance.server.ts` (junto a `loadFinanceDashboard`/`loadFinanceMovimientos`, con sus mismos imports):
 
 ```ts
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+export interface FinanceRevisionRow {
+  id: string;
+  opDate: string;
+  accountName: string;
+  concept: string;
+  provider: string | null;
+  providerDisplay: string | null;
+  amountCents: string;
+  status: string;
+  categoryId: string | null;
+  recurrence: 'recurrente' | 'extraordinario' | null;
+  transferGroupId: string | null;
+}
 
-import { demoOrUnavailable, unreadable } from '$lib/server/data-source.server';
-import { getDatabasePool } from '$lib/server/db.server';
+export interface FinanceRevisionData {
+  from: string;
+  to: string;
+  rows: FinanceRevisionRow[];
+  categories: FinanceCategoryDto[];
+}
+
+/** Pendientes y sugerencias del rango: la bandeja de Revisión (spec §8). */
+export async function loadFinanceRevision(
+  user: { id: string },
+  householdId: string,
+  range: { from: string; to: string },
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceRevisionData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const rows = await client.query<FinanceRevisionRow>(
+        `select tx.id, tx.op_date::text as "opDate", acc.name as "accountName", tx.concept,
+                tx.provider, alias.display as "providerDisplay", tx.amount_cents::text as "amountCents",
+                tx.status::text as status, tx.category_id as "categoryId", tx.recurrence::text as recurrence,
+                tx.transfer_group_id as "transferGroupId"
+           from app.finance_transactions as tx
+           join app.finance_accounts as acc
+             on acc.household_id = tx.household_id and acc.id = tx.account_id
+           left join app.finance_provider_aliases as alias
+             on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
+          where tx.household_id = $1 and tx.status <> 'confirmada'
+            and tx.op_date between $2 and $3
+          order by tx.op_date desc, tx.id desc`,
+        [householdId, range.from, range.to]
+      );
+      const categories = await readFinanceCategories(client, householdId);
+      return { from: range.from, to: range.to, rows: rows.rows, categories };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return null;
+    return unreadable(log, 'finance revision', cause);
+  }
+}
+```
+
+Al final de `apps/web/src/lib/server/fixtures.server.ts` (ids inventados, mismo estilo que los de la fase 4):
+
+```ts
+export const getFinanceRevisionFixture = demoOnly(
+  'finanzas/revision',
+  (range: { from: string; to: string }): FinanceRevisionData => ({
+    from: range.from,
+    to: range.to,
+    rows: [
+      {
+        id: 'fc100000-0000-4000-8000-000000000001',
+        opDate: range.from,
+        accountName: 'Cuenta común (demo)',
+        concept: 'COMPRA SUPERMERCADO DEMO',
+        provider: 'SUPERMERCADO DEMO',
+        providerDisplay: null,
+        amountCents: '-2350',
+        status: 'pendiente',
+        categoryId: null,
+        recurrence: null,
+        transferGroupId: null
+      }
+    ],
+    categories: [
+      { id: 'fc200000-0000-4000-8000-000000000001', name: 'Casa', parentId: null, kind: 'gasto' }
+    ]
+  })
+);
+```
+
+Y la ruta, `revision/+page.server.ts`, se queda en el patrón de la fase 4:
+
+```ts
+import { demoOrUnavailable } from '$lib/server/data-source.server';
+import { loadFinanceRevision } from '$lib/server/finance.server';
+import { getFinanceRevisionFixture } from '$lib/server/fixtures.server';
 import type { PageServerLoad } from './$types';
 
-const log = createLogger('web:finanzas:revision');
-
+/** Rango por defecto de la bandeja: los últimos 6 meses. */
 function monthsAgoISO(months: number): string {
   const date = new Date();
   date.setUTCMonth(date.getUTCMonth() - months);
@@ -3467,52 +4058,15 @@ function monthsAgoISO(months: number): string {
 
 export const load: PageServerLoad = async ({ depends, locals, params, url }) => {
   depends('cc:finance');
-  const from = url.searchParams.get('from') ?? monthsAgoISO(6);
-  const to = url.searchParams.get('to') ?? new Date().toISOString().slice(0, 10);
-  const pool = getDatabasePool();
-  if (pool && locals.user) {
-    try {
-      const revision = await withAuthorizedTransaction(pool, { userId: locals.user.id }, params.householdId, async (client) => {
-        const rows = await client.query(
-          `select tx.id, tx.op_date::text as "opDate", acc.name as "accountName", tx.concept,
-                  tx.provider, alias.display as "providerDisplay", tx.amount_cents::text as "amountCents",
-                  tx.status, tx.category_id as "categoryId", tx.recurrence,
-                  tx.transfer_group_id as "transferGroupId"
-             from app.finance_transactions as tx
-             join app.finance_accounts as acc
-               on acc.household_id = tx.household_id and acc.id = tx.account_id
-             left join app.finance_provider_aliases as alias
-               on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
-            where tx.household_id = $1 and tx.status <> 'confirmada'
-              and tx.op_date between $2 and $3
-            order by tx.op_date desc, tx.id desc`,
-          [params.householdId, from, to]
-        );
-        const categories = await client.query(
-          `select id, name, parent_id as "parentId", kind
-             from app.finance_categories where household_id = $1 order by name`,
-          [params.householdId]
-        );
-        return { from, to, rows: rows.rows, categories: categories.rows };
-      });
-      return { revision };
-    } catch (cause) {
-      unreadable(log, 'finanzas:revision', cause);
-      return { revision: null };
-    }
-  }
-  return demoOrUnavailable(() => ({
-    revision: {
-      from,
-      to,
-      rows: [{
-        id: 'demo-1', opDate: from, accountName: 'Cuenta demo', concept: 'COMPRA SUPERMERCADO DEMO',
-        provider: 'SUPERMERCADO DEMO', providerDisplay: null, amountCents: '-2350',
-        status: 'pendiente', categoryId: null, recurrence: null, transferGroupId: null
-      }],
-      categories: [{ id: 'demo-cat', name: 'Casa', parentId: null, kind: 'gasto' }]
-    }
-  }));
+  const range = {
+    from: url.searchParams.get('from') ?? monthsAgoISO(6),
+    to: url.searchParams.get('to') ?? new Date().toISOString().slice(0, 10)
+  };
+  const revision = locals.user
+    ? await loadFinanceRevision({ id: locals.user.id }, params.householdId, range)
+    : null;
+  if (revision) return { revision };
+  return demoOrUnavailable(() => ({ revision: getFinanceRevisionFixture(range) }));
 };
 ```
 
@@ -3563,8 +4117,9 @@ export const load: PageServerLoad = async ({ depends, locals, params, url }) => 
     );
   }
 
+  // `null` («—» del RecurrenceChip) es un cambio legítimo: devuelve el
+  // movimiento a sin clasificar. Se envía siempre, sin guarda muda.
   function setRecurrence(rowId: string, recurrence: 'recurrente' | 'extraordinario' | null): void {
-    if (recurrence === null) return;
     void optimistic.run(
       financeCommand(context.household.id, { kind: 'finance.transaction.update', transactionId: rowId, recurrence })
     );
@@ -3670,7 +4225,7 @@ export const load: PageServerLoad = async ({ depends, locals, params, url }) => 
 - [ ] **Step 6: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e:db finanzas-revision.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-revision.dbe2e.ts
 ```
 
 Expected: check sin errores y el dbe2e PASS.
@@ -3678,7 +4233,7 @@ Expected: check sin errores y el dbe2e PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add apps/web/e2e/helpers.ts apps/web/e2e/db-global-setup.ts apps/web/e2e/finanzas-revision.dbe2e.ts "apps/web/src/routes/h/[householdId]/finanzas/+layout.server.ts" "apps/web/src/routes/h/[householdId]/finanzas/+layout.svelte" "apps/web/src/routes/h/[householdId]/finanzas/revision"
+git add apps/web/e2e/helpers.ts apps/web/e2e/db-global-setup.ts apps/web/e2e/finanzas-revision.dbe2e.ts apps/web/src/lib/server/finance.server.ts apps/web/src/lib/server/fixtures.server.ts "apps/web/src/routes/h/[householdId]/finanzas/+layout.server.ts" "apps/web/src/routes/h/[householdId]/finanzas/+layout.svelte" "apps/web/src/routes/h/[householdId]/finanzas/revision"
 git commit -m "feat(finanzas): página de Revisión completa con badge de pendientes"
 ```
 
@@ -3687,27 +4242,51 @@ git commit -m "feat(finanzas): página de Revisión completa con badge de pendie
 ### Task 11: Página Eventos completa
 
 **Files:**
+- Modify: `apps/web/src/lib/server/finance.server.ts` (añade `loadFinanceEventos`)
+- Modify: `apps/web/src/lib/server/fixtures.server.ts` (añade `getFinanceEventosFixture`)
 - Create/Modify: `apps/web/src/routes/h/[householdId]/finanzas/eventos/+page.server.ts` y `+page.svelte` (sustituyen al esqueleto)
 
 **Interfaces:**
-- Consumes: `financeCommand` (Task 7), kinds `finance.event.create|update|delete` (Task 1); `OptimisticActions`/`ActionStatus`; `formatCents` de `$lib/finance/format`; `withAuthorizedTransaction`, `demoOrUnavailable`/`unreadable`, `getDatabasePool`; claves de URL canónicas `from`/`to`/`ev` (doc de interfaces).
-- Produces: página Eventos. Parámetro local `open=<eventId>` para el desglose (decisión local de esta fase).
+- Consumes: `financeCommand` (Task 7), kinds `finance.event.create|update|delete` (Task 1); `OptimisticActions`/`ActionStatus`; `formatCents` de `$lib/finance/format`; `withAuthorizedTransaction`/`requireFinanceAdmin`/`AuthorizationError`, `demoOrUnavailable`/`demoOnly`/`unreadable`, `getDatabasePool`; claves de URL canónicas `from`/`to`/`ev` (doc de interfaces). Misma regla de la Task 10: SQL en `finance.server.ts`, maqueta en `fixtures.server.ts`, ruta de tres líneas.
+- Produces: `loadFinanceEventos`/`FinanceEventosData`, `getFinanceEventosFixture` y la página Eventos. Parámetro local `open=<eventId>` para el desglose (decisión local de esta fase).
 
-- [ ] **Step 1: Load**
+- [ ] **Step 1: Cargador**
 
-`eventos/+page.server.ts` (misma cabecera, `monthsAgoISO` y estructura demo/unreadable que `revision/+page.server.ts` — cópialas; logger `web:finanzas:eventos`):
+Al final de `apps/web/src/lib/server/finance.server.ts`:
 
 ```ts
-export const load: PageServerLoad = async ({ depends, locals, params, url }) => {
-  depends('cc:finance');
-  const from = url.searchParams.get('from') ?? monthsAgoISO(6);
-  const to = url.searchParams.get('to') ?? new Date().toISOString().slice(0, 10);
-  const openId = url.searchParams.get('open');
-  const pool = getDatabasePool();
-  if (pool && locals.user) {
-    try {
-      const eventos = await withAuthorizedTransaction(pool, { userId: locals.user.id }, params.householdId, async (client) => {
-        const summary = await client.query(
+export interface FinanceEventSummaryRow {
+  id: string;
+  name: string;
+  txCount: number;
+  expenseCents: string;
+  incomeCents: string;
+  netCents: string;
+  totalCount: number;
+}
+
+export interface FinanceEventosData {
+  from: string;
+  to: string;
+  openId: string | null;
+  summary: FinanceEventSummaryRow[];
+  detail: Array<{ name: string; count: number; totalCents: string }> | null;
+}
+
+/** Totales por evento del rango + desglose por categoría del evento abierto. */
+export async function loadFinanceEventos(
+  user: { id: string },
+  householdId: string,
+  range: { from: string; to: string },
+  openId: string | null,
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceEventosData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const { from, to } = range;
+      const summary = await client.query<FinanceEventSummaryRow>(
           `select ev.id, ev.name,
                   count(tx.id)::int as "txCount",
                   coalesce(sum(case when tx.amount_cents < 0 then tx.amount_cents else 0 end), 0)::text as "expenseCents",
@@ -3724,39 +4303,87 @@ export const load: PageServerLoad = async ({ depends, locals, params, url }) => 
             where ev.household_id = $1
             group by ev.household_id, ev.id, ev.name
             order by lower(ev.name)`,
-          [params.householdId, from, to]
-        );
-        const detail = openId
-          ? (
-              await client.query(
-                `select coalesce(cat.name, '(sin categoría)') as name, count(*)::int as count,
-                        sum(tx.amount_cents)::text as "totalCents"
-                   from app.finance_transaction_events as te
-                   join app.finance_transactions as tx
-                     on tx.household_id = te.household_id and tx.id = te.transaction_id
-                   left join app.finance_categories as cat
-                     on cat.household_id = tx.household_id and cat.id = tx.category_id
-                  where te.household_id = $1 and te.event_id = $2 and tx.op_date between $3 and $4
-                  group by cat.name
-                  order by sum(tx.amount_cents)`,
-                [params.householdId, openId, from, to]
-              )
-            ).rows
-          : null;
-        return { from, to, openId, summary: summary.rows, detail };
-      });
-      return { eventos };
-    } catch (cause) {
-      unreadable(log, 'finanzas:eventos', cause);
-      return { eventos: null };
-    }
+        [householdId, from, to]
+      );
+      const detail = openId
+        ? (
+            await client.query<{ name: string; count: number; totalCents: string }>(
+              `select coalesce(cat.name, '(sin categoría)') as name, count(*)::int as count,
+                      sum(tx.amount_cents)::text as "totalCents"
+                 from app.finance_transaction_events as te
+                 join app.finance_transactions as tx
+                   on tx.household_id = te.household_id and tx.id = te.transaction_id
+                 left join app.finance_categories as cat
+                   on cat.household_id = tx.household_id and cat.id = tx.category_id
+                where te.household_id = $1 and te.event_id = $2 and tx.op_date between $3 and $4
+                group by cat.name
+                order by sum(tx.amount_cents)`,
+              [householdId, openId, from, to]
+            )
+          ).rows
+        : null;
+      return { from, to, openId, summary: summary.rows, detail };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return null;
+    return unreadable(log, 'finance eventos', cause);
   }
-  return demoOrUnavailable(() => ({
-    eventos: {
-      from, to, openId: null, detail: null,
-      summary: [{ id: 'demo-ev', name: 'Semana Santa (demo)', txCount: 3, expenseCents: '-42000', incomeCents: '0', netCents: '-42000', totalCount: 3 }]
-    }
-  }));
+}
+```
+
+Y la maqueta, al final de `fixtures.server.ts`:
+
+```ts
+export const getFinanceEventosFixture = demoOnly(
+  'finanzas/eventos',
+  (range: { from: string; to: string }): FinanceEventosData => ({
+    from: range.from,
+    to: range.to,
+    openId: null,
+    detail: null,
+    summary: [
+      {
+        id: 'fc300000-0000-4000-8000-000000000001',
+        name: 'Semana Santa (demo)',
+        txCount: 3,
+        expenseCents: '-42000',
+        incomeCents: '0',
+        netCents: '-42000',
+        totalCount: 3
+      }
+    ]
+  })
+);
+```
+
+Y la ruta, `eventos/+page.server.ts`:
+
+```ts
+import { demoOrUnavailable } from '$lib/server/data-source.server';
+import { loadFinanceEventos } from '$lib/server/finance.server';
+import { getFinanceEventosFixture } from '$lib/server/fixtures.server';
+import { isUuid } from '$lib/finance/filters';
+import type { PageServerLoad } from './$types';
+
+function monthsAgoISO(months: number): string {
+  const date = new Date();
+  date.setUTCMonth(date.getUTCMonth() - months);
+  return date.toISOString().slice(0, 10);
+}
+
+export const load: PageServerLoad = async ({ depends, locals, params, url }) => {
+  depends('cc:finance');
+  const range = {
+    from: url.searchParams.get('from') ?? monthsAgoISO(6),
+    to: url.searchParams.get('to') ?? new Date().toISOString().slice(0, 10)
+  };
+  const open = url.searchParams.get('open');
+  const openId = open && isUuid(open) ? open : null;
+  const eventos = locals.user
+    ? await loadFinanceEventos({ id: locals.user.id }, params.householdId, range, openId)
+    : null;
+  if (eventos) return { eventos };
+  return demoOrUnavailable(() => ({ eventos: getFinanceEventosFixture(range) }));
 };
 ```
 
@@ -3903,7 +4530,7 @@ Expected: sin errores.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add "apps/web/src/routes/h/[householdId]/finanzas/eventos"
+git add apps/web/src/lib/server/finance.server.ts apps/web/src/lib/server/fixtures.server.ts "apps/web/src/routes/h/[householdId]/finanzas/eventos"
 git commit -m "feat(finanzas): página de Eventos con totales, renombrado y borrado que desvincula"
 ```
 
@@ -3912,12 +4539,14 @@ git commit -m "feat(finanzas): página de Eventos con totales, renombrado y borr
 ### Task 12: Página Importar completa (dbe2e primero)
 
 **Files:**
-- Create: `apps/web/e2e/finanzas-importar.dbe2e.ts`
+- Create: `apps/web/e2e/finanzas-importar.dbe2e.ts` (esta fase es su dueña; la fase 7 solo añade casos al final, nunca lo reescribe)
+- Modify: `apps/web/src/lib/server/finance.server.ts` (añade `loadFinanceImportar`)
+- Modify: `apps/web/src/lib/server/fixtures.server.ts` (añade `getFinanceImportarFixture`)
 - Create/Modify: `apps/web/src/routes/h/[householdId]/finanzas/importar/+page.server.ts` y `+page.svelte`
 
 **Interfaces:**
 - Consumes: endpoints y formas de respuesta de la Task 6 (`POST /api/v1/finance/imports/preview?household=…` → `{ apiVersion, bank, newCount, dupCount, unknownRefs, sample }`; `POST …/confirm?household=…` con `file` + `payload` JSON `{ newAccounts: Array<{ bankRef, name, kind, ownerLabel }> }` → `{ apiVersion, batchId, newCount, dupCount }`); `financeCommand` + kind `finance.import.undo`; `OptimisticActions`/`ActionStatus`; `formatCents`; `invalidate` de `$app/navigation`.
-- Produces: página Importar (fichero → previsualización → confirmar → historial con deshacer).
+- Produces: `loadFinanceImportar`/`FinanceImportarData`, `getFinanceImportarFixture` y la página Importar (fichero → previsualización → confirmar → historial con deshacer). Misma regla de la Task 10: SQL en `finance.server.ts`, maqueta en `fixtures.server.ts`, ruta de tres líneas.
 
 - [ ] **Step 1: Escribe el dbe2e que falla**
 
@@ -3967,41 +4596,89 @@ test('importar: previsualizar, dar de alta la cuenta, confirmar y deshacer', asy
 - [ ] **Step 2: Rojo**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web test:e2e:db finanzas-importar.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-importar.dbe2e.ts
 ```
 
 Expected: FAIL — la página esqueleto no tiene `input[type="file"]`.
 
-- [ ] **Step 3: Load del historial**
+- [ ] **Step 3: Cargador del historial**
 
-`importar/+page.server.ts` (misma estructura demo/unreadable; logger `web:finanzas:importar`):
+Al final de `apps/web/src/lib/server/finance.server.ts`:
 
 ```ts
+export interface FinanceImportBatchRow {
+  id: string;
+  filename: string;
+  bank: string;
+  importedAt: string;
+  newCount: number;
+  dupCount: number;
+}
+
+export interface FinanceImportarData {
+  batches: FinanceImportBatchRow[];
+}
+
+/** Historial de importaciones del hogar, lo más reciente primero. */
+export async function loadFinanceImportar(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceImportarData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const result = await client.query<FinanceImportBatchRow>(
+        `select id, filename, bank, imported_at::text as "importedAt",
+                new_count as "newCount", dup_count as "dupCount"
+           from app.finance_import_batches
+          where household_id = $1
+          order by imported_at desc`,
+        [householdId]
+      );
+      return { batches: result.rows };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return null;
+    return unreadable(log, 'finance importar', cause);
+  }
+}
+```
+
+Al final de `fixtures.server.ts`:
+
+```ts
+export const getFinanceImportarFixture = demoOnly(
+  'finanzas/importar',
+  (): FinanceImportarData => ({
+    batches: [
+      {
+        id: 'fc400000-0000-4000-8000-000000000001',
+        filename: 'movimientos-demo.xls',
+        bank: 'openbank',
+        importedAt: '2026-08-01T10:00:00',
+        newCount: 12,
+        dupCount: 0
+      }
+    ]
+  })
+);
+```
+
+Y la ruta, `importar/+page.server.ts`:
+
+```ts
+import { demoOrUnavailable } from '$lib/server/data-source.server';
+import { loadFinanceImportar } from '$lib/server/finance.server';
+import { getFinanceImportarFixture } from '$lib/server/fixtures.server';
+import type { PageServerLoad } from './$types';
+
 export const load: PageServerLoad = async ({ depends, locals, params }) => {
   depends('cc:finance');
-  const pool = getDatabasePool();
-  if (pool && locals.user) {
-    try {
-      const batches = await withAuthorizedTransaction(pool, { userId: locals.user.id }, params.householdId, async (client) => {
-        const result = await client.query(
-          `select id, filename, bank, imported_at::text as "importedAt",
-                  new_count as "newCount", dup_count as "dupCount"
-             from app.finance_import_batches
-            where household_id = $1
-            order by imported_at desc`,
-          [params.householdId]
-        );
-        return result.rows;
-      });
-      return { importar: { batches } };
-    } catch (cause) {
-      unreadable(log, 'finanzas:importar', cause);
-      return { importar: null };
-    }
-  }
-  return demoOrUnavailable(() => ({
-    importar: { batches: [{ id: 'demo-b', filename: 'demo.xls', bank: 'openbank', importedAt: '2026-08-01T10:00:00', newCount: 12, dupCount: 0 }] }
-  }));
+  const importar = locals.user ? await loadFinanceImportar({ id: locals.user.id }, params.householdId) : null;
+  if (importar) return { importar };
+  return demoOrUnavailable(() => ({ importar: getFinanceImportarFixture() }));
 };
 ```
 
@@ -4203,7 +4880,7 @@ export const load: PageServerLoad = async ({ depends, locals, params }) => {
 - [ ] **Step 5: Verde**
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && pnpm --filter @casa-clara/web test:e2e:db finanzas-importar.dbe2e.ts
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/web check && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db finanzas-importar.dbe2e.ts
 ```
 
 Expected: check sin errores y el dbe2e PASS.
@@ -4211,7 +4888,7 @@ Expected: check sin errores y el dbe2e PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/web/e2e/finanzas-importar.dbe2e.ts "apps/web/src/routes/h/[householdId]/finanzas/importar"
+git add apps/web/e2e/finanzas-importar.dbe2e.ts apps/web/src/lib/server/finance.server.ts apps/web/src/lib/server/fixtures.server.ts "apps/web/src/routes/h/[householdId]/finanzas/importar"
 git commit -m "feat(finanzas): página Importar con previsualización, cuentas nuevas e historial con deshacer"
 ```
 
@@ -4220,57 +4897,129 @@ git commit -m "feat(finanzas): página Importar con previsualización, cuentas n
 ### Task 13: Página Ajustes del módulo (cuentas, categorías, reglas, alias)
 
 **Files:**
+- Modify: `apps/web/src/lib/server/finance.server.ts` (añade `loadFinanceAjustes`)
+- Modify: `apps/web/src/lib/server/fixtures.server.ts` (añade `getFinanceAjustesFixture`)
 - Create/Modify: `apps/web/src/routes/h/[householdId]/finanzas/ajustes/+page.server.ts` y `+page.svelte`
 
 **Interfaces:**
 - Consumes: `financeCommand` + kinds `finance.account.update`, `finance.category.create|delete`, `finance.rule.delete`, `finance.alias.update` (Task 1); `OptimisticActions`/`ActionStatus`; `formatCents`; parámetro de URL `prov` (lo enlazan Revisión y Movimientos, tareas 9–10). La concesión por admin NO vive aquí (Ajustes generales, fase 1).
-- Produces: página Ajustes del módulo.
+- Produces: `loadFinanceAjustes`/`FinanceAjustesData`, `getFinanceAjustesFixture` y la página Ajustes del módulo. Misma regla de la Task 10: SQL en `finance.server.ts`, maqueta en `fixtures.server.ts`, ruta de tres líneas.
 
-- [ ] **Step 1: Load**
+- [ ] **Step 1: Cargador**
 
-`ajustes/+page.server.ts` (misma estructura; logger `web:finanzas:ajustes`); dentro de la transacción:
+Al final de `apps/web/src/lib/server/finance.server.ts`:
 
 ```ts
-        const accounts = await client.query(
-          `select id, name, bank, kind, owner_label as "ownerLabel", bank_ref as "bankRef",
-                  owner_aliases as "ownerAliases", transfer_refs as "transferRefs"
-             from app.finance_accounts
-            where household_id = $1 and archived_at is null
-            order by name`,
-          [params.householdId]
-        );
-        const categories = await client.query(
-          `select id, name, parent_id as "parentId", kind
-             from app.finance_categories where household_id = $1 order by name`,
-          [params.householdId]
-        );
-        const rules = await client.query(
-          `select rule.id, rule.rule_type as "ruleType", rule.pattern, rule.origin,
-                  cat.name as "categoryName"
-             from app.finance_rules as rule
-             left join app.finance_categories as cat
-               on cat.household_id = rule.household_id and cat.id = rule.category_id
-            where rule.household_id = $1
-            order by rule.pattern`,
-          [params.householdId]
-        );
-        const providers = await client.query(
-          `select tx.provider_norm as "providerNorm", max(tx.provider) as provider,
-                  max(alias.display) as alias, count(*)::int as count,
-                  sum(tx.amount_cents)::text as "totalCents"
-             from app.finance_transactions as tx
-             left join app.finance_provider_aliases as alias
-               on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
-            where tx.household_id = $1 and tx.provider_norm is not null
-            group by tx.provider_norm
-            order by count(*) desc
-            limit 500`,
-          [params.householdId]
-        );
-        return { accounts: accounts.rows, categories: categories.rows, rules: rules.rows, providers: providers.rows };
+export interface FinanceAjustesAccountRow {
+  id: string;
+  name: string;
+  bank: string | null;
+  kind: string;
+  ownerLabel: string;
+  bankRef: string;
+  ownerAliases: string[];
+  transferRefs: string[];
+}
+
+export interface FinanceAjustesRuleRow {
+  id: string;
+  ruleType: string;
+  pattern: string;
+  origin: string;
+  categoryName: string | null;
+}
+
+export interface FinanceAjustesProviderRow {
+  providerNorm: string;
+  provider: string;
+  alias: string | null;
+  count: number;
+  totalCents: string;
+}
+
+export interface FinanceAjustesData {
+  accounts: FinanceAjustesAccountRow[];
+  categories: FinanceCategoryDto[];
+  rules: FinanceAjustesRuleRow[];
+  providers: FinanceAjustesProviderRow[];
+}
+
+/** Cuentas, árbol de categorías, reglas y proveedores con alias del hogar. */
+export async function loadFinanceAjustes(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceAjustesData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const accounts = await client.query<FinanceAjustesAccountRow>(
+        `select id, name, bank, kind, owner_label as "ownerLabel", bank_ref as "bankRef",
+                owner_aliases as "ownerAliases", transfer_refs as "transferRefs"
+           from app.finance_accounts
+          where household_id = $1 and archived_at is null
+          order by name`,
+        [householdId]
+      );
+      const categories = await readFinanceCategories(client, householdId);
+      const rules = await client.query<FinanceAjustesRuleRow>(
+        `select rule.id, rule.rule_type as "ruleType", rule.pattern, rule.origin,
+                cat.name as "categoryName"
+           from app.finance_rules as rule
+           left join app.finance_categories as cat
+             on cat.household_id = rule.household_id and cat.id = rule.category_id
+          where rule.household_id = $1
+          order by rule.pattern`,
+        [householdId]
+      );
+      // Tope explícito: la lista de proveedores es de trabajo, no un informe.
+      const providers = await client.query<FinanceAjustesProviderRow>(
+        `select tx.provider_norm as "providerNorm", max(tx.provider) as provider,
+                max(alias.display) as alias, count(*)::int as count,
+                sum(tx.amount_cents)::text as "totalCents"
+           from app.finance_transactions as tx
+           left join app.finance_provider_aliases as alias
+             on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
+          where tx.household_id = $1 and tx.provider_norm is not null
+          group by tx.provider_norm
+          order by count(*) desc
+          limit 500`,
+        [householdId]
+      );
+      return { accounts: accounts.rows, categories, rules: rules.rows, providers: providers.rows };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError) return null;
+    return unreadable(log, 'finance ajustes', cause);
+  }
+}
 ```
 
-devuelto como `{ ajustes: … }`, con rama demo `demoOrUnavailable(() => ({ ajustes: { accounts: [], categories: [], rules: [], providers: [] } }))`.
+Al final de `fixtures.server.ts` (la maqueta de Ajustes es deliberadamente vacía: sin hogar real no hay cuentas que configurar, y la pantalla ya dice qué hacer):
+
+```ts
+export const getFinanceAjustesFixture = demoOnly(
+  'finanzas/ajustes',
+  (): FinanceAjustesData => ({ accounts: [], categories: [], rules: [], providers: [] })
+);
+```
+
+Y la ruta, `ajustes/+page.server.ts`:
+
+```ts
+import { demoOrUnavailable } from '$lib/server/data-source.server';
+import { loadFinanceAjustes } from '$lib/server/finance.server';
+import { getFinanceAjustesFixture } from '$lib/server/fixtures.server';
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ depends, locals, params }) => {
+  depends('cc:finance');
+  const ajustes = locals.user ? await loadFinanceAjustes({ id: locals.user.id }, params.householdId) : null;
+  if (ajustes) return { ajustes };
+  return demoOrUnavailable(() => ({ ajustes: getFinanceAjustesFixture() }));
+};
+```
 
 - [ ] **Step 2: Página**
 
@@ -4489,7 +5238,7 @@ export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa
 Expected: sin errores (finanzas no toca el grafo inicial de Hoy). Después, los gates completos de la rama:
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm check && pnpm test && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:db && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:rls && pnpm --filter @casa-clara/web test:e2e:db
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm check && pnpm test && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:db && TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_dev" pnpm test:rls && E2E_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u" pnpm --filter @casa-clara/web test:e2e:db
 ```
 
 Expected: todo verde.
@@ -4497,6 +5246,6 @@ Expected: todo verde.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add "apps/web/src/routes/h/[householdId]/finanzas/ajustes"
+git add apps/web/src/lib/server/finance.server.ts apps/web/src/lib/server/fixtures.server.ts "apps/web/src/routes/h/[householdId]/finanzas/ajustes"
 git commit -m "feat(finanzas): página de Ajustes del módulo (cuentas, categorías, reglas y alias)"
 ```

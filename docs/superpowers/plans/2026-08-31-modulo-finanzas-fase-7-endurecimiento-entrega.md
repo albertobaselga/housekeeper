@@ -38,6 +38,7 @@
 
 **Files:**
 - Modify: `apps/web/e2e/critical.a11y.ts`
+- Modify (solo lo que señale axe en el Step 4): `apps/web/src/lib/components/finance/*.svelte` (típicamente `LedgerTable.svelte`, `PivotTable.svelte`, `CashflowChart.svelte`, `NatureStackChart.svelte`, `CategoryBars.svelte`, `FinanceSparkline.svelte`) y las páginas de `apps/web/src/routes/h/[householdId]/finanzas/`
 - Test: `apps/web/e2e/critical.a11y.ts` (la propia spec; se ejecuta con `pnpm test:a11y`)
 
 **Interfaces:**
@@ -85,33 +86,38 @@ Contexto: `critical.a11y.ts` ya cubre login, Hoy, Emergencias y la hoja «Más»
   - `button-name` / `link-name`: los botones de solo-icono (p. ej. ✎, ⇄, chips del pivot) reciben `aria-label="…"` con el verbo en español («Editar alias», «Vincular transferencia»).
   - `th-has-data-cells` / `td-headers-attr` en tablas (`LedgerTable`, `PivotTable`): cada `<th>` lleva `scope="col"` o `scope="row"`.
   - `svg-img-alt` en las gráficas SVG: `role="img"` + `<title>` descriptivo, o `aria-hidden="true"` si la información ya está en texto al lado.
-  Re-ejecuta `pnpm test:a11y` tras cada corrección hasta `7 passed`.
-- [ ] **Step 5: Commit.**
+  Re-ejecuta `pnpm test:a11y` tras cada corrección hasta `7 passed`. Anota la lista de ficheros que has tocado: son los que entran en el commit del Step 5, uno a uno.
+- [ ] **Step 5: Commit.** Añade la spec y SOLO los ficheros de UI que corregiste en el Step 4, nombrados uno a uno (nunca `git add apps/web/src` entero: arrastraría cambios ajenos a esta tarea). Ejemplo con dos correcciones reales; sustituye por tu lista:
   ```bash
-  git add apps/web/e2e/critical.a11y.ts apps/web/src
+  git status --short apps/web/src   # contrasta que solo aparece lo que tocaste en el Step 4
+  git add apps/web/e2e/critical.a11y.ts
+  git add "apps/web/src/lib/components/finance/LedgerTable.svelte" \
+          "apps/web/src/routes/h/[householdId]/finanzas/analitica/+page.svelte"
   git commit -m "test(a11y): las tres pantallas de finanzas entran en la suite crítica"
   ```
+  Si el Step 4 no necesitó corregir nada, el commit lleva solo `apps/web/e2e/critical.a11y.ts`.
 
 ---
 
 ### Task 2: E2E fixture — navegación de las 7 pantallas y denegación por rol
 
 **Files:**
-- Create: `apps/web/e2e/finanzas.e2e.ts`
+- Modify: `apps/web/e2e/finanzas.e2e.ts` (lo **crea la fase 4**, Task 12; aquí se AMPLÍA: se añaden tests al final y se sustituye uno solo, el de denegación)
+- Modify (solo si el Step 2 lo destapa): los `+page.server.ts` de `revision/`, `eventos/`, `importar/` y `ajustes/` bajo `apps/web/src/routes/h/[householdId]/finanzas/`, para darles rama de maqueta
 - Test: `apps/web/e2e/finanzas.e2e.ts` (se ejecuta con `pnpm test:e2e`)
 
 **Interfaces:**
-- Consumes: las 7 rutas del módulo (`finanzas`, `finanzas/analitica`, `finanzas/movimientos`, `finanzas/revision`, `finanzas/eventos`, `finanzas/importar`, `finanzas/ajustes`); guard de routing de fase 1 (`MODULE_CAPABILITY.finanzas = "finance.access"`, `NESTED_ROUTE_CAPABILITY`, fail-closed 404); helpers `loginAs`/`HOUSEHOLD`.
-- Produces: spec e2e de navegación y denegación (spec §11: «navegación de las 7 pantallas como admin-con-concesión; 403/404 para el resto de roles»).
+- Consumes: las 7 rutas del módulo (`finanzas`, `finanzas/analitica`, `finanzas/movimientos`, `finanzas/revision`, `finanzas/eventos`, `finanzas/importar`, `finanzas/ajustes`); guard de routing de fase 1 (`MODULE_CAPABILITY.finanzas = "finance.access"`, `NESTED_ROUTE_CAPABILITY`); códigos canónicos de acceso (interfaces §Resoluciones canónicas 11: **403** en ruta declarada sin capacidad, **404** solo en ruta hija NO declarada); helpers `loginAs`/`HOUSEHOLD` que ya importa el fichero de la fase 4.
+- Produces: spec e2e de navegación y denegación (spec §11: «navegación de las 7 pantallas como admin-con-concesión; 403/404 para el resto de roles»). El caso «admin **sin** concesión» NO se cubre aquí —el modo fixture da concesión demo a la cuenta `admin` y no sabe quitársela—: lo cubre la **Task 3** contra Postgres real, y esa es la trazabilidad de esa mitad de §11.
 
-El patrón a imitar es `apps/web/e2e/roles.e2e.ts`: navegación directa por URL, aserción del `status()` de la respuesta y del texto del guard («no está incluida en tu acceso» para 403). El 404 fail-closed de ruta hija no declarada sigue el test «una ruta hija no declarada falla cerrada con 404» de ese mismo fichero.
+El fichero ya existe: la fase 4 lo dejó con **cuatro** tests (Dashboard con KPIs, Movimientos con panel de detalle, el de denegación para la empleada y el de ruta hija inventada con 404). Esta tarea **añade al final** y borra dos de los existentes —los dos que quedan absorbidos por los tests nuevos—, como dice el Step 1. El patrón a imitar es `apps/web/e2e/roles.e2e.ts`: navegación directa por URL, aserción del `status()` de la respuesta y del texto del guard («no está incluida en tu acceso» para 403). El 404 fail-closed de ruta hija no declarada sigue el test «una ruta hija no declarada falla cerrada con 404» de ese mismo fichero.
 
-- [ ] **Step 1: Escribe la spec completa** en `apps/web/e2e/finanzas.e2e.ts`:
+- [ ] **Step 1: Amplía la spec existente.** Abre `apps/web/e2e/finanzas.e2e.ts` (fase 4) y haz DOS cosas, sin tocar los tests de Dashboard y Movimientos:
+
+  **(a) Borra los DOS tests de la fase 4 que esta tarea absorbe.** Son `la empleada no alcanza Finanzas: 403 en ruta declarada sin capacidad` —lo absorbe el bucle de cuatro roles del apartado (b), que cubre a la empleada y a tres roles más— y `una ruta hija inventada de Finanzas sí es 404` —lo absorbe el test de `/finanzas/privado` del apartado (b)—. **No toques los de Dashboard y Movimientos.** El contrato es el canónico (interfaces §Resoluciones canónicas 11): 403 para capacidad ausente en ruta declarada —`finanzas` SÍ está declarado en `HOUSEHOLD_MODULES`/`MODULE_CAPABILITY`— y 404 solo para ruta hija NO declarada. Un 404 para la empleada en `/h/<hogar>/finanzas` es un bug del guard, no un contrato.
+
+  **(b) Añade al final del fichero** el bloque `SCREENS` y los tests nuevos. **No repitas los imports** (`@playwright/test` y `./helpers` ya están arriba) ni redeclares `HOUSEHOLD`/`loginAs`:
   ```ts
-  import { expect, test } from '@playwright/test';
-
-  import { HOUSEHOLD, loginAs } from './helpers';
-
   const SCREENS = [
     'finanzas',
     'finanzas/analitica',
@@ -148,16 +154,23 @@ El patrón a imitar es `apps/web/e2e/roles.e2e.ts`: navegación directa por URL,
     expect(response?.status()).toBe(404);
   });
   ```
-- [ ] **Step 2: Ejecuta y ve el resultado.**
+- [ ] **Step 2: Ejecuta y lee el resultado.**
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
   pnpm test:e2e
   ```
-  Salida esperada: todas las specs `*.e2e.ts` en verde, incluidas las 6 pruebas nuevas. Si un rol recibe un código distinto del esperado (p. ej. 404 donde el test espera 403), NO ajustes el test a ciegas: comprueba contra la spec §4/§8 qué declara `NESTED_ROUTE_CAPABILITY` y qué hace el guard de `apps/web/src/routes/h/[householdId]/+layout.server.ts`; el contrato es 403 para capacidad ausente en ruta declarada y 404 para ruta no declarada. Corrige el lado que esté violando el contrato.
+  Salida esperada: todas las specs `*.e2e.ts` en verde. El fichero queda con 8 tests: los 2 de la fase 4 que se conservan (Dashboard y Movimientos) y los 6 de esta tarea (el recorrido de las siete pantallas, los cuatro roles denegados y la ruta hija no declarada). Si ves 9 o 10, es que no borraste los dos tests que indica el Step 1(a). Cómo leer los dos fallos posibles:
+  - **Un rol recibe un código distinto del esperado** (p. ej. 404 donde el test espera 403): NO ajustes el test a ciegas. El contrato canónico es 403 para capacidad ausente en ruta declarada y 404 para ruta no declarada (interfaces §Resoluciones canónicas 11); comprueba qué declara `NESTED_ROUTE_CAPABILITY` en `apps/web/src/lib/auth/routing.ts` y qué hace el guard de `apps/web/src/routes/h/[householdId]/+layout.server.ts`, y corrige el lado que viola el contrato.
+  - **Una pantalla del bucle no responde 200 sino el estado de datos no disponibles** (`DATA_UNAVAILABLE_STATUS` de `apps/web/src/lib/server/data-source.server.ts`): eso pasa con `revision`, `eventos`, `importar` y `ajustes`, que son pantallas de la fase 5 cuya única cobertura de navegador era dbe2e. Significa que su `load` no tiene rama de maqueta. **Se añade la rama `demoOrUnavailable()` allí**, con su fixture, exactamente como las pantallas de la fase 4; nunca se relaja esta aserción ni se saca la ruta de `SCREENS`.
 - [ ] **Step 3: Commit.**
   ```bash
   git add apps/web/e2e/finanzas.e2e.ts
   git commit -m "test(e2e): las siete pantallas de finanzas y su denegación por rol"
+  ```
+  Si el Step 2 obligó a añadir la rama de maqueta a algún `load` de la fase 5, ese arreglo va en un commit aparte y anterior, con sus ficheros nombrados:
+  ```bash
+  git add "apps/web/src/routes/h/[householdId]/finanzas/revision/+page.server.ts"
+  git commit -m "fix(finanzas): revisión también pinta la maqueta en modo fixture"
   ```
 
 ---
@@ -185,11 +198,30 @@ La batería dbe2e corre contra Postgres real con RLS (config `apps/web/playwrigh
 
   import { HOUSEHOLD, loginAs } from './helpers';
 
+  test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
+
   // Conceder y revocar son comandos por /api/v1/sync (finance.grant.write /
   // finance.revoke.write, exigen access.manage + rol admin del emisor). La
   // fixture 002_finance.sql deja concesión viva solo al admin de roble = la
-  // cuenta `admin` de esta batería. La spec restaura el estado al terminar:
-  // la batería dbe2e comparte base entre specs.
+  // cuenta `admin` de esta batería, que es la ÚNICA concesión viva de la base
+  // compartida. La batería corre con workers: 1 y sin paralelismo, así que si
+  // esta spec terminara con la concesión revocada envenenaría a todas las
+  // specs de finanzas posteriores (finanzas-importar, finanzas-revision).
+  // Por eso el afterEach de abajo repone la concesión pase lo que pase,
+  // incluso si el cuerpo del test se rompe a mitad.
+  test.afterEach(async ({ page }) => {
+    await loginAs(page, 'admin');
+    await page.goto(`/h/${HOUSEHOLD}/settings`);
+    const card = page.locator('section', { has: page.getByRole('heading', { name: 'Finanzas' }) });
+    const conceder = card.getByRole('button', { name: /Conceder/ }).first();
+    if (await conceder.count()) {
+      await conceder.click();
+      await expect(card.getByRole('button', { name: /Revocar/ }).first()).toBeVisible();
+    }
+    const restored = await page.goto(`/h/${HOUSEHOLD}/finanzas`);
+    expect(restored?.status(), 'la concesión debe quedar como estaba para las specs siguientes').toBe(200);
+  });
+
   test('revocar y devolver la concesión cambia lo que la administración ve', async ({ page }) => {
     await loginAs(page, 'admin');
 
@@ -222,9 +254,11 @@ La batería dbe2e corre contra Postgres real con RLS (config `apps/web/playwrigh
     expect(restored?.status()).toBe(200);
   });
   ```
-- [ ] **Step 3: Ejecuta contra el Postgres local.** El clúster local del worktree es el que usa `test:e2e:db` por omisión (`postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u`); el globalSetup recrea esquema y fixtures en cada ejecución:
+- [ ] **Step 3: Ejecuta contra el Postgres local.** `E2E_DATABASE_URL` se exporta SIEMPRE de forma explícita (interfaces §Resoluciones canónicas 15): el valor por omisión de `test:e2e:db` en `apps/web/package.json` apunta a `127.0.0.1:54329`, puerto prohibido en esta máquina porque lo ocupa la base embebida de Paperclip, otra aplicación. El `globalSetup` recrea esquema y fixtures sobre la base a la que apunte esa variable, así que un descuido aquí migra encima de datos ajenos:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+  docker start casaclara-it-pg 2>/dev/null || true
+  export E2E_DATABASE_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u'
   pnpm test:e2e:db
   ```
   Salida esperada: toda la batería `*.dbe2e.ts` en verde, incluida esta spec. Si el botón de conceder no existe tras revocarse (auto-concesión bloqueada), eso contradice la spec §4 —la tarjeta lista TODAS las membresías admin con interruptor y el comando solo exige `access.manage` + rol admin— y se corrige en el handler, no en el test.
@@ -236,81 +270,102 @@ La batería dbe2e corre contra Postgres real con RLS (config `apps/web/playwrigh
 
 ---
 
-### Task 4: dbe2e — importar, previsualizar, confirmar y deshacer contra Postgres real
+### Task 4: dbe2e — el ciclo de importación, ampliado con la vista de Movimientos bajo RLS
 
 **Files:**
-- Create: `apps/web/e2e/finanzas-importar.dbe2e.ts`
+- Modify: `apps/web/e2e/finanzas-importar.dbe2e.ts` (lo **crea la fase 5**, Task 12, con el ciclo previsualizar→confirmar→deshacer ya escrito y verde; aquí se AÑADE un test al final, sin tocar el existente)
 - Test: `apps/web/e2e/finanzas-importar.dbe2e.ts` (se ejecuta con `pnpm test:e2e:db`)
 
 **Interfaces:**
-- Consumes: `POST /api/v1/finance/imports/preview` (multipart: `file`) y `POST /api/v1/finance/imports/confirm` (multipart: `file` + `payload` JSON con cuentas nuevas) vía la pantalla Importar (fase 5); comando `finance.import.undo`; muestras sintéticas de los parsers de la fase 2 (van al repo, spec §11); prefijos de `dedup_hash` preservados.
-- Produces: spec dbe2e del ciclo completo de importación con deshacer (spec §11: «importar→previsualizar→confirmar→deshacer contra Postgres real»).
+- Consumes: la spec de la fase 5 y sus constantes de módulo, en particular `OPENBANK_HTML` (extracto sintético construido **en memoria**: interfaces §Resoluciones canónicas 14 — las muestras se GENERAN por código, nunca hay binarios de extractos en git); `POST /api/v1/finance/imports/preview` y `POST /api/v1/finance/imports/confirm` vía la pantalla Importar (fase 5); comando `finance.import.undo`; pantalla Movimientos y filtros de URL `from`/`to`/`q` (fase 4).
+- Produces: la mitad que le faltaba a §11 sobre el ciclo de importación — que lo importado **se ve en Movimientos bajo RLS** y que el deshacer lo deja en cero —, sin duplicar el ciclo que ya cubre la fase 5.
 
-- [ ] **Step 1: Localiza una muestra sintética y la pantalla real.** Las muestras de los parsers son ficheros del repo (fase 2). Encuéntralas y elige UNA (preferible la de OpenBank o CaixaBank):
+El fichero ya existe y está verde: la fase 5 escribió ahí `importar: previsualizar, dar de alta la cuenta, confirmar y deshacer`, con los selectores reales de su pantalla («Nombre de la cuenta nueva», «Confirmar importación», acuses «2 nuevas» / «Importadas 2») y el manejo del `dialog` de confirmación del deshacer. **No se reescribe: se amplía.** La spec §11 pedía además la comprobación de extremo a extremo de que los movimientos importados existen para el usuario autorizado y desaparecen al deshacer; eso es lo que añade esta tarea.
+
+- [ ] **Step 1: Lee la spec de la fase 5 y ancla lo que vas a reutilizar.**
   ```bash
-  find packages/server -type f \( -name '*.xls' -o -name '*.xlsx' \) | sort
+  cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+  cat apps/web/e2e/finanzas-importar.dbe2e.ts
   ```
-  Anota la ruta exacta (p. ej. `packages/server/src/finance/parsers/<muestras>/<fichero>.xls`; usa la que exista). Después lee la pantalla para anclar los selectores:
-  ```bash
-  sed -n 1,120p apps/web/src/routes/h/\[householdId\]/finanzas/importar/+page.svelte
-  ```
-  Anota: el selector del `input[type="file"]`, el texto del botón de confirmar (se espera «Confirmar»), el del deshacer del historial (se espera «Deshacer») y cómo pinta la previsualización (nuevas/duplicadas) y el formulario de cuentas desconocidas. Ajusta los literales del Step 2 a lo que veas — la estructura del flujo es contrato de la spec §7/§8 y no cambia.
-- [ ] **Step 2: Escribe la spec** en `apps/web/e2e/finanzas-importar.dbe2e.ts` (la ruta de la muestra se resuelve desde `apps/web`, que es el cwd de Playwright):
+  Anota tres cosas: (a) el nombre exacto de la constante del extracto sintético (se espera `OPENBANK_HTML`, con dos movimientos de julio de 2026, uno de ellos con el concepto `TRANSFERENCIA A FAVOR DE CLARA DEMO, CONCEPTO ALQUILER JULIO`); (b) los literales de los botones («Confirmar importación», «Deshacer») y del campo de cuenta nueva («Nombre de la cuenta nueva»); (c) que el deshacer abre un `dialog` del navegador y la spec lo acepta con `page.once('dialog', …)`. El test nuevo reutiliza los tres tal cual: si algún literal difiere del esperado, usa el real del fichero.
+- [ ] **Step 2: Añade el test al final del fichero**, sin repetir imports ni redeclarar `OPENBANK_HTML` (ya está en el módulo), y con un `afterEach` que garantice el deshacer aunque el test se rompa a mitad — la batería dbe2e comparte base entre specs:
   ```ts
-  import path from 'node:path';
+  // Ampliación de la fase 7: lo importado tiene que VERSE en Movimientos bajo
+  // RLS, y el deshacer tiene que dejarlo en cero. El ciclo de importación en sí
+  // ya lo cubre el test de arriba (fase 5): aquí solo se comprueba el efecto
+  // sobre los datos que ve la administración con concesión.
+  const MOVIMIENTOS_JULIO = `/h/${HOUSEHOLD}/finanzas/movimientos?from=2026-07-01&to=2026-07-31&q=ALQUILER+JULIO`;
 
-  import { expect, test } from '@playwright/test';
-
-  import { HOUSEHOLD, loginAs } from './helpers';
-
-  // Muestra sintética de la fase 2 (extracto inventado, formato real).
-  // AJUSTA la ruta a la que devolvió `find packages/server -name '*.xls*'`.
-  const SAMPLE = path.resolve('..', '..', 'packages/server/src/finance/parsers/RUTA-DE-LA-MUESTRA');
-
-  test('importar: previsualizar, confirmar y deshacer deja la base como estaba', async ({ page }) => {
-    await loginAs(page, 'admin');
+  async function deshacerSiQueda(page: import('@playwright/test').Page) {
     await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
-
-    // 1. Previsualización: el fichero viaja entero y vuelve el banco detectado
-    //    y los conteos (nuevas/duplicadas). Sin estado en el servidor.
-    await page.locator('input[type="file"]').setInputFiles(SAMPLE);
-    await expect(page.getByText(/nuevas/i)).toBeVisible();
-
-    // 2. Si el extracto trae cuentas que el hogar no conoce (unknown_refs),
-    //    la previsualización pide crearlas: rellena el formulario mínimo.
-    const accountForm = page.getByLabel('Nombre de la cuenta');
-    if (await accountForm.count()) {
-      await accountForm.first().fill('Cuenta corriente E2E');
+    const fila = page.locator('tr', { hasText: 'movimientos-e2e.xls' });
+    if (await fila.count()) {
+      page.once('dialog', (dialog) => void dialog.accept());
+      await fila.first().getByRole('button', { name: 'Deshacer' }).click();
+      await expect(page.locator('tr', { hasText: 'movimientos-e2e.xls' })).toHaveCount(0);
     }
+  }
 
-    // 3. Confirmar: reenvía el fichero + el JSON de cuentas nuevas, inserta el
-    //    lote y ejecuta el pipeline. El historial gana una fila.
-    await page.getByRole('button', { name: 'Confirmar' }).click();
-    const batchRow = page.locator('tr, li', { hasText: path.basename(SAMPLE) }).first();
-    await expect(batchRow).toBeVisible();
+  test.describe('lo importado se ve y el deshacer lo borra', () => {
+    test.afterEach(async ({ page }) => {
+      await loginAs(page, 'admin');
+      await deshacerSiQueda(page);
+    });
 
-    // 4. Los movimientos importados existen bajo RLS.
-    await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    test('los movimientos del lote aparecen en Movimientos y desaparecen al deshacer', async ({ page }) => {
+      await loginAs(page, 'admin');
 
-    // 5. Deshacer (comando finance.import.undo): borrar el lote arrastra sus
-    //    transacciones (ON DELETE CASCADE) y el historial vuelve a su estado.
-    await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
-    await page.locator('tr, li', { hasText: path.basename(SAMPLE) }).first()
-      .getByRole('button', { name: 'Deshacer' }).click();
-    await expect(page.locator('tr, li', { hasText: path.basename(SAMPLE) })).toHaveCount(0);
+      // Punto de partida: el hogar no tiene todavía el movimiento del extracto.
+      await page.goto(MOVIMIENTOS_JULIO);
+      await expect(page.locator('.finance-ledger .finance-row')).toHaveCount(0);
+
+      // Importar el mismo extracto sintético de la fase 5 (en memoria, sin
+      // ficheros binarios en el repo).
+      await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
+      await page.setInputFiles('input[type="file"]', {
+        name: 'movimientos-e2e.xls',
+        mimeType: 'application/vnd.ms-excel',
+        buffer: Buffer.from(OPENBANK_HTML, 'latin1')
+      });
+      await expect(page.locator('body')).toContainText('2 nuevas');
+
+      // El alta de cuenta es condicional a propósito: el test de la fase 5 corre
+      // antes en este mismo fichero y su deshacer borra el lote y sus
+      // transacciones, pero la cuenta «OpenBank E2E» que dio de alta se queda.
+      // Si ya existe, la previsualización no pide crearla y no hay formulario.
+      const nombreCuenta = page.getByLabel('Nombre de la cuenta nueva');
+      if (await nombreCuenta.count()) {
+        await nombreCuenta.fill('OpenBank E2E');
+      }
+
+      await page.getByRole('button', { name: 'Confirmar importación' }).click();
+      await expect(page.locator('.success-message')).toContainText('Importadas 2');
+
+      // El movimiento existe para la administración con concesión: RLS lo deja pasar.
+      await page.goto(MOVIMIENTOS_JULIO);
+      const filas = page.locator('.finance-ledger .finance-row');
+      await expect(filas).toHaveCount(1);
+      await expect(filas.first()).toContainText('ALQUILER JULIO');
+
+      // Deshacer: el lote se va con sus transacciones (ON DELETE CASCADE).
+      await deshacerSiQueda(page);
+      await page.goto(MOVIMIENTOS_JULIO);
+      await expect(page.locator('.finance-ledger .finance-row')).toHaveCount(0);
+    });
   });
   ```
-- [ ] **Step 3: Ejecuta.**
+- [ ] **Step 3: Ejecuta.** `E2E_DATABASE_URL` explícita siempre (interfaces §Resoluciones canónicas 15: el valor por omisión de `apps/web/package.json` apunta al puerto 54329, prohibido en esta máquina — lo ocupa la base embebida de Paperclip):
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+  docker start casaclara-it-pg 2>/dev/null || true
+  export E2E_DATABASE_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u'
   pnpm test:e2e:db
   ```
-  Salida esperada: batería en verde incluida esta spec. El deshacer restaura el estado, así que las specs vecinas no ven residuos. Si la previsualización marca todas las filas como duplicadas, es que otra spec ya importó esa muestra sin deshacer: revisa que el paso 5 se ejecute siempre (usa `test.afterEach` con el deshacer si hiciera falta garantizarlo ante fallos intermedios).
+  Salida esperada: batería en verde, con los dos tests de este fichero (el de la fase 5 y el nuevo). El `afterEach` deshace siempre, así que las specs vecinas no ven residuos. Si la previsualización marca las dos filas como duplicadas en vez de nuevas, es que un lote anterior quedó sin deshacer: ejecuta de nuevo la batería completa (el `globalSetup` recrea esquema y fixtures) y comprueba que el `afterEach` está donde debe.
 - [ ] **Step 4: Commit.**
   ```bash
   git add apps/web/e2e/finanzas-importar.dbe2e.ts
-  git commit -m "test(dbe2e): importar, confirmar y deshacer contra Postgres real"
+  git commit -m "test(dbe2e): lo importado se ve en movimientos y el deshacer lo borra"
   ```
 
 ---
@@ -325,7 +380,7 @@ La batería dbe2e corre contra Postgres real con RLS (config `apps/web/playwrigh
 - Consumes: `scripts/ci/assert-suite-coverage.py` (contrato `--specs 'BASE::GLOB'`, glob con `recursive=True`); informes JUnit de vitest (nombre de `testsuite` relativo a la raíz del workspace) y de Playwright (relativo a `testDir`).
 - Produces: gate `suite-coverage` capaz de inventariar `packages/server/src/finance/*.test.ts` y cualquier test anidado futuro; constancia de que las specs nuevas de las tareas 1–4 ya quedan cubiertas por los globs existentes.
 
-Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `packages/server::src/*.test.ts` y `apps/web::tests/*.test.ts`. En Python, `glob` sin `**` NO desciende a subdirectorios: los tests de `packages/server/src/finance/` (fase 2) correrían en el job `integration` pero quedarían FUERA del inventario del gate — exactamente el agujero que ese gate existe para cerrar. Las specs de Playwright nuevas (`finanzas.e2e.ts`, `finanzas-concesion.dbe2e.ts`, `finanzas-importar.dbe2e.ts`, y las pruebas añadidas a `critical.a11y.ts`) SÍ las cubren ya los globs `apps/web/e2e::*.e2e.ts` / `*.dbe2e.ts` / `*.a11y.ts`: ahí no hay nada que tocar.
+Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `packages/server::src/*.test.ts` y `apps/web::tests/*.test.ts`. En Python, `glob` sin `**` NO desciende a subdirectorios: los tests de `packages/server/src/finance/` (fase 2) correrían en el job `integration` pero quedarían FUERA del inventario del gate — exactamente el agujero que ese gate existe para cerrar, y el que la fase 4 daba por cerrado sin estarlo. Las specs de Playwright del módulo —`finanzas.e2e.ts` (creada en la fase 4, ampliada en la Task 2), `finanzas-importar.dbe2e.ts` (creada en la fase 5, ampliada en la Task 4), `finanzas-concesion.dbe2e.ts` (nueva, Task 3) y las pruebas añadidas a `critical.a11y.ts` (Task 1)— SÍ las cubren ya los globs `apps/web/e2e::*.e2e.ts` / `*.dbe2e.ts` / `*.a11y.ts`: ahí no hay nada que tocar. El inventario va por fichero, así que ampliar una spec existente no cambia nada del gate.
 
 - [ ] **Step 1: Demuestra el agujero (rojo).**
   ```bash
@@ -377,30 +432,35 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 
 **Files:**
 - Modify: `apps/web/scripts/verify-today-bundle.mjs`
+- Modify (solo si el Step 5 lo exige): los `apps/web/src/lib/components/finance/*.svelte` que animen sin bloque `prefers-reduced-motion`
 - Test: `pnpm --filter @casa-clara/web verify:bundle` y `pnpm test:lighthouse`
 
 **Interfaces:**
-- Consumes: `apps/web/src/lib/finance/filters.ts` (módulo cliente de finanzas, fase 4); la lista `FORBIDDEN_IN_INITIAL_GRAPH` de `verify-today-bundle.mjs`; `infra/quality/lighthouserc.json` (LCP ≤ 2000 ms, TBT ≤ 200 ms, script ≤ 122880 bytes, a11y = 1).
-- Produces: guarda permanente que hace fallar la build si cualquier módulo de finanzas alcanza el grafo inicial de Hoy (spec §8 «Presupuestos»).
+- Consumes: `apps/web/src/lib/finance/filters.ts` (módulo cliente de finanzas, fase 4) y `apps/web/src/lib/components/finance/LedgerTable.svelte` (componente representativo, fase 4) como los dos ids vigilados; la lista `FORBIDDEN_IN_INITIAL_GRAPH` de `verify-today-bundle.mjs`; `infra/quality/lighthouserc.json` (LCP ≤ 2000 ms, TBT ≤ 200 ms, script ≤ 122880 bytes, a11y = 1).
+- Produces: guarda permanente que hace fallar la build si cualquier módulo o componente de finanzas alcanza el grafo inicial de Hoy, y la comprobación de `prefers-reduced-motion` del módulo (spec §8 «Presupuestos»).
 
-- [ ] **Step 1: Comprueba a mano que nada fuera del módulo importa finanzas** (la fuga típica sería un import estático desde el AppShell o el layout):
+- [ ] **Step 1: Comprueba a mano que nada fuera del módulo importa finanzas** (la fuga típica sería un import estático desde el AppShell o el layout). El grep busca las DOS formas del import — `$lib/finance/*` y `$lib/components/finance/*` —, porque un componente arrastra tanto como un módulo:
   ```bash
   cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
-  grep -rn "lib/finance" apps/web/src --include='*.svelte' --include='*.ts' \
+  grep -rn "lib/finance\|components/finance" apps/web/src --include='*.svelte' --include='*.ts' \
     | grep -v 'src/lib/finance/' \
     | grep -v 'src/lib/components/finance/' \
     | grep -v 'routes/h/\[householdId\]/finanzas' \
-    | grep -v 'routes/api/v1/finance'
+    | grep -v 'routes/api/v1/finance' \
+    | grep -v 'routes/h/\[householdId\]/settings'
   ```
   Salida esperada: vacía. Cada línea que aparezca es una fuga: muévela a la ruta de finanzas o hazla import dinámico antes de seguir.
-- [ ] **Step 2: Construye y averigua el id exacto del módulo en el mapa de trozos** (la forma del id es la que compara la guarda tras `normalize`):
+
+  **La excepción de `settings` es deliberada y está documentada aquí para que nadie la «arregle»:** la tarjeta «Finanzas» de concesiones vive en los Ajustes del hogar por diseño (contrato de interfaces: «`src/routes/h/[householdId]/settings/` (modificar): tarjeta «Finanzas» de concesiones»), así que la fase 1 importa allí `grantFinanceAccess`/`revokeFinanceAccess` de `$lib/finance/commands`. Ese import es legítimo: Ajustes no está en el grafo de arranque de Hoy, y quien decide de verdad si algo llega a ese grafo es `verify-today-bundle.mjs`, que mide alcanzabilidad real, no este grep. Si aparece cualquier OTRA ruta fuera de la lista, sí es fuga.
+- [ ] **Step 2: Construye y averigua los ids exactos en el mapa de trozos** (la forma del id es la que compara la guarda tras `normalize`). Vigilamos dos módulos representativos: uno de lógica y uno de componente, porque las dos rutas de fuga son distintas:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
   pnpm --filter @casa-clara/web build
   grep -o '"[^"]*finance/filters[^"]*"' apps/web/.svelte-kit/casa-clara-module-map.json | head -1
+  grep -o '"[^"]*components/finance/LedgerTable[^"]*"' apps/web/.svelte-kit/casa-clara-module-map.json | head -1
   ```
-  Anota el id (se espera `src/lib/finance/filters.ts`; si sale con otro prefijo, usa el que salga sin los `../` iniciales, que `normalize` ya los quita).
-- [ ] **Step 3: Añade la regla a `FORBIDDEN_IN_INITIAL_GRAPH`** en `apps/web/scripts/verify-today-bundle.mjs`, tras la regla existente de `capabilities.ts` y con su mismo idioma (el porqué dentro del mensaje):
+  Anota los dos ids (se esperan `src/lib/finance/filters.ts` y `src/lib/components/finance/LedgerTable.svelte`; si salen con otro prefijo, usa el que salga sin los `../` iniciales, que `normalize` ya los quita).
+- [ ] **Step 3: Añade las DOS reglas a `FORBIDDEN_IN_INITIAL_GRAPH`** en `apps/web/scripts/verify-today-bundle.mjs`, tras la regla existente de `capabilities.ts` y con su mismo idioma (el porqué dentro del mensaje):
   ```js
   {
     module: 'src/lib/finance/filters.ts',
@@ -409,6 +469,14 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
       '    de sus rutas (/h/[householdId]/finanzas) y SheetJS es solo-servidor. Si este módulo\n' +
       '    aparece aquí, una importación estática desde el layout o desde Hoy lo está\n' +
       '    arrastrando por alcanzabilidad: hazla dinámica o devuélvela a la ruta de finanzas.'
+  },
+  {
+    module: 'src/lib/components/finance/LedgerTable.svelte',
+    why:
+      'los componentes de Finanzas tampoco entran en el arranque de Hoy. Esta regla cubre la\n' +
+      '    otra puerta de fuga: un componente del módulo importado estáticamente desde AppShell,\n' +
+      '    desde el layout del hogar o desde una tarjeta de Hoy. Si aparece aquí, hazlo import\n' +
+      '    dinámico dentro de la ruta de finanzas; nunca subas el presupuesto para taparlo.'
   }
   ```
 - [ ] **Step 4: Verde del presupuesto.**
@@ -416,15 +484,32 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   pnpm --filter @casa-clara/web verify:bundle
   ```
   Salida esperada: `Today initial graph: N files, M bytes (K de margen sobre 120000); WikiEditor remains route-lazy.` sin excepción. Si la regla nueva dispara, la propia excepción nombra los bytes y el porqué: arregla la fuga (Step 1) y repite.
-- [ ] **Step 5: Lighthouse.**
+- [ ] **Step 5: `prefers-reduced-motion` respetado en todo lo que se mueve** (spec §8: es un presupuesto más, y la auditoría axe de la Task 1 no lo cubre). Lo que se mueve en este módulo son el toast con Deshacer y el fantasma del arrastrar-y-soltar del pivot (fase 6) y las transiciones de las gráficas (fase 4):
+  ```bash
+  grep -rn "transition\|animation" apps/web/src/lib/components/finance --include='*.svelte' | grep -v 'prefers-reduced-motion'
+  grep -rln "prefers-reduced-motion" apps/web/src/lib/components/finance
+  ```
+  Criterio: todo fichero de `components/finance` que aparezca en el primer grep tiene que aparecer también en el segundo. El arreglo, dentro del `<style>` del componente que falte, con la misma forma que ya usa el repertorio de la casa:
+  ```css
+  @media (prefers-reduced-motion: reduce) {
+    .toast, .pivot-ghost { transition: none; animation: none; }
+  }
+  ```
+  Si el componente que falta es del toast o del arrastre (fase 6), el arreglo va ahí, en su componente, no en una hoja global.
+- [ ] **Step 6: Lighthouse.**
   ```bash
   pnpm test:lighthouse
   ```
   Salida esperada: las cuatro aserciones de `infra/quality/lighthouserc.json` en verde sobre `/login` y `/offline` (finanzas no toca esas rutas: si algo falla aquí es una regresión del arranque, no del módulo — diagnostica con el informe de `artifacts/lighthouse`).
-- [ ] **Step 6: Commit.**
+- [ ] **Step 7: Commit.**
   ```bash
   git add apps/web/scripts/verify-today-bundle.mjs
   git commit -m "build(presupuestos): finanzas queda desterrado del arranque de Hoy por guarda"
+  ```
+  Si el Step 5 obligó a añadir bloques `prefers-reduced-motion`, van en su propio commit con los componentes nombrados:
+  ```bash
+  git add "apps/web/src/lib/components/finance/PivotTable.svelte"
+  git commit -m "fix(finanzas): respetar prefers-reduced-motion en el pivot y el toast"
   ```
 
 ---
@@ -436,15 +521,39 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - Test: los comandos de verificación del propio documento (cada uno con su salida esperada)
 
 **Interfaces:**
-- Consumes: `app.finance_enabled()` y las políticas RLS de `0034_finance.sql`; `requireFinanceAdmin` de `packages/server/src/commands/finance.ts`; los endpoints `GET/POST /api/v1/finance/*`; suites `pnpm test:db` (tests/010: ninguna tabla sin RLS) y `pnpm test:rls` (020 + `tests/030_finance_rls.sql`).
+- Consumes: `app.finance_enabled()` y las políticas RLS de `0034_finance.sql`; `requireFinanceAdmin` de `packages/server/src/commands/finance.ts`; los helpers que lo aplican en la web —`financeRead` de `apps/web/src/lib/server/finance.server.ts` (fase 4) y `previewImport`/`confirmImport` de `apps/web/src/lib/server/finance-imports.server.ts` (fase 5)—; los endpoints `GET/POST /api/v1/finance/*`; suites `pnpm test:db` (tests/010: ninguna tabla sin RLS) y `pnpm test:rls` (020 + `tests/030_finance_rls.sql`).
 - Produces: la revisión de seguridad de la spec §10, como checklist ejecutada y fechada (patrón de documento: `docs/security/security-baseline.md`, secciones cortas con controles verificables).
 
-- [ ] **Step 1: Ejecuta las cinco comprobaciones y guarda las salidas.** Desde la raíz del worktree, con `export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"`:
-  1. RLS automática y matriz negativa: `pnpm test:db && pnpm test:rls` → todas las suites en verde (010 cubre las 10 tablas `finance_*`; 030 es la matriz de doble cerrojo: admin-con-concesión ve, admin-sin-concesión 0 filas, los otros 4 roles 0 filas, cero fugas roble↔olivo, suplantación 42501).
-  2. Ningún endpoint REST sin cerrojo: `grep -rL "requireFinanceAdmin" $(find apps/web/src/routes/api/v1/finance -name '+server.ts')` → salida vacía (`grep -L` lista los ficheros SIN la llamada; cualquier ruta que aparezca es un agujero y se corrige antes de cerrar la tarea).
+- [ ] **Step 1: Ejecuta las cinco comprobaciones y guarda las salidas.** Desde la raíz del worktree, con las variables exportadas (sin `TEST_DATABASE_URL`, `run-sql-tests.mjs` aborta con «TEST_DATABASE_URL or DATABASE_URL is required»):
+  ```bash
+  export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+  cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+  docker start casaclara-it-pg 2>/dev/null || true
+  export TEST_DATABASE_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u'
+  ```
+  1. RLS automática y matriz negativa: `pnpm test:db && pnpm test:rls` → todas las suites en verde (010 cubre las 10 tablas `finance_*`; la suite de RLS de finanzas es la matriz de doble cerrojo: admin-con-concesión ve, admin-sin-concesión 0 filas, los otros 4 roles 0 filas, cero fugas roble↔olivo, suplantación 42501).
+  2. **Ningún endpoint REST sin cerrojo.** El cerrojo está centralizado a propósito: los GET pasan por `financeRead` (`apps/web/src/lib/server/finance.server.ts`) y los POST de importación por `previewImport`/`confirmImport` (`apps/web/src/lib/server/finance-imports.server.ts`), y son esos tres helpers los que llaman a `requireFinanceAdmin` dentro de la transacción autorizada. Por eso NO se busca `requireFinanceAdmin` dentro de cada `+server.ts` —ninguno lo contiene, y buscarlo daría un falso positivo por endpoint—: se comprueba que todos pasan por uno de los tres helpers, y que los tres tienen el cerrojo.
+     ```bash
+     # (a) El find tiene que devolver ficheros; si devuelve cero, el control ha fallado
+     #     (directorio movido o renombrado), no está verde.
+     find apps/web/src/routes/api/v1/finance -name '+server.ts' | wc -l   # ≥ 9 endpoints esperados
+     # (b) Ninguno fuera de los tres helpers autorizados. El -print0/-r evita que
+     #     grep se quede colgado leyendo de la entrada estándar con la lista vacía.
+     find apps/web/src/routes/api/v1/finance -name '+server.ts' -print0 \
+       | xargs -0 -r grep -LE "financeRead|previewImport|confirmImport"
+     # (c) Y los tres helpers sí llaman al cerrojo.
+     grep -n "requireFinanceAdmin" apps/web/src/lib/server/finance.server.ts
+     grep -n "requireFinanceAdmin" apps/web/src/lib/server/finance-imports.server.ts
+     ```
+     Criterio: (a) ≥ 1 fichero, (b) salida vacía, (c) al menos una línea en cada uno. Cualquier `+server.ts` que aparezca en (b) es un agujero real —hace su propia consulta sin pasar por el cerrojo— y se corrige antes de cerrar la tarea; el arreglo es hacerlo pasar por el helper, jamás duplicar el `requireFinanceAdmin` en la ruta.
   3. Ningún comando sin cerrojo, y grant/revoke con `access.manage`: `grep -c "requireFinanceAdmin" packages/server/src/commands/finance.ts` → ≥ 1; `grep -n "access.manage" packages/server/src/commands/finance.ts` → aparece en los handlers de `finance.grant.write` y `finance.revoke.write`.
   4. Los extractos no se persisten: `grep -rn "writeFile\|createWriteStream\|putObject\|storage" apps/web/src/routes/api/v1/finance packages/server/src/finance --include='*.ts' | grep -v '\.test\.'` → salida vacía (el multipart se procesa en memoria, spec §10).
-  5. Ningún dato real en el repo: `git grep -l "finanzas\.db\|informe-semestre1" -- ':!docs/superpowers'` → vacío, y revisión manual de que las muestras de `packages/server` usan titulares e importes inventados (anota los ficheros revisados).
+  5. **Ningún dato real en el repo.** Lo que se comprueba es que no hay DATOS, no que no haya menciones: el runbook de la fase 3 nombra `/home/abf/github/home-finance/backend/data/finanzas.db` en prosa varias veces, y eso es documentación legítima que no se toca.
+     ```bash
+     git ls-files | grep -Ei '\.(db|sqlite|sqlite3|xls|xlsx|csv)$'   # esperado: vacío
+     git grep -n "finanzas\.db" -- ':!docs/'                          # esperado: vacío
+     ```
+     Criterio: las dos salidas vacías. Más la revisión manual de que las muestras sintéticas de `packages/server/src/finance/parsers/synthetic-samples.ts` usan titulares e importes inventados (anota los ficheros revisados). Las menciones en prosa dentro de `docs/` (runbooks, esta misma revisión) son esperadas y se documentan como tales en la tabla.
 - [ ] **Step 2: Escribe `docs/security/revision-finanzas.md`** con esta estructura (rellena cada «Resultado» con la salida real y la fecha):
   ```markdown
   # Revisión de seguridad del módulo Finanzas
@@ -457,14 +566,20 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 
   | # | Control | Cómo se verifica | Resultado |
   |---|---|---|---|
-  | 1 | RLS en todas las tablas `finance_*` y matriz negativa de doble cerrojo | `pnpm test:db && pnpm test:rls` | <verde, suites y fecha> |
-  | 2 | Todos los endpoints `/api/v1/finance/*` exigen sesión + membresía + `requireFinanceAdmin` | `grep -rL "requireFinanceAdmin" $(find apps/web/src/routes/api/v1/finance -name '+server.ts')` vacío | <vacío> |
+  | 1 | RLS en todas las tablas `finance_*` y matriz negativa de doble cerrojo | `pnpm test:db && pnpm test:rls` (con `TEST_DATABASE_URL` exportada) | <verde, suites y fecha> |
+  | 2 | Todos los endpoints `/api/v1/finance/*` exigen sesión + membresía + `requireFinanceAdmin`, por los helpers `financeRead` / `previewImport` / `confirmImport` | `find … -print0 \| xargs -0 -r grep -LE "financeRead\|previewImport\|confirmImport"` vacío, con `find … \| wc -l` ≥ 9, más `grep -n requireFinanceAdmin` en `finance.server.ts` y `finance-imports.server.ts` | <nº de endpoints, vacío, líneas del cerrojo> |
   | 3 | Todos los comandos `finance.*` pasan por `requireFinanceAdmin`; `grant/revoke` exigen además `access.manage` | greps sobre `packages/server/src/commands/finance.ts` | <líneas encontradas> |
   | 4 | Los extractos subidos no se persisten en ningún almacenamiento | grep de escrituras en los caminos de importación, vacío | <vacío> |
-  | 5 | Ningún dato bancario real en el repositorio | `git grep` + revisión manual de las muestras sintéticas | <ficheros revisados> |
+  | 5 | Ningún dato bancario real en el repositorio | `git ls-files \| grep -Ei '\.(db\|sqlite\|xls\|xlsx\|csv)$'` vacío + `git grep -n "finanzas\.db" -- ':!docs/'` vacío + revisión manual de las muestras sintéticas | <ficheros revisados> |
 
   ## Lo que queda fuera y por qué
 
+  - El cerrojo NO se busca fichero a fichero en cada `+server.ts`: vive
+    centralizado en `financeRead` / `previewImport` / `confirmImport`, dentro de
+    la transacción autorizada. Duplicarlo en cada ruta sería peor, no mejor.
+  - Las menciones en prosa de `finanzas.db` dentro de `docs/` (el runbook de la
+    migración, esta misma revisión) son esperadas: el control 5 vigila que no
+    haya datos en el repositorio, no que no se nombre el fichero de origen.
   - El catch-all del sistema antiguo y su autenticación básica desaparecen con la
     retirada de `cf-finanzas` (runbook de despliegue, fase de producción).
   - Auditoría: toda mutación de finanzas pasa por los triggers de `audit_events`
@@ -536,7 +651,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - Test: greps de verificación (anclas y tabla) al final de la tarea
 
 **Interfaces:**
-- Consumes: la tabla «Dónde está cada cosa» de `SKILL.md` (columnas Área/Pantalla/Rol mínimo/Detalle) y la estructura por secciones `## …` de `referencia-operaciones.md`; comandos `finance.grant.write`/`finance.revoke.write`; runbook de la migración (`docs/runbooks/migrar-home-finance.md`, fase 3).
+- Consumes: la tabla «Dónde está cada cosa» de `SKILL.md` (columnas Área/Pantalla/Rol mínimo/Detalle) y la estructura por secciones `## …` de `referencia-operaciones.md`; comandos `finance.grant.write`/`finance.revoke.write`; runbook de la migración (`docs/runbooks/migracion-home-finance.md`, nombre único fijado en interfaces §Resoluciones canónicas 13; lo crea la fase 3).
 - Produces: la actualización de la skill que exige la spec §10 (operación mensual: descargar extractos, importar, revisar; conceder/revocar).
 
 - [ ] **Step 1: Fila en la tabla de `SKILL.md`.** En la tabla «Dónde está cada cosa», tras la fila de «Buscar», añade:
@@ -586,12 +701,14 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
     el historial de Importar (borra el lote entero y sus transacciones).
   - La migración desde el sistema antiguo (home-finance) fue única y está
     congelada; su runbook es
-    [docs/runbooks/migrar-home-finance.md](../../../docs/runbooks/migrar-home-finance.md).
+    [docs/runbooks/migracion-home-finance.md](../../../docs/runbooks/migracion-home-finance.md).
   ```
-- [ ] **Step 3: Verifica las anclas y commit.**
+- [ ] **Step 3: Verifica las anclas y commit.** El tercer grep comprueba que el enlace al runbook apunta a un fichero que existe de verdad (el nombre canónico es `migracion-home-finance.md`, no `migrar-…`):
   ```bash
   grep -n "^## Finanzas" .claude/skills/operar-la-casa/referencia-operaciones.md
   grep -n "finanzas" .claude/skills/operar-la-casa/SKILL.md
+  test -f docs/runbooks/migracion-home-finance.md && echo "runbook OK"
+  grep -rn "migrar-home-finance" .claude/skills/operar-la-casa/   # esperado: vacío
   git add .claude/skills/operar-la-casa/SKILL.md .claude/skills/operar-la-casa/referencia-operaciones.md
   git commit -m "docs(skill): operar finanzas — concesión y operación mensual"
   ```
@@ -605,32 +722,41 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - Test: greps de verificación al final de la tarea
 
 **Interfaces:**
-- Consumes: `docs/despliegue/runbook-despliegue.md` (§2 «Aplicar el esquema», §7 «Humo posterior al despliegue»); migración `0034_finance.sql`; runbook de migración de la fase 3.
-- Produces: runbook de despliegue actualizado (alcance de la fase: criterio de migraciones al día, humo con finanzas, sin variables nuevas).
+- Consumes: `docs/despliegue/runbook-despliegue.md` (§2 «Aplicar el esquema», §7 «Humo posterior al despliegue»); migración `0034_finance.sql`; runbook de migración de la fase 3 (`docs/runbooks/migracion-home-finance.md`, interfaces §Resoluciones canónicas 13); `packages/db/scripts/run-sql-tests.mjs`, que ejecuta todos los `packages/db/tests/*.sql`; códigos canónicos de acceso (403 en ruta declarada sin capacidad).
+- Produces: runbook de despliegue actualizado (alcance de la fase: criterios de salida de migraciones y de suites SQL sin números falsos, humo con finanzas, sin variables nuevas, enlace correcto al runbook de la migración).
 
-- [ ] **Step 1: Actualiza el criterio de salida de las migraciones.** En §2, paso 2, sustituye la línea `Criterio de salida: **17/17 migraciones aplicadas**. Repetir el comando debe` por:
+- [ ] **Step 1: Actualiza el criterio de salida de las migraciones.** En §2, paso 2, sustituye la línea `Criterio de salida: **17/17 migraciones aplicadas**. Repetir el comando debe` por un criterio **sin número fijo** — la numeración de `packages/db/migrations/` tiene huecos (no existen 0019 ni 0024), así que cualquier cifra escrita a mano envejece mal y hace parar un despliegue sano:
   ```markdown
-  Criterio de salida: **34/34 migraciones aplicadas** (la última, `0034_finance.sql`;
-  el número exacto lo dice el propio runner al terminar). Repetir el comando debe
+  Criterio de salida: la última migración aplicada es `0034_finance.sql` y el runner
+  no deja ninguna pendiente (imprime el recuento al terminar; la numeración tiene
+  huecos históricos, así que el número total no es el del último fichero).
+  Repetir el comando debe
   ```
-- [ ] **Step 2: Nota de Finanzas en §2.** Tras el paso 4 de §2 (Better Auth), añade:
+- [ ] **Step 2: Corrige de paso el criterio de las suites SQL** (está justo debajo, en el paso 3 de §2, y también lleva un número falso: `run-sql-tests.mjs` ejecuta TODOS los `packages/db/tests/*.sql`, que hoy son 17 y serán 18 con la suite de RLS de finanzas). Sustituye `Criterio de salida: **5/5 suites en verde**. Si la matriz RLS falla, PARAR:` por:
+  ```markdown
+  Criterio de salida: **todas las suites de `packages/db/tests/` en `ok`**, incluida
+  la de RLS de finanzas (`030_finance_rls.sql`); el runner imprime cuántas ha
+  ejecutado. Si la matriz RLS falla, PARAR:
+  ```
+- [ ] **Step 3: Nota de Finanzas en §2.** Tras el paso 4 de §2 (Better Auth), añade:
   ```markdown
   5. **Finanzas no añade variables de entorno**: SheetJS vive solo en el servidor y
      los extractos no se persisten, así que no hay bucket ni clave nuevos. Lo único
      que trae la 0034 es el esquema y su RLS de doble cerrojo. La carga de los datos
      históricos es una migración única aparte, con su propio runbook:
-     [`../runbooks/migrar-home-finance.md`](../runbooks/migrar-home-finance.md) —
+     [`../runbooks/migracion-home-finance.md`](../runbooks/migracion-home-finance.md) —
      **no se ejecuta sin confirmación explícita del propietario**.
   ```
-- [ ] **Step 3: Humo con Finanzas en §7.** Añade a la lista de comprobaciones de «7. Humo posterior al despliegue», tras la línea del login:
+- [ ] **Step 4: Humo con Finanzas en §7.** Añade a la lista de comprobaciones de «7. Humo posterior al despliegue», tras la línea del login:
   ```markdown
   - [ ] Con una concesión de Finanzas activa (Ajustes → tarjeta Finanzas), el
         Dashboard de `/h/<hogar>/finanzas` responde y pinta los KPIs; una cuenta
         sin concesión no ve el módulo en la navegación y recibe 403 por URL directa.
   ```
-- [ ] **Step 4: Verifica y commit.**
+- [ ] **Step 5: Verifica y commit.** El segundo grep tiene que salir vacío: el nombre canónico del runbook es `migracion-home-finance.md` y un enlace a `migrar-…` quedaría roto para siempre dentro de documentación permanente.
   ```bash
-  grep -n "34/34\|migrar-home-finance\|tarjeta Finanzas" docs/despliegue/runbook-despliegue.md
+  grep -n "0034_finance.sql\|migracion-home-finance\|tarjeta Finanzas\|packages/db/tests" docs/despliegue/runbook-despliegue.md
+  grep -n "migrar-home-finance\|17/17\|5/5 suites" docs/despliegue/runbook-despliegue.md   # esperado: vacío
   git add docs/despliegue/runbook-despliegue.md
   git commit -m "docs(despliegue): el runbook cuenta con la 0034 y el humo de finanzas"
   ```
@@ -640,21 +766,37 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 ### Task 11: Ensayo local COMPLETO de la migración contra Docker
 
 **Files:**
-- Modify: `docs/runbooks/migrar-home-finance.md` (solo si el ensayo revela erratas del runbook de la fase 3; el procedimiento no se cambia, se corrige)
+- Modify: `docs/runbooks/migracion-home-finance.md` (lo crea la fase 3; aquí solo se corrige si el ensayo revela erratas — el procedimiento no se cambia, se corrige)
 - Test: el informe de verificación del ETL y el humo de las 7 pantallas; **ninguna evidencia con datos reales entra en el repo**
 
 **Interfaces:**
-- Consumes: `packages/db/scripts/migrar-home-finance.mjs` con su contrato CLI exacto — `--household <slug>`, `--dry-run`, `--verify-only`, `--force-empty-check` (interfaces §packages/db); el runbook de ensayo de la fase 3 (`docs/runbooks/migrar-home-finance.md`; si la fase 3 lo dejó con otro nombre, localízalo con `ls docs/runbooks/ | grep -i finan` y usa ese, sin renombrarlo); la base origen `/home/abf/github/home-finance/backend/data/finanzas.db` (SOLO LECTURA); `pnpm db:migrate`.
+- Consumes: `packages/db/scripts/migrar-home-finance.mjs` con el contrato CLI canónico (interfaces §Resoluciones canónicas 12, que lo produce la fase 3): `--sqlite <ruta>` y `--database-url <url>` son **obligatorios** —el guion NO lee `DATABASE_URL` del entorno y aborta con código 2 si faltan—, más `--household <slug>`, `--backup-dir <dir>` (donde deja el informe) y los modos `--dry-run` / `--verify-only`; el runbook de ensayo de la fase 3 (`docs/runbooks/migracion-home-finance.md`, nombre único de interfaces §Resoluciones canónicas 13); la base origen `/home/abf/github/home-finance/backend/data/finanzas.db` (SOLO LECTURA); el clúster de pruebas `casaclara-it-pg` en `127.0.0.1:5439`; `pnpm db:migrate`.
 - Produces: el ensayo exigido por la spec §9.4 ejecutado de cabo a rabo sobre el código terminado, con informe local guardado FUERA de ambos repos.
 
 **Los datos migrados son reales.** Viven en el Docker local y en el informe local, nunca en git, nunca en fixtures, nunca en un test. Cualquier fichero que este ensayo produzca se guarda fuera del árbol de ambos repos.
 
 - [ ] **Step 1: Localiza y lee ENTERO el runbook de la fase 3.**
   ```bash
+  cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
   ls docs/runbooks/ | grep -i finan
   ```
-  Se espera `migrar-home-finance.md`. Léelo completo antes de ejecutar nada: este ensayo es ese runbook «de cabo a rabo», y si en algún paso el runbook y esta tarea difieren, manda el runbook (y se anota la discrepancia).
-- [ ] **Step 2: Verifica que la copia de seguridad datada del origen existe** (la que exige el runbook como paso previo, spec §9.1 y §13: única copia de la BD origen). Comprueba en la ruta que el runbook nombra que hay una copia fechada de `finanzas.db` FUERA de los árboles de ambos repos y que su tamaño coincide con el original (`ls -l /home/abf/github/home-finance/backend/data/finanzas.db` como contraste). Si no existe, créala exactamente como diga el runbook ANTES de seguir.
+  Se espera exactamente `migracion-home-finance.md` (nombre único, interfaces §Resoluciones canónicas 13). Léelo completo antes de ejecutar nada: este ensayo es ese runbook «de cabo a rabo», y si en algún paso el runbook y esta tarea difieren, manda el runbook (y se anota la discrepancia).
+- [ ] **Step 2: Copia de seguridad datada del origen** (Paso 0 del runbook, spec §9.1 y §13: única copia de la BD origen, fuera de los árboles de ambos repos porque el guion se niega a escribir dentro de un repo git). Comprueba si ya existe y, si no, créala con los mismos comandos del runbook:
+  ```bash
+  ls -l /home/abf/github/home-finance/backend/data/finanzas.db
+  ls -l ~/copias-home-finance/ 2>/dev/null
+
+  # Si no hay copia del día, hazla ahora (es el Paso 0 del runbook, literal):
+  mkdir -p ~/copias-home-finance
+  cp /home/abf/github/home-finance/backend/data/finanzas.db \
+     ~/copias-home-finance/finanzas-$(date +%Y-%m-%dT%H-%M-%S).db
+  sha256sum /home/abf/github/home-finance/backend/data/finanzas.db ~/copias-home-finance/finanzas-*.db
+  ```
+  Criterio: el sha256 del original y el de la copia recién creada coinciden. Anota la ruta exacta de la copia: es el `--sqlite` de los pasos siguientes.
+  ```bash
+  export COPIA=~/copias-home-finance/finanzas-<fecha-de-la-copia>.db
+  test -f "$COPIA" && echo "copia lista: $COPIA"
+  ```
 - [ ] **Step 3: Postgres 18.4 limpio en Docker y esquema completo.**
   ```bash
   # Base de ensayo limpia en el clúster compartido de pruebas (127.0.0.1:5439).
@@ -667,23 +809,46 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   DATABASE_URL="$ENSAYO_URL" pnpm db:migrate
   DATABASE_URL="$ENSAYO_URL" pnpm db:migrate   # idempotencia: la segunda aplica 0
   ```
-  Salida esperada: primera pasada aplica las 34 migraciones (0001–0034); segunda pasada, 0.
-- [ ] **Step 4: Alta del hogar de ensayo** siguiendo el paso correspondiente del runbook de la fase 3 (que a su vez sigue `docs/despliegue/alta-de-hogar.md`). Anota el slug del hogar: es el `--household` de los pasos siguientes.
-- [ ] **Step 5: ETL en ensayo, en el orden del contrato.**
+  Salida esperada: la primera pasada aplica todas las migraciones pendientes y la última es `0034_finance.sql`; la segunda pasada aplica 0. **No cuentes migraciones a mano**: la numeración de `packages/db/migrations/` tiene huecos (no existen 0019 ni 0024), así que el recuento no coincide con el número del último fichero — el que manda es el que imprime el runner.
+- [ ] **Step 4: Alta del hogar de ensayo.** El runbook de la fase 3 lo hace por SQL directo contra la base de ensayo (para el humo de la UI con cuentas de verdad, sigue en cambio `docs/despliegue/alta-de-hogar.md`, como dice el propio runbook). El clúster es el compartido, así que el contenedor es `casaclara-it-pg` y el usuario `ci_admin` — **nunca un contenedor `pg-ensayo-finanzas` ni un usuario `ensayo`, que no existen en esta máquina**:
   ```bash
-  DATABASE_URL="$ENSAYO_URL" node packages/db/scripts/migrar-home-finance.mjs --household <slug> --dry-run
-  DATABASE_URL="$ENSAYO_URL" node packages/db/scripts/migrar-home-finance.mjs --household <slug>
-  DATABASE_URL="$ENSAYO_URL" node packages/db/scripts/migrar-home-finance.mjs --household <slug> --verify-only
+  docker exec -i casaclara-it-pg psql -U ci_admin -d casaclara_ensayo -c \
+    "SET row_security = off;
+     INSERT INTO app.households (slug, display_name)
+     VALUES ('hogar-ensayo', 'Hogar del ensayo');"
+  docker exec casaclara-it-pg psql -U ci_admin -d casaclara_ensayo -tAc \
+    "SELECT slug FROM app.households;"
+  export SLUG=hogar-ensayo
   ```
-  El informe de verificación (obligatorio: conteos por tabla origen=destino, suma de `amount_cents` por cuenta y mes idénticas, grupos de transferencia con suma 0, distribución de estados, min/max de fechas) se imprime y se guarda donde diga el runbook, **fuera del repo**. Contrasta además a ojo contra `/home/abf/github/home-finance/backend/data/informe-semestre1-2026.md` (solo lectura). Repetir el ETL sin `--force-empty-check` debe abortar por «el hogar ya tiene datos»: compruébalo.
-- [ ] **Step 6: Humo de la UI con ese hogar**, siguiendo el paso de smoke del runbook de la fase 3 (arranque local de la web contra `$ENSAYO_URL`). Recorre las 7 pantallas y comprueba que Dashboard, Movimientos y Analítica cuadran con los números del informe del Step 5 (ingresos, gastos, ahorro y conteo de movimientos del semestre).
-- [ ] **Step 7: Limpieza y cierre.**
+  Salida esperada: `INSERT 0 1` y el `SELECT` devolviendo `hogar-ensayo`. Ese es el `--household` de los pasos siguientes.
+- [ ] **Step 5: ETL en ensayo, en el orden del contrato.** El guion NO lee `DATABASE_URL` del entorno: `--sqlite` y `--database-url` son obligatorios y sin ellos sale con código 2 («Falta --sqlite»). `--backup-dir` es donde deja el informe, siempre fuera de ambos repos:
   ```bash
-  docker rm -f cc-finanzas-ensayo
+  node packages/db/scripts/migrar-home-finance.mjs \
+    --sqlite "$COPIA" --database-url "$ENSAYO_URL" --household "$SLUG" \
+    --backup-dir ~/copias-home-finance --dry-run
+  node packages/db/scripts/migrar-home-finance.mjs \
+    --sqlite "$COPIA" --database-url "$ENSAYO_URL" --household "$SLUG" \
+    --backup-dir ~/copias-home-finance
+  node packages/db/scripts/migrar-home-finance.mjs \
+    --sqlite "$COPIA" --database-url "$ENSAYO_URL" --household "$SLUG" \
+    --backup-dir ~/copias-home-finance --verify-only
   ```
-  Si el ensayo destapó una errata del runbook (un comando que no era, una ruta que faltaba), corrígela ahora en `docs/runbooks/migrar-home-finance.md` y committea:
+  Las tres ejecuciones deben terminar en `Resultado: OK` y código de salida 0. El informe de verificación (obligatorio: conteos por tabla origen=destino, suma de `amount_cents` por cuenta y mes idénticas, grupos de transferencia con suma 0, distribución de estados, min/max de fechas) se imprime y queda en `~/copias-home-finance/informe-migracion-<fecha>.md`, **fuera del repo**. Contrasta además a ojo contra `/home/abf/github/home-finance/backend/data/informe-semestre1-2026.md` (solo lectura). Comprueba de paso el cerrojo de reejecución: repetir el ETL real sobre el mismo hogar debe abortar por «el hogar ya tiene datos» salvo que se pase `--force-empty-check`.
+- [ ] **Step 6: Humo de la UI con ese hogar.** Monta la web contra la base de ensayo (es el paso de smoke del runbook de la fase 3, que remite a `.claude/skills/operar-la-casa/referencia-instalacion.md`) y recórrela con el navegador:
   ```bash
-  git add docs/runbooks/migrar-home-finance.md
+  export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+  DATABASE_URL="$ENSAYO_URL" pnpm --filter @casa-clara/web build
+  DATABASE_URL="$ENSAYO_URL" PORT=4173 node apps/web/build   # deja este proceso corriendo
+  ```
+  En otra terminal, entra en `http://127.0.0.1:4173`, concede Finanzas al admin del ensayo desde Ajustes → tarjeta **Finanzas**, y recorre las 7 pantallas (`finanzas`, `analitica`, `movimientos`, `revision`, `eventos`, `importar`, `ajustes`). Comprueba que Dashboard, Movimientos y Analítica cuadran con los números del informe del Step 5 (ingresos, gastos, ahorro y conteo de movimientos del semestre). Al terminar, para el servidor con Ctrl-C.
+- [ ] **Step 7: Limpieza y cierre.** La base de ensayo contiene datos financieros REALES y vive en el clúster **compartido** de pruebas: se borra la BASE, nunca el contenedor (un `docker rm -f casaclara-it-pg` se llevaría por delante el clúster entero, con las bases de todas las suites):
+  ```bash
+  docker exec casaclara-it-pg dropdb -U ci_admin --if-exists casaclara_ensayo
+  docker exec casaclara-it-pg psql -U ci_admin -lqt | grep -c casaclara_ensayo   # esperado: 0
+  ```
+  Si el ensayo destapó una errata del runbook (un comando que no era, una ruta que faltaba), corrígela ahora en `docs/runbooks/migracion-home-finance.md` y committea:
+  ```bash
+  git add docs/runbooks/migracion-home-finance.md
   git commit -m "docs(runbook): corregir lo que falló al ensayar la migración de finanzas"
   ```
   Si el ensayo destapó un bug de código o de datos: PARA, arréglalo con su test en la tarea que corresponda, y **repite esta tarea desde el Step 3**. El ensayo solo se da por bueno si sale limpio de una pasada.
@@ -696,15 +861,20 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - Test: todos los gates del repositorio; sin cambios de código
 
 **Interfaces:**
-- Consumes: todos los gates de la rama (interfaces §Restricciones globales) más las baterías de navegador y los presupuestos.
+- Consumes: todos los gates de la rama (interfaces §Restricciones globales) más las baterías de navegador y los presupuestos; `TEST_DATABASE_URL` y `E2E_DATABASE_URL` explícitas contra `casaclara-it-pg` (`127.0.0.1:5439`), nunca los valores por omisión de los `package.json`.
 - Produces: la evidencia de que la rama está entregable ANTES de la primera acción contra producción. **Ninguna tarea posterior puede empezar sin esta cerrada.**
 
-- [ ] **Step 1: Pasada completa de gates, en secuencia** (las suites de BD nunca en paralelo):
+- [ ] **Step 1: Pasada completa de gates, en secuencia** (las suites de BD nunca en paralelo). **Las dos variables de base de datos se exportan SIEMPRE, antes de nada**: sin `TEST_DATABASE_URL` las suites SQL abortan con «TEST_DATABASE_URL or DATABASE_URL is required» y —mucho peor— `pnpm test` sigue devolviendo 0 porque todas las suites de integración de server y web son `describe.runIf(Boolean(adminUrl))` y se SALTAN en silencio: la puerta daría verde sin haber ejecutado ni una sola prueba de integración. Y sin `E2E_DATABASE_URL`, `test:e2e:db` cae a su valor por omisión, el puerto 54329 prohibido (interfaces §Resoluciones canónicas 15):
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
   cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
+  docker start casaclara-it-pg 2>/dev/null || true
+  export TEST_DATABASE_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u'
+  export E2E_DATABASE_URL='postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_wt_u'
+
   pnpm lint && pnpm typecheck && pnpm check
   pnpm test
+  pnpm test:import
   pnpm test:db
   pnpm test:rls
   pnpm --filter @casa-clara/web build && pnpm --filter @casa-clara/web verify:bundle
@@ -713,7 +883,7 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
   pnpm test:e2e:db
   pnpm test:lighthouse
   ```
-  Criterio: TODO en verde, sin excepciones ni skips nuevos. Cualquier rojo se arregla (con su test) antes de continuar; esta tarea se repite desde el principio tras cada arreglo.
+  Criterio: TODO en verde **y sin skips**. El verde no basta: contrasta el recuento de tests ejecutados por `pnpm test` contra el de la rama base (`git stash` no hace falta; vale con `git log` y el último informe de CI de `main`) y comprueba que ha crecido, no que se ha quedado igual. Un total que no sube después de seis fases de trabajo significa que las suites de integración se están saltando por una variable sin exportar. Cualquier rojo —o cualquier skip nuevo— se arregla (con su test) antes de continuar; esta tarea se repite desde el principio tras cada arreglo.
 - [ ] **Step 2: Working tree limpio y rama al día.** `git status` sin cambios sin committear (salvo artefactos ignorados) y `git log --oneline -15` mostrando los commits de las tareas 1–11.
 - [ ] **Step 3: Ensayo local certificado.** Confirma que la tarea 11 terminó limpia de una pasada (informe verificado + humo de 7 pantallas). Si no, no hay puerta.
 - [ ] **Step 4: PARAR y preguntar.** Escribe a Alberto el estado: gates en verde, ensayo limpio, y la lista de las tres tareas de producción (13, 14, 15) con lo que cada una hace. **No ejecutes nada de las tareas 13–15 hasta tener su confirmación explícita, tarea por tarea.** Sin respuesta, el trabajo de esta fase termina aquí y la rama queda lista para revisión y merge.
@@ -726,25 +896,45 @@ Contexto: el job `suite-coverage` de `.github/workflows/ci.yml` inventaría `pac
 - Test: el informe de verificación del ETL contra producción (local, fuera del repo); sin cambios de código
 
 **Interfaces:**
-- Consumes: conexión directa 5432 de Supabase con rol propietario (patrón §2 de `docs/despliegue/runbook-despliegue.md`: el runner de migraciones toma un advisory lock de sesión que el pooler no conserva); `pnpm db:migrate`; `packages/db/scripts/migrar-home-finance.mjs` (mismo contrato CLI que en el ensayo); runbook `docs/runbooks/migrar-home-finance.md`.
+- Consumes: conexión directa 5432 de Supabase con rol propietario (patrón §2 de `docs/despliegue/runbook-despliegue.md`: el runner de migraciones toma un advisory lock de sesión que el pooler no conserva); `pnpm db:migrate`; `packages/db/scripts/migrar-home-finance.mjs` (mismo contrato CLI canónico que en el ensayo: `--sqlite` y `--database-url` obligatorios, `--backup-dir` para el informe); runbook `docs/runbooks/migracion-home-finance.md`; la copia datada del origen del día (`$COPIA`, Paso 0 del runbook).
 - Produces: esquema 0034 vivo en producción y los 1.111 movimientos históricos migrados y verificados (spec §9.5).
 
 **Cada step de esta tarea requiere la confirmación previa de Alberto para la tarea entera; si algo sale distinto de lo esperado, PARAR y consultar antes de continuar. Ninguna credencial se escribe en ningún fichero del repo.**
 
-- [ ] **Step 1 (requiere confirmación de Alberto): Copia de seguridad previa de producción.** Antes de tocar el esquema, `pnpm backup:full` de casa-clara con el estado ACTUAL (pre-finanzas), siguiendo §8 del runbook de despliegue (`BACKUP_DATABASE_URL` = conexión directa; las `S3_*` del gestor de contraseñas). Verifica que el directorio final no es `.partial` y que `SHA256SUMS` existe.
-- [ ] **Step 2 (requiere confirmación de Alberto): Migraciones en Supabase.**
+- [ ] **Step 1 (requiere confirmación de Alberto): Copia de seguridad previa de producción.** Antes de tocar el esquema, copia completa de casa-clara con el estado ACTUAL (pre-finanzas), siguiendo §8 del runbook de despliegue. Las credenciales salen del gestor de contraseñas y no se escriben en ningún fichero del repo:
   ```bash
   export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+  cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas
   export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgres'   # del gestor de contraseñas
+  export BACKUP_DATABASE_URL="$DIRECTA"
+  export S3_ENDPOINT=… S3_REGION=… S3_PRIVATE_BUCKET=… S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=…
+  pnpm backup:full
+  ```
+  Verifica antes de seguir: el directorio datado final NO lleva sufijo `.partial`, y dentro están `base.dump` (verificado por el propio guion), `SHA256SUMS` y `manifest.json`. Sin esa copia, no se toca el esquema.
+  Copia también el origen del día, como en el ensayo (Paso 0 del runbook), y anota su ruta en `$COPIA`:
+  ```bash
+  cp /home/abf/github/home-finance/backend/data/finanzas.db \
+     ~/copias-home-finance/finanzas-$(date +%Y-%m-%dT%H-%M-%S).db
+  sha256sum /home/abf/github/home-finance/backend/data/finanzas.db ~/copias-home-finance/finanzas-*.db
+  export COPIA=~/copias-home-finance/finanzas-<fecha-de-hoy>.db
+  ```
+- [ ] **Step 2 (requiere confirmación de Alberto): Migraciones en Supabase.**
+  ```bash
   DATABASE_URL="$DIRECTA" pnpm db:migrate
   DATABASE_URL="$DIRECTA" pnpm db:migrate   # repetir debe aplicar 0
   ```
-  Criterio de salida: 34/34 aplicadas (la última, `0034_finance.sql`); segunda pasada, 0.
-- [ ] **Step 3 (requiere confirmación de Alberto): ETL real, ensayado primero en seco.**
+  Criterio de salida: la última aplicada es `0034_finance.sql` y no queda ninguna pendiente; la segunda pasada aplica 0. No cuentes migraciones a mano: la numeración tiene huecos (no existen 0019 ni 0024) y el recuento lo imprime el runner.
+- [ ] **Step 3 (requiere confirmación de Alberto): ETL real, ensayado primero en seco.** Mismo contrato CLI que en el ensayo (`--sqlite` y `--database-url` obligatorios; el guion no lee `DATABASE_URL` del entorno), con la copia del Step 1 como origen:
   ```bash
-  DATABASE_URL="$DIRECTA" node packages/db/scripts/migrar-home-finance.mjs --household <slug-real> --dry-run
-  DATABASE_URL="$DIRECTA" node packages/db/scripts/migrar-home-finance.mjs --household <slug-real>
-  DATABASE_URL="$DIRECTA" node packages/db/scripts/migrar-home-finance.mjs --household <slug-real> --verify-only
+  node packages/db/scripts/migrar-home-finance.mjs \
+    --sqlite "$COPIA" --database-url "$DIRECTA" --household <slug-real> \
+    --backup-dir ~/copias-home-finance --dry-run
+  node packages/db/scripts/migrar-home-finance.mjs \
+    --sqlite "$COPIA" --database-url "$DIRECTA" --household <slug-real> \
+    --backup-dir ~/copias-home-finance
+  node packages/db/scripts/migrar-home-finance.mjs \
+    --sqlite "$COPIA" --database-url "$DIRECTA" --household <slug-real> \
+    --backup-dir ~/copias-home-finance --verify-only
   ```
   El informe se imprime y se guarda **en local, fuera del repo**. Criterios: conteos origen=destino en las 9 tablas; sumas de `amount_cents` por cuenta y por mes idénticas; grupos de transferencia con suma 0; distribución de estados igual a la del origen; min/max de fechas del semestre. Contraste adicional contra `/home/abf/github/home-finance/backend/data/informe-semestre1-2026.md`. **Si UNA sola cifra no cuadra: PARAR, no seguir a la tarea 14, y consultar a Alberto con el informe en la mano.**
 

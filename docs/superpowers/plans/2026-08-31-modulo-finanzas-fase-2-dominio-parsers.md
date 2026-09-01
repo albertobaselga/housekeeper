@@ -37,7 +37,7 @@
 - Create: `packages/domain/src/finance/types.ts`
 - Create: `packages/domain/src/finance/text.ts`
 - Create: `packages/domain/src/finance/index.ts`
-- Modify: `packages/domain/package.json`
+- Modify: `packages/domain/package.json`, `docs/superpowers/plans/2026-08-31-modulo-finanzas-interfaces.md` (Step 5: constancia de las extensiones de tipos)
 - Test: `packages/domain/src/finance/text.test.ts`
 
 **Interfaces:**
@@ -49,7 +49,11 @@
 
 Referencia Python: `/home/abf/github/home-finance/backend/app/money.py` (`norm_text`, `normalize_concept`). Imita el estilo de test de `packages/domain/src/money.test.ts` (describe/it en español, `expect` con valores exactos).
 
-Dos extensiones deliberadas sobre el doc de interfaces (añadir campos NO es renombrar; el port fiel los necesita): `FinanceTxView` gana `codeCommon`, `codeOwn` y `categoryKind` (los usan reglas `codigo_norma43`, la señal 03/05 de recurrencia y los filtros por kind de KPIs/transferencias; las fases 4–6 los rellenan desde SQL con un join a `finance_categories`); `ParsedRow` gana `bankCategory` (columna «Categoría» de Amex → columna `bank_category`).
+Dos extensiones deliberadas sobre el doc de interfaces (añadir campos NO es renombrar; el port fiel los necesita): `FinanceTxView` gana `codeCommon`, `codeOwn` y `categoryKind` (los usan reglas `codigo_norma43`, la señal 03/05 de recurrencia y los filtros por kind de KPIs/transferencias; las fases 4–6 los rellenan desde SQL con un join a `finance_categories`); `ParsedRow` gana `bankCategory` (columna «Categoría» de Amex → columna `bank_category`). El Step 5 de esta tarea deja constancia de ambas en el doc de interfaces, que es la autoridad para lo que cruza fases.
+
+Dos alineamientos con el modelo de datos de la fase 1 (resolución canónica 6 del doc de interfaces): `FinanceAccountView.bank` es `FinanceBank | null` —`NULL` para las cuentas sin banco (Efectivo, inversión, manuales), porque el CHECK de `0034_finance.sql` solo admite los cuatro bancos reales—, de modo que el dominio identifica la cuenta de inversión por `kind === "inversion"` y la de efectivo por un `cashAccountId` explícito, NUNCA por `bank`; y `FinanceEventRuleView.providerNorm` es `string | null`, porque `app.finance_event_rules.provider_norm` es NULLABLE (`CHECK (provider_norm IS NOT NULL OR category_id IS NOT NULL)`) y las reglas por categoría llegan con `null`.
+
+El subpath es la ÚNICA puerta del dominio de finanzas (resolución canónica 1): `packages/domain/src/index.ts` NO se toca y NO reexporta nada de `./finance/` (presupuesto de bundle); todas las fases importan de `@casa-clara/domain/finance`.
 
 - [ ] **Step 1: Test que falla de `normText`/`normalizeConcept`/`dayDiffIso`.** Escribe `packages/domain/src/finance/text.test.ts`:
 
@@ -180,7 +184,10 @@ export interface FinanceTxView {
 export interface FinanceAccountView {
   id: string;
   name: string;
-  bank: string; // caixabank|deutsche_bank|openbank|amex|efectivo|inversion|manual…
+  /** NULL en cuentas sin banco (Efectivo, inversión, manuales): el CHECK de
+   * `app.finance_accounts.bank` (fase 1) solo admite los cuatro bancos reales.
+   * El dominio NUNCA deduce «efectivo» ni «inversión» de este campo. */
+  bank: FinanceBank | null;
   kind: FinanceAccountKind;
   bankRef: string;
   ownerAliases: readonly string[];
@@ -204,7 +211,9 @@ export interface FinanceRuleView {
 
 export interface FinanceEventRuleView {
   id: string;
-  providerNorm: string;
+  /** NULLABLE en el esquema de la fase 1: las reglas por categoría no traen
+   * proveedor (`CHECK (provider_norm IS NOT NULL OR category_id IS NOT NULL)`). */
+  providerNorm: string | null;
   conceptNorm: string | null;
   categoryId: string | null;
   eventId: string;
@@ -296,7 +305,12 @@ En `packages/domain/package.json` añade el subpath (mismo patrón que `"./capab
 ```
 
 - [ ] **Step 4: Verde.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/text.test.ts && pnpm --filter @casa-clara/domain typecheck`
-- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): tipos canónicos del dominio y normalización de texto portada"`
+- [ ] **Step 5: Deja constancia de las extensiones en el doc de interfaces.** Abre `docs/superpowers/plans/2026-08-31-modulo-finanzas-interfaces.md`, bloque «Tipos canónicos», y comprueba que refleja lo que de verdad cruza fronteras de fase. Si falta algo, añádelo (son AÑADIDOS, nunca renombres; no toques ningún otro bloque del documento):
+  - `FinanceTxView`: `codeCommon: string | null`, `codeOwn: string | null`, `categoryKind: FinanceCategoryKind | null`, con la nota «las lecturas SQL de las fases 4–6 deben incluir el `left join app.finance_categories` para poblar `categoryKind`».
+  - `ParsedRow`: `bankCategory: string | null` (columna «Categoría» de Amex → `bank_category`).
+  - `FinanceAccountView.bank: FinanceBank | null` y `FinanceEventRuleView.providerNorm: string | null` (alineamiento con el esquema de la fase 1, resolución canónica 6).
+  - `PivotSourceRow.kind` admite además `"inversion"`.
+- [ ] **Step 6: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain docs/superpowers/plans/2026-08-31-modulo-finanzas-interfaces.md && git commit -m "feat(finanzas): tipos canónicos del dominio y normalización de texto portada"`
 
 ---
 
@@ -429,7 +443,7 @@ export function computeDedupHash(row: Parameters<typeof dedupKey>[0]): string {
 
 Añade a `packages/server/src/index.ts`, tras la línea `export * from "./database.js";`: `export * from "./finance/dedup-hash.js";`.
 
-- [ ] **Step 8: Verde.** Repite Step 6 y `pnpm --filter @casa-clara/server typecheck`.
+- [ ] **Step 8: Verde.** Repite Step 6 y `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server typecheck`.
 - [ ] **Step 9: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain packages/server && git commit -m "feat(finanzas): clave de dedup canónica y sha256 compatible con el origen"`
 
 ---
@@ -678,7 +692,7 @@ export function paypalVendor(provider: string): string | null {
 Añade `export * from "./provider-norm.js";` al barrel `packages/domain/src/finance/index.ts`.
 
 - [ ] **Step 4: Verde.** Repite el comando del Step 2.
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): saneado de proveedores portado con sus seis reglas"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): saneado de proveedores portado con sus seis reglas"`
 
 ---
 
@@ -785,7 +799,7 @@ export function matchRule(
 Añade `export * from "./rules.js";` al barrel.
 
 - [ ] **Step 4: Verde.** Repite Step 2.
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): motor de reglas con prioridad y especificidad del origen"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): motor de reglas con prioridad y especificidad del origen"`
 
 ---
 
@@ -986,7 +1000,7 @@ export function detectTransferPairs(
 Añade `export * from "./transfers.js";` al barrel.
 
 - [ ] **Step 4: Verde.** Repite Step 2.
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): detección de traspasos con ventana de 3 días y recuperación de patas"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): detección de traspasos con ventana de 3 días y recuperación de patas"`
 
 ---
 
@@ -1120,7 +1134,7 @@ export function reconcileAmex(
 Añade `export * from "./amex.js";` al barrel.
 
 - [ ] **Step 4: Verde.** Repite Step 2.
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): conciliación amex con ventana de diez días"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): conciliación amex con ventana de diez días"`
 
 ---
 
@@ -1134,10 +1148,14 @@ Añade `export * from "./amex.js";` al barrel.
 **Interfaces:**
 - Consumes: `normText`; tipos `FinanceTxView`, `FinanceAccountView`, `InvestmentMirrorProposal`, `CashProposal`.
 - Produces:
-  - Canónicas: `detectInvestmentContributions(txs, accounts): InvestmentMirrorProposal[]` · `detectCashMovements(txs, accounts): CashProposal[]`.
-  - Local (la consume el comando `finance.transaction.manual.create` de fase 5): `cashCounterlegFor(expense: FinanceTxView, opts: { cashAccountId: string; efectivoCategoryId: string }): CashCounterleg | null` con `interface CashCounterleg { accountId: string; opDate: string; concept: string; provider: string; amountCents: bigint; categoryId: string; dedupHash: string }`.
+  - Canónicas: `detectInvestmentContributions(txs, accounts, opts: { cashAccountId: string | null }): InvestmentMirrorProposal[]` · `detectCashMovements(txs, accounts, opts: { cashAccountId: string | null }): CashProposal[]`.
+  - Local (la consume el comando `finance.transaction.manual.create` de fase 5): `cashCounterlegFor(expense: FinanceTxView, opts: { cashAccountId: string; efectivoCategoryId: string }): CashCounterleg | null` con `interface CashCounterleg { accountId: string; opDate: string; concept: string; provider: string; amountCents: bigint; categoryId: string; status: "confirmada"; recurrenceManual: true; dedupHash: string }`.
 
-Referencias Python: `/home/abf/github/home-finance/backend/app/investments.py` y `/home/abf/github/home-finance/backend/app/cash.py`. Fidelidad inversiones: `INVESTMENT_REF_RX = /2860 56 (\d{7})/` SIN ancla, buscada en `concept` (NUNCA en provider: el saneado 04/073 lo reescribe); refs no numéricas → substring de `normText(provider + " " + concept)`; candidatos = importe<0, sin grupo, banco de la cuenta ∉ {efectivo, inversion, amex}; idempotencia por hash `invmirror-`; ref sin mapeo → se queda pendiente, nunca se espeja a ciegas. Los `INVESTMENT_ACCOUNTS` hardcodeados del origen NO se portan: los `transfer_refs` son datos (spec §5). Fidelidad efectivo: `WITHDRAWAL_RX` exacta; retirada = cargo sin grupo, cuenta ≠ Efectivo, status ≠ confirmada; contrapartida de gasto manual con hash `cashpair-`.
+**Tercer argumento obligatorio (resolución canónica 6 del doc de interfaces).** Las dos funciones canónicas reciben un `opts` con el `cashAccountId` explícito: el esquema de la fase 1 prohíbe `bank = 'efectivo'`/`'inversion'` (CHECK con los cuatro bancos reales; `NULL` para las cuentas sin banco), así que el dominio identifica la cuenta de inversión por `kind === "inversion"` y la de efectivo SOLO por el id que le pasan. Es una desviación deliberada de la aridad que enumera §Funciones canónicas del dominio: el único llamador es el `pipeline.ts` de esta misma fase (las fases 4–6 no invocan ninguna de las dos), y quien resuelve el id es el servidor (`cashAccountIdOf` en la Task 16: cuenta con `bank === null` y `normText(name) === "EFECTIVO"`).
+
+**Quién crea la contrapartida de efectivo.** `cashCounterlegFor` es la ÚNICA productora de filas `cashpair-` y su único llamador es el comando `finance.transaction.manual.create` de la fase 5 (que además le pasa el `batch_id` del gasto al insertar). El paso 6 «efectivo» del pipeline NO crea contrapartidas: solo recategoriza retiradas de cajero. Está escrito así en el comentario del paso 6 de la Task 16 para que no queden dos productores ni ninguno.
+
+Referencias Python: `/home/abf/github/home-finance/backend/app/investments.py` y `/home/abf/github/home-finance/backend/app/cash.py`. Fidelidad inversiones: `INVESTMENT_REF_RX = /2860 56 (\d{7})/` SIN ancla, buscada en `concept` (NUNCA en provider: el saneado 04/073 lo reescribe); refs no numéricas → substring de `normText(provider + " " + concept)`; candidatos = importe<0, sin grupo, cuenta ∉ {la de efectivo, las de `kind === "inversion"`, las de `bank === "amex"`} (el origen filtraba por banco: aquí se traduce al modelo de datos real); idempotencia por hash `invmirror-`; ref sin mapeo → se queda pendiente, nunca se espeja a ciegas. Los `INVESTMENT_ACCOUNTS` hardcodeados del origen NO se portan: los `transfer_refs` son datos (spec §5). Fidelidad efectivo: `WITHDRAWAL_RX` exacta; retirada = cargo sin grupo, cuenta ≠ Efectivo, status ≠ confirmada; contrapartida de gasto manual con hash `cashpair-`, `status = "confirmada"` y `recurrence_manual = true`.
 
 - [ ] **Step 1: Test que falla (inversiones).** `packages/domain/src/finance/investments.test.ts`:
 
@@ -1150,11 +1168,15 @@ import {
   type FinanceTxView,
 } from "./index.js";
 
+// Las cuentas de inversión y la de efectivo NO tienen banco (CHECK de la fase 1):
+// se reconocen por `kind` y por el `cashAccountId` que se pasa en `opts`.
 const accounts: FinanceAccountView[] = [
   { id: "a1", name: "Caixa", bank: "caixabank", kind: "comun", bankRef: "r1", ownerAliases: [], transferRefs: [] },
-  { id: "inv1", name: "Fondo Índice Global", bank: "inversion", kind: "inversion", bankRef: "INV-1", ownerAliases: [], transferRefs: ["0001234"] },
-  { id: "inv2", name: "Plan Pensiones", bank: "inversion", kind: "inversion", bankRef: "INV-2", ownerAliases: [], transferRefs: ["COREINDEXA"] },
+  { id: "cash", name: "Efectivo", bank: null, kind: "comun", bankRef: "EFECTIVO", ownerAliases: [], transferRefs: [] },
+  { id: "inv1", name: "Fondo Índice Global", bank: null, kind: "inversion", bankRef: "INV-1", ownerAliases: [], transferRefs: ["0001234"] },
+  { id: "inv2", name: "Plan Pensiones", bank: null, kind: "inversion", bankRef: "INV-2", ownerAliases: [], transferRefs: ["COREINDEXA"] },
 ];
+const opts = { cashAccountId: "cash" };
 let n = 0;
 function tx(overrides: Partial<FinanceTxView>): FinanceTxView {
   n += 1;
@@ -1169,7 +1191,7 @@ function tx(overrides: Partial<FinanceTxView>): FinanceTxView {
 describe("detectInvestmentContributions (port de investments.py)", () => {
   it("ref numérica de 7 dígitos casa contra «2860 56 <ref>» EN EL CONCEPTO", () => {
     const charge = tx({ id: "chg", concept: "TRANSFERENCIAS | 2860 56 0001234 APORTACION", provider: "BENEFICIARIO REESCRITO", dedupHash: "hash-chg" });
-    const [p] = detectInvestmentContributions([charge], accounts);
+    const [p] = detectInvestmentContributions([charge], accounts, opts);
     expect(p).toMatchObject({
       chargeTxId: "chg",
       investmentAccountId: "inv1",
@@ -1182,18 +1204,23 @@ describe("detectInvestmentContributions (port de investments.py)", () => {
 
   it("ref textual casa por substring sobre provider+concept normalizados", () => {
     const charge = tx({ id: "c2", concept: "RECIBO COREINDEXA PENSIONES", provider: "INDEXA" });
-    expect(detectInvestmentContributions([charge], accounts)[0]?.investmentAccountId).toBe("inv2");
+    expect(detectInvestmentContributions([charge], accounts, opts)[0]?.investmentAccountId).toBe("inv2");
   });
 
   it("ref sin mapeo, cuenta excluida o espejo ya existente: nada", () => {
     const unmapped = tx({ id: "u1", concept: "TRANSFERENCIAS | 2860 56 9999999 X" });
     const amex = tx({ id: "u2", accountId: "amex1", concept: "2860 56 0001234" });
-    const accountsConAmex = [...accounts, { id: "amex1", name: "Amex", bank: "amex", kind: "personal" as const, bankRef: "rx", ownerAliases: [], transferRefs: [] }];
+    const accountsConAmex = [...accounts, { id: "amex1", name: "Amex", bank: "amex" as const, kind: "personal" as const, bankRef: "rx", ownerAliases: [], transferRefs: [] }];
+    const desdeEfectivo = tx({ id: "u5", accountId: "cash", concept: "2860 56 0001234" });
+    const desdeInversion = tx({ id: "u6", accountId: "inv2", concept: "2860 56 0001234" });
     const mirrored = tx({ id: "u3", concept: "2860 56 0001234", dedupHash: "hh" });
     const mirror = tx({ id: "u4", accountId: "inv1", amountCents: 25000n, dedupHash: "invmirror-hh", transferGroupId: "g1" });
-    expect(detectInvestmentContributions([unmapped], accounts)).toHaveLength(0);
-    expect(detectInvestmentContributions([amex], accountsConAmex)).toHaveLength(0);
-    expect(detectInvestmentContributions([mirrored, mirror], accounts)).toHaveLength(0);
+    expect(detectInvestmentContributions([unmapped], accounts, opts)).toHaveLength(0);
+    expect(detectInvestmentContributions([amex], accountsConAmex, opts)).toHaveLength(0);
+    // exclusiones por modelo de datos real: efectivo por id, inversión por kind
+    expect(detectInvestmentContributions([desdeEfectivo], accounts, opts)).toHaveLength(0);
+    expect(detectInvestmentContributions([desdeInversion], accounts, opts)).toHaveLength(0);
+    expect(detectInvestmentContributions([mirrored, mirror], accounts, opts)).toHaveLength(0);
   });
 });
 ```
@@ -1207,7 +1234,6 @@ import type { FinanceAccountView, FinanceTxView, InvestmentMirrorProposal } from
 
 const INVESTMENT_REF_RX = /2860 56 (\d{7})/; // sin ancla: se busca dentro de concept
 const NUMERIC_REF_RX = /^\d{7}$/;
-const EXCLUDED_BANKS = new Set(["efectivo", "inversion", "amex"]);
 
 function matchInvestmentAccount(
   tx: FinanceTxView,
@@ -1230,18 +1256,26 @@ function matchInvestmentAccount(
 }
 
 /** Port de investments.py::detect_investment_contributions como función pura.
- * Idempotente vía hash `invmirror-`; una ref sin mapeo nunca se espeja a ciegas. */
+ * Idempotente vía hash `invmirror-`; una ref sin mapeo nunca se espeja a ciegas.
+ * El origen excluía las cuentas por `bank` ∈ {efectivo, inversion, amex}; aquí,
+ * como el esquema no admite esos valores, se excluyen por `kind === "inversion"`,
+ * por `bank === "amex"` y por el `cashAccountId` que pasa el llamador. */
 export function detectInvestmentContributions(
   txs: readonly FinanceTxView[],
   accounts: readonly FinanceAccountView[],
+  opts: { cashAccountId: string | null },
 ): InvestmentMirrorProposal[] {
   const invAccounts = accounts.filter((a) => a.kind === "inversion");
-  const bankOf = new Map(accounts.map((a) => [a.id, a.bank]));
+  const excludedAccountIds = new Set(
+    accounts
+      .filter((a) => a.kind === "inversion" || a.bank === "amex" || a.id === opts.cashAccountId)
+      .map((a) => a.id),
+  );
   const existingHashes = new Set(txs.map((t) => t.dedupHash));
   const proposals: InvestmentMirrorProposal[] = [];
   for (const tx of txs) {
     if (tx.amountCents >= 0n || tx.transferGroupId !== null) continue;
-    if (EXCLUDED_BANKS.has(bankOf.get(tx.accountId) ?? "")) continue;
+    if (excludedAccountIds.has(tx.accountId)) continue;
     const acc = matchInvestmentAccount(tx, invAccounts);
     if (acc === null) continue;
     const mirrorHash = `invmirror-${tx.dedupHash}`;
@@ -1275,10 +1309,12 @@ import {
   type FinanceTxView,
 } from "./index.js";
 
+// La cuenta Efectivo no tiene banco (CHECK de la fase 1): se identifica por id.
 const accounts: FinanceAccountView[] = [
   { id: "a1", name: "Caixa", bank: "caixabank", kind: "comun", bankRef: "r1", ownerAliases: [], transferRefs: [] },
-  { id: "cash", name: "Efectivo", bank: "efectivo", kind: "comun", bankRef: "EFECTIVO", ownerAliases: [], transferRefs: [] },
+  { id: "cash", name: "Efectivo", bank: null, kind: "comun", bankRef: "EFECTIVO", ownerAliases: [], transferRefs: [] },
 ];
+const detectOpts = { cashAccountId: "cash" };
 let n = 0;
 function tx(overrides: Partial<FinanceTxView>): FinanceTxView {
   n += 1;
@@ -1293,24 +1329,30 @@ function tx(overrides: Partial<FinanceTxView>): FinanceTxView {
 describe("detectCashMovements (port de cash.py::detect_cash_withdrawals)", () => {
   it("reconoce las variantes de retirada del regex del origen", () => {
     for (const concept of ["REINT. CAJERO 1234", "CAJERO AUTOMATICO", "RETIRADA DE EFECTIVO", "RETIRADA EFECTIVO", "USO ATM"]) {
-      expect(detectCashMovements([tx({ concept })], accounts)).toHaveLength(1);
+      expect(detectCashMovements([tx({ concept })], accounts, detectOpts)).toHaveLength(1);
     }
   });
   it("ignora abonos, confirmadas, agrupadas y la propia cuenta Efectivo", () => {
-    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", amountCents: 6000n })], accounts)).toHaveLength(0);
-    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", status: "confirmada" })], accounts)).toHaveLength(0);
-    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", transferGroupId: "g" })], accounts)).toHaveLength(0);
-    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", accountId: "cash" })], accounts)).toHaveLength(0);
+    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", amountCents: 6000n })], accounts, detectOpts)).toHaveLength(0);
+    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", status: "confirmada" })], accounts, detectOpts)).toHaveLength(0);
+    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", transferGroupId: "g" })], accounts, detectOpts)).toHaveLength(0);
+    expect(detectCashMovements([tx({ concept: "REINT. CAJERO", accountId: "cash" })], accounts, detectOpts)).toHaveLength(0);
+  });
+  it("sin cuenta Efectivo declarada no excluye ninguna cuenta", () => {
+    expect(
+      detectCashMovements([tx({ concept: "REINT. CAJERO", accountId: "cash" })], accounts, { cashAccountId: null }),
+    ).toHaveLength(1);
   });
 });
 
 describe("cashCounterlegFor (port de cash.py::create_cash_counterleg)", () => {
   const opts = { cashAccountId: "cash", efectivoCategoryId: "cat-ef" };
-  it("crea la contrapartida +Efectivo con hash cashpair- para un gasto en Efectivo", () => {
+  it("crea la contrapartida +Efectivo confirmada y manual con hash cashpair-", () => {
     const gasto = tx({ accountId: "cash", amountCents: -1500n, categoryId: "cat-ocio", categoryKind: "gasto", concept: "Cañas", dedupHash: "hg" });
     expect(cashCounterlegFor(gasto, opts)).toEqual({
       accountId: "cash", opDate: "2026-06-18", concept: "Contrapartida efectivo — Cañas",
-      provider: "EFECTIVO", amountCents: 1500n, categoryId: "cat-ef", dedupHash: "cashpair-hg",
+      provider: "EFECTIVO", amountCents: 1500n, categoryId: "cat-ef",
+      status: "confirmada", recurrenceManual: true, dedupHash: "cashpair-hg",
     });
   });
   it("no aplica fuera de Efectivo, a abonos, sin categoría, a la propia Efectivo o a no-gasto", () => {
@@ -1323,7 +1365,7 @@ describe("cashCounterlegFor (port de cash.py::create_cash_counterleg)", () => {
 });
 ```
 
-- [ ] **Step 5: Verlo fallar.** `pnpm --filter @casa-clara/domain test src/finance/cash.test.ts` (con el prefijo de PATH y cd habituales).
+- [ ] **Step 5: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/cash.test.ts`
 - [ ] **Step 6: Implementación.** `packages/domain/src/finance/cash.ts`:
 
 ```ts
@@ -1333,12 +1375,18 @@ import type { CashProposal, FinanceAccountView, FinanceTxView } from "./types.js
 const WITHDRAWAL_RX = /REINT\.?\s*CAJERO|CAJERO\s+AUTOM|RETIRADA\s+(DE\s+)?EFECTIVO|\bCAJERO\b|\bATM\b/i;
 
 /** Port de cash.py::detect_cash_withdrawals: retiradas de cajero a recategorizar
- * como gasto «Efectivo» confirmado (la categoría la resuelve/crea el pipeline). */
+ * como gasto «Efectivo» confirmado (la categoría la resuelve/crea el pipeline).
+ * La cuenta Efectivo llega por id: el esquema no admite `bank = 'efectivo'`.
+ * `accounts` se mantiene en la firma para no divergir del contrato del dominio
+ * y para validar que el id recibido pertenece al hogar. */
 export function detectCashMovements(
   txs: readonly FinanceTxView[],
   accounts: readonly FinanceAccountView[],
+  opts: { cashAccountId: string | null },
 ): CashProposal[] {
-  const cashAccountIds = new Set(accounts.filter((a) => a.bank === "efectivo").map((a) => a.id));
+  const cashAccountIds = new Set(
+    accounts.filter((a) => a.id === opts.cashAccountId).map((a) => a.id),
+  );
   return txs
     .filter(
       (t) =>
@@ -1351,6 +1399,9 @@ export function detectCashMovements(
     .map((t) => ({ txId: t.id }));
 }
 
+/** Contrapartida de doble entrada del efectivo. La fase 5 la inserta tal cual en
+ * `finance.transaction.manual.create`, heredando además el `batch_id` del gasto
+ * que la origina (igual que los espejos de inversión del pipeline). */
 export interface CashCounterleg {
   accountId: string;
   opDate: string;
@@ -1358,11 +1409,14 @@ export interface CashCounterleg {
   provider: string;
   amountCents: bigint;
   categoryId: string;
+  status: "confirmada";
+  recurrenceManual: true;
   dedupHash: string;
 }
 
 /** Port de cash.py::create_cash_counterleg: contrapartida +Efectivo (confirmada,
- * recurrence_manual=true, hash `cashpair-`) de un gasto manual en la cuenta Efectivo. */
+ * recurrence_manual=true, hash `cashpair-`) de un gasto manual en la cuenta
+ * Efectivo. ÚNICA productora de filas `cashpair-`: el pipeline no las crea. */
 export function cashCounterlegFor(
   expense: FinanceTxView,
   opts: { cashAccountId: string; efectivoCategoryId: string },
@@ -1383,6 +1437,8 @@ export function cashCounterlegFor(
     provider: "EFECTIVO",
     amountCents: -expense.amountCents,
     categoryId: opts.efectivoCategoryId,
+    status: "confirmada",
+    recurrenceManual: true,
     dedupHash: `cashpair-${expense.dedupHash}`,
   };
 }
@@ -1390,8 +1446,8 @@ export function cashCounterlegFor(
 
 Añade `export * from "./cash.js";` al barrel.
 
-- [ ] **Step 7: Verde ambos.** `pnpm --filter @casa-clara/domain test src/finance/investments.test.ts src/finance/cash.test.ts`
-- [ ] **Step 8: Commit.** `git add packages/domain && git commit -m "feat(finanzas): espejos de inversión y doble entrada de efectivo"`
+- [ ] **Step 7: Verde ambos.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/investments.test.ts src/finance/cash.test.ts`
+- [ ] **Step 8: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): espejos de inversión y doble entrada de efectivo"`
 
 ---
 
@@ -1568,7 +1624,7 @@ export function assessRecurrence(txs: readonly FinanceTxView[]): RecurrenceVerdi
 Añade `export * from "./recurrence.js";` al barrel.
 
 - [ ] **Step 4: Verde.** Repite Step 2.
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): recurrencia multi-señal con mediana exacta en bigint"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): recurrencia multi-señal con mediana exacta en bigint"`
 
 ---
 
@@ -1648,13 +1704,13 @@ describe("matchEventRules (port de event_rules.py)", () => {
     const hija = tx({ id: "h", categoryId: "hoteles" });
     const ajena = tx({ id: "o", categoryId: "otros" });
     const transfer = tx({ id: "tr", categoryId: "viajes", transferGroupId: "g" });
-    const r = rule({ providerNorm: "", categoryId: "viajes" });
+    const r = rule({ providerNorm: null, categoryId: "viajes" }); // regla por categoría: provider_norm NULL en la tabla
     expect(matchEventRules([padre, hija, ajena, transfer], [r], base).map((p) => p.txId)).toEqual(["p", "h"]);
   });
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `pnpm --filter @casa-clara/domain test src/finance/event-rules.test.ts` (con cd y PATH habituales).
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/event-rules.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/event-rules.ts`:
 
 ```ts
@@ -1714,7 +1770,9 @@ export function matchEventRules(
     const matched =
       rule.categoryId !== null
         ? matchByCategory(txs, opts.categories, rule.categoryId)
-        : matchByProvider(txs, opts.aliases, rule.providerNorm, rule.conceptNorm);
+        // `provider_norm` es NULLABLE: si la regla no es de categoría, el CHECK
+        // del esquema garantiza que viene informado; el `?? ""` solo satisface a TS.
+        : matchByProvider(txs, opts.aliases, rule.providerNorm ?? "", rule.conceptNorm);
     for (const t of matched) {
       const key = `${t.id}:${rule.eventId}`;
       if (seen.has(key)) continue;
@@ -1729,7 +1787,7 @@ export function matchEventRules(
 Añade `export * from "./event-rules.js";` al barrel.
 
 - [ ] **Step 4: Verde.** Repite Step 2.
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): reglas de evento con alias y arrastre de subcategorías"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): reglas de evento con alias y arrastre de subcategorías"`
 
 ---
 
@@ -1742,7 +1800,7 @@ Añade `export * from "./event-rules.js";` al barrel.
 
 **Interfaces:**
 - Consumes: `dayDiffIso`; tipos `FinanceTxView`, `FinanceAccountView`, `SummaryOptions`, `RangeSummary`.
-- Produces: canónica `computeRangeSummary(txs: readonly FinanceTxView[], opts: SummaryOptions): RangeSummary` (recibe TODAS las transacciones del hogar: el filtrado de rango/cuentas/eventos es interno, hace falta para el periodo anterior, los cruces y `pendingCount` global); local `prevRange(from: string, to: string): { from: string; to: string }`.
+- Produces: canónica `computeRangeSummary(txs: readonly FinanceTxView[], opts: SummaryOptions): RangeSummary` (recibe TODAS las transacciones del hogar: el filtrado de rango/cuentas/eventos es interno, hace falta para el periodo anterior, los cruces y `pendingCount` global); exportada `prevRange(from: string, to: string): { from: string; to: string }` — la ventana del periodo anterior tiene UNA sola implementación: la fase 4 la importa de `@casa-clara/domain/finance` en `queries.ts` y no la reescribe.
 
 Referencia Python: `/home/abf/github/home-finance/backend/app/reports.py` (`_txs`, `_kind_for`, `_totals`, `_by_recurrence`, `_investment_legs`, `_crossing_transfer_legs`, `_prev_range`, `range_summary`). Fidelidad: se excluyen las patas con categoría kind `transferencia`; kind por categoría con fallback por signo; las aportaciones recibidas de fuera del filtro suman a ingresos (y los traspasos salientes NO son gasto); inversión = patas positivas en cuentas kind `inversion`, filtradas por la cuenta del CARGO; tasas sobre el ingreso total (neta = ahorro/ingresos; bruta = (ingresos+gastos recurrentes)/ingresos; inversión = inversión/ingresos; a 1 decimal, null si ingresos 0); FCF = ahorro − inversión, ops = FCF + inversión; `pendingCount` global (sin rango) con estados pendiente/sugerida_regla/sugerida_agente; periodo anterior alineado a meses de calendario si el rango es un bloque exacto de meses, si no por número de días. `prev.prev` es null.
 
@@ -1762,7 +1820,7 @@ import {
 const accounts: FinanceAccountView[] = [
   { id: "a1", name: "Común", bank: "caixabank", kind: "comun", bankRef: "r1", ownerAliases: [], transferRefs: [] },
   { id: "a2", name: "Personal", bank: "openbank", kind: "personal", bankRef: "r2", ownerAliases: [], transferRefs: [] },
-  { id: "inv1", name: "Fondo", bank: "inversion", kind: "inversion", bankRef: "r3", ownerAliases: [], transferRefs: [] },
+  { id: "inv1", name: "Fondo", bank: null, kind: "inversion", bankRef: "r3", ownerAliases: [], transferRefs: [] },
 ];
 let n = 0;
 function tx(overrides: Partial<FinanceTxView>): FinanceTxView {
@@ -1856,7 +1914,7 @@ describe("computeRangeSummary (port de reports.range_summary)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `pnpm --filter @casa-clara/domain test src/finance/kpis.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/kpis.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/kpis.ts`:
 
 ```ts
@@ -2079,7 +2137,7 @@ export function computeRangeSummary(
 Añade `export * from "./kpis.js";` al barrel.
 
 - [ ] **Step 4: Verde.** Repite Step 2.
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): kpis de rango con cruces, inversión y periodo anterior alineado"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): kpis de rango con cruces, inversión y periodo anterior alineado"`
 
 ---
 
@@ -2099,6 +2157,8 @@ Añade `export * from "./kpis.js";` al barrel.
   - `PivotNode`, `PivotSectionTotal`, `PivotTree` (secciones `gastos/ingresos/internas/inversiones/eventos` + `subtotales` con `totalNeto`), `SortKey`, `sortPivotTree`, `collectNodeMovIds`, `parseDims`, `ALL_DIMS`, `DEFAULT_DIMS`, `INVERSION_DIMS`, `INTERNA_DIMS`.
 
 Referencia: `/home/abf/github/home-finance/frontend/src/features/analytics/pivotTree.ts` — portar 1:1 cambiando `number`→`bigint` en dinero (avg/ticket redondeados a céntimo con `divideRoundHalfAwayFromZero`) e ids numéricos→`string`. Semántica que los tests deben clavar: partición exhaustiva por `kind`; INTERNAS/INVERSIÓN con dims FIJAS hasta la hoja de movimiento; eventos duplicables con `dupEventIds` sin que TOTAL NETO cuente dos veces; TOTAL NETO sin internas ni inversiones; `nat` ordena ♻ → ✦ → sin clasificar; `movement` es hoja terminal.
+
+**Desviación deliberada respecto del original (corrige un fallo heredado):** en `pivotTree.ts` todas las secciones arrancan con `parentKey = ""`, de modo que un nodo «Casa» de GASTOS y otro «Casa» colgado de un evento comparten `key` y `collectNodeMovIds` los machaca en la misma entrada del `Map` (la barra de acciones de la fase 6 actuaría sobre los movimientos equivocados). Aquí cada sección cualifica su raíz: `"gastos"`, `"ingresos"`, `"internas"`, `"inversiones"` y `` `evento:${eventId}` ``, así que las claves quedan `gastos/cat:Casa` vs `evento:ev1/cat:Casa`. El test lo cubre con un caso de misma categoría en ambas secciones.
 
 - [ ] **Step 1: Test que falla.** `packages/domain/src/finance/pivot.test.ts`:
 
@@ -2188,6 +2248,22 @@ describe("buildPivotTree (port de pivotTree.buildPivotSections)", () => {
     const ids = collectNodeMovIds(tree);
     expect(ids.get(tree.gastos[0]?.key ?? "")).toHaveLength(1);
   });
+
+  it("la misma categoría en GASTOS y en un evento NO comparte clave", () => {
+    const rows = [
+      row({ cat: "Casa", totalCents: -1000n }),
+      row({ cat: "Casa", eventId: "ev1", event: "Semana Santa", totalCents: -4000n }),
+    ];
+    const tree = buildPivotTree(rows, ["cat"], { monthsCount: 1 });
+    const gastoKey = tree.gastos[0]?.key ?? "";
+    const eventoKey = tree.eventos[0]?.children[0]?.key ?? "";
+    expect(gastoKey).toBe("gastos/cat:Casa");
+    expect(eventoKey).toBe("evento:ev1/cat:Casa");
+    const ids = collectNodeMovIds(tree);
+    expect(ids.get(gastoKey)).toHaveLength(1);
+    expect(ids.get(eventoKey)).toHaveLength(1);
+    expect(ids.get(gastoKey)).not.toEqual(ids.get(eventoKey));
+  });
 });
 
 describe("parseDims", () => {
@@ -2200,7 +2276,7 @@ describe("parseDims", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `pnpm --filter @casa-clara/domain test src/finance/pivot.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/pivot.test.ts`
 - [ ] **Step 3: Implementación.** `packages/domain/src/finance/pivot.ts` (port de `pivotTree.ts` a bigint; conserva los comentarios de intención del original):
 
 ```ts
@@ -2410,13 +2486,17 @@ function buildLevel(
   });
 }
 
+/** `sectionKey` cualifica la raíz de cada sección («gastos», «evento:ev1»…): sin
+ * él, la misma categoría en GASTOS y en un evento compartiría `key` y
+ * `collectNodeMovIds` machacaría una entrada con la otra (fallo del original). */
 function buildTreeNodes(
   rows: readonly PivotSourceRow[],
   dims: readonly PivotDimension[],
   monthsCount: number,
+  sectionKey: string,
 ): PivotNode[] {
   if (rows.length === 0 || dims.length === 0) return [];
-  return buildLevel(rows, dims, "", 0, monthsCount);
+  return buildLevel(rows, dims, sectionKey, 0, monthsCount);
 }
 
 function sectionTotal(rows: readonly PivotSourceRow[], monthsCount: number): PivotSectionTotal {
@@ -2476,7 +2556,7 @@ export function buildPivotTree(
         avgCents: avgOf(net, monthsCount),
         ticketCents: ticketOf(net, count),
         monthly: monthlyOf(groupRows),
-        children: buildTreeNodes(groupRows, dims, monthsCount),
+        children: buildTreeNodes(groupRows, dims, monthsCount, `evento:${eventId}`),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "es"));
@@ -2489,10 +2569,10 @@ export function buildPivotTree(
   const totalNetoTotal = gastosTotal.totalCents + eventNet.totalCents + ingresosTotal.totalCents;
 
   return {
-    gastos: buildTreeNodes(gastoRows, dims, monthsCount),
-    ingresos: buildTreeNodes(ingresoRows, dims, monthsCount),
-    internas: buildTreeNodes(internaRows, INTERNA_DIMS, monthsCount),
-    inversiones: buildTreeNodes(inversionRows, INVERSION_DIMS, monthsCount),
+    gastos: buildTreeNodes(gastoRows, dims, monthsCount, "gastos"),
+    ingresos: buildTreeNodes(ingresoRows, dims, monthsCount, "ingresos"),
+    internas: buildTreeNodes(internaRows, INTERNA_DIMS, monthsCount, "internas"),
+    inversiones: buildTreeNodes(inversionRows, INVERSION_DIMS, monthsCount, "inversiones"),
     eventos,
     subtotales: {
       gastos: gastosTotal,
@@ -2590,8 +2670,8 @@ export function parseDims(raw: string | null): PivotDimension[] {
 
 Añade `export * from "./pivot.js";` al barrel.
 
-- [ ] **Step 4: Verde + typecheck.** `pnpm --filter @casa-clara/domain test src/finance/pivot.test.ts && pnpm --filter @casa-clara/domain typecheck`
-- [ ] **Step 5: Commit.** `git add packages/domain && git commit -m "feat(finanzas): árbol del pivot con secciones y dupev portado a bigint"`
+- [ ] **Step 4: Verde + typecheck.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/domain test src/finance/pivot.test.ts && pnpm --filter @casa-clara/domain typecheck`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/domain && git commit -m "feat(finanzas): árbol del pivot con secciones y dupev portado a bigint"`
 
 ---
 
@@ -2600,23 +2680,54 @@ Añade `export * from "./pivot.js";` al barrel.
 **Files:**
 - Modify: `packages/server/package.json` (dependencia `xlsx`), `.github/workflows/ci.yml`
 - Create: `packages/server/src/finance/parsers/shared.ts`, `packages/server/src/finance/parsers/synthetic-samples.ts`, `packages/server/src/finance/parsers/index.ts`
-- Test: `packages/server/src/finance/parsers/detect.test.ts`, `packages/server/src/finance/parsers/shared.test.ts`
+- Test: `packages/server/src/finance/parsers/sheetjs-smoke.test.ts`, `packages/server/src/finance/parsers/detect.test.ts`, `packages/server/src/finance/parsers/shared.test.ts`
 
 **Interfaces:**
 - Consumes: tipo `FinanceBank` de `@casa-clara/domain/finance`.
 - Produces:
   - Canónica: `detectBank(bytes: Uint8Array, filename: string): FinanceBank | null` (en `parsers/index.ts`).
-  - Locales: `FinanceParserError` (clase con `row: number`, mensaje `Fila N: …`), `toCents(value: unknown): bigint | null`, `parseDateEs(s: string, row: number): string` (ISO), `buildRaw(headers: readonly unknown[], values: readonly unknown[]): Record<string, string>` (en `shared.ts`); builders `caixabankSampleXls()`, `deutscheSampleXls()`, `openbankSampleHtml()`, `amexSampleXlsx()`, `amexSampleXlsxSinHoja()` → `Uint8Array` (en `synthetic-samples.ts`).
+  - Locales en `shared.ts`: `FinanceParserError` (clase con `row: number`, mensaje `Fila N: …`), `toCents(value: unknown): bigint | null`, `balanceCentsOf(value: unknown, row: number): bigint | null`, `parseDateEs(s: string, row: number): string` (ISO), `buildRaw(headers: readonly unknown[], values: readonly unknown[]): Record<string, string>` y la constante `AMEX_SHEET`.
+  - Locales en `synthetic-samples.ts`: `writeWorkbook(grid, bookType, sheet)` y los builders `caixabankSampleXls()`, `deutscheSampleXls()`, `openbankSampleHtml()`, `amexSampleXlsx()`, `amexSampleXlsxSinHoja()` → `Uint8Array`.
+
+`AMEX_SHEET` («Detalles de la operación») vive en `shared.ts` y la importan `index.ts` (que la reexporta), `amex.ts` y `synthetic-samples.ts`: así el literal existe una sola vez y `index.ts` ↔ `amex.ts` no forman un ciclo de módulos.
 
 Referencia Python: `/home/abf/github/home-finance/backend/app/importer.py::detect_bank` y `/home/abf/github/home-finance/backend/app/parsers/base.py`. Las muestras son SIEMPRE sintéticas y se GENERAN por código (nunca ficheros binarios en git): CaixaBank/Deutsche como `.xls` BIFF8 con `XLSX.write({ bookType: "biff8" })`, Amex como `.xlsx`, OpenBank como plantilla HTML codificada iso-8859-1. Los tests NUNCA hacen skip (sin `describe.runIf`).
 
 - [ ] **Step 1: Dependencia.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server add xlsx@0.18.5` (verifica que SOLO cambia `packages/server/package.json` y el lockfile).
-- [ ] **Step 2: Test que falla (helpers).** `packages/server/src/finance/parsers/shared.test.ts`:
+- [ ] **Step 2: Humo de SheetJS ANTES de construir sobre él.** Las Tasks 12–15 dependen de dos supuestos que hay que comprobar ya (xlsx 0.18.5 es CJS de origen y aquí se consume desde un paquete ESM con `module: NodeNext`): que el namespace expone `read`/`write`, y que un `.xls` BIFF8 escrito y releído conserva las cadenas con acentos. Crea `packages/server/src/finance/parsers/sheetjs-smoke.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
+
+describe("SheetJS en ESM/NodeNext (humo previo a los parsers)", () => {
+  it("expone read/write en el namespace", () => {
+    expect(typeof XLSX.read).toBe("function");
+    expect(typeof XLSX.write).toBe("function");
+  });
+
+  it("round-trip BIFF8 con acentos intactos", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["Número de cuenta", "Peluquería Ñoño"]]), "H");
+    const bytes = new Uint8Array(XLSX.write(wb, { bookType: "biff8", type: "buffer" }) as Buffer);
+    const back = XLSX.read(bytes, { type: "array" });
+    const grid: unknown[][] = XLSX.utils.sheet_to_json(
+      back.Sheets[back.SheetNames[0] as string] as XLSX.WorkSheet,
+      { header: 1, raw: true, defval: "" },
+    );
+    expect(grid[0]).toEqual(["Número de cuenta", "Peluquería Ñoño"]);
+  });
+});
+```
+
+  Ejecuta `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/sheetjs-smoke.test.ts`. Si el namespace no expone `read`, cambia a `import XLSX from "xlsx"` (hay `esModuleInterop: true`) en este test y en TODOS los ficheros de las Tasks 12–15 antes de seguir; si el round-trip pierde acentos, para y replantea el formato de las muestras (`xlsx` en vez de `biff8`) antes de escribir un parser.
+
+- [ ] **Step 3: Test que falla (helpers).** `packages/server/src/finance/parsers/shared.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
 
-import { FinanceParserError, buildRaw, parseDateEs, toCents } from "./shared.js";
+import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
 
 describe("toCents (port de money.py::to_cents)", () => {
   it("entiende formato es-ES en texto y números de celda", () => {
@@ -2626,6 +2737,24 @@ describe("toCents (port de money.py::to_cents)", () => {
     expect(toCents(18.99)).toBe(1899n);
     expect(toCents("")).toBeNull();
     expect(toCents(null)).toBeNull();
+  });
+  it("devuelve null ante texto no numérico (el llamador decide si es error)", () => {
+    expect(toCents("no-numero")).toBeNull();
+  });
+});
+
+describe("balanceCentsOf (saldo: vacío ≠ ilegible)", () => {
+  it("celda vacía → null; celda legible → céntimos", () => {
+    expect(balanceCentsOf("", 4)).toBeNull();
+    expect(balanceCentsOf(null, 4)).toBeNull();
+    expect(balanceCentsOf("   ", 4)).toBeNull();
+    expect(balanceCentsOf("1.023,45", 4)).toBe(102345n);
+  });
+  it("celda con contenido ilegible lanza FinanceParserError con la fila", () => {
+    // El saldo entra en la cadena canónica de dedup: un null silencioso
+    // cambiaría el hash («None») y rompería la verificación cruzada de la fase 3.
+    expect(() => balanceCentsOf("abc", 9)).toThrow(FinanceParserError);
+    expect(() => balanceCentsOf("abc", 9)).toThrow(/Fila 9/);
   });
 });
 
@@ -2642,14 +2771,22 @@ describe("buildRaw (port de base.py::build_raw)", () => {
     expect(buildRaw(["A", "", "A"], ["1", "2", "3", "4"])).toEqual({
       A: "1", col1: "2", "A 2": "3", col3: "4",
     });
-    expect(buildRaw(["A"], [""])).toEqual({});
+    // build_raw solo descarta el par TOTALMENTE vacío: con cabecera «A» y valor
+    // vacío la clave se conserva (fidelidad al origen).
+    expect(buildRaw(["A"], [""])).toEqual({ A: "" });
+    expect(buildRaw([""], [""])).toEqual({});
   });
 });
 ```
 
-- [ ] **Step 3: Verlo fallar y implementar `shared.ts`.** Corre `pnpm --filter @casa-clara/server test src/finance/parsers/shared.test.ts` (falla) y crea `packages/server/src/finance/parsers/shared.ts`:
+- [ ] **Step 4: Verlo fallar y implementar `shared.ts`.** Corre `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/shared.test.ts` (falla) y crea `packages/server/src/finance/parsers/shared.ts`:
 
 ```ts
+/** Nombre EXACTO de la hoja que solo trae el export de Amex. Vive aquí (y no en
+ * `index.ts`) para que `index.ts` y `amex.ts` no formen un ciclo de módulos y
+ * para que el literal no se duplique en `synthetic-samples.ts`. */
+export const AMEX_SHEET = "Detalles de la operación";
+
 /** Error de parser con número de fila, como base.py::ParseError del origen. */
 export class FinanceParserError extends Error {
   readonly row: number;
@@ -2669,12 +2806,26 @@ export function toCents(value: unknown): bigint | null {
   const text = String(value).trim().replace(/\./g, "").replace(/,/g, ".");
   if (text === "") return null;
   const m = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(text);
-  if (m === null) return null; // el llamador lo convierte en FinanceParserError
+  if (m === null) return null; // texto no numérico: lo decide el llamador
   const sign = m[1] === "-" ? -1n : 1n;
   const frac = (m[3] ?? "").padEnd(2, "0");
   let cents = BigInt(m[2] as string) * 100n + BigInt(frac.slice(0, 2) || "0");
   if (frac.length > 2 && Number(frac.charAt(2)) >= 5) cents += 1n; // no ocurre en extractos reales
   return sign * cents;
+}
+
+/** Saldo de una celda: VACÍA → null (el extracto no lo trae); con contenido
+ * ILEGIBLE → error. Nunca null en silencio: el saldo entra en la cadena canónica
+ * de dedup (serializado como "None" si falta), así que un saldo corrupto
+ * convertido en null cambiaría el hash y rompería la verificación cruzada con
+ * los datos migrados de la fase 3 sin aviso. */
+export function balanceCentsOf(value: unknown, row: number): bigint | null {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const cents = toCents(value);
+  if (cents === null) {
+    throw new FinanceParserError(`saldo ilegible ${JSON.stringify(String(value).trim())}`, row);
+  }
+  return cents;
 }
 
 const DATE_ES_RX = /^(\d{2})\/(\d{2})\/(\d{4})$/;
@@ -2716,14 +2867,16 @@ export function buildRaw(
 
 Verifica verde con el mismo comando.
 
-- [ ] **Step 4: Builders de muestras sintéticas.** Crea `packages/server/src/finance/parsers/synthetic-samples.ts` (importes y titulares INVENTADOS; formato idéntico al real):
+- [ ] **Step 5: Builders de muestras sintéticas.** Crea `packages/server/src/finance/parsers/synthetic-samples.ts` (importes y titulares INVENTADOS; formato idéntico al real):
 
 ```ts
 /** Muestras SINTÉTICAS de extractos, generadas por código (jamás ficheros
  * reales): titulares, cuentas e importes inventados con el formato del banco. */
 import * as XLSX from "xlsx";
 
-function writeWorkbook(grid: string[][], bookType: "biff8" | "xlsx", sheet: string): Uint8Array {
+import { AMEX_SHEET } from "./shared.js";
+
+export function writeWorkbook(grid: string[][], bookType: "biff8" | "xlsx", sheet: string): Uint8Array {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(grid), sheet);
   return new Uint8Array(XLSX.write(wb, { bookType, type: "buffer" }) as Buffer);
@@ -2776,12 +2929,10 @@ export function openbankSampleHtml(): Uint8Array {
 <table>
 <tr><td>Fecha Operaci\u00f3n</td><td>Fecha Valor</td><td>Concepto</td><td>Importe</td><td>Saldo</td></tr>
 <tr><td>06/05/2026</td><td>06/05/2026</td><td>TRANSFERENCIA DE CARLOS EJEMPLO, CONCEPTO Aportaci\u00f3n mayo</td><td>300,00</td><td>1.300,00</td></tr>
-<tr><td>31/05/2026</td><td></td><td>LIQUIDACION CUENTA ABIERTA</td><td>1,23</td><td>1.301,23</td></tr>
+<tr><td>31/05/2026</td><td>-</td><td>LIQUIDACION CUENTA ABIERTA</td><td>1,23</td><td>1.301,23</td></tr>
 </table></body></html>`;
   return new Uint8Array(Buffer.from(html, "latin1"));
 }
-
-const AMEX_SHEET = "Detalles de la operación";
 
 export function amexSampleXlsx(): Uint8Array {
   const grid: string[][] = [
@@ -2801,7 +2952,9 @@ export function amexSampleXlsxSinHoja(): Uint8Array {
 }
 ```
 
-- [ ] **Step 5: Test que falla (`detectBank`).** `packages/server/src/finance/parsers/detect.test.ts`:
+Detalle CRÍTICO de la segunda fila de OpenBank: la celda de «Fecha Valor» lleva `-`, NO va vacía. El parser aplana cada `<tr>` a sus celdas NO vacías (port fiel de `openbank.py`), de modo que una celda vacía dejaría la fila con 4 celdas y el propio parser la descartaría (`row.length < 5`). Con `-` la fila conserva sus 5 celdas y `valueDate` queda `null` porque el texto no es una fecha: exactamente lo que hace el HTML real y lo que anula el origen (`value_date` se anula cuando la celda EXISTE y no es fecha, nunca cuando falta). No toques el filtro de celdas del parser.
+
+- [ ] **Step 6: Test que falla (`detectBank`).** `packages/server/src/finance/parsers/detect.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -2830,16 +2983,16 @@ describe("detectBank (port de importer.detect_bank, siempre por contenido)", () 
 });
 ```
 
-- [ ] **Step 6: Verlo fallar e implementar `parsers/index.ts`.** Corre `pnpm --filter @casa-clara/server test src/finance/parsers/detect.test.ts` (falla) y crea `packages/server/src/finance/parsers/index.ts`:
+- [ ] **Step 7: Verlo fallar e implementar `parsers/index.ts`.** Corre `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/detect.test.ts` (falla) y crea `packages/server/src/finance/parsers/index.ts`:
 
 ```ts
 import * as XLSX from "xlsx";
 
 import type { FinanceBank } from "@casa-clara/domain/finance";
 
-export { FinanceParserError } from "./shared.js";
+import { AMEX_SHEET, FinanceParserError } from "./shared.js";
 
-export const AMEX_SHEET = "Detalles de la operación";
+export { AMEX_SHEET, FinanceParserError };
 
 function tryRead(bytes: Uint8Array): XLSX.WorkBook | null {
   try {
@@ -2885,8 +3038,8 @@ export function detectBank(bytes: Uint8Array, filename: string): FinanceBank | n
 
 Verifica verde.
 
-- [ ] **Step 7: Cableado CI.** En `.github/workflows/ci.yml`, en el paso «Every Vitest file of web, server and worker must have run», añade tras la línea `--specs 'packages/server::src/*.test.ts'` esta línea: `          --specs 'packages/server::src/finance/**/*.test.ts'`.
-- [ ] **Step 8: Commit.** `git add packages/server .github/workflows/ci.yml pnpm-lock.yaml && git commit -m "feat(finanzas): sheetjs solo-servidor, muestras sintéticas y detección de banco"`
+- [ ] **Step 8: Cableado CI.** En `.github/workflows/ci.yml`, en el paso «Every Vitest file of web, server and worker must have run», añade tras la línea `--specs 'packages/server::src/*.test.ts'` esta línea: `          --specs 'packages/server::src/finance/**/*.test.ts'` (cubre también `sheetjs-smoke.test.ts` y el resto de specs de esta fase).
+- [ ] **Step 9: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/server .github/workflows/ci.yml pnpm-lock.yaml && git commit -m "feat(finanzas): sheetjs solo-servidor, muestras sintéticas y detección de banco"`
 
 ---
 
@@ -2948,7 +3101,7 @@ describe("parseCaixabank (muestra sintética, sin skip)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlo fallar.** `pnpm --filter @casa-clara/server test src/finance/parsers/caixabank.test.ts`
+- [ ] **Step 2: Verlo fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/caixabank.test.ts`
 - [ ] **Step 3: Implementación.** `packages/server/src/finance/parsers/caixabank.ts`:
 
 ```ts
@@ -2956,7 +3109,7 @@ import * as XLSX from "xlsx";
 
 import { CARD_PREFIX_RX, normalizeBankProvider, type ParsedRow } from "@casa-clara/domain/finance";
 
-import { FinanceParserError, buildRaw, parseDateEs, toCents } from "./shared.js";
+import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
 
 const HEADER_MARK = "Número de cuenta";
 
@@ -3009,8 +3162,10 @@ export function parseCaixabank(bytes: Uint8Array): ParsedRow[] {
       throw new FinanceParserError("sin importe de ingreso ni gasto", r);
     }
     const amount = ingreso !== null ? ingreso : -(gasto as bigint);
-    const saldoPos = toCents(cells[8]);
-    const saldoNeg = toCents(cells[9]);
+    // `balanceCentsOf` distingue celda vacía (null legítimo) de celda ilegible
+    // (error): el saldo entra en el hash de dedup y no puede caer a null en silencio.
+    const saldoPos = balanceCentsOf(cells[8], r);
+    const saldoNeg = balanceCentsOf(cells[9], r);
     const balance = saldoPos !== null ? saldoPos : saldoNeg !== null ? -saldoNeg : null;
     const codeCommon = text(cells, 10) || null;
     const codeOwn = text(cells, 11) || null;
@@ -3048,7 +3203,7 @@ export function parseCaixabank(bytes: Uint8Array): ParsedRow[] {
 ```
 
 - [ ] **Step 4: Verde.** Repite Step 2.
-- [ ] **Step 5: Commit.** `git add packages/server && git commit -m "feat(finanzas): parser de caixabank con multitabla y ccc por fila"`
+- [ ] **Step 5: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/server && git commit -m "feat(finanzas): parser de caixabank con multitabla y ccc por fila"`
 
 ---
 
@@ -3106,11 +3261,13 @@ describe("parseOpenbank (HTML iso-8859-1 sintético, sin skip)", () => {
   const rows = parseOpenbank(openbankSampleHtml());
   it("lee la cuenta sin espacios y las dos filas con acentos intactos", () => {
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.accountRef).toBe("0073010051000000000001");
+    // CCC español = 20 dígitos: «0073 0100 5100 0000 0001» sin espacios.
+    expect(rows[0]?.accountRef).toBe("00730100510000000001");
     expect(rows[0]?.concept).toBe("TRANSFERENCIA DE CARLOS EJEMPLO, CONCEPTO Aportación mayo");
   });
   it("deriva el provider de transferencias y liquidaciones", () => {
     expect(rows[0]).toMatchObject({ provider: "CARLOS EJEMPLO", amountCents: 30000n, balanceCents: 130000n });
+    // La segunda fila trae «-» en Fecha Valor: celda presente y no-fecha ⇒ null.
     expect(rows[1]).toMatchObject({ provider: "Openbank", amountCents: 123n, valueDate: null });
   });
   it("un HTML sin cuenta lanza FinanceParserError", () => {
@@ -3118,10 +3275,23 @@ describe("parseOpenbank (HTML iso-8859-1 sintético, sin skip)", () => {
       parseOpenbank(new Uint8Array(Buffer.from("<html><body><table></table></body></html>", "latin1"))),
     ).toThrow(FinanceParserError);
   });
+  it("un saldo ilegible lanza FinanceParserError en vez de quedarse en null", () => {
+    const corrupto = `<html><body>
+<table><tr><td>Número de Cuenta:</td><td>0073 0100 5100 0000 0001</td></tr></table>
+<table>
+<tr><td>Fecha Operación</td><td>Fecha Valor</td><td>Concepto</td><td>Importe</td><td>Saldo</td></tr>
+<tr><td>06/05/2026</td><td>06/05/2026</td><td>PAGO</td><td>300,00</td><td>SALDO NO DISPONIBLE</td></tr>
+</table></body></html>`;
+    expect(() => parseOpenbank(new Uint8Array(Buffer.from(corrupto, "latin1")))).toThrow(
+      /saldo ilegible/,
+    );
+  });
 });
 ```
 
-- [ ] **Step 2: Verlos fallar.** `pnpm --filter @casa-clara/server test src/finance/parsers/deutschebank.test.ts src/finance/parsers/openbank.test.ts`
+El caso del saldo ilegible existe porque el saldo viaja a la cadena canónica de dedup (un `null` se serializa como `"None"`): convertirlo en silencio produciría un hash distinto del que generó el backend Python y rompería la verificación cruzada de la fase 3.
+
+- [ ] **Step 2: Verlos fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/deutschebank.test.ts src/finance/parsers/openbank.test.ts`
 - [ ] **Step 3: Implementación Deutsche.** `packages/server/src/finance/parsers/deutschebank.ts`:
 
 ```ts
@@ -3129,7 +3299,7 @@ import * as XLSX from "xlsx";
 
 import { normalizeBankProvider, type ParsedRow } from "@casa-clara/domain/finance";
 
-import { FinanceParserError, buildRaw, parseDateEs, toCents } from "./shared.js";
+import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
 
 const PREFIXES: readonly [RegExp, string][] = [
   [/^RECIBO\s+/, ""],
@@ -3192,7 +3362,7 @@ export function parseDeutsche(bytes: Uint8Array): ParsedRow[] {
         bank: "deutsche_bank",
       }),
       amountCents: amount,
-      balanceCents: toCents(cells[9]),
+      balanceCents: balanceCentsOf(cells[9], r), // vacío → null; ilegible → error
       codeCommon: null,
       codeOwn: null,
       dedupRef: null,
@@ -3212,7 +3382,7 @@ export function parseDeutsche(bytes: Uint8Array): ParsedRow[] {
 ```ts
 import type { ParsedRow } from "@casa-clara/domain/finance";
 
-import { FinanceParserError, buildRaw, parseDateEs, toCents } from "./shared.js";
+import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
 
 const DATE_RX = /^\d{2}\/\d{2}\/\d{4}$/;
 const TRANSFER_RX = /^TRANSFERENCIA(?:\s+INMEDIATA)?\s+(?:A\s+FAVOR\s+DE|DE)\s+(.*)/i;
@@ -3283,7 +3453,7 @@ export function parseOpenbank(bytes: Uint8Array): ParsedRow[] {
       concept,
       provider: obProvider(concept),
       amountCents: amount,
-      balanceCents: toCents(saldo),
+      balanceCents: balanceCentsOf(saldo, i), // vacío → null; ilegible → error
       codeCommon: null,
       codeOwn: null,
       dedupRef: null,
@@ -3297,7 +3467,7 @@ export function parseOpenbank(bytes: Uint8Array): ParsedRow[] {
 ```
 
 - [ ] **Step 5: Verde.** Repite el comando del Step 2.
-- [ ] **Step 6: Commit.** `git add packages/server && git commit -m "feat(finanzas): parsers de deutsche bank y openbank"`
+- [ ] **Step 6: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/server && git commit -m "feat(finanzas): parsers de deutsche bank y openbank"`
 
 ---
 
@@ -3363,7 +3533,7 @@ describe("parseStatement (despacho por banco detectado)", () => {
 });
 ```
 
-- [ ] **Step 2: Verlos fallar.** `pnpm --filter @casa-clara/server test src/finance/parsers/amex.test.ts src/finance/parsers/statement.test.ts`
+- [ ] **Step 2: Verlos fallar.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers/amex.test.ts src/finance/parsers/statement.test.ts`
 - [ ] **Step 3: Implementación Amex.** `packages/server/src/finance/parsers/amex.ts`:
 
 ```ts
@@ -3371,8 +3541,9 @@ import * as XLSX from "xlsx";
 
 import type { ParsedRow } from "@casa-clara/domain/finance";
 
-import { FinanceParserError, buildRaw, parseDateEs, toCents } from "./shared.js";
-import { AMEX_SHEET } from "./index.js";
+// AMEX_SHEET viene de `shared.js`, nunca de `./index.js`: importarla del barrel
+// crearía un ciclo index ↔ amex (index importa parseAmex de este fichero).
+import { AMEX_SHEET, FinanceParserError, buildRaw, parseDateEs, toCents } from "./shared.js";
 
 const compact = (s: string): string => s.replace(/\s+/g, " ").trim();
 
@@ -3449,9 +3620,10 @@ export function parseAmex(bytes: Uint8Array): ParsedRow[] {
 - [ ] **Step 4: `parseStatement` y export.** En `packages/server/src/finance/parsers/index.ts` añade al final:
 
 ```ts
+// `FinanceParserError` y `AMEX_SHEET` ya vienen de "./shared.js" en la cabecera
+// del fichero (Task 12): no los importes otra vez.
 import type { ParsedRow, ParsedStatement } from "@casa-clara/domain/finance";
 
-import { FinanceParserError } from "./shared.js";
 import { parseAmex } from "./amex.js";
 import { parseCaixabank } from "./caixabank.js";
 import { parseDeutsche } from "./deutschebank.js";
@@ -3480,8 +3652,8 @@ export function parseStatement(bytes: Uint8Array, filename: string): ParsedState
 
 (Mueve los `import` junto a los existentes de la cabecera del fichero para cumplir el lint.) En `packages/server/src/index.ts` añade, junto al export de dedup-hash: `export * from "./finance/parsers/index.js";`.
 
-- [ ] **Step 5: Verde + typecheck.** `pnpm --filter @casa-clara/server test src/finance/parsers && pnpm --filter @casa-clara/server typecheck`
-- [ ] **Step 6: Commit.** `git add packages/server && git commit -m "feat(finanzas): parser de amex y despacho parseStatement por contenido"`
+- [ ] **Step 5: Verde + typecheck.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/parsers && pnpm --filter @casa-clara/server typecheck`
+- [ ] **Step 6: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/server && git commit -m "feat(finanzas): parser de amex y despacho parseStatement por contenido"`
 
 ---
 
@@ -3498,6 +3670,8 @@ export function parseStatement(bytes: Uint8Array, filename: string): ParsedState
   - Canónica: `runPostImportPipeline(client: PoolClient, householdId: string): Promise<PipelineReport>` — orden FIJO: reglas → alias PayPal → Amex → inversiones → transferencias → efectivo → recurrencia → reglas de evento.
   - Locales (testables sin BD; el test dbe2e real llega en fases 5/7): `PIPELINE_ORDER: readonly PipelineStepName[]`, `type PipelineStepName`, `interface PipelineReport { steps: { name: PipelineStepName; affected: number }[] }`, `interface PipelineState { txs: FinanceTxView[]; accounts: FinanceAccountView[]; categories: FinanceCategoryView[]; rules: FinanceRuleView[]; eventRules: FinanceEventRuleView[]; aliases: FinanceProviderAliasView[]; txEvents: { txId: string; eventId: string }[] }`, `interface PipelineChanges { updatedTxs: Map<string, { categoryId: string | null; status: FinanceTxView["status"]; transferGroupId: string | null; recurrence: FinanceTxView["recurrence"] }>; insertedTxs: NewPipelineTx[]; insertedAliases: FinanceProviderAliasView[]; insertedCategories: FinanceCategoryView[]; insertedTxEvents: { txId: string; eventId: string }[] }`, `interface NewPipelineTx { id: string; accountId: string; sourceTxId: string; opDate: string; concept: string; provider: string; providerNorm: string; amountCents: bigint; categoryId: string; status: "confirmada"; transferGroupId: string; dedupHash: string }`, `runPipelineSteps(state: PipelineState, newId: () => string): { report: PipelineReport; changes: PipelineChanges }`.
 
+Dos detalles que este paso resuelve y que ningún otro plan puede dar por hechos: (a) el pipeline resuelve el `cashAccountId` con `cashAccountIdOf(accounts)` (cuenta con `bank === null` y nombre normalizado «EFECTIVO») y se lo pasa a `detectInvestmentContributions` y `detectCashMovements`, que ya no miran `bank`; (b) si el hogar todavía no tiene categoría raíz `transferencia`, el pipeline la CREA (`{ parentId: null, name: "Transferencias", kind: "transferencia" }`) en vez de abortar: el esquema solo garantiza como mucho una (índice parcial único), no su existencia.
+
 Referencia Python del ORDEN (semántica crítica, spec §13): `/home/abf/github/home-finance/backend/app/api.py` líneas 337–345 (`apply_rules` → `renormalize.create_paypal_aliases` → `reconcile_amex_payments` → `detect_investment_contributions` → `detect_transfers` → `detect_cash_withdrawals` → `detect_recurrence` → `apply_event_rules`); alias PayPal: `renormalize.py::create_paypal_aliases` (alias `"<Vendor> [PayPal]"`, nunca pisa alias existentes); categoría «Efectivo»: `cash.py::efectivo_category_id` (se crea si falta). En el origen este orden estaba duplicado en `api.py` y `cli.py`; aquí UNA sola verdad. Los espejos heredan el `batch_id` de su cargo (para que deshacer el lote los arrastre, como en el origen). No se portan `ensure_investment_accounts` ni `ensure_amex_account`/`ensure_cash_account`: las cuentas son datos (seed/Ajustes/confirm de importación), spec §5-6.
 
 - [ ] **Step 1: Test integral que falla.** `packages/server/src/finance/pipeline.test.ts` (unit puro, sin BD, sin skip):
@@ -3508,6 +3682,7 @@ import type { PoolClient } from "pg";
 
 import type {
   FinanceAccountView,
+  FinanceBank,
   FinanceCategoryView,
   FinanceTxView,
 } from "@casa-clara/domain/finance";
@@ -3519,7 +3694,9 @@ import {
   type PipelineState,
 } from "./pipeline.js";
 
-const acc = (id: string, bank: string, kind: FinanceAccountView["kind"], extra: Partial<FinanceAccountView> = {}): FinanceAccountView =>
+// `bank` es NULL en las cuentas sin banco (Efectivo, inversión): el CHECK de la
+// fase 1 solo admite los cuatro bancos reales.
+const acc = (id: string, bank: FinanceBank | null, kind: FinanceAccountView["kind"], extra: Partial<FinanceAccountView> = {}): FinanceAccountView =>
   ({ id, name: id, bank, kind, bankRef: `ref-${id}`, ownerAliases: [], transferRefs: [], ...extra });
 function tx(id: string, overrides: Partial<FinanceTxView>): FinanceTxView {
   return {
@@ -3540,7 +3717,8 @@ function buildState(): PipelineState {
       acc("a1", "caixabank", "comun", { ownerAliases: ["Padre Ejemplo"] }),
       acc("a2", "openbank", "personal"),
       acc("amex1", "amex", "personal"),
-      acc("inv1", "inversion", "inversion", { transferRefs: ["0001234"] }),
+      acc("inv1", null, "inversion", { transferRefs: ["0001234"] }),
+      { id: "cash", name: "Efectivo", bank: null, kind: "comun", bankRef: "EFECTIVO", ownerAliases: [], transferRefs: [] },
     ],
     categories: [...categories],
     rules: [{ id: "r1", ruleType: "proveedor_exacto", pattern: "IBERDROLA CLIENTES", categoryId: "cat-casa", priority: 0 }],
@@ -3620,6 +3798,21 @@ describe("runPipelineSteps: los 8 pasos en el orden del origen", () => {
     expect(second.changes.insertedAliases).toHaveLength(0);
     expect(second.changes.insertedTxEvents).toHaveLength(0);
     expect(second.report.steps.map((s) => s.affected)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it("un hogar sin categoría raíz de transferencia no revienta: se crea al vuelo", () => {
+    // El esquema garantiza COMO MUCHO una raíz (índice parcial único), no su
+    // existencia: un hogar recién activado puede llegar aquí sin ella.
+    const state = buildState();
+    state.categories = state.categories.filter((c) => c.kind !== "transferencia");
+    let seq = 0;
+    const { changes } = runPipelineSteps(state, () => `id-${(seq += 1)}`);
+    const creada = changes.insertedCategories.find((c) => c.kind === "transferencia");
+    expect(creada).toMatchObject({ parentId: null, name: "Transferencias", kind: "transferencia" });
+    const byId = new Map(state.txs.map((t) => [t.id, t]));
+    expect(byId.get("trOut")?.categoryId).toBe(creada?.id);
+    // y se reutiliza: una sola raíz para todas las patas de la pasada
+    expect(changes.insertedCategories.filter((c) => c.kind === "transferencia")).toHaveLength(1);
   });
 });
 
@@ -3705,6 +3898,13 @@ export const PIPELINE_ORDER = [
 export type PipelineStepName = (typeof PIPELINE_ORDER)[number];
 
 export interface PipelineReport {
+  /** UNIDAD de `affected` por paso (la fase 5 la muestra al usuario, así que no
+   * se puede adivinar): `reglas` → transacciones recategorizadas; `alias_paypal`
+   * → alias creados; `amex` → PAREJAS conciliadas; `inversiones` → espejos
+   * creados; `transferencias` → PATAS recién agrupadas (como `transfers.py`: una
+   * pata huérfana que conserva su grupo no cuenta); `efectivo` → retiradas
+   * confirmadas; `recurrencia` → veredictos escritos; `reglas_evento` →
+   * asignaciones nuevas. */
   steps: { name: PipelineStepName; affected: number }[];
 }
 
@@ -3749,6 +3949,14 @@ export interface PipelineChanges {
   insertedTxEvents: { txId: string; eventId: string }[];
 }
 
+/** Cuenta «Efectivo» del hogar: sin banco (el CHECK de `finance_accounts.bank`
+ * solo admite los cuatro bancos reales) y con el nombre normalizado EFECTIVO.
+ * El dominio no la deduce nunca: se le pasa el id (resolución canónica 6). */
+function cashAccountIdOf(accounts: readonly FinanceAccountView[]): string | null {
+  const cash = accounts.find((a) => a.bank === null && normText(a.name) === "EFECTIVO");
+  return cash?.id ?? null;
+}
+
 /** Núcleo PURO del pipeline: muta `state` en memoria y acumula los cambios a
  * persistir. Testeable sin base de datos (caso integral en pipeline.test.ts). */
 export function runPipelineSteps(
@@ -3777,28 +3985,55 @@ export function runPipelineSteps(
     t.categoryId = categoryId;
     t.categoryKind = kindOf.get(categoryId) ?? t.categoryKind;
   };
+  /** Raíz de transferencias del hogar. El esquema garantiza COMO MUCHO una
+   * (índice parcial único), NO su existencia: un hogar que estrena Finanzas
+   * puede no tenerla. Se crea al vuelo, igual que la categoría «Efectivo» del
+   * paso 6, en lugar de abortar la transacción autorizada. */
   const transferCatId = (): string => {
-    const cat = state.categories.find((c) => c.kind === "transferencia" && c.parentId === null);
-    if (cat === undefined) {
-      throw new Error("El hogar no tiene categoría raíz de transferencia (invariante del esquema)");
-    }
-    return cat.id;
+    const found = state.categories.find((c) => c.kind === "transferencia" && c.parentId === null);
+    if (found !== undefined) return found.id;
+    const created: FinanceCategoryView = {
+      id: newId(),
+      parentId: null,
+      name: "Transferencias",
+      kind: "transferencia",
+    };
+    state.categories.push(created);
+    kindOf.set(created.id, "transferencia");
+    changes.insertedCategories.push(created);
+    return created.id;
   };
-  /** Aplica un cruce; devuelve cuántas patas quedan RECIÉN agrupadas (una
-   * huérfana que conserva su grupo no cuenta, como en transfers.py). */
-  const applyPair = (p: TransferProposal): number => {
+  /** Patas huérfanas (con grupo pero solas en él) ANTES de aplicar los cruces de
+   * un paso: `transfers.py` calcula las «recién agrupadas» como
+   * `{tx, other} - lone_ids`, así que una huérfana nunca cuenta aunque cambie de
+   * grupo, y dos huérfanas emparejadas cuentan 0 (no 1, como haría comparar el
+   * grupo anterior con el nuevo). */
+  const loneLegIds = (): Set<string> => {
+    const counts = new Map<string, number>();
+    for (const t of state.txs) {
+      if (t.transferGroupId !== null) {
+        counts.set(t.transferGroupId, (counts.get(t.transferGroupId) ?? 0) + 1);
+      }
+    }
+    return new Set(
+      state.txs
+        .filter((t) => t.transferGroupId !== null && counts.get(t.transferGroupId) === 1)
+        .map((t) => t.id),
+    );
+  };
+  /** Aplica un cruce; devuelve cuántas patas quedan RECIÉN agrupadas. */
+  const applyPair = (p: TransferProposal, loneIds: ReadonlySet<string>): number => {
     const group = p.existingGroupId ?? newId();
-    let newly = 0;
+    const catId = transferCatId();
     for (const legId of p.legIds) {
       const leg = byId.get(legId);
       if (leg === undefined) continue;
-      if (leg.transferGroupId !== group) newly += 1;
       leg.transferGroupId = group;
-      setCategory(leg, transferCatId());
+      setCategory(leg, catId);
       leg.status = p.status;
       touch(leg);
     }
-    return newly;
+    return p.legIds.filter((id) => !loneIds.has(id)).length;
   };
 
   // 1. reglas (rules_engine.apply_rules: solo pendientes)
@@ -3831,17 +4066,21 @@ export function runPipelineSteps(
   }
   report.steps.push({ name: "alias_paypal", affected });
 
-  // 3. conciliación Amex (antes que transferencias: el cargo no debe ser «robado»)
+  // 3. conciliación Amex (antes que transferencias: el cargo no debe ser «robado»).
+  // Aquí `affected` cuenta PAREJAS conciliadas, no patas (ver PipelineReport).
   affected = 0;
+  const amexLoneIds = loneLegIds();
   for (const p of reconcileAmex(state.txs, state.accounts)) {
-    applyPair(p);
+    applyPair(p, amexLoneIds);
     affected += 1;
   }
   report.steps.push({ name: "amex", affected });
 
-  // 4. inversiones: espejo confirmado agrupado con el cargo (hash invmirror-)
+  // 4. inversiones: espejo confirmado agrupado con el cargo (hash invmirror-).
+  // `cashAccountId` explícito: el esquema no admite bank='efectivo'/'inversion'.
   affected = 0;
-  for (const p of detectInvestmentContributions(state.txs, state.accounts)) {
+  const cashAccountId = cashAccountIdOf(state.accounts);
+  for (const p of detectInvestmentContributions(state.txs, state.accounts, { cashAccountId })) {
     const charge = byId.get(p.chargeTxId);
     if (charge === undefined) continue;
     const group = newId();
@@ -3888,14 +4127,20 @@ export function runPipelineSteps(
   }
   report.steps.push({ name: "inversiones", affected });
 
-  // 5. transferencias
+  // 5. transferencias: aquí `affected` cuenta PATAS recién agrupadas.
   affected = 0;
-  for (const p of detectTransferPairs(state.txs, state.accounts)) affected += applyPair(p);
+  const transferLoneIds = loneLegIds();
+  for (const p of detectTransferPairs(state.txs, state.accounts)) {
+    affected += applyPair(p, transferLoneIds);
+  }
   report.steps.push({ name: "transferencias", affected });
 
-  // 6. efectivo (cash.detect_cash_withdrawals + efectivo_category_id: crea la categoría si falta)
+  // 6. efectivo (cash.detect_cash_withdrawals + efectivo_category_id: crea la
+  // categoría si falta). Este paso SOLO recategoriza retiradas de cajero: la
+  // contrapartida de doble entrada (`cashpair-`) la produce `cashCounterlegFor`
+  // desde el comando `finance.transaction.manual.create` de la fase 5, nunca aquí.
   affected = 0;
-  const cashProposals = detectCashMovements(state.txs, state.accounts);
+  const cashProposals = detectCashMovements(state.txs, state.accounts, { cashAccountId });
   if (cashProposals.length > 0) {
     let efectivo = state.categories.find((c) => c.kind === "gasto" && c.name === "Efectivo");
     if (efectivo === undefined) {
@@ -3965,7 +4210,7 @@ async function loadPipelineState(client: PoolClient, householdId: string): Promi
     [householdId],
   );
   const accRes = await client.query<{
-    id: string; name: string; bank: string; kind: FinanceAccountView["kind"];
+    id: string; name: string; bank: FinanceAccountView["bank"]; kind: FinanceAccountView["kind"];
     bank_ref: string; owner_aliases: string[] | null; transfer_refs: string[] | null;
   }>(
     `select id, name, bank, kind, bank_ref, owner_aliases, transfer_refs
@@ -3981,7 +4226,8 @@ async function loadPipelineState(client: PoolClient, householdId: string): Promi
        from app.finance_rules where household_id = $1`,
     [householdId],
   );
-  const evRuleRes = await client.query<{ id: string; provider_norm: string; concept_norm: string | null; category_id: string | null; event_id: string }>(
+  // `provider_norm` es NULLABLE en app.finance_event_rules (reglas por categoría).
+  const evRuleRes = await client.query<{ id: string; provider_norm: string | null; concept_norm: string | null; category_id: string | null; event_id: string }>(
     `select id, provider_norm, concept_norm, category_id, event_id
        from app.finance_event_rules where household_id = $1`,
     [householdId],
@@ -4081,6 +4327,6 @@ export async function runPostImportPipeline(
 
 Añade a `packages/server/src/index.ts`: `export * from "./finance/pipeline.js";` (junto a los otros exports de finance).
 
-- [ ] **Step 4: Verde.** `pnpm --filter @casa-clara/server test src/finance/pipeline.test.ts && pnpm --filter @casa-clara/server typecheck`
+- [ ] **Step 4: Verde.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm --filter @casa-clara/server test src/finance/pipeline.test.ts && pnpm --filter @casa-clara/server typecheck`
 - [ ] **Step 5: Gates completos de la fase.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH" && pnpm lint && pnpm typecheck && pnpm test` — todo verde; si algo falla, corrige antes de commitear.
-- [ ] **Step 6: Commit.** `git add packages/server && git commit -m "feat(finanzas): pipeline post-import unificado con orden fijo de ocho pasos"`
+- [ ] **Step 6: Commit.** `cd /home/abf/github/housekeeper/.claude/worktrees/modulo-finanzas && git add packages/server && git commit -m "feat(finanzas): pipeline post-import unificado con orden fijo de ocho pasos"`

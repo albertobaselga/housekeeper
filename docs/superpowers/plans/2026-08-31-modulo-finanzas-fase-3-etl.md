@@ -29,7 +29,7 @@
 
 **Notas de fase (léelas antes de cualquier tarea):**
 - Esta fase consume el esquema `0034_finance.sql` (fase 1) y `packages/server/src/finance/dedup-hash.ts` de fase 2 con firma `computeDedupHash(row: { bankRef: string; opDate: string; amountCents: bigint; concept: string; balanceCents: bigint | null; dedupRef: string | null }): string`.
-- CI: los `.test.mjs` de `packages/db/scripts/` los descubre `packages/db/vitest.config.mjs` (`include: ['scripts/**/*.test.mjs']`, `fileParallelism: false`) y los ejecuta el job `database` de `ci.yml` vía `pnpm test:import`. Con `describe.runIf(Boolean(process.env.TEST_DATABASE_URL))` se saltan en el job `unit` (sin BD), como hace `scripts/migrate-with-history.test.mjs`. No hay que tocar `ci.yml` (`assert-suite-coverage.py` excluye `packages/db` a propósito, documentado en el propio workflow).
+- CI: los `.test.mjs` de `packages/db/scripts/` los descubre `packages/db/vitest.config.mjs` (`include: ['scripts/**/*.test.mjs']`, `fileParallelism: false`) y los ejecuta el job `database` de `ci.yml` con `scripts/ci/run-tests-nonempty.sh pnpm test:import` (línea 115 del workflow). **Ojo con el mito de `runIf`**: `packages/db` NO expone script `test`, así que `pnpm test` (`pnpm -r --if-present test`) del job `unit` no ejecuta nada de este paquete; `describe.runIf(Boolean(process.env.TEST_DATABASE_URL))` sirve para poder correr `pnpm test:import` en local sin Postgres, no para saltar el job `unit`. Consecuencia práctica: `migrar-home-finance.test.mjs` (que no necesita base) también corre solo en el job `database`, y eso es aceptable. No hay que tocar `ci.yml`: el inventario de `assert-suite-coverage.py` excluye `packages/{domain,contracts,db}` a propósito (comentario de las líneas 310-318 del workflow) porque su evidencia sale de `run-tests-nonempty.sh` en los jobs `unit` y `database`.
 - Postgres local para las tareas 5–7 (una sola vez):
 
 ```bash
@@ -158,9 +158,16 @@ git commit -m "feat(db): cargador .js→.ts para que los guiones node usen códi
 
 **Interfaces:**
 - Consumes: `importarModuloTs`, `rutaDedupHash` (Task 1); `computeDedupHash` (fase 2).
-- Produces: `construirSqliteSintetica(ruta, { computeDedupHash, corromperHashDeTx = null })`; constantes `DDL_ORIGEN`, `GRUPO_TRASPASO`, `GRUPO_INVERSION`, `CUENTAS`, `CATEGORIAS`, `REGLAS`, `LOTES`, `TRANSACCIONES`, `ALIAS`, `EVENTOS`, `TRANSACCION_EVENTOS`, `REGLAS_EVENTO`, `TOTALES`, `SUMAS_CUENTA_MES`. CLI: `node scripts/home-finance-sintetica.mjs <ruta-salida.db>`.
+- Produces: `construirSqliteSintetica(ruta, { computeDedupHash, corromperHashDeTx = null })`; constantes `DDL_ORIGEN`, `GRUPO_TRASPASO`, `GRUPO_INVERSION`, `GRUPO_HUERFANO`, `CUENTAS`, `CATEGORIAS`, `REGLAS`, `LOTES`, `TRANSACCIONES`, `ALIAS`, `EVENTOS`, `TRANSACCION_EVENTOS`, `REGLAS_EVENTO`, `TOTALES`, `SUMAS_CUENTA_MES`. CLI: `node scripts/home-finance-sintetica.mjs <ruta-salida.db>`.
 
 **Contexto:** DDL calcada de `/home/abf/github/home-finance/backend/app/models.py` (incluidas las columnas que `db.py::ensure_schema` añade: `recurrence`, `recurrence_manual`, `bank_category`, `raw`, `event_rules.category_id`, `accounts.transfer_refs`). Datos 100 % inventados. Hashes «reales» = `computeDedupHash`; los sintéticos llevan los prefijos del origen (`manual-`, `cashpair-`, `invmirror-`). La tx amex lleva `dedup_ref` (columna Referencia de Amex) que el origen NO persiste: por eso el ETL la excluirá de la verificación cruzada.
+
+**La muestra tiene que contener las formas raras del origen, o el ensayo miente.** Tres exigencias verificadas en el repo de origen:
+1. **Cuentas virtuales**: `backend/app/cash.py:14-25` crea `Efectivo` con `bank='efectivo'`, `kind='comun'`, `bank_ref='EFECTIVO'`, y `backend/app/investments.py:15-30` crea las cuentas de inversión con `bank='inversion'`, `kind='inversion'` y `transfer_refs` (las refs viven en la cuenta de INVERSIÓN, no en la cuenta bancaria). El vocabulario completo de `accounts.bank` en el origen es `caixabank|deutsche_bank|efectivo|manual|inversion|openbank` (`backend/app/api.py:22`), y el destino solo admite los cuatro bancos reales o NULL: por eso la muestra incluye esas dos cuentas, para que el ETL ejercite la traducción a NULL.
+2. **Patas sintéticas en su cuenta**: la contrapartida `cashpair-` la crea `create_cash_counterleg` DENTRO de la cuenta Efectivo (`cash.py:44-58`, con hash `cashpair-<hash del gasto>`), y el espejo `invmirror-` dentro de la cuenta de inversión. Si la muestra las deja en la cuenta CaixaBank, el ensayo no prueba la forma real de los datos.
+3. **Lote manual**: `import_batches.bank` toma también `'manual'` en el origen (`backend/app/api.py:506`); el destino lo admite (resolución canónica 6 del doc de interfaces), así que la muestra trae un lote `bank:'manual'` para fijarlo.
+
+Y una cuarta, del lado de la verificación: `backend/app/transfers.py:32-42` (`orphan_legs`) demuestra que el origen puede tener **grupos de transferencia de una sola pata**, con suma ≠ 0. La muestra incluye uno (`GRUPO_HUERFANO`) para que la comparación origen↔destino no lo confunda con un fallo de migración (tarea 4).
 
 - [ ] **Step 1: Test que falla** — crear `packages/db/scripts/home-finance-sintetica.test.mjs`:
 
@@ -206,6 +213,12 @@ describe('home-finance-sintetica', () => {
         .toBe(TOTALES.rulesActivas);
       expect(db.prepare('SELECT dedup_hash FROM transactions WHERE id = 1').get().dedup_hash)
         .toBe(hashDe(1));
+      // Las formas raras del origen están presentes: cuentas virtuales y lote manual.
+      expect(db.prepare("SELECT group_concat(bank_ref, ',') AS refs FROM accounts WHERE bank IN ('efectivo', 'inversion') ORDER BY id").get().refs)
+        .toBe('EFECTIVO,INV-SINTETICO');
+      expect(Number(db.prepare("SELECT count(*) AS n FROM import_batches WHERE bank = 'manual'").get().n)).toBe(1);
+      expect(Number(db.prepare('SELECT count(DISTINCT transfer_group_id) AS n FROM transactions WHERE transfer_group_id IS NOT NULL').get().n))
+        .toBe(TOTALES.gruposTransferencia);
     } finally { db.close(); }
   });
 
@@ -301,11 +314,16 @@ CREATE TABLE event_rules (
 
 export const GRUPO_TRASPASO = 'e7b8c9d0-1234-4abc-8def-000000000001';
 export const GRUPO_INVERSION = 'e7b8c9d0-1234-4abc-8def-000000000002';
+// Pata suelta: el origen las admite (transfers.py::orphan_legs). No es un error.
+export const GRUPO_HUERFANO = 'e7b8c9d0-1234-4abc-8def-000000000003';
 
 export const CUENTAS = [
   { id: 1, name: 'Cuenta Común', bank: 'caixabank', kind: 'comun', owner: 'familia', bank_ref: '00490001512345678901', owner_aliases: ['FAMILIA PRUEBA'], transfer_refs: [] },
-  { id: 2, name: 'Cuenta Padre', bank: 'deutsche_bank', kind: 'personal', owner: 'padre', bank_ref: 'ES9100190020961234567890', owner_aliases: ['PADRE PRUEBA'], transfer_refs: ['REF-FONDO-01'] },
-  { id: 3, name: 'Tarjeta Amex', bank: 'amex', kind: 'personal', owner: 'padre', bank_ref: 'AMEX-SINTETICA-1001', owner_aliases: [], transfer_refs: [] }
+  { id: 2, name: 'Cuenta Padre', bank: 'deutsche_bank', kind: 'personal', owner: 'padre', bank_ref: 'ES9100190020961234567890', owner_aliases: ['PADRE PRUEBA'], transfer_refs: [] },
+  { id: 3, name: 'Tarjeta Amex', bank: 'amex', kind: 'personal', owner: 'padre', bank_ref: 'AMEX-SINTETICA-1001', owner_aliases: [], transfer_refs: [] },
+  // Cuentas virtuales del origen: bank fuera del vocabulario del destino (→ NULL en 0034).
+  { id: 4, name: 'Efectivo', bank: 'efectivo', kind: 'comun', owner: 'familia', bank_ref: 'EFECTIVO', owner_aliases: [], transfer_refs: [] },
+  { id: 5, name: 'Fondo Sintético Indexado', bank: 'inversion', kind: 'inversion', owner: 'familia', bank_ref: 'INV-SINTETICO', owner_aliases: [], transfer_refs: ['REF-FONDO-01'] }
 ];
 
 export const CATEGORIAS = [
@@ -327,7 +345,9 @@ export const REGLAS = [
 export const LOTES = [
   { id: 1, filename: 'extracto-comun-enero.xls', bank: 'caixabank', imported_at: '2026-02-01 10:00:00', new_count: 3, dup_count: 0 },
   { id: 2, filename: 'amex-enero.xlsx', bank: 'amex', imported_at: '2026-02-02 10:30:00', new_count: 1, dup_count: 0 },
-  { id: 3, filename: 'db-febrero.xls', bank: 'deutsche_bank', imported_at: '2026-03-02 09:00:00', new_count: 6, dup_count: 1 }
+  { id: 3, filename: 'db-febrero.xls', bank: 'deutsche_bank', imported_at: '2026-03-02 09:00:00', new_count: 6, dup_count: 1 },
+  // Lote de altas manuales: bank='manual', que el destino SÍ admite en lotes.
+  { id: 4, filename: 'manual', bank: 'manual', imported_at: '2026-02-14 12:00:00', new_count: 2, dup_count: 0 }
 ];
 
 // hash 'sha256' = lo calcula construirSqliteSintetica con computeDedupHash;
@@ -337,12 +357,18 @@ export const TRANSACCIONES = [
   { id: 2, account_id: 1, batch_id: 1, op_date: '2026-01-31', value_date: null, concept: 'NOMINA EMPRESA EJEMPLO SL', provider: 'EMPRESA EJEMPLO', amount_cents: 250000n, balance_cents: 400000n, code_common: '03', code_own: null, category_id: 5, status: 'confirmada', transfer_group_id: null, hash: 'sha256', recurrence: 'recurrente', recurrence_manual: 1, bank_category: null, raw: null },
   { id: 3, account_id: 1, batch_id: 1, op_date: '2026-02-05', value_date: null, concept: 'TRASPASO A CUENTA PADRE', provider: '', amount_cents: -50000n, balance_cents: 350000n, code_common: '04', code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_TRASPASO, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
   { id: 4, account_id: 2, batch_id: 3, op_date: '2026-02-05', value_date: null, concept: 'TRASPASO RECIBIDO DE CUENTA COMUN', provider: '', amount_cents: 50000n, balance_cents: 60000n, code_common: '04', code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_TRASPASO, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
-  { id: 5, account_id: 1, batch_id: 3, op_date: '2026-02-14', value_date: null, concept: 'GASTO EN EFECTIVO FARMACIA', provider: 'Farmacia Ñuñez', amount_cents: -2000n, balance_cents: null, code_common: null, code_own: null, category_id: 3, status: 'confirmada', transfer_group_id: null, hash: 'manual-a1b2c3d4e5f60718', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
-  { id: 6, account_id: 1, batch_id: 3, op_date: '2026-02-14', value_date: null, concept: 'RETIRADA EFECTIVO CAJERO', provider: '', amount_cents: 2000n, balance_cents: null, code_common: null, code_own: null, category_id: 3, status: 'confirmada', transfer_group_id: null, hash: 'cashpair-b2c3d4e5f6071829', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
+  // 5 y 6: par de efectivo, ambas patas en la cuenta virtual Efectivo (cash.py:44-58);
+  // el hash de la contrapartida es literalmente `cashpair-<hash del gasto>`.
+  { id: 5, account_id: 4, batch_id: 4, op_date: '2026-02-14', value_date: null, concept: 'GASTO EN EFECTIVO FARMACIA', provider: 'Farmacia Ñuñez', amount_cents: -2000n, balance_cents: null, code_common: null, code_own: null, category_id: 3, status: 'confirmada', transfer_group_id: null, hash: 'manual-a1b2c3d4e5f60718', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
+  { id: 6, account_id: 4, batch_id: 4, op_date: '2026-02-14', value_date: null, concept: 'Contrapartida efectivo — GASTO EN EFECTIVO FARMACIA', provider: 'EFECTIVO', amount_cents: 2000n, balance_cents: null, code_common: null, code_own: null, category_id: 3, status: 'confirmada', transfer_group_id: null, hash: 'cashpair-manual-a1b2c3d4e5f60718', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
   { id: 7, account_id: 3, batch_id: 2, op_date: '2026-01-20', value_date: null, concept: 'RESTAURANTE EJEMPLO MADRID', provider: 'RESTAURANTE EJEMPLO', amount_cents: -1234n, balance_cents: null, code_common: null, code_own: null, category_id: 3, status: 'sugerida_regla', transfer_group_id: null, hash: 'sha256', dedup_ref: 'REF-AMEX-0001', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
   { id: 8, account_id: 2, batch_id: 3, op_date: '2026-02-20', value_date: null, concept: 'RECIBO LUZ ENERGIA EJEMPLO SL', provider: 'ENERGIA EJEMPLO', amount_cents: -6789n, balance_cents: 53211n, code_common: '05', code_own: null, category_id: null, status: 'pendiente', transfer_group_id: null, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
   { id: 9, account_id: 2, batch_id: 3, op_date: '2026-03-01', value_date: null, concept: 'APORTACION FONDO REF-FONDO-01', provider: '', amount_cents: -10000n, balance_cents: 43211n, code_common: '04', code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_INVERSION, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
-  { id: 10, account_id: 1, batch_id: 3, op_date: '2026-03-01', value_date: null, concept: 'APORTACION FONDO ESPEJO', provider: '', amount_cents: 10000n, balance_cents: null, code_common: null, code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_INVERSION, hash: 'invmirror-c3d4e5f607182930', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null }
+  // 10: espejo de inversión, en la cuenta virtual de inversión (investments.py:52-70).
+  { id: 10, account_id: 5, batch_id: 3, op_date: '2026-03-01', value_date: null, concept: 'APORTACION FONDO ESPEJO', provider: '', amount_cents: 10000n, balance_cents: null, code_common: null, code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_INVERSION, hash: 'invmirror-c3d4e5f607182930', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
+  // 11: pata huérfana (grupo de una sola pata, suma ≠ 0). El origen las tiene; migrarlas
+  // tal cual es lo correcto, y la comparación de la tarea 4 NO debe tomarlo por un fallo.
+  { id: 11, account_id: 2, batch_id: 3, op_date: '2026-03-05', value_date: null, concept: 'TRASPASO PENDIENTE DE PAREJA', provider: '', amount_cents: -7500n, balance_cents: 35711n, code_common: '04', code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_HUERFANO, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null }
 ];
 
 export const ALIAS = [{ id: 1, provider_norm: 'SUPERMERCADOS ACME', alias: 'Acme' }];
@@ -353,18 +379,24 @@ export const REGLAS_EVENTO = [
   { id: 2, provider_norm: '', concept_norm: null, category_id: 4, event_id: 1 }
 ];
 
+// Números derivados de las constantes de arriba. NINGÚN test del plan repite
+// estos valores como literal: todos los importan de aquí (una sola verdad).
 export const TOTALES = {
-  accounts: 3, categories: 6, rules: 4, rulesActivas: 3, importBatches: 3,
-  transactions: 10, providerAliases: 1, events: 1, transactionEvents: 1, eventRules: 2,
-  hashesComprobables: 6, hashesDescartados: 4, gruposTransferencia: 2,
-  estados: { confirmada: 8, pendiente: 1, sugerida_regla: 1 },
-  fechaMin: '2026-01-10', fechaMax: '2026-03-01'
+  accounts: 5, categories: 6, rules: 4, rulesActivas: 3, importBatches: 4,
+  transactions: 11, providerAliases: 1, events: 1, transactionEvents: 1, eventRules: 2,
+  // comprobables = hash sha256 y cuenta no-amex: 1, 2, 3, 4, 8, 9, 11.
+  // descartados = amex (7) + prefijos manual-/cashpair-/invmirror- (5, 6, 10).
+  hashesComprobables: 7, hashesDescartados: 4, gruposTransferencia: 3,
+  estados: { confirmada: 9, pendiente: 1, sugerida_regla: 1 },
+  fechaMin: '2026-01-10', fechaMax: '2026-03-05'
 };
 
 export const SUMAS_CUENTA_MES = {
-  '00490001512345678901': { '2026-01': 247450n, '2026-02': -50000n, '2026-03': 10000n },
-  ES9100190020961234567890: { '2026-02': 43211n, '2026-03': -10000n },
-  'AMEX-SINTETICA-1001': { '2026-01': -1234n }
+  '00490001512345678901': { '2026-01': 247450n, '2026-02': -50000n },
+  ES9100190020961234567890: { '2026-02': 43211n, '2026-03': -17500n },
+  'AMEX-SINTETICA-1001': { '2026-01': -1234n },
+  EFECTIVO: { '2026-02': 0n },
+  'INV-SINTETICO': { '2026-03': 10000n }
 };
 
 export function construirSqliteSintetica(ruta, { computeDedupHash, corromperHashDeTx = null }) {
@@ -521,6 +553,8 @@ describe('leerOrigen', () => {
       expect(primera.recurrence_manual).toBe(false);
       expect(origen.transactions.find((t) => t.id === 2).recurrence_manual).toBe(true);
       expect(typeof primera.raw).toBe('string'); // JSON verbatim, sin reserializar
+      // raw es nullable en el origen y NOT NULL en 0034: leerOrigen lo coalesce a '{}'.
+      expect(origen.transactions.find((t) => t.id === 2).raw).toBe('{}');
       expect(origen.rules).toHaveLength(TOTALES.rules); // la inactiva también: filtra migrar()
       expect(origen.rules.find((r) => r.id === 3).active).toBe(false);
     } finally { await rm(dir, { recursive: true, force: true }); }
@@ -544,18 +578,14 @@ Esperado: FAIL, `Cannot find module … migrar-home-finance.mjs`.
 // Runbook: docs/runbooks/migracion-home-finance.md. Se ejecuta con `node` a
 // pelo por conexión DIRECTA (5432) del propietario, como las migraciones.
 // PASO 0 innegociable: copia de seguridad datada del .db FUERA de ambos repos.
-import { createHash, randomUUID } from 'node:crypto';
+// Imports EXACTOS de esta tarea: `pnpm lint` aplica @typescript-eslint/no-unused-vars
+// como error también a los .mjs, así que cada tarea añade solo lo que estrena.
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import process from 'node:process';
-import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
-
-import pg from 'pg';
-
-import { importarModuloTs, rutaDedupHash } from './cargar-ts.mjs';
 
 export class ErrorDeUso extends Error {}
 
@@ -647,12 +677,16 @@ export function leerOrigen(rutaSqlite) {
         .map((f) => ({ ...f, id: n(f.id), category_id: n(f.category_id), priority: n(f.priority), active: f.active === 1n })),
       importBatches: todo('SELECT id, filename, bank, imported_at, new_count, dup_count FROM import_batches ORDER BY id')
         .map((f) => ({ ...f, id: n(f.id), new_count: n(f.new_count), dup_count: n(f.dup_count) })),
+      // `raw` es nullable en el origen (models.py:74) y en 0034 la columna es
+      // `jsonb NOT NULL DEFAULT '{}'` con CHECK de objeto: se coalesce AQUÍ, una
+      // sola vez, igual que owner_aliases/transfer_refs (resolución canónica 8).
       transactions: todo(`SELECT id, account_id, batch_id, op_date, value_date, concept, provider,
           amount_cents, balance_cents, code_common, code_own, category_id, status,
           transfer_group_id, dedup_hash, recurrence, recurrence_manual, bank_category, raw
           FROM transactions ORDER BY id`)
         .map((f) => ({ ...f, id: n(f.id), account_id: n(f.account_id), batch_id: n(f.batch_id),
-          category_id: n(f.category_id), recurrence_manual: f.recurrence_manual === 1n })),
+          category_id: n(f.category_id), recurrence_manual: f.recurrence_manual === 1n,
+          raw: f.raw ?? '{}' })),
       providerAliases: todo('SELECT id, provider_norm, alias FROM provider_aliases ORDER BY id')
         .map((f) => ({ ...f, id: n(f.id) })),
       events: todo('SELECT id, name FROM events ORDER BY id').map((f) => ({ ...f, id: n(f.id) })),
@@ -667,11 +701,18 @@ export function leerOrigen(rutaSqlite) {
 }
 ```
 
-(Los imports `randomUUID`, `writeFile`, `pg`, `importarModuloTs`, `rutaDedupHash` y `fileURLToPath` los usan las tareas 4–6 de este mismo fichero; el linter no proteste: se usan al cerrar la fase — si `pnpm lint` falla aquí por no-unused-vars, añade esos imports en la tarea que los estrena en lugar de ahora.)
+- [ ] **Step 4: Verde** — mismo comando del Step 2. Esperado: PASS, 6 tests (2 de `parseArgs`, 1 de `normText`, 2 de `hacerCopiaSeguridad`, 1 de `leerOrigen`).
 
-- [ ] **Step 4: Verde** — mismo comando del Step 2. Esperado: PASS, 7 tests.
+- [ ] **Step 5: Lint del fichero nuevo** — el guion se cierra sin imports sobrantes; compruébalo ya, no al final de la fase:
 
-- [ ] **Step 5: Commit**
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+pnpm exec eslint packages/db/scripts/migrar-home-finance.mjs packages/db/scripts/migrar-home-finance.test.mjs
+```
+
+Esperado: sin salida (0 problemas). Las tareas 5 y 6 amplían los imports en su propio Step 3, cuando estrenan cada símbolo.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add packages/db/scripts/migrar-home-finance.mjs packages/db/scripts/migrar-home-finance.test.mjs
@@ -688,9 +729,13 @@ git commit -m "feat(db): ETL home-finance — argumentos, copia de seguridad y l
 
 **Interfaces:**
 - Consumes: `leerOrigen` (Task 3); `computeDedupHash` (fase 2).
-- Produces: `resumenOrigen(origen)` y `resumenDestino(client, householdId)` (Task 5) con la MISMA forma `{ conteos: Record<string, number>, sumasCuentaMes: Map<string, bigint>, grupos: Map<string, { patas: number, suma: bigint }>, estados: Map<string, number>, fechaMin: string|null, fechaMax: string|null }`; `avisosOrigen(origen): string[]`; `compararResumenes(a, b): { ok: boolean, lineas: Array<{ seccion, etiqueta, ok, detalle }> }`; `verificarHashes(origen, computeDedupHash, { muestra = 500 }): { comprobados, descartados, discrepancias: Array<{ id, esperado, recalculado }> }`; `renderInforme({ modo, hogar, rutaSqlite, comparacion, hashes, avisos, ahora? }): string`.
+- Produces: `resumenOrigen(origen)` y `resumenDestino(client, householdId)` (Task 5) con la MISMA forma `{ conteos: Record<string, number>, sumasCuentaMes: Map<string, bigint>, grupos: Map<string, { patas: number, suma: bigint }>, estados: Map<string, number>, fechaMin: string|null, fechaMax: string|null }`; `avisosOrigen(origen): string[]`; `validarOrigen(origen): string[]`; `compararResumenes(a, b): { ok: boolean, lineas: Array<{ seccion, etiqueta, ok, detalle }> }`; `verificarHashes(origen, computeDedupHash, { muestra = 500 }): { comprobados, descartados, discrepancias: Array<{ id, esperado, recalculado }> }`; `renderInforme({ modo, hogar, rutaSqlite, copia, comparacion, hashes, avisos, motivoAborto, ahora? }): string`; vocabularios `BANCOS_CUENTA_ORIGEN`, `BANCOS_LOTE_DESTINO`, `ESTADOS_DESTINO`, `CLASES_CUENTA_DESTINO`, `CLASES_CATEGORIA_DESTINO`, `TIPOS_REGLA_DESTINO`, `ORIGENES_REGLA_DESTINO`.
 
-- [ ] **Step 1: Tests que fallan** — añadir al final de `migrar-home-finance.test.mjs` (y a sus imports: `avisosOrigen, compararResumenes, renderInforme, resumenOrigen, verificarHashes` desde `./migrar-home-finance.mjs`, y `GRUPO_TRASPASO` desde `./home-finance-sintetica.mjs`):
+**Dos separaciones que esta tarea fija (y de las que dependen las tareas 5 y 6):**
+- **Comparar ≠ auditar.** `compararResumenes` solo responde «¿lo que hay en destino es lo mismo que había en origen?». El invariante «cada grupo de transferencia neteaa 0» (spec §9.3) NO se comprueba ahí: el origen tiene patas huérfanas legítimas (`transfers.py::orphan_legs`) y bloquear por eso haría fallar una migración fiel. Ese invariante se informa como aviso, sin bloquear.
+- **Validar ≠ reventar.** `validarOrigen` comprueba ANTES de abrir la transacción los invariantes que 0034 impone y el origen no garantiza (una sola raíz `transferencia`, árbol de 2 niveles, `concept` ≤ 500, vocabularios de `status`/`kind`/`rule_type`/`origin`/`bank`), para que el fallo sea una lista legible en el informe y no un error crudo de `pg` a mitad de escritura.
+
+- [ ] **Step 1: Tests que fallan** — añadir al final de `migrar-home-finance.test.mjs` (y a sus imports: `avisosOrigen, compararResumenes, renderInforme, resumenOrigen, validarOrigen, verificarHashes` desde `./migrar-home-finance.mjs`, y `GRUPO_HUERFANO, GRUPO_TRASPASO, SUMAS_CUENTA_MES` desde `./home-finance-sintetica.mjs`):
 
 ```js
 async function crearOrigenSintetico(corromperHashDeTx = null) {
@@ -705,14 +750,16 @@ async function crearOrigenSintetico(corromperHashDeTx = null) {
 describe('resumenOrigen y compararResumenes', () => {
   it('agrega conteos, sumas cuenta·mes, grupos, estados y fechas', async () => {
     const resumen = resumenOrigen(await crearOrigenSintetico());
-    expect(resumen.conteos.finance_transactions).toBe(10);
-    expect(resumen.conteos.finance_rules).toBe(3); // solo activas: es lo que migrará
-    expect(resumen.sumasCuentaMes.get('00490001512345678901|2026-01')).toBe(247450n);
-    expect(resumen.grupos.size).toBe(2);
+    expect(resumen.conteos.finance_transactions).toBe(TOTALES.transactions);
+    expect(resumen.conteos.finance_rules).toBe(TOTALES.rulesActivas); // solo activas: es lo que migrará
+    expect(resumen.sumasCuentaMes.get('00490001512345678901|2026-01'))
+      .toBe(SUMAS_CUENTA_MES['00490001512345678901']['2026-01']);
+    expect(resumen.sumasCuentaMes.get('EFECTIVO|2026-02')).toBe(SUMAS_CUENTA_MES.EFECTIVO['2026-02']);
+    expect(resumen.grupos.size).toBe(TOTALES.gruposTransferencia);
     expect(resumen.grupos.get(GRUPO_TRASPASO)).toEqual({ patas: 2, suma: 0n });
-    expect(Object.fromEntries(resumen.estados)).toEqual({ confirmada: 8, pendiente: 1, sugerida_regla: 1 });
-    expect(resumen.fechaMin).toBe('2026-01-10');
-    expect(resumen.fechaMax).toBe('2026-03-01');
+    expect(Object.fromEntries(resumen.estados)).toEqual(TOTALES.estados);
+    expect(resumen.fechaMin).toBe(TOTALES.fechaMin);
+    expect(resumen.fechaMax).toBe(TOTALES.fechaMax);
   });
   it('una comparación idéntica es OK y una rota señala la línea', async () => {
     const origen = await crearOrigenSintetico();
@@ -723,14 +770,24 @@ describe('resumenOrigen y compararResumenes', () => {
     const rota = compararResumenes(a, b);
     expect(rota.ok).toBe(false);
     expect(rota.lineas.filter((l) => !l.ok).map((l) => l.etiqueta))
-      .toContain(`grupo ${GRUPO_TRASPASO} (patas y suma 0)`);
+      .toContain(`grupo ${GRUPO_TRASPASO} (patas y suma)`);
+  });
+  it('una pata huérfana del origen NO rompe la comparación', async () => {
+    const origen = await crearOrigenSintetico();
+    const resumen = resumenOrigen(origen);
+    expect(resumen.grupos.get(GRUPO_HUERFANO)).toEqual({ patas: 1, suma: -7500n });
+    const comparacion = compararResumenes(resumen, resumenOrigen(origen));
+    expect(comparacion.ok).toBe(true);
+    expect(comparacion.lineas.find((l) => l.etiqueta === `grupo ${GRUPO_HUERFANO} (patas y suma)`).ok)
+      .toBe(true);
   });
 });
 
 describe('verificarHashes', () => {
   it('recalcula la muestra y descarta prefijos y amex', async () => {
     expect(verificarHashes(await crearOrigenSintetico(), computeDedupHash))
-      .toMatchObject({ comprobados: 6, descartados: 4, discrepancias: [] });
+      .toMatchObject({ comprobados: TOTALES.hashesComprobables,
+        descartados: TOTALES.hashesDescartados, discrepancias: [] });
   });
   it('detecta un hash corrupto', async () => {
     const resultado = verificarHashes(await crearOrigenSintetico(2), computeDedupHash);
@@ -739,34 +796,64 @@ describe('verificarHashes', () => {
   });
 });
 
+describe('validarOrigen', () => {
+  it('la muestra íntegra no tiene ningún problema', async () => {
+    expect(validarOrigen(await crearOrigenSintetico())).toEqual([]);
+  });
+  it('detecta doble raíz transferencia, concepto larguísimo y banco desconocido', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.categories.push({ id: 99, name: 'Traspasos duplicados', parent_id: null, kind: 'transferencia' });
+    origen.transactions[0].concept = 'X'.repeat(501);
+    origen.accounts[0].bank = 'bancoinventado';
+    expect(validarOrigen(origen)).toEqual([
+      '2 categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0034).',
+      '1 transacción(es) con concept de más de 500 caracteres (ids: 1); el destino lo limita con CHECK.',
+      'Cuenta 1 («Cuenta Común») con bank «bancoinventado» fuera del vocabulario del origen (caixabank, deutsche_bank, openbank, amex, efectivo, inversion, manual).'
+    ]);
+  });
+});
+
 describe('avisosOrigen y renderInforme', () => {
-  it('avisa de reglas inactivas y de code_common perdido', async () => {
+  it('avisa de todo lo que el destino no conserva, sin bloquear', async () => {
     expect(avisosOrigen(await crearOrigenSintetico())).toEqual([
       '1 regla(s) inactiva(s) del origen no se migran (el esquema destino no conserva reglas apagadas).',
-      '1 regla(s) activa(s) con code_common fuera de codigo_norma43 pierden ese filtro (columna sin equivalente en destino).'
+      '1 regla(s) activa(s) con code_common fuera de codigo_norma43 pierden ese filtro (columna sin equivalente en destino).',
+      'El orden manual del árbol de categorías (categories.sort_order) no se conserva: el destino ordena por nombre.',
+      'La procedencia de las reglas aprendidas (rules.learned_from_id) no se conserva: el destino solo guarda origin.',
+      `1 grupo(s) de transferencia del origen no netean 0 (patas huérfanas, spec §9.3; se migran tal cual): ${GRUPO_HUERFANO} (patas=1, suma=-7500).`
     ]);
   });
   it('el informe contiene las secciones obligatorias y el resultado', async () => {
     const resumen = resumenOrigen(await crearOrigenSintetico());
     const texto = renderInforme({
       modo: 'real', hogar: 'hogar-prueba', rutaSqlite: '/tmp/finanzas.db',
+      copia: { destino: '/home/abf/copias-home-finance/finanzas-2026-08-31T10-00-00-000Z.db', sha256: 'a'.repeat(64) },
       comparacion: compararResumenes(resumen, resumen),
-      hashes: { comprobados: 6, descartados: 4, discrepancias: [] },
-      avisos: ['un aviso'], ahora: new Date('2026-08-31T10:00:00Z')
+      hashes: { comprobados: TOTALES.hashesComprobables, descartados: TOTALES.hashesDescartados, discrepancias: [] },
+      avisos: ['un aviso'], motivoAborto: null, ahora: new Date('2026-08-31T10:00:00Z')
     });
-    for (const seccion of ['## Conteos por tabla', '## Sumas de amount_cents por cuenta y mes',
-      '## Grupos de transferencia', '## Distribución de estados', '## Rango de fechas',
+    for (const seccion of ['## Copia de seguridad (PASO 0)', '## Conteos por tabla',
+      '## Sumas de amount_cents por cuenta y mes', '## Grupos de transferencia',
+      '## Distribución de estados', '## Rango de fechas',
       '## Verificación cruzada de dedup_hash', '## Avisos']) {
       expect(texto).toContain(seccion);
     }
+    expect(texto).toContain('/home/abf/copias-home-finance/finanzas-2026-08-31T10-00-00-000Z.db');
+    expect(texto).toContain('a'.repeat(64));
+    expect(texto).not.toContain('## Aborto');
     expect(texto).toContain('Resultado: OK');
   });
-  it('sin comparación (aborto temprano) el informe dice FALLO', () => {
+  it('sin comparación (aborto temprano) el informe dice FALLO y explica el motivo', () => {
     const texto = renderInforme({
-      modo: 'real', hogar: 'h', rutaSqlite: 'x', comparacion: null,
+      modo: 'real', hogar: 'h', rutaSqlite: 'x', copia: null, comparacion: null,
       hashes: { comprobados: 5, descartados: 0, discrepancias: [{ id: 2, esperado: 'a', recalculado: 'b' }] },
-      avisos: [], ahora: new Date('2026-08-31T10:00:00Z')
+      avisos: [], motivoAborto: 'El hogar «h» ya tiene 42 filas de finanzas; aborto.',
+      ahora: new Date('2026-08-31T10:00:00Z')
     });
+    expect(texto).toContain('## Aborto');
+    expect(texto).toContain('El hogar «h» ya tiene 42 filas de finanzas; aborto.');
+    expect(texto).toContain('## Copia de seguridad (PASO 0)');
+    expect(texto).toContain('(no se hizo copia en esta ejecución)');
     expect(texto).toContain('Resultado: FALLO');
   });
 });
@@ -820,13 +907,99 @@ export function resumenOrigen(origen) {
   };
 }
 
+/** Todo lo que el destino NO conserva, dicho en voz alta. Ningún aviso bloquea:
+ *  el informe tiene que poder decir «Resultado: OK» y aun así declarar qué se
+ *  pierde, en vez de callarse pérdidas que el usuario vería luego en la UI. */
 export function avisosOrigen(origen) {
   const avisos = [];
   const inactivas = origen.rules.filter((r) => !r.active).length;
   if (inactivas > 0) avisos.push(`${inactivas} regla(s) inactiva(s) del origen no se migran (el esquema destino no conserva reglas apagadas).`);
   const conCodigo = origen.rules.filter((r) => r.active && r.code_common !== null && r.match_type !== 'codigo_norma43').length;
   if (conCodigo > 0) avisos.push(`${conCodigo} regla(s) activa(s) con code_common fuera de codigo_norma43 pierden ese filtro (columna sin equivalente en destino).`);
+  // Estas dos son incondicionales: el destino no tiene columna equivalente, así
+  // que la pérdida ocurre SIEMPRE (categories.sort_order y rules.learned_from_id
+  // existen en models.py:27 y :80 y leerOrigen ni los trae).
+  avisos.push('El orden manual del árbol de categorías (categories.sort_order) no se conserva: el destino ordena por nombre.');
+  avisos.push('La procedencia de las reglas aprendidas (rules.learned_from_id) no se conserva: el destino solo guarda origin.');
+  // Invariante «cada grupo netea 0» (spec §9.3): se INFORMA, no se exige. El
+  // origen admite patas huérfanas (transfers.py::orphan_legs) y migrarlas es lo fiel.
+  const gruposRotos = [...resumenOrigen(origen).grupos.entries()]
+    .filter(([, g]) => g.suma !== 0n)
+    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+  if (gruposRotos.length > 0) {
+    const lista = gruposRotos.map(([id, g]) => `${id} (patas=${g.patas}, suma=${g.suma})`).join('; ');
+    avisos.push(`${gruposRotos.length} grupo(s) de transferencia del origen no netean 0 (patas huérfanas, spec §9.3; se migran tal cual): ${lista}.`);
+  }
   return avisos;
+}
+
+/** Vocabularios del origen y del destino, en un solo sitio: los usan
+ *  `validarOrigen` (tarea 4) y el mapeo de bancos de `migrar()` (tarea 5). */
+export const BANCOS_CUENTA_ORIGEN = {
+  caixabank: 'caixabank', deutsche_bank: 'deutsche_bank', openbank: 'openbank', amex: 'amex',
+  // Cuentas virtuales del origen: en 0034 `finance_accounts.bank` es NULL
+  // (resolución canónica 6 del doc de interfaces).
+  efectivo: null, inversion: null, manual: null
+};
+export const BANCOS_LOTE_DESTINO = ['caixabank', 'deutsche_bank', 'openbank', 'amex', 'manual'];
+export const ESTADOS_DESTINO = ['pendiente', 'sugerida_regla', 'sugerida_agente', 'confirmada'];
+export const CLASES_CUENTA_DESTINO = ['comun', 'personal', 'inversion'];
+export const CLASES_CATEGORIA_DESTINO = ['gasto', 'ingreso', 'transferencia'];
+export const TIPOS_REGLA_DESTINO = ['proveedor_exacto', 'concepto_contiene', 'codigo_norma43'];
+export const ORIGENES_REGLA_DESTINO = ['manual', 'agente'];
+
+/** Invariantes que 0034 impone y el origen NO garantiza, comprobados ANTES de
+ *  abrir la transacción: mejor una lista legible en el informe que un error
+ *  crudo de `pg` a mitad de escritura. Orden de las comprobaciones fijo. */
+export function validarOrigen(origen) {
+  const problemas = [];
+  const raices = origen.categories.filter((c) => c.parent_id === null && c.kind === 'transferencia');
+  if (raices.length !== 1) {
+    problemas.push(`${raices.length} categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0034).`);
+  }
+  const porId = new Map(origen.categories.map((c) => [c.id, c]));
+  const nietas = origen.categories.filter((c) => c.parent_id !== null && (porId.get(c.parent_id)?.parent_id ?? null) !== null);
+  if (nietas.length > 0) {
+    problemas.push(`${nietas.length} categoría(s) de tercer nivel (ids: ${nietas.map((c) => c.id).join(', ')}); el destino solo admite árbol de 2 niveles (trigger de 0034).`);
+  }
+  const largos = origen.transactions.filter((t) => t.concept.length > 500);
+  if (largos.length > 0) {
+    problemas.push(`${largos.length} transacción(es) con concept de más de 500 caracteres (ids: ${largos.map((t) => t.id).join(', ')}); el destino lo limita con CHECK.`);
+  }
+  for (const t of origen.transactions) {
+    if (!ESTADOS_DESTINO.includes(t.status)) {
+      problemas.push(`Transacción ${t.id} con status «${t.status}» fuera del vocabulario del destino (${ESTADOS_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const c of origen.accounts) {
+    if (!CLASES_CUENTA_DESTINO.includes(c.kind)) {
+      problemas.push(`Cuenta ${c.id} («${c.name}») con kind «${c.kind}» fuera del vocabulario del destino (${CLASES_CUENTA_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const c of origen.accounts) {
+    if (!(c.bank in BANCOS_CUENTA_ORIGEN)) {
+      problemas.push(`Cuenta ${c.id} («${c.name}») con bank «${c.bank}» fuera del vocabulario del origen (${Object.keys(BANCOS_CUENTA_ORIGEN).join(', ')}).`);
+    }
+  }
+  for (const b of origen.importBatches) {
+    if (!BANCOS_LOTE_DESTINO.includes(b.bank)) {
+      problemas.push(`Lote ${b.id} («${b.filename}») con bank «${b.bank}» fuera del vocabulario del destino (${BANCOS_LOTE_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const c of origen.categories) {
+    if (!CLASES_CATEGORIA_DESTINO.includes(c.kind)) {
+      problemas.push(`Categoría ${c.id} («${c.name}») con kind «${c.kind}» fuera del vocabulario del destino (${CLASES_CATEGORIA_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const r of origen.rules.filter((x) => x.active)) {
+    if (!TIPOS_REGLA_DESTINO.includes(r.match_type)) {
+      problemas.push(`Regla ${r.id} con match_type «${r.match_type}» fuera del vocabulario del destino (${TIPOS_REGLA_DESTINO.join(', ')}).`);
+    }
+    if (!ORIGENES_REGLA_DESTINO.includes(r.origin)) {
+      problemas.push(`Regla ${r.id} con origin «${r.origin}» fuera del vocabulario del destino (${ORIGENES_REGLA_DESTINO.join(', ')}).`);
+    }
+  }
+  return problemas;
 }
 
 export function compararResumenes(a, b) {
@@ -845,8 +1018,11 @@ export function compararResumenes(a, b) {
   for (const grupo of [...new Set([...a.grupos.keys(), ...b.grupos.keys()])].sort()) {
     const x = a.grupos.get(grupo) ?? { patas: 0, suma: 0n };
     const y = b.grupos.get(grupo) ?? { patas: 0, suma: 0n };
-    anotar('grupos', `grupo ${grupo} (patas y suma 0)`,
-      x.patas === y.patas && x.suma === y.suma && y.suma === 0n,
+    // SOLO origen↔destino. «Cada grupo netea 0» NO se exige aquí: el origen
+    // tiene patas huérfanas legítimas (transfers.py::orphan_legs) y exigirlo
+    // haría fallar una migración fiel. Ese invariante va a avisosOrigen.
+    anotar('grupos', `grupo ${grupo} (patas y suma)`,
+      x.patas === y.patas && x.suma === y.suma,
       `origen patas=${x.patas} suma=${x.suma}; destino patas=${y.patas} suma=${y.suma}`);
   }
   for (const estado of [...new Set([...a.estados.keys(), ...b.estados.keys()])].sort()) {
@@ -884,12 +1060,25 @@ export function verificarHashes(origen, computeDedupHash, { muestra = 500 } = {}
   return { comprobados, descartados, discrepancias };
 }
 
-export function renderInforme({ modo, hogar, rutaSqlite, comparacion, hashes, avisos, ahora = new Date() }) {
-  const ok = hashes.discrepancias.length === 0 && comparacion !== null && comparacion.ok;
+export function renderInforme({ modo, hogar, rutaSqlite, copia, comparacion, hashes, avisos,
+  motivoAborto = null, ahora = new Date() }) {
+  const ok = motivoAborto === null && hashes.discrepancias.length === 0
+    && comparacion !== null && comparacion.ok;
   const marca = (bien) => (bien ? '✓' : '✗');
   const l = ['# Informe de verificación — migración home-finance → casa-clara', '',
     `- Fecha: ${ahora.toISOString()}`, `- Modo: ${modo}`, `- Origen: ${rutaSqlite}`,
     `- Hogar destino: ${hogar}`, ''];
+  if (motivoAborto !== null) {
+    l.push('## Aborto', '', `La ejecución se interrumpió: ${motivoAborto}`, '');
+  }
+  // La copia del PASO 0 es la garantía frente al riesgo «única copia de la base
+  // origen» (spec §13): su ruta y su sha256 viven en el informe, que se guarda,
+  // no solo en la consola, que se pierde al cerrar la terminal.
+  l.push('## Copia de seguridad (PASO 0)', '');
+  l.push(copia === null
+    ? `- (no se hizo copia en esta ejecución${modo === 'verify-only' ? ': --verify-only no escribe' : ''})`
+    : `- fichero: ${copia.destino}\n- sha256: ${copia.sha256}`);
+  l.push('');
   for (const [titulo, clave] of [
     ['Conteos por tabla', 'conteos'],
     ['Sumas de amount_cents por cuenta y mes', 'sumas'],
@@ -918,13 +1107,13 @@ export function renderInforme({ modo, hogar, rutaSqlite, comparacion, hashes, av
 }
 ```
 
-- [ ] **Step 4: Verde** — mismo comando. Esperado: PASS, 13 tests.
+- [ ] **Step 4: Verde** — mismo comando. Esperado: PASS, 16 tests (6 de la Task 3 + 3 de resúmenes/comparación + 2 de `verificarHashes` + 2 de `validarOrigen` + 3 de avisos/informe).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add packages/db/scripts/migrar-home-finance.mjs packages/db/scripts/migrar-home-finance.test.mjs
-git commit -m "feat(db): ETL home-finance — resúmenes, verificación cruzada e informe"
+git commit -m "feat(db): ETL home-finance — resúmenes, validación del origen, verificación cruzada e informe"
 ```
 
 ---
@@ -936,12 +1125,19 @@ git commit -m "feat(db): ETL home-finance — resúmenes, verificación cruzada 
 - Test: `packages/db/scripts/migrar-home-finance.pg.test.mjs` (crear)
 
 **Interfaces:**
-- Consumes: esquema `0034_finance.sql` (fase 1: tablas `app.finance_*`, PK `(household_id, id)`, `currency_code CHECK='EUR'`); `applyMigrations(client, opts)` de `packages/db/scripts/migrate.mjs`; Tasks 2–4.
+- Consumes: esquema `0034_finance.sql` (fase 1: tablas `app.finance_*`, PK `(household_id, id)`, `currency_code CHECK='EUR'`, `raw jsonb NOT NULL DEFAULT '{}'`, `finance_accounts.bank` NULL o uno de los cuatro bancos reales y `finance_import_batches.bank` con `'manual'` admitido — resoluciones canónicas 6 y 8); `applyMigrations(client, opts)` de `packages/db/scripts/migrate.mjs`; Tasks 2–4. **Antes de escribir el test, abre `packages/db/migrations/0034_finance.sql` en el worktree y comprueba esos tres CHECK**: si la fase 1 los dejó de otra forma, es defecto suyo y hay que reportarlo, no parchear el ETL.
 - Produces: `migrar(client, householdId, origen): Promise<void>` (dentro de una transacción abierta por quien llama); `resumenDestino(client, householdId)` (misma forma que `resumenOrigen`).
 
-**Reglas de mapeo (spec §5 y §9):** enteros→uuid con `randomUUID()` y mapas de correspondencia; `owner`→`owner_label`; JSON→`jsonb` verbatim; fechas TEXT→`date`; `dedup_hash`, `transfer_group_id`, estados y prefijos preservados byte a byte; `provider_norm` = `normText(provider)` (o NULL si vacío); solo reglas `active`; céntimos como `String(bigint)` en los parámetros; `currency_code='EUR'` explícito; padres de categoría antes que hijas.
+**Reglas de mapeo (spec §5 y §9):** enteros→uuid con `randomUUID()` y mapas de correspondencia; `owner`→`owner_label`; JSON→`jsonb` verbatim; fechas TEXT→`date`; `dedup_hash`, `transfer_group_id`, estados y prefijos preservados byte a byte; `provider_norm` = `normText(provider)` (o NULL si vacío); solo reglas `active`; céntimos como `String(bigint)` en los parámetros; `currency_code='EUR'` explícito; padres de categoría antes que hijas; **`bank` de cuenta traducido** con `BANCOS_CUENTA_ORIGEN` (Task 4): `efectivo`/`inversion`/`manual` → `NULL`, valor no contemplado → error claro (resolución canónica 6); **`bank` de lote** pasa tal cual (el destino admite además `'manual'`); `raw` ya llega coalescido a `'{}'` desde `leerOrigen` (resolución canónica 8).
 
-- [ ] **Step 0: Postgres local** — levantar el contenedor de las «Notas de fase» y exportar `TEST_DATABASE_URL` (si ya corre, solo exportar la variable).
+- [ ] **Step 0: Postgres local** — arrancar el clúster compartido y exportar la variable (si ya corre, `docker start` no hace nada y solo se exporta):
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+docker start casaclara-it-pg 2>/dev/null || true
+until docker exec casaclara-it-pg pg_isready -U ci_admin; do sleep 1; done
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_etl"
+```
 
 - [ ] **Step 1: Test que falla** — crear `packages/db/scripts/migrar-home-finance.pg.test.mjs`:
 
@@ -1024,6 +1220,22 @@ describe.runIf(Boolean(adminUrl))('migrar() contra Postgres real', () => {
         `select raw->>'Concepto' as concepto from app.finance_transactions
           where household_id = $1 and concept like 'COMPRA SUPERMERCADOS%'`, [HOGAR]);
       expect(crudo.concepto).toBe('COMPRA SUPERMERCADOS ACME S.L.');
+
+      // raw nullable en el origen → '{}' en destino (la columna es NOT NULL).
+      const { rows: [sinRaw] } = await client.query(
+        `select raw::text as raw from app.finance_transactions
+          where household_id = $1 and concept = 'NOMINA EMPRESA EJEMPLO SL'`, [HOGAR]);
+      expect(sinRaw.raw).toBe('{}');
+
+      // Vocabulario de bancos: cuentas virtuales → NULL, lote manual intacto.
+      const { rows: sinBanco } = await client.query(
+        `select bank_ref from app.finance_accounts
+          where household_id = $1 and bank is null order by bank_ref`, [HOGAR]);
+      expect(sinBanco.map((f) => f.bank_ref)).toEqual(['EFECTIVO', 'INV-SINTETICO']);
+      const { rows: [loteManual] } = await client.query(
+        `select bank from app.finance_import_batches
+          where household_id = $1 and filename = 'manual'`, [HOGAR]);
+      expect(loteManual.bank).toBe('manual');
     } finally {
       await client.query('rollback');
     }
@@ -1040,10 +1252,36 @@ pnpm --filter @casa-clara/db exec vitest run scripts/migrar-home-finance.pg.test
 
 Esperado: FAIL, `does not provide an export named 'migrar'`.
 
-- [ ] **Step 3: Implementación** — añadir a `migrar-home-finance.mjs`:
+- [ ] **Step 3: Implementación** — esta tarea estrena `randomUUID`, así que lo PRIMERO es ampliar el import de `node:crypto` en la cabecera de `migrar-home-finance.mjs` (sustituir la línea entera, no añadir otra):
+
+```js
+import { createHash, randomUUID } from 'node:crypto';
+```
+
+Y después añadir al final del fichero, antes de cualquier bloque de ejecución directa:
 
 ```js
 const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `finance_accounts.bank`: los cuatro bancos reales pasan; las cuentas
+ *  virtuales del origen (efectivo/inversion/manual) van a NULL; cualquier otro
+ *  valor es un dato que nadie previó y la migración se para AQUÍ, con nombre y
+ *  apellidos, en vez de reventar con un CHECK de Postgres a mitad de escritura. */
+export function bancoDeCuenta(cuenta) {
+  if (!(cuenta.bank in BANCOS_CUENTA_ORIGEN)) {
+    throw new Error(`La cuenta ${cuenta.id} («${cuenta.name}») tiene bank «${cuenta.bank}», que no está contemplado (${Object.keys(BANCOS_CUENTA_ORIGEN).join(', ')}). Amplía BANCOS_CUENTA_ORIGEN o corrige el origen antes de migrar.`);
+  }
+  return BANCOS_CUENTA_ORIGEN[cuenta.bank];
+}
+
+/** `finance_import_batches.bank`: el destino admite los cuatro bancos y
+ *  además 'manual' (resolución canónica 6), así que se pasa tal cual. */
+export function bancoDeLote(lote) {
+  if (!BANCOS_LOTE_DESTINO.includes(lote.bank)) {
+    throw new Error(`El lote ${lote.id} («${lote.filename}») tiene bank «${lote.bank}», que el destino no admite (${BANCOS_LOTE_DESTINO.join(', ')}).`);
+  }
+  return lote.bank;
+}
 
 /** Inserta el origen completo bajo el hogar dado. SIEMPRE dentro de una
  *  transacción abierta por quien llama (una sola transacción, spec §9.2). */
@@ -1055,7 +1293,7 @@ export async function migrar(client, householdId, origen) {
     await client.query(
       `INSERT INTO app.finance_accounts (household_id, id, name, bank, kind, owner_label, bank_ref, owner_aliases, transfer_refs)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)`,
-      [householdId, id, c.name, c.bank, c.kind, c.owner, c.bank_ref, c.owner_aliases, c.transfer_refs]);
+      [householdId, id, c.name, bancoDeCuenta(c), c.kind, c.owner, c.bank_ref, c.owner_aliases, c.transfer_refs]);
   }
   const padres = origen.categories.filter((c) => c.parent_id === null);
   const hijas = origen.categories.filter((c) => c.parent_id !== null);
@@ -1080,7 +1318,7 @@ export async function migrar(client, householdId, origen) {
     await client.query(
       `INSERT INTO app.finance_import_batches (household_id, id, filename, bank, imported_at, new_count, dup_count)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [householdId, id, b.filename, b.bank, b.imported_at, b.new_count, b.dup_count]);
+      [householdId, id, b.filename, bancoDeLote(b), b.imported_at, b.new_count, b.dup_count]);
   }
   for (const t of origen.transactions) {
     if (t.transfer_group_id !== null && !esUuid.test(t.transfer_group_id)) {
@@ -1099,7 +1337,9 @@ export async function migrar(client, householdId, origen) {
         String(t.amount_cents), t.balance_cents === null ? null : String(t.balance_cents),
         t.code_common, t.code_own, t.category_id === null ? null : mapas.categorias.get(t.category_id),
         t.status, t.transfer_group_id, t.dedup_hash, t.recurrence, t.recurrence_manual,
-        t.bank_category, t.raw]);
+        // `leerOrigen` ya coalesce raw a '{}'; el ?? es la red por si migrar()
+        // recibe un origen construido a mano (la columna es NOT NULL en 0034).
+        t.bank_category, t.raw ?? '{}']);
   }
   for (const a of origen.providerAliases) {
     await client.query(
@@ -1182,11 +1422,13 @@ git commit -m "feat(db): ETL home-finance — escritura en Postgres con mapeo en
 
 **Interfaces:**
 - Consumes: todo lo anterior.
-- Produces: CLI `node scripts/migrar-home-finance.mjs --sqlite … --database-url … --household <slug> [--backup-dir …] [--dry-run] [--verify-only] [--force-empty-check]`. Códigos de salida: 0 verificación OK; 1 fallo de verificación o aborto de guarda; 2 error de uso. Alias pnpm: `pnpm --filter @casa-clara/db migrar:home-finance -- <flags>`.
+- Produces: CLI `node scripts/migrar-home-finance.mjs --sqlite … --database-url … --household <slug> [--backup-dir …] [--dry-run] [--verify-only] [--force-empty-check]`. `--sqlite` y `--database-url` son OBLIGATORIOS y el guion NO lee `DATABASE_URL` del entorno (resolución canónica 12). Códigos de salida: 0 verificación OK; 1 fallo de verificación o aborto de guarda (hogar inexistente, hogar ya poblado, origen inválido, hashes discrepantes); 2 error de uso (argumentos que faltan, sobran o se excluyen, y `--backup-dir` dentro de un repo git: ahí no se puede escribir el informe). Además: `emitirInforme(opciones, contexto): Promise<string>`. Alias pnpm: `pnpm --filter @casa-clara/db migrar:home-finance -- <flags>`.
 
-**Semántica (spec §9):** toda ejecución que escribe empieza por la copia de seguridad datada (PASO 0); una sola transacción; si el hogar ya tiene datos de finanzas aborta salvo `--force-empty-check`; si la verificación cruzada de hashes falla NO se escribe nada; el informe se imprime SIEMPRE y se guarda en `--backup-dir` (validado fuera de repos); `--dry-run` = migrar + verificar + ROLLBACK; `--verify-only` = comparar origen contra lo ya migrado sin escribir.
+**Semántica (spec §9):** toda ejecución que escribe empieza por la copia de seguridad datada (PASO 0); una sola transacción; el origen se valida con `validarOrigen` ANTES de tocar nada; si el hogar ya tiene datos de finanzas aborta salvo `--force-empty-check`; si la verificación cruzada de hashes falla NO se escribe nada; `--dry-run` = migrar + verificar + ROLLBACK; `--verify-only` = comparar origen contra lo ya migrado sin escribir.
 
-- [ ] **Step 1: Tests que fallan** — añadir al final de `migrar-home-finance.pg.test.mjs` (a los imports: `spawnSync` de `node:child_process`, `readdir`, `readFile` de `node:fs/promises`, `fileURLToPath` de `node:url`, `mkdir` de `node:fs/promises`):
+**El informe se emite SIEMPRE, y «siempre» incluye los abortos.** Es la exigencia que da forma a `main()`: el camino feliz y el de fallo terminan los dos en `emitirInforme`, invocado desde un `finally`, con `motivoAborto` relleno cuando algo se rompió. Un `throw` que salte por encima de la emisión deja sin evidencia forense justo la ejecución que más la necesita: por eso ninguna guarda lanza hacia fuera de `main()` salvo las de uso (que ocurren antes de saber siquiera dónde escribir).
+
+- [ ] **Step 1: Tests que fallan** — añadir al final de `migrar-home-finance.pg.test.mjs` (a los imports: `spawnSync` de `node:child_process`; `mkdir`, `readdir`, `readFile` de `node:fs/promises`; `fileURLToPath` de `node:url`; y `SUMAS_CUENTA_MES` de `./home-finance-sintetica.mjs`):
 
 ```js
 describe.runIf(Boolean(adminUrl))('CLI migrar-home-finance', () => {
@@ -1243,7 +1485,7 @@ describe.runIf(Boolean(adminUrl))('CLI migrar-home-finance', () => {
     const r = ejecutar([]);
     expect(r.status).toBe(0);
     expect(await contarTx('hogar-cli')).toBe(TOTALES.transactions);
-    expect(r.stdout).toContain('comprobados: 6');
+    expect(r.stdout).toContain(`comprobados: ${TOTALES.hashesComprobables}`);
     const { rows: sumas } = await client.query(
       `select to_char(t.op_date, 'YYYY-MM') as mes, sum(t.amount_cents)::text as suma
          from app.finance_transactions t
@@ -1251,15 +1493,14 @@ describe.runIf(Boolean(adminUrl))('CLI migrar-home-finance', () => {
          join app.households h on h.id = t.household_id
         where h.slug = 'hogar-cli' and a.bank_ref = '00490001512345678901'
         group by 1 order by 1`);
-    expect(sumas).toEqual([
-      { mes: '2026-01', suma: '247450' },
-      { mes: '2026-02', suma: '-50000' },
-      { mes: '2026-03', suma: '10000' }
-    ]);
+    // Las sumas esperadas salen de la constante de la muestra, no de literales.
+    expect(sumas).toEqual(Object.entries(SUMAS_CUENTA_MES['00490001512345678901'])
+      .map(([mes, suma]) => ({ mes, suma: String(suma) })));
     const informes = (await readdir(backupDir)).filter((f) => /^informe-migracion-.*\.md$/.test(f)).sort();
     expect(informes.length).toBeGreaterThan(0);
     const texto = await readFile(path.join(backupDir, informes.at(-1)), 'utf8');
     expect(texto).toContain('Resultado: OK');
+    expect(texto).toContain('## Copia de seguridad (PASO 0)');
   });
 
   it('reejecutar aborta porque el hogar ya tiene datos', async () => {
@@ -1267,6 +1508,18 @@ describe.runIf(Boolean(adminUrl))('CLI migrar-home-finance', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain('ya tiene');
     expect(await contarTx('hogar-cli')).toBe(TOTALES.transactions);
+  });
+
+  it('el aborto también deja informe, con el motivo dentro', async () => {
+    const antes = (await readdir(backupDir)).filter((f) => /^informe-migracion-.*\.md$/.test(f));
+    const r = ejecutar([]);
+    expect(r.status).toBe(1);
+    const despues = (await readdir(backupDir)).filter((f) => /^informe-migracion-.*\.md$/.test(f)).sort();
+    expect(despues.length).toBe(antes.length + 1); // el informe existe justo cuando hace falta
+    const texto = await readFile(path.join(backupDir, despues.at(-1)), 'utf8');
+    expect(texto).toContain('## Aborto');
+    expect(texto).toContain('ya tiene');
+    expect(texto).toContain('Resultado: FALLO');
   });
 
   it('--verify-only da OK sobre lo migrado y FALLO sobre un hogar vacío', () => {
@@ -1292,32 +1545,82 @@ describe.runIf(Boolean(adminUrl))('CLI migrar-home-finance', () => {
 });
 ```
 
-- [ ] **Step 2: Verlos fallar** — `pnpm --filter @casa-clara/db exec vitest run scripts/migrar-home-finance.pg.test.mjs` (con `PATH` y `TEST_DATABASE_URL` exportados). Esperado: FAIL — el subproceso importa el guion, que no tiene bloque de ejecución directa, sale con status 0 sin hacer nada y las aserciones de status/salida fallan.
+- [ ] **Step 2: Verlos fallar**
 
-- [ ] **Step 3: Implementación** — añadir al FINAL de `migrar-home-finance.mjs`:
+```bash
+export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_etl"
+pnpm --filter @casa-clara/db exec vitest run scripts/migrar-home-finance.pg.test.mjs
+```
+
+Esperado: FAIL — el subproceso importa el guion, que no tiene bloque de ejecución directa, sale con status 0 sin hacer nada y las aserciones de status/salida fallan.
+
+- [ ] **Step 3: Implementación** — esta tarea estrena `process`, `writeFile`, `fileURLToPath`, `pg` y el cargador de TS, así que lo PRIMERO es dejar la cabecera de imports de `migrar-home-finance.mjs` exactamente así (se sustituyen las líneas de `node:fs/promises`, y se añaden las cuatro que faltan en su orden):
 
 ```js
+import { createHash, randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
+import { access, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
+
+import pg from 'pg';
+
+import { importarModuloTs, rutaDedupHash } from './cargar-ts.mjs';
+```
+
+Y después añadir al FINAL de `migrar-home-finance.mjs`:
+
+```js
+/** Imprime y guarda el informe. Se llama desde el `finally` de main(): pase lo
+ *  que pase, la ejecución deja artefacto en --backup-dir. */
+export async function emitirInforme(opciones, contexto) {
+  const informe = renderInforme(contexto);
+  console.log(`\n${informe}`);
+  await mkdir(opciones.backupDir, { recursive: true });
+  const rutaInforme = path.join(opciones.backupDir,
+    `informe-migracion-${new Date().toISOString().replace(/[:.]/g, '-')}.md`);
+  await writeFile(rutaInforme, informe, 'utf8');
+  console.log(`Informe guardado en ${rutaInforme}`);
+  return rutaInforme;
+}
+
 async function main() {
   const opciones = parseArgs(process.argv.slice(2));
   const modo = opciones.verifyOnly ? 'verify-only' : opciones.dryRun ? 'dry-run' : 'real';
+  // Única guarda que sale por arriba (código 2): si el directorio está dentro de
+  // un repo, no hay dónde escribir el informe, así que no se puede prometer.
   if (await estaDentroDeUnRepo(opciones.backupDir)) {
-    throw new Error(`El directorio ${opciones.backupDir} está dentro de un repositorio git; la copia y el informe deben vivir fuera de ambos repos.`);
+    throw new ErrorDeUso(`El directorio ${opciones.backupDir} está dentro de un repositorio git; la copia y el informe deben vivir fuera de ambos repos.`);
   }
-  const origen = leerOrigen(opciones.sqlite);
-  const { computeDedupHash } = await importarModuloTs(rutaDedupHash);
-  const hashes = verificarHashes(origen, computeDedupHash);
-  const resOrigen = resumenOrigen(origen);
-  const avisos = avisosOrigen(origen);
-
-  if (!opciones.verifyOnly) {
-    const copia = await hacerCopiaSeguridad(opciones.sqlite, opciones.backupDir);
-    console.log(`Paso 0 — copia de seguridad: ${copia.destino} (sha256 ${copia.sha256})`);
-  }
-
-  const client = new pg.Client({ connectionString: opciones.databaseUrl });
-  await client.connect();
-  let comparacion = null;
+  const contexto = {
+    modo, hogar: opciones.household, rutaSqlite: opciones.sqlite,
+    copia: null, comparacion: null,
+    hashes: { comprobados: 0, descartados: 0, discrepancias: [] },
+    avisos: [], motivoAborto: null
+  };
+  let client = null;
   try {
+    const origen = leerOrigen(opciones.sqlite);
+    const problemas = validarOrigen(origen);
+    if (problemas.length > 0) {
+      throw new Error(`El origen incumple invariantes del esquema destino:\n- ${problemas.join('\n- ')}`);
+    }
+    const { computeDedupHash } = await importarModuloTs(rutaDedupHash);
+    contexto.hashes = verificarHashes(origen, computeDedupHash);
+    contexto.avisos = avisosOrigen(origen);
+    const resOrigen = resumenOrigen(origen);
+
+    if (!opciones.verifyOnly) {
+      contexto.copia = await hacerCopiaSeguridad(opciones.sqlite, opciones.backupDir);
+      console.log(`Paso 0 — copia de seguridad: ${contexto.copia.destino} (sha256 ${contexto.copia.sha256})`);
+    }
+
+    client = new pg.Client({ connectionString: opciones.databaseUrl });
+    await client.connect();
     // Propietario por conexión directa, como las migraciones: en local es
     // superusuario; en Supabase el runner deja FORCE relajado (0018), así que
     // row_security=off da acceso de propietario en ambos casos.
@@ -1329,7 +1632,7 @@ async function main() {
     const householdId = hogares.rows[0].id;
 
     if (opciones.verifyOnly) {
-      comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
+      contexto.comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
     } else {
       const { rows } = await client.query(
         `SELECT ((SELECT count(*) FROM app.finance_accounts WHERE household_id = $1)
@@ -1339,18 +1642,13 @@ async function main() {
       if (rows[0].filas > 0 && !opciones.forceEmptyCheck) {
         throw new Error(`El hogar «${opciones.household}» ya tiene ${rows[0].filas} filas de finanzas; aborto. Usa --verify-only para comparar sin escribir, o --force-empty-check si sabes lo que haces.`);
       }
-      if (hashes.discrepancias.length > 0) {
+      if (contexto.hashes.discrepancias.length > 0) {
         console.error('Verificación cruzada de dedup_hash fallida: no se escribe nada en la base destino.');
       } else {
         await client.query('BEGIN');
-        try {
-          await migrar(client, householdId, origen);
-          comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
-        } catch (error) {
-          await client.query('ROLLBACK');
-          throw error;
-        }
-        if (opciones.dryRun || !comparacion.ok) {
+        await migrar(client, householdId, origen);
+        contexto.comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
+        if (opciones.dryRun || !contexto.comparacion.ok) {
           await client.query('ROLLBACK');
           console.log(opciones.dryRun
             ? 'DRY-RUN: transacción revertida; la base destino queda intacta.'
@@ -1361,18 +1659,24 @@ async function main() {
         }
       }
     }
+  } catch (error) {
+    // Nada de re-lanzar: el motivo entra en el informe y el código de salida.
+    contexto.motivoAborto = error.message ?? String(error);
+    console.error(contexto.motivoAborto);
+    if (client) {
+      try {
+        await client.query('ROLLBACK'); // si no había transacción abierta, es inocuo
+      } catch {
+        // da igual: lo importante es no dejar la transacción a medias
+      }
+    }
   } finally {
-    await client.end();
+    if (client) await client.end();
+    await emitirInforme(opciones, contexto);
   }
-
-  const informe = renderInforme({ modo, hogar: opciones.household, rutaSqlite: opciones.sqlite, comparacion, hashes, avisos });
-  console.log(`\n${informe}`);
-  await mkdir(opciones.backupDir, { recursive: true });
-  const rutaInforme = path.join(opciones.backupDir,
-    `informe-migracion-${new Date().toISOString().replace(/[:.]/g, '-')}.md`);
-  await writeFile(rutaInforme, informe, 'utf8');
-  console.log(`Informe guardado en ${rutaInforme}`);
-  process.exitCode = hashes.discrepancias.length === 0 && comparacion !== null && comparacion.ok ? 0 : 1;
+  process.exitCode = contexto.motivoAborto === null
+    && contexto.hashes.discrepancias.length === 0
+    && contexto.comparacion !== null && contexto.comparacion.ok ? 0 : 1;
 }
 
 const esEjecucionDirecta =
@@ -1387,13 +1691,13 @@ if (esEjecucionDirecta) {
 }
 ```
 
-Y en `packages/db/package.json`, dentro de `"scripts"` (orden alfabético, entre `"migrate"` y `"probe:supabase"`):
+Y en `packages/db/package.json`, dentro de `"scripts"` (el fichero está en orden alfabético estricto y `migrar` < `migrate` en la sexta letra, `r` < `t`: va entre `"manual:import"` y `"migrate"`):
 
 ```json
 "migrar:home-finance": "node scripts/migrar-home-finance.mjs",
 ```
 
-- [ ] **Step 4: Verde** — mismo comando del Step 2. Esperado: PASS, 7 tests. Después, toda la suite de scripts:
+- [ ] **Step 4: Verde** — mismo comando del Step 2. Esperado: PASS, 8 tests (1 de la Task 5 + 7 de la CLI). Después, toda la suite de scripts:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
@@ -1430,9 +1734,24 @@ Migración ÚNICA de `/home/abf/github/home-finance/backend/data/finanzas.db`
 `packages/db/scripts/migrar-home-finance.mjs`. El guion lee la SQLite en solo
 lectura, escribe por conexión directa (5432) con rol propietario en UNA sola
 transacción, y aborta si el hogar destino ya tiene datos de finanzas. Toda
-ejecución imprime y guarda un informe de verificación; sin `Resultado: OK` no
-hay migración válida. La retirada del sistema antiguo es de la fase 7 y NO se
-ejecuta desde este runbook.
+ejecución imprime y guarda un informe de verificación —también las que abortan,
+con una sección `## Aborto` y el motivo—; sin `Resultado: OK` no hay migración
+válida. La retirada del sistema antiguo es de la fase 7 y NO se ejecuta desde
+este runbook.
+
+**Contrato de invocación (cópialo tal cual; no hay atajos):**
+
+```
+node packages/db/scripts/migrar-home-finance.mjs \
+  --sqlite <ruta al .db> --database-url <postgresql://…> --household <slug> \
+  [--backup-dir <dir, por omisión ~/copias-home-finance>] \
+  [--dry-run | --verify-only] [--force-empty-check]
+```
+
+`--sqlite`, `--database-url` y `--household` son OBLIGATORIOS y el guion **no
+lee `DATABASE_URL` del entorno**: `DATABASE_URL=… node …migrar-home-finance.mjs
+--household x` sale con código 2 («Falta --sqlite»). Códigos de salida: 0
+verificación OK, 1 fallo o aborto, 2 error de uso.
 
 Prefijo obligatorio de toda sesión:
 
@@ -1493,7 +1812,7 @@ pnpm --filter @casa-clara/db migrate
    el smoke de la web con cuentas de verdad):
 
 ```bash
-docker exec -i pg-ensayo-finanzas psql -U ensayo -d casaclara_ensayo -c \
+docker exec -i casaclara-it-pg psql -U ci_admin -d casaclara_ensayo -c \
   "SET row_security = off;
    INSERT INTO app.households (slug, display_name) VALUES ('hogar-ensayo', 'Hogar del ensayo');"
 ```
@@ -1522,10 +1841,13 @@ Conserva el del ensayo real: es el contraste del smoke.
    Finanzas al admin del ensayo desde Ajustes del hogar, y recorrer las 7
    pantallas contrastando los números con el informe.
 
-6. Limpieza:
+6. Limpieza: se borra **la base del ensayo**, nunca el contenedor.
+   `casaclara-it-pg` es el clúster compartido de pruebas de esta máquina (lo
+   usan `test:db`, `test:rls`, `test:import` y los dbe2e): un `docker rm -f`
+   ahí se llevaría por delante trabajo ajeno.
 
 ```bash
-docker rm -f pg-ensayo-finanzas
+docker exec casaclara-it-pg dropdb -U ci_admin --if-exists casaclara_ensayo
 ```
 
 Para ensayar con los datos reales: repite 1–6 con
@@ -1555,19 +1877,27 @@ revertido (o ni siquiera ha escrito). No se «arregla a mano» en producción:
 se diagnostica en local con `--verify-only` y la copia del Paso 0.
 ````
 
-- [ ] **Step 2: Ensayar el runbook con la base sintética** — ejecutar literalmente el Paso «Ensayo local» 1→4 y 6 con `~/copias-home-finance/finanzas-sintetica.db` generada por el comando del runbook (el smoke 5 no aplica: las pantallas llegan en fases 4–6). Esperado: `--dry-run`, real y `--verify-only` terminan con `Resultado: OK` y código 0; `docker rm -f pg-ensayo-finanzas` limpia. Si algo difiere del runbook escrito, corrige el runbook (no el recuerdo).
+- [ ] **Step 2: Ensayar el runbook con la base sintética** — ejecutar literalmente el Paso «Ensayo local» 1→4 y 6 con `~/copias-home-finance/finanzas-sintetica.db` generada por el comando del runbook (el smoke 5 no aplica: las pantallas llegan en fases 4–6). Esperado: `--dry-run`, real y `--verify-only` terminan con `Resultado: OK` y código 0; el `dropdb` del paso 6 deja el clúster como estaba y `casaclara-it-pg` sigue en pie. Si algo difiere del runbook escrito, corrige el runbook (no el recuerdo).
 
 - [ ] **Step 3: Gates de la rama**
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v24.15.0/bin:$PATH"
+export TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_etl"
 pnpm lint
 pnpm typecheck
-pnpm --filter @casa-clara/db test:import   # con TEST_DATABASE_URL exportada
-pnpm test:db                               # con DATABASE_URL/TEST_DATABASE_URL al Postgres de pruebas
+pnpm --filter @casa-clara/db test:import
+# test:db recrea el esquema: se le pasa SU base, no la del ETL (run-sql-tests.mjs
+# prefiere TEST_DATABASE_URL sobre DATABASE_URL, así que hay que sobreescribirla).
+TEST_DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casaclara_ci_integration" pnpm test:db
 ```
 
-Esperado: todo en verde. (`test:db`/`test:rls` no cambian en esta fase, pero `test:db` confirma que nada de lo añadido rompe el runner SQL.) Limpieza final del contenedor de tests si ya no hace falta: `docker rm -f pg-etl-finanzas`.
+Esperado: todo en verde. Los otros tres gates de las Global Constraints **no aplican a esta fase y no hay que ejecutarlos**, por estas razones concretas:
+- `pnpm check` es `svelte-check` de `apps/web`: esta fase no toca ningún `.svelte` ni nada de esa app.
+- `pnpm test` es `pnpm -r --if-present test` y `packages/db` no expone script `test` (sus suites corren por `test:import`, que sí se ejecuta arriba); ningún otro paquete cambia.
+- `pnpm test:rls` recorre `tests/020_rls_matrix.sql`: esta fase no añade políticas, roles ni fixtures SQL. `test:db` sí se corre, como red de seguridad de que nada de lo añadido rompe el runner SQL.
+
+No hay contenedor que borrar: `casaclara-it-pg` es el clúster compartido de la máquina y se queda levantado. Si quieres dejar limpias las bases del ensayo: `docker exec casaclara-it-pg dropdb -U ci_admin --if-exists casaclara_ensayo`.
 
 - [ ] **Step 4: Commit**
 
