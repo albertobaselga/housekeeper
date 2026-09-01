@@ -1,11 +1,13 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import type { Role } from '$lib/auth/capabilities';
   import { ROLE_LABELS } from '$lib/auth/role-labels';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { revokeMembership, setMembershipExpiry } from '$lib/access/commands';
+  import { financeGrantToggle } from '$lib/finance/commands';
   import type { ActionData, PageData } from './$types';
 
   import { useAppContext } from '$lib/auth/context';
@@ -43,6 +45,72 @@
     membership_not_found: 'Ese acceso ya no existe',
     cannot_modify_self: 'No puedes cambiar tu propio acceso'
   };
+
+  // ── Concesiones de Finanzas (spec §4) ──────────────────────────────────────
+  // Nota de guardado PROPIA: el acuse tiene que aparecer donde estaba el dedo
+  // (§2.5 del sistema móvil) y la tarjeta de accesos queda muy por encima. Son
+  // dos instancias porque son dos notas, no dos mecanismos: mismo token de
+  // invalidación y mismo acuse veraz.
+  const financeOptimistic = new OptimisticActions({
+    householdId: context.household.id,
+    invalidateToken: 'cc:settings'
+  });
+  const financeStatus = financeOptimistic.status;
+  $effect(() => financeOptimistic.start());
+
+  // Rechazos propios de la concesión de Finanzas (códigos de commands/finance.ts).
+  const FINANCE_MESSAGES: Readonly<Record<string, string>> = {
+    already_granted: 'Esa cuenta ya tiene Finanzas activado',
+    not_granted: 'Esa cuenta no tiene Finanzas activado',
+    grant_target_not_admin: 'Finanzas solo se concede a la familia administradora',
+    membership_not_found: 'Ese acceso ya no existe'
+  };
+
+  type FinanceAdmin = NonNullable<PageData['finance']>['admins'][number];
+
+  /** La fila cuyo comando está en vuelo, para que lo diga ella y no la pantalla. */
+  let financePendingId = $state<string | null>(null);
+  let confirmingFinanceId = $state<string | null>(null);
+
+  /**
+   * Quitarse Finanzas a una misma cierra el módulo en el acto, así que se
+   * pregunta antes. No se impide: Alberto eligió que cualquier administración
+   * familiar gestione esto, y la suya no es una excepción. Conceder —y revocar
+   * a otra persona— no necesita confirmación: es reversible desde esta tarjeta.
+   */
+  function askFinance(admin: FinanceAdmin): void {
+    if (admin.isSelf && admin.granted) {
+      confirmingFinanceId = confirmingFinanceId === admin.membershipId ? null : admin.membershipId;
+      return;
+    }
+    toggleFinance(admin);
+  }
+
+  function toggleFinance(admin: FinanceAdmin): void {
+    const envelope = financeGrantToggle({
+      householdId: context.household.id,
+      membershipId: admin.membershipId,
+      granted: admin.granted
+    });
+    busy = true;
+    financePendingId = admin.membershipId;
+    confirmingFinanceId = null;
+    // Sin `apply`: la fila sigue diciendo lo que trajo el `load` hasta que el
+    // servidor confirma y `cc:settings` la refresca. Un rechazo la deja como
+    // estaba, con su causa al lado.
+    void financeOptimistic
+      .run(envelope, {
+        messageOverrides: FINANCE_MESSAGES,
+        // Cambiar la concesión PROPIA cambia lo que el layout entrega al
+        // cliente —la capacidad `finance.access`, y con ella la entrada de
+        // navegación—, y `cc:settings` solo re-ejecuta el load de esta página.
+        settle: admin.isSelf ? () => void invalidateAll() : undefined
+      })
+      .finally(() => {
+        busy = false;
+        financePendingId = null;
+      });
+  }
 
   async function dispatch(envelope: Parameters<typeof optimistic.run>[0]): Promise<void> {
     busy = true;
@@ -246,6 +314,85 @@
           </li>
         {/each}
       </ul>
+    </section>
+
+    <section class="card" aria-labelledby="finance-grants-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Finanzas</p>
+          <h2 id="finance-grants-title">Quién puede ver las finanzas de la casa</h2>
+        </div>
+      </div>
+      <!-- Sin `{:else}`: esta tarjeta va DENTRO del `{#if access}` de la
+           pantalla, y `loadFinanceGrantOverview` devuelve null exactamente en
+           los mismos casos en que `loadAccessOverview` lo devuelve (sin pool o
+           sin rol de administración). Una rama alternativa aquí sería marcado
+           inalcanzable. -->
+      {#if data.finance}
+        <ActionStatus status={financeStatus} />
+        <p class="audit-note">
+          Finanzas se activa cuenta a cuenta y solo para la familia administradora: quien no lo
+          tiene activado no ve el módulo ni una sola cifra. Puedes desactivártelo a ti; no se borra
+          nada y cualquier administración de la casa —tú incluida— puede volver a activarlo desde
+          aquí.
+        </p>
+        <ul class="wiki-recent" data-lista="finanzas">
+          {#each data.finance.admins as admin (admin.membershipId)}
+            <li>
+              <div class="fila-accion">
+                <span class="fila-cuerpo">
+                  <strong>{admin.name}</strong>
+                  <small>{admin.granted ? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'}</small>
+                </span>
+                <span class="fila-fin">
+                  <!-- Mientras el comando viaja, el estado sigue siendo el de
+                       antes: lo que cambia es que la fila avisa de que hay algo
+                       en vuelo. Si el servidor lo rechaza, aquí no ha cambiado
+                       nada y la causa aparece arriba de la tarjeta. -->
+                  {#if financePendingId === admin.membershipId}
+                    <span class="status-chip">Enviando…</span>
+                  {/if}
+                  {#if admin.granted}
+                    <span class="status-chip success">Activado</span>
+                  {:else}
+                    <span class="status-chip">Apagado</span>
+                  {/if}
+                  {#if admin.isSelf}<span class="status-chip">Tu cuenta</span>{/if}
+                  <!-- Patrón de fila de la casa (rutinas): el botón nombra a su
+                       sujeto para el lector de pantalla, no en dos líneas de
+                       texto que estrujan la fila a 320 px. El nombre visible
+                       está a la izquierda, en la misma fila. -->
+                  <button
+                    class="button secondary small-button"
+                    type="button"
+                    disabled={busy}
+                    aria-label={admin.granted
+                      ? `Desactivar Finanzas a ${admin.name}`
+                      : `Activar Finanzas a ${admin.name}`}
+                    onclick={() => askFinance(admin)}
+                  >
+                    {admin.granted ? 'Desactivar Finanzas' : 'Activar Finanzas'}
+                  </button>
+                </span>
+              </div>
+              {#if confirmingFinanceId === admin.membershipId}
+                <div class="action-form">
+                  <p class="audit-note">
+                    Vas a quitarte Finanzas a ti. En cuanto se guarde, <strong>dejarás de ver el módulo de
+                    Finanzas</strong> y todas sus cifras, y desaparecerá de la navegación. No se borra nada:
+                    puedes volver a activarlo desde esta misma tarjeta.
+                  </p>
+                  <div class="menu-slot-actions">
+                    <button class="button primary" type="button" disabled={busy} onclick={() => toggleFinance(admin)}>
+                      Quitarme Finanzas ahora
+                    </button>
+                  </div>
+                </div>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </section>
 
     <!--

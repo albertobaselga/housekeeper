@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
@@ -108,5 +109,96 @@ describe('Ajustes carga las concesiones de Finanzas junto a los accesos', () => 
     // anterior a la concesión y la tarjeta pasa a mentir en cuanto se usa.
     const { depends } = await runLoad({ id: 'fixture:roble:admin' });
     expect(depends).toContain('cc:settings');
+  });
+});
+
+describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => {
+  let page = '';
+  /** El `<script>` de la página, con los espacios colapsados. */
+  let script = '';
+  /** La tarjeta de Finanzas y nada más, con los espacios colapsados. */
+  let card = '';
+
+  beforeAll(async () => {
+    page = await readFile(
+      new URL('../src/routes/h/[householdId]/settings/+page.svelte', import.meta.url),
+      'utf8'
+    );
+    const flat = (text: string): string => text.replace(/\s+/g, ' ').trim();
+    script = flat(page.slice(page.indexOf('<script'), page.indexOf('</script>')));
+    // La tarjeta se acota por su propia sección para que nada de lo que se
+    // afirma abajo pueda quedar satisfecho por la tarjeta de accesos vecina,
+    // que tiene filas, chips y botones parecidos.
+    const opens = page.indexOf('aria-labelledby="finance-grants-title"');
+    card = opens < 0 ? '' : flat(page.slice(opens, page.indexOf('</section>', opens)));
+  });
+
+  it('existe, con su encabezado y la lista de administraciones del hogar', () => {
+    // Sin esta superficie no hay activación por cuenta: el módulo se queda sin
+    // la única puerta por la que se enciende y nadie más lo notaría.
+    expect(card, 'la tarjeta de Finanzas ya no está en Ajustes').not.toBe('');
+    expect(card).toContain('<h2 id="finance-grants-title">');
+    expect(card).toContain('{#each data.finance.admins as admin (admin.membershipId)}');
+  });
+
+  it('el estado pintado sale de la concesión, y en la dirección correcta', () => {
+    // Invertir cualquiera de las dos correspondencias deja la tarjeta diciendo
+    // «Activado» a quien el layout no deja entrar en el módulo.
+    expect(card).toMatch(
+      /\{#if admin\.granted\}[^{]*<span class="status-chip success">Activado<\/span> \{:else\}[^{]*<span class="status-chip">Apagado<\/span>/
+    );
+    expect(card).toMatch(
+      /admin\.granted \? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'/
+    );
+  });
+
+  it('el interruptor envía el comando de la fila, con su estado real', () => {
+    expect(card).toContain('onclick={() => askFinance(admin)}');
+    // Y dice a quién se lo hace: en una lista de administraciones, «Activar
+    // Finanzas» a secas no dice cuál (patrón de fila de rutinas).
+    expect(card).toContain('`Desactivar Finanzas a ${admin.name}`');
+    expect(card).toContain('`Activar Finanzas a ${admin.name}`');
+    expect(script).toContain("from '$lib/finance/commands'");
+    expect(script).toContain('financeGrantToggle');
+    // El estado que elige entre conceder y revocar es el de ESTA fila, no una
+    // constante ni el de la primera: `financeGrantToggle` hace el resto y lo
+    // comprueba `finance-commands.test.ts` ejecutándolo.
+    expect(script).toMatch(/membershipId: admin\.membershipId, granted: admin\.granted/);
+    // Y viaja como comando por la cola optimista, nunca como form action.
+    expect(script).toMatch(/financeOptimistic\s*\.run\(envelope/);
+    expect(card).not.toContain('method="POST"');
+  });
+
+  it('no pinta nada antes de que el servidor conteste', () => {
+    // `OptimisticActions` solo miente si se le da un `apply`: sin él, el estado
+    // de la tarjeta sigue siendo el que trajo el `load` hasta que un comando se
+    // confirma y `cc:settings` lo refresca. Un rechazo deja la fila como estaba
+    // y la nota roja al lado.
+    expect(script).not.toContain('apply:');
+    expect(card).toContain('<ActionStatus status={financeStatus} />');
+  });
+
+  it('mientras el comando está en vuelo la fila lo dice y nadie puede repetirlo', () => {
+    expect(card).toMatch(/\{#if financePendingId === admin\.membershipId\}/);
+    expect(card).toContain('Enviando…');
+    expect(card).toContain('disabled={busy}');
+  });
+
+  it('quitarse Finanzas a una misma se avisa, no se impide', () => {
+    // Alberto eligió que cualquier administración gestione esto, incluida la
+    // suya: el botón de la fila propia NO puede estar bloqueado.
+    expect(card).not.toMatch(/disabled=\{[^}]*isSelf/);
+    // Pero pasa por una confirmación que dice lo que va a ocurrir.
+    expect(script).toMatch(/admin\.isSelf && admin\.granted/);
+    expect(card).toMatch(/\{#if confirmingFinanceId === admin\.membershipId\}/);
+    expect(card).toContain('dejarás de ver el módulo de Finanzas');
+  });
+
+  it('la pantalla no autoriza leyendo el papel de nadie', () => {
+    // `can(context.role, …)` es un camino paralelo que ignoraría la retirada de
+    // capacidad del layout. Quien decide aquí es el servidor: `data.finance` es
+    // null salvo para la administración, y la tarjeta no se pinta.
+    expect(script).not.toMatch(/\bcan\(/);
+    expect(script).not.toContain('context.role');
   });
 });
