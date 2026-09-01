@@ -303,7 +303,18 @@ ficheros no basta si la unidad que se rompe es un contrato entre módulos.
 
 ## Cabos sueltos anotados durante la ejecución
 
-- **Cobertura de densidad y desbordamiento para Pagos.** `apps/web/e2e/mobile-densidad.dbe2e.ts`
+- **La densidad de Pagos aguanta con dos cuentas, no con tres.** La batería A6
+  exige `min(3, total)` filas visibles en la primera pantalla. A 320×568 quedan
+  277 px de lista y una tercera fila pediría 291. No es maquillable: la fila mide
+  97 px porque a ese ancho el distintivo de estado no cabe en la misma línea que
+  el importe, y por encima hay 105 px de barra de persona más pestañas. **Si
+  alguien siembra una tercera liquidación en las fixtures, esta ruta empieza a
+  fallar.** La salida honesta entonces es paginar el historial —que este diseño
+  dejó fuera a propósito— o aligerar el cromo de las pestañas; **no** rebajar A6.
+- **Cobertura de densidad y desbordamiento para Pagos.** *(Hecho: la ruta entró en
+  las dos baterías, y la primera ejecución encontró un defecto real que habíamos
+  metido nosotros — un pie de tarjeta de 96 px que empujaba la tabla fuera de la
+  primera pantalla, justo el defecto que la tabla venía a arreglar.)* `apps/web/e2e/mobile-densidad.dbe2e.ts`
   y `mobile-overflow.dbe2e.ts` recorren una lista de rutas y hoy no incluyen
   `employment/pagos`. La tabla plegada ya trae `data-lista="principal"` y `.cifra`,
   o sea que esas baterías la medirían solas con sólo añadir la ruta. Se midió a
