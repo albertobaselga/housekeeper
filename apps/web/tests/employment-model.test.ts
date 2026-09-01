@@ -748,7 +748,9 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
     expect(views[0]!.amountLabel).toBe('−50,00 €');
     expect(views[0]!.transferLabel).toBe('Se suma a la transferencia');
     expect(views[0]!.deferralNote).toContain('ya estaba cerrada');
-    // El anulado se queda en la lista: la corrección es parte del rastro.
+    // Un anulado se proyecta con su marca y su motivo, aunque a la página ya no
+    // llegue ninguno: quién entra en la lista lo decide la consulta del
+    // servidor, no esta función, que se limita a dar forma a lo que recibe.
     expect(views[1]!.voided).toBe(true);
     expect(views[1]!.voidReason).toBe('Se apuntó dos veces');
   });
