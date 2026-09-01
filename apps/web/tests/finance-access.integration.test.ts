@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { financeAccessGranted } from '../src/lib/server/finance-access.server';
+import { financeAccessGranted, loadFinanceGrantOverview } from '../src/lib/server/finance-access.server';
 import { loadFinanceStatus } from '../src/lib/server/finance-status.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
@@ -31,6 +31,14 @@ const APP_LOGIN = `it_casa_clara_finance_login_${RUN}`;
 const FINANCE_DB = `casaclara_finance_it_${RUN}`;
 
 const OLIVO_HOUSEHOLD = '20000000-0000-4000-8000-000000000001';
+const ROBLE_ADMIN = '11000000-0000-4000-8000-000000000001';
+const OLIVO_ADMIN = '21000000-0000-4000-8000-000000000001';
+// Segunda administración del roble: NO está en las fixtures compartidas (que
+// las usa media suite) sino que la crea aquí la única prueba que la necesita,
+// en la base propia de este fichero. Sin dos administraciones no hay forma de
+// afirmar que `isSelf` distingue a quien mira de quien no.
+const ROBLE_ADMIN_2 = '11000000-0000-4000-8000-000000000007';
+const SECOND_ADMIN_USER = { id: 'fixture:roble:admin2' };
 const ADMIN_USER = { id: 'fixture:roble:admin' };
 const FAMILY_USER = { id: 'fixture:roble:family' };
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
@@ -127,6 +135,23 @@ describe('sin poder preguntar por la concesión, Finanzas se retira', () => {
 describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layout', () => {
   let appPool: pg.Pool;
 
+  /**
+   * Preparar el escenario de una prueba con el propietario de las migraciones,
+   * fuera de la RLS. Es la misma vía por la que entran las fixtures del
+   * `beforeAll`, y solo toca la base propia de este fichero: nunca es el camino
+   * que se está probando, que siempre pasa por `appPool` (el login de la
+   * aplicación, sin BYPASSRLS).
+   */
+  async function asOwner(work: (client: pg.Client) => Promise<void>): Promise<void> {
+    const owner = new pg.Client({ connectionString: financeUrlFor(adminUrl as string) });
+    await owner.connect();
+    try {
+      await work(owner);
+    } finally {
+      await owner.end();
+    }
+  }
+
   beforeAll(async () => {
     const cluster = new pg.Client({ connectionString: adminUrl });
     await cluster.connect();
@@ -205,5 +230,80 @@ describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layou
     });
     // Sin membresía en el hogar: null (la página lo traduce a 403/404).
     expect(await loadFinanceStatus({ id: 'nadie:desconocido' }, FIXTURE_HOUSEHOLD, appPool)).toBeNull();
+  });
+
+  it('loadFinanceGrantOverview lista los admins con su estado; null para el resto', async () => {
+    const overview = await loadFinanceGrantOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(overview).not.toBeNull();
+    // El roble tiene seis membresías vivas y UNA sola de administración: la
+    // tarjeta no ofrece Finanzas a quien la base no dejaría recibirla.
+    expect(overview?.admins).toEqual([
+      {
+        membershipId: ROBLE_ADMIN,
+        name: 'Fixture Admin Roble',
+        granted: true,
+        isSelf: true
+      }
+    ]);
+    expect(await loadFinanceGrantOverview(FAMILY_USER, FIXTURE_HOUSEHOLD, appPool)).toBeNull();
+    expect(await loadFinanceGrantOverview(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool)).toBeNull();
+  });
+
+  it('`granted` sale de la concesión REAL, no de tener papel de administración', async () => {
+    // La misma consulta en el hogar del olivo, cuya administración no tiene
+    // concesión: si `granted` se degradara a «es admin» —o a una constante—,
+    // la tarjeta diría «Activado» a quien el layout deja fuera del módulo.
+    const overview = await loadFinanceGrantOverview(OLIVO_ADMIN_USER, OLIVO_HOUSEHOLD, appPool);
+    expect(overview?.admins).toEqual([
+      {
+        membershipId: OLIVO_ADMIN,
+        name: 'Fixture Admin Olivo',
+        granted: false,
+        isSelf: true
+      }
+    ]);
+  });
+
+  it('con dos administraciones, cada una se reconoce a sí misma y ve el estado de la otra', async () => {
+    await asOwner(async (client) => {
+      await client.query(
+        `insert into app.user_profiles (user_id, display_name)
+         values ('fixture:roble:admin2', 'Fixture Segunda Admin Roble')`
+      );
+      await client.query(
+        `insert into app.household_memberships (id, household_id, user_id, role)
+         values ($1, $2, 'fixture:roble:admin2', 'family_admin')`,
+        [ROBLE_ADMIN_2, FIXTURE_HOUSEHOLD]
+      );
+    });
+
+    // Quien mira es la administración CON concesión: se ve a sí misma activada
+    // y a la recién llegada apagada, en el orden estable del alta.
+    expect((await loadFinanceGrantOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool))?.admins).toEqual([
+      { membershipId: ROBLE_ADMIN, name: 'Fixture Admin Roble', granted: true, isSelf: true },
+      { membershipId: ROBLE_ADMIN_2, name: 'Fixture Segunda Admin Roble', granted: false, isSelf: false }
+    ]);
+
+    // Y la misma lista mirada por la otra: `isSelf` cambia de fila, `granted`
+    // no. Una `isSelf` fija (siempre true, o siempre la primera fila) pondría
+    // el aviso de «vas a quitártelo a ti» en la persona equivocada.
+    const theirs = await loadFinanceGrantOverview(SECOND_ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(theirs?.admins.map((admin) => [admin.membershipId, admin.granted, admin.isSelf])).toEqual([
+      [ROBLE_ADMIN, true, false],
+      [ROBLE_ADMIN_2, false, true]
+    ]);
+  });
+
+  it('una administración con el acceso retirado deja de aparecer en la tarjeta', async () => {
+    await asOwner(async (client) => {
+      await client.query('update app.household_memberships set revoked_at = statement_timestamp() where id = $1', [
+        ROBLE_ADMIN_2
+      ]);
+    });
+    // Ofrecerle Finanzas a quien ya no puede entrar en la casa sería ofrecer
+    // una llave de una puerta que no existe: el comando la rechazaría
+    // (membership_not_found) y la tarjeta habría mentido antes de intentarlo.
+    const overview = await loadFinanceGrantOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(overview?.admins.map((admin) => admin.membershipId)).toEqual([ROBLE_ADMIN]);
   });
 });

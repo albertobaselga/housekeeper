@@ -8,6 +8,7 @@ import {
 import { getAuth } from '$lib/server/auth.server';
 import { MIN_PASSWORD_LENGTH } from '$lib/server/auth-core';
 import { fixturesAllowed } from '$lib/server/data-source.server';
+import { loadFinanceGrantOverview } from '$lib/server/finance-access.server';
 import { getSettingsFixture } from '$lib/server/fixtures.server';
 import { canDownloadHandover } from '$lib/server/handover.server';
 import type { Actions, PageServerLoad } from './$types';
@@ -46,6 +47,11 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     // y esa sale de la base bajo RLS.
     settings: fixturesAllowed() ? getSettingsFixture() : null,
     access,
+    // Concesiones de Finanzas por admin (spec §4): misma pantalla que los
+    // accesos, mismo token de invalidación (cc:settings).
+    finance: locals.user
+      ? await loadFinanceGrantOverview({ id: locals.user.id }, params.householdId)
+      : null,
     handover: canHandover ? { householdId: params.householdId } : null,
     // Sin instalación real de identidad no hay contraseñas que cambiar: la demo
     // por fixtures no muestra ninguna de las dos tarjetas.
