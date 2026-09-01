@@ -253,8 +253,92 @@ export interface HireFormDraft {
 }
 
 export type HireFromFormResult =
-  | { ok: true; hired: { name: string; username: string; password: string; withAgreement: boolean } }
+  | {
+      ok: true;
+      hired: {
+        name: string;
+        username: string;
+        password: string;
+        withAgreement: boolean;
+        /**
+         * El expediente recién creado, para poder entrar en él nada más
+         * terminar. null cuando el alta dio sólo el acceso. No se redirige: la
+         * contraseña provisional se enseña UNA vez y una redirección la
+         * perdería o —peor— obligaría a meterla en la URL.
+         */
+        agreementId: string | null;
+      };
+    }
   | { ok: false; message: string; draft: HireFormDraft };
+
+/**
+ * Las condiciones que un alta pacta, leídas del formulario. Lo básico y nada
+ * más: el catálogo de trabajo extra y los complementos se pactan después
+ * apilando una versión, porque al dar de alta no se sabe todo.
+ *
+ * Por el mismo motivo, la tarifa del día de vacaciones no disfrutado y la
+ * política de caducidad de los días arrastrados son OPCIONALES aquí. Vacía, la
+ * tarifa se guarda como null —«no se pactó»— y nunca como cero: la fila es
+ * inmutable y ese cero diría para siempre que se acordó pagar cero euros por
+ * día. La caducidad ausente son seis meses, el defecto del esquema.
+ *
+ * Existe suelta y exportada porque la etapa del contrato tiene DOS entradas —la
+ * persona nueva y la que ya está en la casa sin contrato— y las dos enseñan los
+ * mismos campos. Si cada una los leyera por su cuenta, un campo nuevo entraría
+ * por una puerta y se perdería por la otra.
+ */
+export function readHireAgreementTerms(
+  form: FormData,
+  startsOn: string
+): { ok: true; terms: AgreementCreateInputV1['terms'] } | { ok: false; message: string } {
+  const text = (name: string): string => String(form.get(name) ?? '').trim();
+
+  const salary = parseEuroInput(text('monthlySalary'));
+  if (salary === null) return { ok: false, message: 'El salario mensual no es un importe válido.' };
+
+  const rateRaw = text('unusedVacationDayRate');
+  let unusedVacationDayRateCents: string | null = null;
+  if (rateRaw !== '') {
+    const parsedRate = parseEuroInput(rateRaw);
+    if (parsedRate === null) {
+      return {
+        ok: false,
+        message: 'El precio del día de vacaciones no disfrutado no es un importe válido.'
+      };
+    }
+    unusedVacationDayRateCents = parsedRate;
+  }
+
+  const mode = text('carryoverExpiryMode');
+  const vacationCarryoverExpiry =
+    mode === 'never'
+      ? { mode: 'never' }
+      : mode === 'months'
+        ? { mode: 'months', months: Number.parseInt(text('carryoverExpiryMonths'), 10) }
+        : undefined;
+
+  const parsed = agreementTermsInputSchema.safeParse({
+    // La primera versión entra en vigor el día que empieza el contrato: en un
+    // alta no hay historia previa que respetar, y pedir dos fechas para decir lo
+    // mismo solo invita a teclear una mal.
+    effectiveFrom: startsOn,
+    monthlySalaryCents: salary,
+    contractedWeeklyMinutes: Number.parseInt(text('contractedWeeklyMinutes'), 10),
+    annualVacationDays: Number.parseInt(text('annualVacationDays'), 10),
+    unusedVacationDayRateCents,
+    vacationCarryoverExpiry,
+    reason: text('reason') || 'Alta desde la aplicación',
+    extraWorkTypes: [],
+    supplements: []
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? 'Revisa las condiciones del contrato.'
+    };
+  }
+  return { ok: true, terms: parsed.data as AgreementCreateInputV1['terms'] };
+}
 
 export async function hireFromForm(
   user: { id: string },
@@ -273,33 +357,10 @@ export async function hireFromForm(
 
   let agreement: HireInput['agreement'] = null;
   if (form.get('withAgreement') === 'on') {
-    const salary = parseEuroInput(text('monthlySalary'));
-    if (salary === null) {
-      return { ok: false, message: 'El salario mensual no es un importe válido.', draft };
-    }
     const startsOn = text('startsOn');
-    const parsed = agreementTermsInputSchema.safeParse({
-      // La primera versión entra en vigor el día que empieza el contrato: en
-      // un alta no hay historia previa que respetar, y pedir dos fechas para
-      // decir lo mismo solo invita a teclear una mal.
-      effectiveFrom: startsOn,
-      monthlySalaryCents: salary,
-      contractedWeeklyMinutes: Number.parseInt(text('contractedWeeklyMinutes'), 10),
-      annualVacationDays: Number.parseInt(text('annualVacationDays'), 10),
-      reason: text('reason') || 'Alta desde la aplicación',
-      // El catálogo de trabajo extra y los complementos se pactan después, en
-      // el acuerdo, apilando una versión. Aquí se registra lo básico.
-      extraWorkTypes: [],
-      supplements: []
-    });
-    if (!parsed.success) {
-      return {
-        ok: false,
-        message: parsed.error.issues[0]?.message ?? 'Revisa las condiciones del contrato.',
-        draft
-      };
-    }
-    agreement = { startsOn, terms: parsed.data as never };
+    const terms = readHireAgreementTerms(form, startsOn);
+    if (!terms.ok) return { ok: false, message: terms.message, draft };
+    agreement = { startsOn, terms: terms.terms };
   }
 
   const result = await hireHouseholdMember(
@@ -319,7 +380,8 @@ export async function hireFromForm(
       name: result.name,
       username: result.username,
       password: result.password,
-      withAgreement: result.agreementId !== null
+      withAgreement: result.agreementId !== null,
+      agreementId: result.agreementId
     }
   };
 }

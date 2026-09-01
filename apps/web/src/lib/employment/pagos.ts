@@ -94,7 +94,7 @@ export function anclaDeMesEnFragmento(hash: string): string | null {
  * mes resuelto. `fullyPaid` no lo cubre a propósito —exige un importe mayor que
  * cero para no llamar «pagada» a una cuenta vacía—, así que se pregunta aparte.
  */
-function closedWithNothingToPay(settlement: SettlementView): boolean {
+export function closedWithNothingToPay(settlement: SettlementView): boolean {
   return settlement.status === 'closed' && parseCents(settlement.transferTotalCents) === 0n;
 }
 

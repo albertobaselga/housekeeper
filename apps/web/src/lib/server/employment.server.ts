@@ -44,6 +44,7 @@ import {
 } from '$lib/employment/model';
 import { can } from '$lib/auth/capabilities';
 import { membershipIn } from '$lib/auth/membership';
+import { readEmployeeCandidates } from './agreement-terms.server';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
@@ -274,12 +275,18 @@ export async function loadEmploymentOverview(
       // Conceptos apuntados a mano (0022) que TODAVÍA esperan decisión: es lo
       // único que la página lista. Se piden por `period_month` —el mes que
       // decidió quien los apuntó— y no por la fecha en que se escribieron: un
-      // concepto de marzo apuntado en abril pertenece a la cuenta de marzo. La
-      // ventana no corta por delante, porque un concepto puede estar imputado a
-      // un mes que aún no ha llegado (elegido a propósito o aplazado por un
-      // cierre); hacia atrás bastan tres meses, porque lo único que puede
-      // quedar viejo es un pendiente que nunca se cerró y el historial se lee
-      // en Pagos.
+      // concepto de marzo apuntado en abril pertenece a la cuenta de marzo.
+      //
+      // SIN VENTANA DE FECHAS, ni por delante ni por detrás. Un concepto puede
+      // estar imputado a un mes que aún no ha llegado (elegido a propósito o
+      // aplazado por un cierre), y hacia atrás la ventana de tres meses que hubo
+      // aquí era un error: se comprobó que un pendiente que nunca se cerró no
+      // está en Pagos —nunca tuvo línea—, ni en el devengo —que sólo mira el mes
+      // en curso—, ni en Hoy, ni en el contador de la portada. Al cuarto mes
+      // salía de la única pantalla donde vivía y no aparecía en ninguna otra.
+      // Como el `not exists` de abajo ya retira lo aplicado y el `status` retira
+      // lo anulado, lo que queda son pendientes vivos: pocos, y todos importan
+      // tengan la edad que tengan.
       //
       // Fuera lo anulado y fuera lo que una nómina CERRADA ya materializó: un
       // adelanto de agosto ya descontado en la nómina de agosto no es un
@@ -302,7 +309,6 @@ export async function loadEmploymentOverview(
            from app.manual_adjustments
           where household_id = $1 and agreement_id = $2
             and status = 'recorded'
-            and period_month >= (date_trunc('month', $3::date) - interval '2 months')::date
             and not exists (
               select 1
                 from app.settlement_lines as linea
@@ -310,10 +316,20 @@ export async function loadEmploymentOverview(
                   on nomina.household_id = linea.household_id
                  and nomina.id = linea.settlement_id
                where linea.household_id = manual_adjustments.household_id
+                 -- Y del MISMO acuerdo. Sin este acote, una línea de la nómina
+                 -- cerrada de otra empleada apuntando a este concepto lo hacía
+                 -- desaparecer de esta lista: la base lo acepta, y aquí es lo
+                 -- que decide si se paga. Todas las demás consultas de este
+                 -- fichero van por household_id + agreement_id; ésta era la
+                 -- excepción. Además, un NOT EXISTS sobre tablas con RLS
+                 -- responde «lo que el lector puede ver» y no «lo que es
+                 -- verdad», así que sin el acote la empleada y la
+                 -- administración veían listas distintas del mismo mes.
+                 and linea.agreement_id = manual_adjustments.agreement_id
                  and linea.manual_adjustment_id = manual_adjustments.id
                  and nomina.status = 'closed')
           order by period_month desc, recorded_at desc`,
-        [householdId, agreement.id, first]
+        [householdId, agreement.id]
       );
 
       // Y aparte, los del MES EN CURSO para el devengo, que necesita otra cosa:
@@ -340,6 +356,9 @@ export async function loadEmploymentOverview(
                      on nomina.household_id = linea.household_id
                     and nomina.id = linea.settlement_id
                   where linea.household_id = manual_adjustments.household_id
+                    -- Mismo acote por acuerdo que arriba, y por lo mismo: la
+                    -- nómina de otra persona no materializa este concepto.
+                    and linea.agreement_id = manual_adjustments.agreement_id
                     and linea.manual_adjustment_id = manual_adjustments.id
                     and nomina.status = 'closed'
                   limit 1) as "settledSettlementId"
@@ -634,15 +653,20 @@ export async function loadEmploymentOverview(
 
 /**
  * La portada de Contrato: primero la persona, luego su expediente. Responde
- * «¿cuánto nos cuesta la casa este mes y cómo va cada una?» con el devengo del
- * mes de CADA acuerdo visible y lo que espera decisión, sin cargar historial
- * de liquidaciones ni vacaciones de nadie. Las consultas van agrupadas por
- * hogar (`= any(ids)`) y se reparten por acuerdo aquí: el número de consultas
- * no crece con el número de empleadas.
+ * las DOS preguntas de quien administra —«¿qué debo?» y «¿cuánto va costando
+ * este mes?»— con la deuda real de cada acuerdo (cuentas CERRADAS con importe
+ * sin pagar) y su devengo del mes, sin cargar historial de liquidaciones ni
+ * vacaciones de nadie. Las consultas van agrupadas por hogar (`= any(ids)`) y
+ * se reparten por acuerdo aquí: el número de consultas no crece con el número
+ * de empleadas.
  *
- * Quién ve qué lo decide la RLS, como en el resto del expediente: la familia
- * no administradora recibe las personas pero ninguna versión salarial, así
- * que sus devengos salen null y la portada dice «importes reservados».
+ * Quién ve qué lo decide la RLS, como en el resto del expediente. `seesAmounts`
+ * se decide por el PAPEL y no por si llegó alguna cifra: deducirlo de los datos
+ * confundía «no puedes verlo» con «su contrato no está en vigor este mes».
+ *
+ * **Con cero acuerdos devuelve una portada vacía, no null.** La casa donde
+ * todavía no trabaja nadie es justo la que necesita el camino al alta, y
+ * devolver null la dejaba sin ninguna pantalla desde la que darla.
  */
 export async function loadEmploymentPortada(
   user: { id: string },
@@ -653,9 +677,17 @@ export async function loadEmploymentPortada(
   if (!pool) return null;
   const period = currentPeriod(now);
   const { first, last } = monthBounds(period);
+  const today = currentLocalDate(now);
 
   try {
-    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      // Mismo corte que el Resumen: los importes los ven quien administra y la
+      // propia empleada. Es una entrada explícita del modelo, no una deducción.
+      const seesAmounts =
+        can(membership.role, 'settlement.close') || can(membership.role, 'payment.confirm.self');
+      // Las personas con acceso y sin contrato en vigor sólo le importan a
+      // quien puede hacer algo con ellas; nadie más las pide.
+      const administra = can(membership.role, 'access.manage');
       const agreementResult = await client.query<AgreementRow>(
         `select agreement.id,
                 agreement.status::text as "status",
@@ -674,8 +706,13 @@ export async function loadEmploymentPortada(
         [householdId]
       );
       const agreements = agreementResult.rows;
-      if (agreements.length === 0) return null;
       const ids = agreements.map((row) => row.id);
+      const candidates = administra ? await readEmployeeCandidates(client, householdId) : [];
+      // La casa donde todavía no trabaja nadie tiene portada igual: es la única
+      // pantalla desde la que se puede dar de alta a la primera persona.
+      if (agreements.length === 0) {
+        return buildPortadaView({ period, seesAmounts, employees: [], candidates });
+      }
 
       const versions = await client.query<AgreementVersionRow & { agreementId: string }>(
         `select agreement_id as "agreementId",
@@ -810,6 +847,54 @@ export async function loadEmploymentPortada(
         pendingCounts.rows.map((row) => [row.agreementId, Number(row.pending)])
       );
 
+      /*
+       * LO QUE SE DEBE DE VERDAD. Una sola consulta agrupada por acuerdo, con
+       * el mismo criterio que ya usa Hoy: cuentas CERRADAS cuyo pendiente sigue
+       * por encima de cero. Fuera quedan, y son decisiones del propietario, el
+       * devengo del mes en curso (previsión, no deuda), la cuenta abierta sin
+       * cerrar y el cobro pagado pendiente de que ella lo confirme, que no es
+       * dinero que la casa deba sino un acuse que le toca a ella.
+       *
+       * El `::text` del `sum` no es cosmético: el dinero no puede pasar por
+       * Number ni una sola vez. Los `count(*)` sí son números, que es lo que
+       * son. La RLS de `settlements` deja estas filas a quien administra y a la
+       * propia empleada, el mismo corte que los importes que ya se enseñan.
+       */
+      const owed = await client.query<{
+        agreementId: string;
+        count: string;
+        pendingCents: string;
+        earliestDueOn: string | null;
+        overdueCount: string;
+      }>(
+        `select settlement.agreement_id as "agreementId",
+                count(*)::text as "count",
+                sum(totals.pending_cents)::text as "pendingCents",
+                min(settlement.due_on)::text as "earliestDueOn",
+                count(*) filter (where settlement.due_on < $3::date)::text as "overdueCount"
+           from app.settlements as settlement
+           join app.settlement_payment_totals as totals
+             on totals.household_id = settlement.household_id
+            and totals.settlement_id = settlement.id
+          where settlement.household_id = $1
+            and settlement.agreement_id = any($2::uuid[])
+            and settlement.status = 'closed'
+            and totals.pending_cents > 0
+          group by settlement.agreement_id`,
+        [householdId, ids, today]
+      );
+      const owedByAgreement = new Map(
+        owed.rows.map((row) => [
+          row.agreementId,
+          {
+            pendingCents: row.pendingCents,
+            count: Number(row.count),
+            earliestDueOn: row.earliestDueOn,
+            overdueCount: Number(row.overdueCount)
+          }
+        ])
+      );
+
       const byAgreement = <T extends { agreementId: string }>(rows: readonly T[]) => {
         const grouped = new Map<string, T[]>();
         for (const row of rows) {
@@ -829,6 +914,8 @@ export async function loadEmploymentPortada(
       const options = buildAgreementOptionViews(agreements);
       return buildPortadaView({
         period,
+        seesAmounts,
+        candidates,
         employees: agreements.map((agreement) => {
           const own = versionsBy.get(agreement.id) ?? [];
           // La misma elección que congela el motor al cerrar: la versión en
@@ -851,7 +938,8 @@ export async function loadEmploymentPortada(
               ),
               adjustments: adjustmentsBy.get(agreement.id) ?? []
             }),
-            pendingCount: pendingByAgreement.get(agreement.id) ?? 0
+            pendingCount: pendingByAgreement.get(agreement.id) ?? 0,
+            owed: owedByAgreement.get(agreement.id) ?? null
           };
         })
       });

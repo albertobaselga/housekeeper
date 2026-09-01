@@ -22,10 +22,13 @@ import {
   employmentTabHref,
   formatCents,
   formatMinutes,
+  lastMeaningfulSettlement,
   parseCents,
   periodLabel,
+  readVacationCarryoverExpiry,
   scheduleMismatchLabel,
   sourceAnchor,
+  vacationCarryoverExpiryLabel,
   vacationRangeLabel,
   type AgreementVersionRow,
   type ManualAdjustmentRow,
@@ -881,6 +884,93 @@ describe('trabajo y gastos pendientes de acción', () => {
   });
 });
 
+describe('la caducidad de los días de vacaciones arrastrados', () => {
+  it('ausente son seis meses, que es lo que se les venía aplicando', () => {
+    // Todas las versiones anteriores a la 0034 tienen `terms` en `{}`: leerlas
+    // como seis meses es lo que hace que la migración no tenga que tocar ni una
+    // fila ya firmada.
+    expect(readVacationCarryoverExpiry({})).toEqual({ mode: 'months', months: 6 });
+    expect(readVacationCarryoverExpiry(null)).toEqual({ mode: 'months', months: 6 });
+    expect(vacationCarryoverExpiryLabel(readVacationCarryoverExpiry({}))).toBe('6 meses de margen');
+  });
+
+  it('lee las dos formas pactadas y las dice en castellano', () => {
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: 'never' } })
+    ).toEqual({ mode: 'never' });
+    expect(vacationCarryoverExpiryLabel({ mode: 'never' })).toBe('Nunca expiran');
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: 'months', months: 12 } })
+    ).toEqual({ mode: 'months', months: 12 });
+    expect(vacationCarryoverExpiryLabel({ mode: 'months', months: 1 })).toBe('1 mes de margen');
+  });
+
+  it('lo que no sea una de las dos formas cae en el defecto, no revienta la pantalla', () => {
+    // La CHECK de la 0034 impide escribir basura ahí, pero una fila anterior a
+    // la restricción tiene que seguir dando una respuesta: la política por
+    // omisión, que es la que de hecho se le aplicaba.
+    expect(readVacationCarryoverExpiry({ vacationCarryoverExpiry: 'seis meses' })).toEqual({
+      mode: 'months',
+      months: 6
+    });
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: 'months', months: 0 } })
+    ).toEqual({ mode: 'months', months: 6 });
+  });
+});
+
+describe('la última cuenta que dice algo', () => {
+  /** Cuenta abierta del mes: sin cerrar, el total vale siempre cero. */
+  const abiertaDeSeptiembre: SettlementRow = {
+    id: 's-sep',
+    periodStart: '2026-09-01',
+    periodEnd: '2026-09-30',
+    dueOn: '2026-09-30',
+    status: 'open',
+    salaryTotalCents: '0',
+    reimbursementTotalCents: '0',
+    transferTotalCents: '0',
+    paidCents: '0',
+    pendingCents: '0',
+    receiptConfirmedAt: null,
+    receiptNote: null
+  };
+  /** Agosto cerrada y sin pagar: 1.200 € que la casa debe. */
+  const agostoSinPagar: SettlementRow = {
+    id: 's-ago',
+    periodStart: '2026-08-01',
+    periodEnd: '2026-08-31',
+    dueOn: '2026-08-31',
+    status: 'closed',
+    salaryTotalCents: '120000',
+    reimbursementTotalCents: '0',
+    transferTotalCents: '120000',
+    paidCents: '0',
+    pendingCents: '120000',
+    receiptConfirmedAt: null,
+    receiptNote: null
+  };
+
+  it('abrir la cuenta del mes NO apaga la deuda del mes anterior', () => {
+    // El montaje exacto del fallo: agosto cerrada con 1.200 € pendientes, y se
+    // empieza septiembre. Antes se elegía la más reciente no anulada —la de
+    // septiembre— y sólo DESPUÉS se le aplicaba la guarda de «abierta y sin
+    // importe», así que devolvía null y la tarjeta desaparecía. El acto más
+    // rutinario del mes escondía una deuda vencida.
+    const views = buildSettlementViews([abiertaDeSeptiembre, agostoSinPagar], [], []);
+    const elegida = lastMeaningfulSettlement(views);
+    expect(elegida?.id).toBe('s-ago');
+    expect(elegida?.pendingLabel).toBe('1.200,00 €');
+  });
+
+  it('salta las anuladas y calla cuando de verdad no hay nada que contar', () => {
+    const anulada: SettlementRow = { ...agostoSinPagar, id: 's-void', status: 'void' };
+    const views = buildSettlementViews([abiertaDeSeptiembre, anulada], [], []);
+    expect(lastMeaningfulSettlement(views)).toBeNull();
+    expect(lastMeaningfulSettlement([])).toBeNull();
+  });
+});
+
 describe('la portada del hogar', () => {
   it('suma la casa en BigInt y dice null —no cero— para quien no tiene devengo', () => {
     const accrual = buildAccrual({
@@ -892,6 +982,7 @@ describe('la portada del hogar', () => {
     });
     const portada = buildPortadaView({
       period: '2026-08',
+      seesAmounts: true,
       employees: [
         { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual, pendingCount: 2 },
         // Su contrato aún no está en vigor este mes: buildAccrual devuelve null
@@ -920,16 +1011,125 @@ describe('la portada del hogar', () => {
     });
   });
 
-  it('sin ninguna cifra visible (familia no administradora), lo dice con seesAmounts', () => {
-    const portada = buildPortadaView({
+  it('seesAmounts es una entrada, no una deducción de que llegara alguna cifra', () => {
+    // Quien administra una casa cuyos contratos empiezan el mes que viene no
+    // tiene NINGÚN devengo, y aun así ve importes: deducirlo de los datos le
+    // echaba la culpa a un permiso que sí tiene.
+    const administra = buildPortadaView({
       period: '2026-08',
+      seesAmounts: true,
       employees: [
         { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 1 }
       ]
     });
-    expect(portada.seesAmounts).toBe(false);
-    expect(portada.totalCents).toBe('0');
-    expect(portada.employees[0]!.pendingLabel).toBe('1 asunto por decidir');
+    expect(administra.seesAmounts).toBe(true);
+    expect(administra.employees[0]!.monthTotalLabel).toBeNull();
+
+    const familia = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: false,
+      employees: [
+        { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 1 }
+      ]
+    });
+    expect(familia.seesAmounts).toBe(false);
+    expect(familia.totalCents).toBe('0');
+    expect(familia.employees[0]!.pendingLabel).toBe('1 asunto por decidir');
+  });
+
+  it('«pendiente» es la deuda de las cuentas cerradas, y sin deuda no hay cifra', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        {
+          agreementId: 'a1',
+          employeeLabel: 'Ana',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          // Dos cuentas cerradas sin pagar del todo, una de ellas vencida.
+          owed: {
+            pendingCents: '145330',
+            count: 2,
+            earliestDueOn: '2026-07-05',
+            overdueCount: 1
+          }
+        },
+        // Sin deuda: null en la etiqueta, para que nadie pinte «0,00 €».
+        { agreementId: 'a2', employeeLabel: 'Bea', active: true, accrual: null, pendingCount: 0 }
+      ]
+    });
+
+    expect(portada.owedTotalCents).toBe('145330');
+    expect(portada.owedTotalLabel).toBe('1.453,30 €');
+    expect(portada.owedCount).toBe(2);
+    expect(portada.anyOverdue).toBe(true);
+    expect(portada.employees[0]).toMatchObject({
+      owedLabel: '1.453,30 €',
+      owedDueLabel: 'Venció el 5 jul 2026',
+      overdue: true
+    });
+    expect(portada.employees[1]).toMatchObject({ owedCents: '0', owedLabel: null, owedDueLabel: null });
+  });
+
+  it('sin deuda ninguna, el total no es «0,00 €» sino la ausencia de cifra', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 0 }
+      ]
+    });
+    expect(portada.owedTotalCents).toBe('0');
+    // La pantalla dice «Al día» justamente porque aquí no hay etiqueta.
+    expect(portada.owedTotalLabel).toBeNull();
+    expect(portada.anyOverdue).toBe(false);
+  });
+
+  it('suma la deuda de varias personas en BigInt, por encima de 2^53', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        {
+          agreementId: 'a1',
+          employeeLabel: 'Ana',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          owed: { pendingCents: '9007199254740993', count: 1, earliestDueOn: '2026-09-05', overdueCount: 0 }
+        },
+        {
+          agreementId: 'a2',
+          employeeLabel: 'Bea',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          owed: { pendingCents: '1', count: 1, earliestDueOn: '2026-09-05', overdueCount: 0 }
+        }
+      ]
+    });
+    expect(portada.owedTotalCents).toBe('9007199254740994');
+    expect(portada.employees[0]!.owedDueLabel).toBe('Vence el 5 sep 2026');
+  });
+
+  it('la que vuelve a la casa no es la que acaba de llegar', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [],
+      candidates: [
+        { membershipId: 'm1', name: 'Ana', previousEndedOn: '2026-06-30', returning: true },
+        { membershipId: 'm2', name: 'Bea', previousEndedOn: null, returning: false }
+      ]
+    });
+    expect(portada.candidates[0]!.detailLabel).toBe(
+      'Volvió a la casa · su contrato anterior terminó el 30 jun 2026'
+    );
+    expect(portada.candidates[1]!.detailLabel).toBe(
+      'Acaba de llegar · todavía no se ha pactado ningún contrato'
+    );
   });
 });
 

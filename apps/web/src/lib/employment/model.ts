@@ -810,13 +810,55 @@ export interface PortadaEmployeeView {
   pendingCount: number;
   /** «Nada pendiente» / «1 asunto por decidir» / «N asuntos por decidir». */
   pendingLabel: string;
+  /**
+   * La deuda REAL, que no es el devengo: cuentas CERRADAS con importe sin
+   * pagar. '0' cuando no se debe nada.
+   */
+  owedCents: string;
+  /** null cuando no se debe nada, para que nadie pinte un «0,00 €». */
+  owedLabel: string | null;
+  owedCount: number;
+  /** «Vence el 5 sep 2026» / «Venció el 5 ago 2026». null sin deuda. */
+  owedDueLabel: string | null;
+  overdue: boolean;
 }
 
 /**
- * La portada de Contrato cuando el hogar emplea a varias personas: la cuenta
- * total de la casa este mes y una tarjeta por empleada. `seesAmounts` es
- * false cuando NINGUNA cifra llegó (familia no administradora): la portada
- * enseña entonces a las personas y dice que los importes están reservados.
+ * Deuda de una persona tal y como la cuenta la base: sólo cuentas cerradas con
+ * pendiente. El importe viaja como cadena de céntimos porque el dinero nunca
+ * pasa por Number; los RECUENTOS sí son números, que es lo que son.
+ */
+export interface PortadaOwedInput {
+  pendingCents: string;
+  count: number;
+  earliestDueOn: string | null;
+  overdueCount: number;
+}
+
+/**
+ * Alguien que ya tiene acceso a la casa y todavía no tiene contrato en vigor:
+ * la que se dio de alta sin pactarlo y aquella cuyo contrato terminó. **No son
+ * lo mismo y la portada no las trata igual**: volver a la casa y llegar por
+ * primera vez son dos historias distintas, y quien administra decide diferente
+ * según cuál sea.
+ */
+export interface PortadaCandidateView {
+  membershipId: string;
+  name: string;
+  /** Fin del último contrato en esta casa, o null si nunca tuvo ninguno. */
+  previousEndedOn: string | null;
+  /** true = vuelve a la casa; false = acaba de llegar. */
+  returning: boolean;
+  detailLabel: string;
+}
+
+/**
+ * La portada de Contrato: la cuenta de la casa este mes, lo que se debe de
+ * verdad y una línea por persona. `seesAmounts` es una ENTRADA explícita, no
+ * una deducción de que haya llegado alguna cifra: la ausencia por permiso y la
+ * ausencia por calendario son verdades distintas, y deducirla hacía que a quien
+ * administra una casa cuyos contratos empiezan el mes que viene se le culpara
+ * de un permiso que sí tiene.
  */
 export interface EmploymentPortadaView {
   period: string;
@@ -829,7 +871,14 @@ export interface EmploymentPortadaView {
   reimbursementCents: string;
   reimbursementLabel: string;
   withReimbursements: boolean;
+  /** Deuda de la casa entera. '0' cuando no se debe nada. */
+  owedTotalCents: string;
+  /** null cuando no se debe nada: el encabezado dice «Al día», no «0,00 €». */
+  owedTotalLabel: string | null;
+  owedCount: number;
+  anyOverdue: boolean;
   employees: PortadaEmployeeView[];
+  candidates: PortadaCandidateView[];
 }
 
 /**
@@ -837,27 +886,47 @@ export interface EmploymentPortadaView {
  * `buildAccrual`. El dinero se suma en BigInt, nunca en Number, y un acuerdo
  * sin devengo (contrato aún no en vigor, o términos que la RLS ocultó) suma
  * cero y lo dice con un null, no con un 0,00 € inventado.
+ *
+ * El devengo del mes en curso NO se suma nunca a la deuda: son dos preguntas
+ * distintas —«¿cuánto va costando?» y «¿qué debo?»— y mezclarlas haría que la
+ * cuenta mintiera.
  */
 export function buildPortadaView(input: {
   period: string;
+  /** Quién puede ver importes. Se decide por el papel, no por los datos. */
+  seesAmounts: boolean;
   employees: readonly {
     agreementId: string;
     employeeLabel: string;
     active: boolean;
     accrual: AccrualView | null;
     pendingCount: number;
+    owed?: PortadaOwedInput | null;
+  }[];
+  candidates?: readonly {
+    membershipId: string;
+    name: string;
+    previousEndedOn: string | null;
+    returning: boolean;
   }[];
 }): EmploymentPortadaView {
   let salary = 0n;
   let reimbursement = 0n;
-  let anyAmount = false;
+  let owedTotal = 0n;
+  let owedCount = 0;
+  let anyOverdue = false;
   const employees: PortadaEmployeeView[] = input.employees.map((employee) => {
     const accrual = employee.accrual;
     if (accrual) {
-      anyAmount = true;
       salary += BigInt(accrual.salaryCents);
       reimbursement += BigInt(accrual.reimbursementCents);
     }
+    const owed = employee.owed ?? null;
+    const owedCents = owed ? parseCents(owed.pendingCents) : 0n;
+    owedTotal += owedCents;
+    owedCount += owed?.count ?? 0;
+    const overdue = (owed?.overdueCount ?? 0) > 0;
+    if (overdue) anyOverdue = true;
     return {
       agreementId: employee.agreementId,
       employeeLabel: employee.employeeLabel,
@@ -870,14 +939,22 @@ export function buildPortadaView(input: {
           ? 'Nada pendiente'
           : employee.pendingCount === 1
             ? '1 asunto por decidir'
-            : `${employee.pendingCount} asuntos por decidir`
+            : `${employee.pendingCount} asuntos por decidir`,
+      owedCents: owedCents.toString(),
+      owedLabel: owedCents > 0n ? formatCents(owedCents.toString()) : null,
+      owedCount: owed?.count ?? 0,
+      owedDueLabel:
+        owedCents > 0n && owed?.earliestDueOn
+          ? `${overdue ? 'Venció' : 'Vence'} el ${dateLabel(owed.earliestDueOn)}`
+          : null,
+      overdue
     };
   });
   const total = salary + reimbursement;
   return {
     period: input.period,
     periodLabel: periodLabel(input.period),
-    seesAmounts: anyAmount,
+    seesAmounts: input.seesAmounts,
     totalCents: total.toString(),
     totalLabel: formatCents(total.toString()),
     salaryCents: salary.toString(),
@@ -885,7 +962,22 @@ export function buildPortadaView(input: {
     reimbursementCents: reimbursement.toString(),
     reimbursementLabel: formatCents(reimbursement.toString()),
     withReimbursements: reimbursement !== 0n,
-    employees
+    owedTotalCents: owedTotal.toString(),
+    owedTotalLabel: owedTotal > 0n ? formatCents(owedTotal.toString()) : null,
+    owedCount,
+    anyOverdue,
+    employees,
+    candidates: (input.candidates ?? []).map((candidate) => ({
+      membershipId: candidate.membershipId,
+      name: candidate.name,
+      previousEndedOn: candidate.previousEndedOn,
+      returning: candidate.returning,
+      detailLabel: candidate.returning
+        ? candidate.previousEndedOn
+          ? `Volvió a la casa · su contrato anterior terminó el ${dateLabel(candidate.previousEndedOn)}`
+          : 'Volvió a la casa · su contrato anterior ya no está en vigor'
+        : 'Acaba de llegar · todavía no se ha pactado ningún contrato'
+    }))
   };
 }
 
@@ -1602,6 +1694,34 @@ function paymentStateLabel(row: SettlementRow, fullyPaid: boolean, anyPayment: b
   return 'Pendiente de pago';
 }
 
+/**
+ * La última cuenta que de verdad dice algo, para la tarjeta del Resumen.
+ *
+ * Se SALTAN, sin parar en ellas, dos clases de fila: las anuladas —el día que
+ * exista anular una cuenta, la anulada taparía la última real— y la cuenta
+ * recién abierta sin un solo importe, que repite lo que el devengo del mes ya
+ * cuenta mejor y con su desglose entero.
+ *
+ * Saltar y no parar es todo el asunto. Elegir la más reciente no anulada y
+ * DESPUÉS aplicarle la guarda apagaba la tarjeta entera al abrir la cuenta del
+ * mes: una cuenta abierta vale siempre cero, porque el total se calcula al
+ * cerrar. Agosto cerrado con 1.200 € sin pagar dejaba de verse en cuanto se
+ * empezaba septiembre, y empezar el mes es el acto más rutinario que hay.
+ *
+ * La lista llega ya ordenada de la más reciente a la más antigua.
+ */
+export function lastMeaningfulSettlement(
+  settlements: readonly SettlementView[]
+): SettlementView | null {
+  return (
+    settlements.find(
+      (row) =>
+        row.status !== 'void' &&
+        !(row.status === 'open' && parseCents(row.transferTotalCents) === 0n)
+    ) ?? null
+  );
+}
+
 export function buildSettlementViews(
   settlements: readonly SettlementRow[],
   lines: readonly SettlementLineRow[],
@@ -1760,6 +1880,46 @@ export function annualVacationDaysInForce(
   const ordered = [...rows].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
   const inForce = ordered.filter((row) => row.effectiveFrom <= onDate).at(-1);
   return (inForce ?? ordered[0])?.annualVacationDays ?? 0;
+}
+
+/**
+ * La política de caducidad de los días arrastrados, leída de
+ * `agreement_versions.terms` (migración 0034, apartado 4.2 del diseño).
+ *
+ * **Ausente son seis meses**, y por eso ningún contrato firmado antes de la
+ * 0034 hubo que tocarlo. Se lee con tolerancia a propósito: lo que la base
+ * admite lo garantiza su CHECK de forma, y una fila anterior —o de una
+ * instalación que se saltara la restricción— tiene que seguir dando la
+ * respuesta por omisión en vez de reventar la pantalla.
+ */
+export type VacationCarryoverExpiry = { mode: 'months'; months: number } | { mode: 'never' };
+
+export const DEFAULT_VACATION_CARRYOVER_MONTHS = 6;
+
+export function readVacationCarryoverExpiry(terms: unknown): VacationCarryoverExpiry {
+  const raw =
+    terms && typeof terms === 'object'
+      ? (terms as Record<string, unknown>).vacationCarryoverExpiry
+      : null;
+  if (raw && typeof raw === 'object') {
+    const policy = raw as Record<string, unknown>;
+    if (policy.mode === 'never') return { mode: 'never' };
+    if (
+      policy.mode === 'months' &&
+      typeof policy.months === 'number' &&
+      Number.isInteger(policy.months) &&
+      policy.months >= 1
+    ) {
+      return { mode: 'months', months: policy.months };
+    }
+  }
+  return { mode: 'months', months: DEFAULT_VACATION_CARRYOVER_MONTHS };
+}
+
+/** «Nunca expiran» / «6 meses de margen», para leerlo sin traducir nada. */
+export function vacationCarryoverExpiryLabel(policy: VacationCarryoverExpiry): string {
+  if (policy.mode === 'never') return 'Nunca expiran';
+  return `${policy.months} ${policy.months === 1 ? 'mes' : 'meses'} de margen`;
 }
 
 function dayCountLabel(days: number): string {

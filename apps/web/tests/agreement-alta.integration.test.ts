@@ -172,8 +172,16 @@ describe.runIf(Boolean(adminUrl))('alta del acuerdo desde cero, con su catálogo
     const overview = await loadAgreementAdmin(ADMIN_USER, HOUSEHOLD, appPool, TODAY);
     expect(overview).not.toBeNull();
     expect(overview!.agreements).toEqual([]);
+    // Acaba de llegar: nunca tuvo contrato en esta casa. La distinción es de la
+    // portada, que ofrece «pactar su contrato» diciendo cuál de las dos
+    // historias es —volver a la casa no es lo mismo que llegar por primera vez—.
     expect(overview!.candidates).toEqual([
-      { membershipId: EMPLOYEE_MEMBERSHIP, name: 'Prueba Empleada' }
+      {
+        membershipId: EMPLOYEE_MEMBERSHIP,
+        name: 'Prueba Empleada',
+        previousEndedOn: null,
+        returning: false
+      }
     ]);
 
     const mine = await loadEmploymentOverview(EMPLOYEE_USER, HOUSEHOLD, appPool, TODAY);

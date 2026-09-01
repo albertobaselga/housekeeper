@@ -34,9 +34,9 @@ const AGREEMENT = '12000000-0000-4000-8000-000000000001';
 const EMPLOYEE_M = '11000000-0000-4000-8000-000000000003';
 const ADMIN_M = '11000000-0000-4000-8000-000000000001';
 
-// Reloj inyectado: el montaje habla de meses concretos y la ventana de la
-// consulta son tres meses. Con el reloj de verdad, esta suite diría cosas
-// distintas según el día en que se ejecute.
+// Reloj inyectado: el montaje habla de meses concretos —cuál es «el mes en
+// curso» decide qué entra en el devengo—. Con el reloj de verdad, esta suite
+// diría cosas distintas según el día en que se ejecute.
 const NOW = new Date('2026-09-15T10:00:00Z');
 const NOMINA_SEPTIEMBRE = 'ac000000-0000-4000-8000-000000000002';
 
@@ -78,7 +78,7 @@ describe.runIf(Boolean(adminUrl))('conceptos a mano: a la página solo llega lo 
       // cerrada de julio; uno del mes en curso sin aplicar; otro del mes en
       // curso YA aplicado por la nómina de septiembre, que se cerró el día 12
       // con medio mes por delante; uno anulado; uno imputado a diciembre; y uno
-      // de abril que ya se salió de la ventana de tres meses.
+      // de abril que nunca se cerró y que sigue esperando decisión.
       await admin.query('begin');
       await admin.query('set local row_security = off');
       await admin.query(
@@ -176,19 +176,28 @@ describe.runIf(Boolean(adminUrl))('conceptos a mano: a la página solo llega lo 
     await appPool?.end();
   });
 
-  it('lo que ya cerró una nómina, lo anulado y lo viejo no llegan a la página', async () => {
+  it('lo que ya cerró una nómina y lo anulado no llegan; lo viejo sin cerrar SÍ', async () => {
     const overview = await loadEmploymentOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
     expect(overview).not.toBeNull();
 
     const etiquetas = overview!.manualAdjustments.map((row) => row.label);
     // Queda exactamente lo que sigue esperando una decisión: el pendiente del
-    // mes y el que se imputó a un mes que aún no ha llegado, que todavía puede
-    // anularse antes de que llegue.
-    expect(etiquetas).toEqual(['IT Imputado a diciembre', 'IT Pendiente de aplicar']);
+    // mes, el que se imputó a un mes que aún no ha llegado —que todavía puede
+    // anularse antes de que llegue— y el de abril que nunca se cerró.
+    //
+    // El de abril es el que cambió de bando. Con la ventana de tres meses se
+    // caía de aquí, y no aparecía en ninguna otra parte: no está en Pagos
+    // (nunca tuvo línea), ni en el devengo (que sólo mira el mes en curso), ni
+    // en Hoy, ni en el contador de la portada. Al cuarto mes desaparecía de la
+    // aplicación entera sin que nadie hubiera decidido nada sobre él.
+    expect(etiquetas).toEqual([
+      'IT Imputado a diciembre',
+      'IT Pendiente de aplicar',
+      'IT Viejo sin cerrar'
+    ]);
     expect(etiquetas).not.toContain('IT Adelanto aplicado');
     expect(etiquetas).not.toContain('IT Aplicado en el mes en curso');
     expect(etiquetas).not.toContain('IT Anulado');
-    expect(etiquetas).not.toContain('IT Viejo sin cerrar');
   });
 
   it('pero el devengo del mes sigue contando lo que la nómina de este mismo mes ya pagó', async () => {
@@ -224,7 +233,8 @@ describe.runIf(Boolean(adminUrl))('conceptos a mano: a la página solo llega lo 
     const overview = await loadEmploymentOverview(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
     expect(overview!.manualAdjustments.map((row) => row.label)).toEqual([
       'IT Imputado a diciembre',
-      'IT Pendiente de aplicar'
+      'IT Pendiente de aplicar',
+      'IT Viejo sin cerrar'
     ]);
   });
 });
