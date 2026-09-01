@@ -217,7 +217,9 @@
                   <strong class="cifra pequena">{row.amountLabel}</strong>
                   <span class="mes-estado">
                     <span class="status-chip {row.chipTone}">{row.chipLabel}</span>
-                    <small>{row.supportLine}</small>
+                    <!-- Un mes que no tiene nada que añadir a su distintivo no
+                         deja ni el hueco: el <small> no llega a existir. -->
+                    {#if row.supportLine}<small>{row.supportLine}</small>{/if}
                   </span>
                 </summary>
                 <div class="ledger-list">
@@ -339,4 +341,13 @@
     grid-column: 1 / -1;
   }
   .mes[open] > summary { border-bottom: 1px solid var(--line); }
+  /* El tono de «esto ya está y no pide nada», que la casa aún no tenía: el mes
+     cerrado en el que no hubo nada que transferir. Mismo apagado que el
+     distintivo de los términos de la Guía; ni ámbar, que anunciaría una deuda
+     inexistente, ni verde, que celebraría un cobro que nadie hizo. */
+  .status-chip.neutral {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink-soft);
+  }
 </style>

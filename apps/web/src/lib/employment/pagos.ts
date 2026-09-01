@@ -24,8 +24,15 @@ import { parseCents, type SettlementView } from './model';
  *    px dejaban de caber tres en una pantalla.
  */
 
-/** Tonos que ya existen para `.status-chip`; no se inventa ninguno nuevo. */
-export type PagoChipTone = 'success' | 'warning';
+/**
+ * Los tres tonos del distintivo. `success` y `warning` los sirve `app.css`;
+ * `neutral` lo pinta la página con los tokens de siempre, porque la casa no
+ * tenía todavía un color para «esto ya está y no pide nada» y el ámbar de
+ * aviso no vale: en una tabla plegada el distintivo es lo primero que se lee
+ * de cada mes, y teñir de alarma un mes resuelto es contarle al ojo lo
+ * contrario de lo que dice el texto.
+ */
+export type PagoChipTone = 'success' | 'warning' | 'neutral';
 
 export interface PagoMesRow {
   /** Clave del `{#each}` y del ancla: el identificador de la liquidación. */
@@ -81,6 +88,16 @@ export function anclaDeMesEnFragmento(hash: string): string | null {
   return /^cuenta-.+/.test(id) ? id : null;
 }
 
+/**
+ * Un mes cerrado en el que no hubo nada que transferir: todo se compensó, o no
+ * hubo devengo. No es una rareza de laboratorio y no es una deuda a cero: es un
+ * mes resuelto. `fullyPaid` no lo cubre a propósito —exige un importe mayor que
+ * cero para no llamar «pagada» a una cuenta vacía—, así que se pregunta aparte.
+ */
+function closedWithNothingToPay(settlement: SettlementView): boolean {
+  return settlement.status === 'closed' && parseCents(settlement.transferTotalCents) === 0n;
+}
+
 /** El último pago por fecha valor, que es el que deja la cuenta saldada. */
 function lastPaymentLabel(settlement: SettlementView): string | null {
   const ordered = [...settlement.payments].sort((left, right) =>
@@ -92,9 +109,11 @@ function lastPaymentLabel(settlement: SettlementView): string | null {
 function supportLine(settlement: SettlementView): string {
   if (settlement.status === 'void') return 'Anulada: ya no cuenta';
   if (settlement.status === 'open') return `Vence el ${settlement.dueOnLabel}`;
-  // Un mes cerrado sin nada que transferir no vence ni queda a deber: no hay
-  // nada que pagar. Sin esta rama la fila pediría un pago de 0,00 €.
-  if (parseCents(settlement.transferTotalCents) === 0n) return 'Cerrada sin importe que pagar';
+  // Un mes sin nada que transferir no vence ni queda a deber, así que no se le
+  // anuncia un plazo que no reclama a nadie. Lo dice entero el distintivo
+  // («Cerrada · nada que pagar») y la línea de apoyo no repite al distintivo:
+  // viaja vacía y la plantilla no llega a pintarla.
+  if (closedWithNothingToPay(settlement)) return '';
   if (!settlement.fullyPaid) {
     return settlement.payments.length > 0
       ? `Quedan ${settlement.pendingLabel} · vence el ${settlement.dueOnLabel}`
@@ -102,6 +121,18 @@ function supportLine(settlement: SettlementView): string {
   }
   const paidOn = lastPaymentLabel(settlement);
   return paidOn === null ? 'Pagada' : `Pagada el ${paidOn}`;
+}
+
+/**
+ * El color del distintivo, que es lo primero que se ve de cada fila.
+ *
+ * Un mes cerrado sin nada que transferir no va en ámbar: el ámbar de esta casa
+ * significa «esto te espera», y ahí no espera nada. Tampoco en verde, que es el
+ * acuse de un cobro confirmado y aquí no hubo ni pago ni cobro que celebrar.
+ */
+function chipTone(settlement: SettlementView): PagoChipTone {
+  if (closedWithNothingToPay(settlement)) return 'neutral';
+  return settlement.fullyPaid && settlement.receiptConfirmed ? 'success' : 'warning';
 }
 
 /**
@@ -122,12 +153,13 @@ export function buildPagoMesRows(input: {
       settlement,
       periodLabel: settlement.periodLabel,
       chipLabel: settlement.paymentStateLabel,
-      chipTone:
-        settlement.fullyPaid && settlement.receiptConfirmed
-          ? ('success' as const)
-          : ('warning' as const),
+      chipTone: chipTone(settlement),
       amountLabel: congelada ? settlement.transferTotalLabel : '',
       supportLine: supportLine(settlement),
+      // El documento se ofrece para toda cuenta ya cerrada, también para la de
+      // un mes sin un solo concepto: es la constancia de que ese mes se cerró y
+      // el propio PDF lo dice con todas las letras («Sin conceptos registrados
+      // en este mes»). Ahí el enlace no promete dinero, promete el papel.
       documentHref: congelada
         ? `/api/v1/households/${input.householdId}/settlements/${settlement.id}/documento`
         : null,

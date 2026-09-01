@@ -151,14 +151,52 @@ describe('la línea de apoyo dice lo que el chip no dice', () => {
     expect(row.receiptNote).toBe('Recibido completo');
   });
 
-  it('un mes cerrado sin nada que transferir no queda «sin pagar»', () => {
+});
+
+// Pasa cuando todo el mes se compensó o cuando no hubo devengo. Con la tabla
+// plegada, el distintivo de esa fila es lo primero que se lee del mes, así que
+// no puede anunciar una deuda que no existe ni un plazo que no reclama a nadie.
+describe('un mes cerrado sin nada que transferir', () => {
+  const vacio = () =>
+    fila({
+      transferTotalCents: '0',
+      transferTotalLabel: '0,00 €',
+      pendingCents: '0',
+      pendingLabel: '0,00 €',
+      paymentStateLabel: 'Cerrada · nada que pagar'
+    });
+
+  it('no se pinta en el ámbar de lo que reclama algo, ni en el verde del cobro', () => {
+    expect(vacio().chipTone).toBe('neutral');
+  });
+
+  it('no le anuncia un vencimiento: el distintivo ya lo dice entero', () => {
+    expect(vacio().supportLine).toBe('');
+  });
+
+  it('sigue enseñando su importe y su documento, que es la constancia del cierre', () => {
+    const row = vacio();
+    expect(row.amountLabel).toBe('0,00 €');
+    expect(row.documentHref).toBe(`/api/v1/households/${HOGAR}/settlements/s-1/documento`);
+  });
+
+  it('un mes con importe pendiente sí sigue reclamando', () => {
+    expect(fila().chipTone).toBe('warning');
+    expect(fila().supportLine).toBe('Vence el 31 de agosto de 2026');
+  });
+
+  it('una cuenta abierta a cero conserva su vencimiento: ahí sí queda mes por delante', () => {
     const row = fila({
+      status: 'open',
+      statusLabel: 'Abierta',
+      paymentStateLabel: 'Periodo abierto',
       transferTotalCents: '0',
       transferTotalLabel: '0,00 €',
       pendingCents: '0',
       pendingLabel: '0,00 €'
     });
-    expect(row.supportLine).toBe('Cerrada sin importe que pagar');
+    expect(row.supportLine).toBe('Vence el 31 de agosto de 2026');
+    expect(row.chipTone).toBe('warning');
   });
 });
 
