@@ -57,6 +57,7 @@ export type AggregateType =
   | "diner"
   | "expense"
   | "extra_work"
+  | "finance"
   | "food"
   | "ics_feed"
   | "leave_request"

@@ -16,6 +16,7 @@ import {
   commandEnvelopeSchema,
   extraWorkCommandPayloadSchema,
   extraWorkTypeInputSchema,
+  financeCommandPayloadSchema,
   recurringSupplementInputSchema,
   retiredRoutineUpsertPayloadSchema,
   routineUpsertPayloadSchema,
@@ -482,5 +483,50 @@ describe("alta de rutina: las dos formas conviven (§3.4)", () => {
     // Y tampoco es la forma vieja: el comando solo debe dar
     // `routine_cadence_format_retired` cuando de verdad lo sea.
     expect(retiredRoutineUpsertPayloadSchema.safeParse(identity).success).toBe(false);
+  });
+});
+
+describe("comandos de finanzas (fase 1: concesión)", () => {
+  it("acepta los dos kinds congelados y rechaza cualquier otro", () => {
+    expect(
+      financeCommandPayloadSchema.parse({
+        kind: "finance.grant.write",
+        membershipId: "11000000-0000-4000-8000-000000000001",
+      }),
+    ).toEqual({
+      kind: "finance.grant.write",
+      membershipId: "11000000-0000-4000-8000-000000000001",
+    });
+    expect(
+      financeCommandPayloadSchema.parse({
+        kind: "finance.revoke.write",
+        membershipId: "11000000-0000-4000-8000-000000000001",
+      }).kind,
+    ).toBe("finance.revoke.write");
+    expect(() =>
+      financeCommandPayloadSchema.parse({
+        kind: "finance.account.update",
+        membershipId: "11000000-0000-4000-8000-000000000001",
+      }),
+    ).toThrow();
+  });
+
+  it("el sobre de sync acepta aggregateType finance", () => {
+    expect(
+      commandEnvelopeSchema.parse({
+        apiVersion: API_VERSION,
+        operationId: "99999999-0000-4000-8000-000000000001",
+        householdId: "10000000-0000-4000-8000-000000000001",
+        schemaVersion: 1,
+        aggregateType: "finance",
+        aggregateId: null,
+        baseRevision: null,
+        occurredAt: "2026-08-31T10:00:00.000Z",
+        payload: {
+          kind: "finance.grant.write",
+          membershipId: "11000000-0000-4000-8000-000000000001",
+        },
+      }).aggregateType,
+    ).toBe("finance");
   });
 });

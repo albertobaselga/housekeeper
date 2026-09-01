@@ -39,6 +39,7 @@ export const commandEnvelopeSchema = z.object({
     "diner",
     "expense",
     "extra_work",
+    "finance",
     "food",
     "ics_feed",
     "leave_request",
@@ -518,6 +519,26 @@ export const membershipRevokePayloadSchema = z.object({
 export const membershipCommandPayloadSchema = z.discriminatedUnion("action", [
   membershipSetExpiryPayloadSchema,
   membershipRevokePayloadSchema,
+]);
+
+/**
+ * Concesión del módulo Finanzas (spec §4): `kind` congelado con los nombres
+ * canónicos del doc de interfaces. Las fases posteriores amplían esta unión
+ * con el resto de comandos `finance.*`.
+ */
+export const financeGrantPayloadSchema = z.object({
+  kind: z.literal("finance.grant.write"),
+  membershipId: uuidSchema,
+});
+
+export const financeRevokePayloadSchema = z.object({
+  kind: z.literal("finance.revoke.write"),
+  membershipId: uuidSchema,
+});
+
+export const financeCommandPayloadSchema = z.discriminatedUnion("kind", [
+  financeGrantPayloadSchema,
+  financeRevokePayloadSchema,
 ]);
 
 export const wikiPageCommandPayloadSchema = z.discriminatedUnion("action", [
