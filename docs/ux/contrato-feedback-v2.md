@@ -171,13 +171,27 @@ pregunta quien está a mitad de año decidiendo si puede dar unos días.
 Se añade el devengo proporcional dentro del año de contrato en curso:
 
 ```
-devengado = ceil(derecho del año × días transcurridos ÷ días del año de contrato)
+devengado = ceil(derecho del año × días transcurridos ÷ días que el acuerdo cubre de ese año)
 ```
 
 contando los días naturales desde el inicio del año de contrato hasta la fecha,
 ambos incluidos, y sobre el derecho **ya prorrateado** si es el último año de un
 contrato que termina. El redondeo va hacia arriba, a favor de quien trabaja, que
 es la regla que el módulo ya declara para el prorrateo.
+
+**Se divide por los días que el acuerdo cubre, no por los del año entero**, y la
+diferencia sólo aparece en el último año de un contrato que termina a media
+anualidad —pero ahí es grande—. El derecho de ese año ya viene prorrateado por
+el final del contrato; dividir además por el año completo lo descontaría **dos
+veces**, y quien trabajó hasta su último día no llegaría nunca a devengar el
+derecho que se le reconoce. Con un contrato que acaba el 30 de junio y diez días
+de derecho, al 1 de mayo el reparto correcto son cinco días y la división por el
+año entero daría dos.
+
+*(Esta línea se corrigió el 1 de septiembre de 2026: el documento decía «días del
+año de contrato» y el código, con razón, divide por los días cubiertos. Queda
+anotado porque es una cifra que acaba en dinero y alguien la comprobará dentro de
+dos años.)*
 
 **Dos cifras que no se pueden confundir**, y de las que sale el único error
 serio posible aquí:

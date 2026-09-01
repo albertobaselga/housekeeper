@@ -187,12 +187,23 @@ Cubre los puntos 7 y 8. Fuente: `inv-3.md` e `inv-5.md`.
    camino llamado **«Cambiar las condiciones»** que explica que se apilan con
    fecha de aplicación, y el historial de versiones plegado. El `h1` sigue siendo
    «Condiciones del contrato» (lo esperan `app-title.ts` y dos pruebas).
-8. Entre las condiciones aparece **el importe por día de vacaciones no
-   disfrutado** (apartado 4.4 del diseño): obligatorio en «Cambiar las
-   condiciones», **opcional en el alta** —como ya lo son el catálogo de trabajo
-   extra y los complementos—, y cuando no está pactado se dice que no está, sin
-   enseñar un cero. La columna la crea la tarea E; coordina con ella el nombre
-   antes de escribir el formulario y no te lo inventes.
+8. **Las dos condiciones nuevas del contrato, con su migración `0034`**, que se
+   mueven aquí desde la tarea E: son condiciones pactadas, y quien rediseña la
+   pantalla del contrato es quien tiene que poder pactarlas.
+   - `app.agreement_versions.unused_vacation_day_rate_cents` — el importe por
+     día de vacaciones no disfrutado (apartado 4.4 del diseño). `bigint`,
+     `CHECK (>= 0)`, **NULLABLE**: vacía significa «no se pactó», que es la
+     verdad de los contratos ya firmados, y un cero por omisión dejaría escrito
+     en una tabla inmutable que se acordó pagar cero euros por día. El trigger
+     `enforce_agreement_version_append_only` no enumera columnas —sólo prohíbe
+     todo lo que no sea INSERT—, así que añadirla no obliga a reescribirlo.
+   - La **política de caducidad** de los días arrastrados en
+     `agreement_versions.terms` (apartado 4.2): seis meses por omisión, otro
+     número de meses, o «nunca expiran». Ausente = seis meses, así que ningún
+     contrato existente se toca.
+   Las dos son **obligatorias en «Cambiar las condiciones» y opcionales en el
+   alta**, como ya lo son el catálogo de trabajo extra y los complementos.
+   Cuando la tarifa no está pactada se dice que no está: nunca un cero.
 
 ---
 
