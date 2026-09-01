@@ -6,8 +6,8 @@ if (( $# == 0 )); then
   exit 64
 fi
 
-test_output="$(mktemp -t casaclara-tests.XXXXXX)"
-plain_output="$(mktemp -t casaclara-tests-plain.XXXXXX)"
+test_output="$(mktemp -t housekeeper-tests.XXXXXX)"
+plain_output="$(mktemp -t housekeeper-tests-plain.XXXXXX)"
 trap 'rm -f "${test_output}" "${plain_output}"' EXIT HUP INT TERM
 
 set +e

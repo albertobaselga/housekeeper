@@ -1,4 +1,4 @@
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import type { ContactKind } from './kinds';
@@ -7,7 +7,7 @@ export type { ContactKind };
 
 /**
  * Constructores puros de envelopes del agregado `contact` (payloads CONGELADOS
- * de contactCommandPayloadSchema en @casa-clara/contracts/schemas: upsert y
+ * de contactCommandPayloadSchema en @housekeeper/contracts/schemas: upsert y
  * archive). La validación zod vive en los tests y en el servidor, nunca en el
  * bundle del navegador. `operationId`/`occurredAt` son inyectables para tests
  * deterministas (mismo patrón que $lib/food/commands).

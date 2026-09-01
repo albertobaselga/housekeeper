@@ -12,10 +12,10 @@
 //     siempre (verifica la firma del paquete offline). El troceo de rolldown
 //     reparte por ALCANZABILIDAD de módulo, no por binding usado: basta con que
 //     algo del arranque importe un módulo para que sus tablas viajen enteras.
-//     Por eso viven en `@casa-clara/contracts/capabilities`, sin reexport desde
+//     Por eso viven en `@housekeeper/contracts/capabilities`, sin reexport desde
 //     `index.ts`, y por eso esto falla si reaparecen.
 //
-// El mapa módulo→trozo lo escribe el plugin `casa-clara:client-module-map` de
+// El mapa módulo→trozo lo escribe el plugin `housekeeper:client-module-map` de
 // `vite.config.ts`. Es lo que permite señalar al culpable en vez de dejar un
 // número que sube sin explicación.
 
@@ -33,8 +33,8 @@ const FORBIDDEN_IN_INITIAL_GRAPH = [
     why:
       'la matriz de roles y capacidades son ~1,2 kB que el cliente no usa: el servidor manda\n' +
       '    las capacidades de la sesión ya resueltas en AppContextV1. Impórtala de\n' +
-      '    "@casa-clara/contracts/capabilities" allí donde de verdad haga falta y NO la reexportes\n' +
-      '    desde "@casa-clara/contracts": la arista de importación basta para arrastrarla.'
+      '    "@housekeeper/contracts/capabilities" allí donde de verdad haga falta y NO la reexportes\n' +
+      '    desde "@housekeeper/contracts": la arista de importación basta para arrastrarla.'
   }
 ];
 
@@ -81,9 +81,9 @@ const initialBytes = await totalBytes(visited);
 // parcial) el presupuesto sigue midiéndose; solo se pierde el diagnóstico.
 let moduleMap = null;
 try {
-  moduleMap = JSON.parse(await readFile(new URL('.svelte-kit/casa-clara-module-map.json', webRoot), 'utf8'));
+  moduleMap = JSON.parse(await readFile(new URL('.svelte-kit/housekeeper-module-map.json', webRoot), 'utf8'));
 } catch {
-  console.warn('Aviso: falta casa-clara-module-map.json; sin atribución por módulo en este informe.');
+  console.warn('Aviso: falta housekeeper-module-map.json; sin atribución por módulo en este informe.');
 }
 
 /** Módulos fuente presentes en un conjunto de trozos, con sus bytes sin minificar. */

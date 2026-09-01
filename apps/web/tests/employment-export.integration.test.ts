@@ -17,10 +17,10 @@ import {
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_export_login';
+const APP_LOGIN = 'it_housekeeper_export_login';
 // Base de datos propia (patrón de la suite de comida): las otras suites recrean
 // el esquema entero en paralelo y ninguna puede compartir instancia.
-const EXPORT_DB = 'casaclara_employment_export_it';
+const EXPORT_DB = 'housekeeper_employment_export_it';
 
 const OLIVO_HOUSEHOLD = '20000000-0000-4000-8000-000000000001';
 

@@ -72,8 +72,10 @@ marcha**: repetirlo es inofensivo.
 
 **(c) Qué NO hacer.**
 
-- **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`**, cuyo
-  `search_path` es `casa_auth`. Con el rol propietario, Better Auth crea sus
+- **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`** (nombre
+  legado del proyecto anterior; ver
+  [docs/despliegue/identificadores-legado.md](../../../docs/despliegue/identificadores-legado.md)),
+  cuyo `search_path` es `casa_auth`. Con el rol propietario, Better Auth crea sus
   tablas en `public`: **el guion dice que ha ido bien e imprime las contraseñas,
   y luego nadie puede entrar** (401 para todos). Comprobado. Se detecta así:
 
@@ -208,9 +210,11 @@ Desde la 0025 el horario va a **dos sitios**: la frase de siempre
 ### Trabajo extra
 
 **(a) Por dónde.** `POST /api/v1/sync`, agregado `extra_work`. Quien trabaja lo
-registra desde su pantalla de Contrato (`work.register.self`); la administración
-lo acepta, lo marca como hecho, lo resuelve (`money` o `time_off`), lo rechaza o
-lo cancela — cada transición con motivo.
+registra desde la pestaña **Conceptos** de su Contrato
+(`/h/<hogar>/employment/conceptos`, `work.register.self`); la administración lo
+acepta ahí mismo, lo marca como hecho, lo resuelve (`money` o `time_off`), lo
+rechaza o lo cancela — cada transición con motivo. Los gastos con justificante y
+los conceptos apuntados a mano viven en esa misma pestaña.
 
 **(b) Rol.** `employee_live_in` para registrar lo suyo; `family_admin` para
 `work.confirm` y resolver. La administración puede además registrar y resolver en
@@ -463,15 +467,23 @@ cuál.
 
 ## Avisos push
 
-**Sólo hay dos avisos, y ninguno más**: el recibo del mes a quien trabaja en la
-casa, y la cuenta del mes por pagar a quien administra. Recordatorios de tareas,
-de rutinas, recuentos de lo hecho o lo pendiente, y avisos por ausencia de acción
-**están prohibidos**, y no es una opción apagada: es código que no existe, con
-pruebas que lo sostienen. El porqué está en
-[docs/notificaciones.md §6](../../../docs/notificaciones.md).
+**Sólo hay tres avisos, y ninguno más**: el recibo del mes a quien trabaja en la
+casa, la cuenta del mes por pagar a quien administra, y —desde la migración
+0034— «el mes está a punto de acabar», también a quien administra (el
+penúltimo día del mes, por la mañana, y solo si queda algún acuerdo activo sin
+liquidación cerrada del mes). Recordatorios de tareas, de rutinas, recuentos de
+lo hecho o lo pendiente, y avisos por ausencia de acción **están prohibidos**,
+y no es una opción apagada: es código que no existe, con pruebas que lo
+sostienen. El porqué está en
+[docs/notificaciones.md §6](../../../docs/notificaciones.md) (y su enmienda,
+§0ter, para el tercero).
 
 **(a) Por dónde.** Cada quien enciende los suyos en `/h/<hogar>/account`. Alta y
-baja del dispositivo: `POST` / `DELETE /api/v1/push/subscription`.
+baja del dispositivo: `POST` / `DELETE /api/v1/push/subscription`. Además, al
+entrar al hogar la aplicación comprueba sola el estado del permiso en ese
+dispositivo: si está sin decidir, ofrece un banner propio y descartable
+(«Activa los avisos…» + **Activar**); el diálogo del sistema solo aparece tras
+tocar ese botón, nunca antes.
 
 **(b) Rol.** Cualquiera, sobre su propio teléfono. **Nadie de la casa puede ver si
 otra persona los tiene encendidos**, ni siquiera quien administra.
@@ -499,7 +511,11 @@ Puesta en marcha: [docs/runbooks/notificaciones-push.md](../../../docs/runbooks/
 
 ## Liquidaciones, pagos y el PDF
 
-**(a) Por dónde.** `/h/<hogar>/employment`. Por debajo, `POST /api/v1/sync`:
+**(a) Por dónde.** `/h/<hogar>/employment/pagos` — la pestaña **Pagos** del
+Contrato, no su portada: ahí viven las cuentas de cada mes, el botón de cerrar,
+el de registrar un pago, el de confirmar el cobro y los dos PDF. La portada
+(`/h/<hogar>/employment`) resume el mes en curso y enlaza aquí. Por debajo,
+`POST /api/v1/sync`:
 
 | Agregado | Acción | Capacidad |
 |---|---|---|
@@ -509,11 +525,36 @@ Puesta en marcha: [docs/runbooks/notificaciones-push.md](../../../docs/runbooks/
 | `payment` | registrar un pago | `payment.register` (`family_admin`) |
 
 Cerrar la cuenta del mes **encola** el trabajo `document.render_receipt`, que
-genera el PDF determinista del recibo y lo deja en el depósito privado.
+genera el PDF determinista del recibo y lo deja en el depósito privado. Desde
+la migración 0035 ese recibo queda además **registrado**
+(`app.settlement_receipts`) y **descargable**.
+
+**En Pagos hay dos PDF, y no son el mismo. Conviene saber cuál se está
+mirando**, porque si algún día no coincidieran, esa diferencia es la noticia:
+
+| Enlace | Ruta | Cuándo aparece | Qué es |
+|---|---|---|---|
+| «Descargar el documento de pago (PDF)» | `GET …/settlements/<liquidación>/documento` | Cualquier cuenta que ya no esté abierta | Se **dibuja al momento** a partir de la cuenta viva |
+| «Recibo archivado (PDF)» | `GET …/settlements/<liquidación>/receipt` | Cuenta cerrada **y** con su recibo ya registrado | El fichero que **archivó la cola** al cerrar: el mismo que anunció el aviso al móvil, byte a byte |
+
+Los dos los ve quien administra y la persona de ese contrato, y en los dos
+**decide la RLS**: quien no debe verlos recibe 404, no un enlace roto.
+
+Cuando no hay recibo archivado, la pantalla dice «Sin recibo archivado: este mes
+se cerró antes de que se archivaran los recibos, o acaba de cerrarse y aún está
+en la cola», y remite al documento de pago. **No promete una espera a
+propósito**: para los meses cerrados antes de la 0035 esa espera no termina
+nunca sin el backfill de
+[docs/runbooks/planificador-cola.md](../../../docs/runbooks/planificador-cola.md)
+§7 — y ese backfill **vuelve a avisar al móvil de cada mes que rehace**, así que
+se lee entero antes de lanzarlo. Para un mes recién cerrado, en cambio, el peor
+caso son cinco minutos: una vuelta de la cola.
 
 Quien trabaja se descarga **su propio** expediente (PDF + CSV) en
 `GET /api/v1/households/<hogar>/employment-export`. Esa ruta es **sólo para
-`employee_live_in`**: incluso `family_admin` recibe 403, a propósito.
+`employee_live_in`**: incluso `family_admin` recibe 403, a propósito. Es
+distinta del recibo por liquidación de arriba: aquel es un PDF por mes y por
+empleada; este es todo el histórico en un solo export.
 
 **(b) Rol.** Ver: `settlement.read` — `family_admin`, `family_member` y
 `employee_live_in`. Cerrar y registrar pagos: sólo `family_admin`. Confirmar que

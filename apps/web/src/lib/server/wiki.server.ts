@@ -1,14 +1,14 @@
 import type { Pool, PoolClient } from 'pg';
 
-import type { Role } from '@casa-clara/contracts';
-import { hasCapability } from '@casa-clara/contracts/capabilities';
+import type { Role } from '@housekeeper/contracts';
+import { hasCapability } from '@housekeeper/contracts/capabilities';
 import {
   AuthorizationError,
   createLogger,
   errorCode,
   listSearchGapClusters,
   withAuthorizedTransaction
-} from '@casa-clara/server';
+} from '@housekeeper/server';
 
 import { diffLines, type WikiDiffLine } from '$lib/wiki/diff';
 import { unreadable } from './data-source.server';

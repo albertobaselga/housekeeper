@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cadencePhrase, type RoutineSchedule } from '@casa-clara/domain';
+import { cadencePhrase, type RoutineSchedule } from '@housekeeper/domain';
 import {
   CADENCE_CHOICES,
   cadenceChoiceOf,

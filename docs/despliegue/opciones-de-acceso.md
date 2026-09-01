@@ -1,6 +1,6 @@
 # Opciones de acceso para el despliegue real (Vercel + Supabase)
 
-Investigación para el despliegue de Casa Clara con **tres personas reales**: Alberto y Ana
+Investigación para el despliegue de Housekeeper con **tres personas reales**: Alberto y Ana
 (familia) y Nuria (interna). Hoy la entrada de producción es **enlace mágico por correo** y
 la de demostración es un **selector de cuentas** protegido por `ENABLE_DEMO_PASSWORD_AUTH`.
 El propietario descarta depender del correo.
@@ -424,7 +424,7 @@ desde el rol propietario) se reutiliza tal cual, líneas 78-104.
 
 ### Paso 8 (opcional, después) — Passkeys
 
-`pnpm add @better-auth/passkey@1.6.26` en `apps/web`, `passkey({ rpID, rpName: 'Casa Clara', origin })`
+`pnpm add @better-auth/passkey@1.6.26` en `apps/web`, `passkey({ rpID, rpName: 'Housekeeper', origin })`
 en la configuración, migración, un `createAuthClient` con `passkeyClient()` —el primero del
 proyecto— y dos botones: «Entrar con huella» en la pantalla de acceso y «Añadir este dispositivo»
 en Ajustes. La contraseña sigue siendo el camino principal; la passkey es un atajo.
@@ -450,7 +450,7 @@ el límite es decorativo. Además, `disableSignUp: true` es obligatorio (§1.5).
 
 **Opción B (passkeys).** Riesgo residual muy bajo en el acceso. El riesgo se desplaza a la cuenta
 de Apple o de Google que sincroniza las passkeys: quien controle esa cuenta controla el acceso a
-Casa Clara. Y si alguien tiene solo una passkey sin sincronizar y pierde el móvil, queda fuera
+Housekeeper. Y si alguien tiene solo una passkey sin sincronizar y pierde el móvil, queda fuera
 hasta que un administrador le reponga la contraseña — otra razón para no quitar nunca ese camino.
 
 **Opción C (Supabase Auth).** El riesgo real es el de la migración: remapear identificadores sobre

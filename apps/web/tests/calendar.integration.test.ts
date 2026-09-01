@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { processSyncBatch, rhythmCommandHandlers } from '@casa-clara/server';
+import { processSyncBatch, rhythmCommandHandlers } from '@housekeeper/server';
 
 import { upsertCalendarSource } from '../src/lib/calendar/commands';
 import { addDays } from '../src/lib/food/dates';
@@ -14,10 +14,10 @@ import { loadTodayOverview } from '../src/lib/server/today.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_calendar_login';
+const APP_LOGIN = 'it_housekeeper_calendar_login';
 // Base propia (patrón de contactos/comida): las suites recrean el esquema
 // entero en paralelo y ninguna puede compartir instancia.
-const CALENDAR_DB = 'casaclara_cal_it';
+const CALENDAR_DB = 'housekeeper_cal_it';
 
 const ADMIN_USER = { id: 'fixture:roble:admin' };
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };

@@ -10,9 +10,9 @@ import { loadVacationOverview, markVacationsSeen } from '../src/lib/server/vacat
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_vacations_login';
+const APP_LOGIN = 'it_housekeeper_vacations_login';
 // Base propia: las demás suites recrean el esquema entero en paralelo.
-const VACATIONS_DB = 'casaclara_vacaciones_it';
+const VACATIONS_DB = 'housekeeper_vacaciones_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';

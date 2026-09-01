@@ -4,14 +4,14 @@ import {
   spanishDateLabel,
   weekdayName,
   type RoutineSchedule
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 
 /**
  * Capa fina de presentación de la cadencia de una rutina (§4.1 de
  * `docs/rutinas-y-calendario.md`).
  *
  * Aquí NO se calcula recurrencia. Las frases y las fechas las produce el motor
- * puro `@casa-clara/domain` (`recurrence.ts`), que es el único sitio donde vive
+ * puro `@housekeeper/domain` (`recurrence.ts`), que es el único sitio donde vive
  * la aritmética —la ola anterior la tenía triplicada y ese fue el fallo—. Este
  * módulo solo traduce entre la regla del dominio y los cinco controles que la
  * familia ve, con los literales exactos que fija la especificación.

@@ -8,12 +8,12 @@ import {
   type AggregateType,
   type CommandAckV1,
   type CommandEnvelopeV1,
-} from "@casa-clara/contracts";
+} from "@housekeeper/contracts";
 import {
   calculateSettlement,
   type AgreementVersion,
   type RecurringSupplement,
-} from "@casa-clara/domain";
+} from "@housekeeper/domain";
 
 import { employmentCommandHandlers } from "./commands/employment.js";
 import { processSyncBatch } from "./sync.js";
@@ -27,7 +27,7 @@ const ROBLE_EMPLOYEE_MEMBERSHIP = "11000000-0000-4000-8000-000000000003";
 const ROBLE_ADMIN_MEMBERSHIP = "11000000-0000-4000-8000-000000000001";
 const AGREEMENT_V2 = "12100000-0000-4000-8000-000000000002";
 const FIXTURE_COMP_ACCOUNT = "12600000-0000-4000-8000-000000000001";
-const APP_LOGIN = "it_casa_clara_app_login";
+const APP_LOGIN = "it_housekeeper_app_login";
 
 const ADMIN: AuthenticatedPrincipal = { userId: "fixture:roble:admin" };
 const EMPLOYEE: AuthenticatedPrincipal = { userId: "fixture:roble:employee" };

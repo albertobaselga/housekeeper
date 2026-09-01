@@ -9,7 +9,7 @@
  * compartido de la pantalla Hoy y se come el presupuesto de arranque.
  *
  * Por eso el modelo de autorización —roles, capacidades y su matriz— vive en
- * `./capabilities.ts`, se importa como `@casa-clara/contracts/capabilities` y NO
+ * `./capabilities.ts`, se importa como `@housekeeper/contracts/capabilities` y NO
  * se reexporta desde aquí ni siquiera con `export { ... } from`: la arista de
  * importación basta para que rolldown lo arrastre. Lo comprueba
  * `apps/web/scripts/verify-today-bundle.mjs`.

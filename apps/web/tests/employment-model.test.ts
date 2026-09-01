@@ -585,6 +585,18 @@ describe('liquidaciones y saldos', () => {
     expect(view.lines[0]!.href).toBe('#version-v1');
     expect(view.lines[1]!.href).toBe('#anticipo-a1');
     expect(view.payments[0]!.methodLabel).toBe('Transferencia');
+    // Sin `hasReceiptDocument` en la fila (consultas que no lo seleccionan,
+    // p. ej. el ZIP del expediente): se trata como «todavía no».
+    expect(view.receiptDocumentAvailable).toBe(false);
+  });
+
+  // Frente E: el PDF del recibo, registrado y descargable.
+  it('marca el recibo PDF como disponible solo cuando la fila lo trae', () => {
+    const withReceipt = buildSettlementViews([{ ...settlement, hasReceiptDocument: true }], [], [])[0]!;
+    expect(withReceipt.receiptDocumentAvailable).toBe(true);
+
+    const withoutReceipt = buildSettlementViews([{ ...settlement, hasReceiptDocument: false }], [], [])[0]!;
+    expect(withoutReceipt.receiptDocumentAvailable).toBe(false);
   });
 
   it('distingue pago parcial y cobro sin confirmar', () => {

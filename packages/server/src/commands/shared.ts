@@ -1,12 +1,12 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { UUID } from "@housekeeper/contracts";
 import {
   agreementVersionForDate,
   type AgreementVersion,
   type ExtraWorkType,
   type RecurringSupplement,
-} from "@casa-clara/domain";
+} from "@housekeeper/domain";
 
 import { CommandRejectedError } from "../sync.js";
 

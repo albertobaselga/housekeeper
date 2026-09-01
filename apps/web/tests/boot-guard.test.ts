@@ -109,7 +109,7 @@ describe('la negativa es una instrucción, no un muro', () => {
   it('habla en castellano llano a quien no es quien despliega', async () => {
     const response = refusalResponse(bootRefusal({ DATABASE_URL: REAL.DATABASE_URL }, PRODUCCION)!);
     const body = await response.text();
-    expect(body).toContain('Casa Clara no está sirviendo esta casa ahora mismo.');
+    expect(body).toContain('Esta instalación no está sirviendo esta casa ahora mismo.');
   });
 });
 

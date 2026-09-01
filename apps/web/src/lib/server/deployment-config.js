@@ -1,5 +1,5 @@
 /**
- * La regla indivisible de configuración de Casa Clara.
+ * La regla indivisible de configuración de esta instalación.
  *
  * El peligro que cierra este módulo es concreto y está medido: el selector de
  * cuentas sintéticas no dependía de `DATABASE_URL`, sino de `DATABASE_AUTH_URL`
@@ -132,7 +132,7 @@ export function checkDeploymentConfig({ env, fixtureLogin }) {
     return problem(
       'fixture-bundle-in-production',
       [],
-      'Este paquete se construyó con CASA_CLARA_FIXTURE_LOGIN=true, es decir, lleva dentro el selector de ' +
+      'Este paquete se construyó con HOUSEKEEPER_FIXTURE_LOGIN=true, es decir, lleva dentro el selector de ' +
         'cuentas sintéticas, y se está sirviendo como producción. Vuelve a construir sin esa variable: ' +
         'sin declararla, `vite build` deja el selector fuera.'
     );
@@ -156,7 +156,7 @@ export function checkDeploymentConfig({ env, fixtureLogin }) {
         missing,
         `Hay base de datos configurada (${DATABASE_VAR}) pero la identidad está a medias: falta ` +
           `${listWithAnd(missing)}. Con la identidad incompleta nadie puede entrar con su contraseña, así que ` +
-          'Casa Clara prefiere no servir nada antes que servir una puerta que no es la suya. Define ' +
+          'esta instalación prefiere no servir nada antes que servir una puerta que no es la suya. Define ' +
           `${missing.length === 1 ? 'esa variable' : 'esas variables'} —o retira ${DATABASE_VAR}— y vuelve a desplegar.`
       );
     }

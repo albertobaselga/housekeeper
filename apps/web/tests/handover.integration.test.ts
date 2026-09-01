@@ -12,10 +12,10 @@ import { buildHandoverExport, canDownloadHandover } from '../src/lib/server/hand
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_handover_login';
+const APP_LOGIN = 'it_housekeeper_handover_login';
 // Base de datos propia (patrón de la suite de comida): las otras suites recrean
 // el esquema entero en paralelo y ninguna puede compartir instancia.
-const HANDOVER_DB = 'casaclara_handover_it';
+const HANDOVER_DB = 'housekeeper_handover_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 // Hogar limpio para el ensayo de reimportación (sin wiki previa).

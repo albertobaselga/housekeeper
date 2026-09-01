@@ -1,6 +1,6 @@
 import type { Pool } from 'pg';
 
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import {
   buildAccrual,
@@ -49,6 +49,13 @@ import { getDatabasePool } from './db.server';
 const log = createLogger('web:employment');
 
 /**
+ * La forma de un uuid, tal y como la comprueba el resto de la casa (el mismo
+ * patrón que `wiki.server.ts` y que el endpoint hermano del documento de pago).
+ * Sirve para no dejar que un identificador escrito a mano llegue a Postgres.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
  * Las bases de los orígenes para quien mira: la jornada y el gasto viven en
  * Conceptos, el anticipo en los saldos del Resumen y las versiones donde cada
  * cual lee su contrato (el acuerdo si lo pacta, sus condiciones si no). La
@@ -70,6 +77,86 @@ export function employmentHrefBases(
     resumen: `${base}${query}`,
     contrato: `${contrato}${query}`
   };
+}
+
+export interface SettlementReceiptDownload {
+  /** Documento de tipo `settlement_receipt` (app.documents), Frente E. */
+  documentId: string;
+  objectKey: string;
+  bucket: string;
+  mediaType: string;
+  byteSize: string;
+  /** `YYYY-MM`: sirve de nombre de fichero al descargarlo. */
+  period: string;
+}
+
+/**
+ * El recibo PDF registrado de una liquidación (Frente E, migración 0035). Solo
+ * lectura: quien decide el acceso es RLS (`settlement_receipts_read`, calcada
+ * de `settlements_read`) — family_admin del hogar y la propia empleada del
+ * contrato, y nadie más. Sin fila (aún no registrado, quien pregunta no debe
+ * verlo, o el identificador ni siquiera tiene forma de uuid) devuelve null, sin
+ * distinguir un caso del otro.
+ */
+export async function loadSettlementReceipt(
+  user: { id: string },
+  householdId: string,
+  settlementId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<SettlementReceiptDownload | null> {
+  if (!pool) return null;
+  // Un identificador que ni siquiera tiene forma de uuid no llega a la consulta:
+  // Postgres levantaría un 22P02, el catch de abajo lo leería como avería del
+  // almacén y devolvería un 503 con su línea de registro por cada petición —un
+  // grifo de ruido que abre cualquier miembro de cualquier hogar escribiendo la
+  // URL a mano—. Es la misma avería que el documento de pago ya corrigió en su
+  // ruta; aquí la guarda vive DENTRO del cargador, junto al `if (!pool)`, por
+  // dos razones: `null` es la semántica exacta («no hay fila»), que el endpoint
+  // ya traduce a su 404 sin abrir un oráculo entre «malformado» y «no te toca»,
+  // y cualquier llamador futuro la hereda sin tener que acordarse.
+  if (!UUID_PATTERN.test(settlementId)) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+      const result = await client.query<{
+        documentId: string;
+        objectKey: string;
+        bucket: string;
+        byteSize: string;
+        periodStart: string;
+      }>(
+        `select document.id as "documentId",
+                receipt.object_key as "objectKey",
+                receipt.bucket,
+                receipt.byte_size::text as "byteSize",
+                settlement.period_start::text as "periodStart"
+           from app.settlement_receipts as receipt
+           join app.documents as document
+             on document.household_id = receipt.household_id
+            and document.id = receipt.document_id
+           join app.settlements as settlement
+             on settlement.household_id = receipt.household_id
+            and settlement.id = receipt.settlement_id
+          where receipt.household_id = $1 and receipt.settlement_id = $2`,
+        [householdId, settlementId]
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        documentId: row.documentId,
+        objectKey: row.objectKey,
+        bucket: row.bucket,
+        // El tipo del objeto lo pone la lista blanca del endpoint, no la fila:
+        // el recibo SIEMPRE es el PDF que renderiza el worker.
+        mediaType: 'application/pdf',
+        byteSize: row.byteSize,
+        period: row.periodStart.slice(0, 7)
+      };
+    });
+  } catch (cause) {
+    // Misma separación que loadExpenseReceipt: una avería del almacén no debe
+    // leerse como «este recibo no existe», que es un hecho distinto y falso.
+    return unreadable(log, 'settlement receipt', cause);
+  }
 }
 
 function monthBounds(period: string): { first: string; last: string } {
@@ -422,7 +509,10 @@ export async function loadEmploymentOverview(
                 totals.paid_cents as "paidCents",
                 totals.pending_cents as "pendingCents",
                 confirmation.confirmed_at::text as "receiptConfirmedAt",
-                confirmation.note as "receiptNote"
+                confirmation.note as "receiptNote",
+                -- Frente E: si el PDF ya quedó registrado (RLS decide qué fila
+                -- se ve; ausente = «se está generando» o «aún no hay recibo»).
+                (receipt.settlement_id is not null) as "hasReceiptDocument"
            from app.settlements as settlement
            join app.settlement_payment_totals as totals
              on totals.household_id = settlement.household_id
@@ -430,6 +520,9 @@ export async function loadEmploymentOverview(
            left join app.settlement_receipt_confirmations as confirmation
              on confirmation.household_id = settlement.household_id
             and confirmation.settlement_id = settlement.id
+           left join app.settlement_receipts as receipt
+             on receipt.household_id = settlement.household_id
+            and receipt.settlement_id = settlement.id
           where settlement.household_id = $1 and settlement.agreement_id = $2
           order by settlement.period_start desc`,
         [householdId, agreement.id]

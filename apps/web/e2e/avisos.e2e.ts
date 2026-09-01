@@ -47,12 +47,17 @@ test('sin claves del canal no se ofrece un interruptor que no puede funcionar', 
   await expect(page.getByRole('button', { name: 'Avisarme en este teléfono' })).toHaveCount(0);
 });
 
-test('el permiso no se pide en ninguna otra pantalla: no hay dónde mendigarlo', async ({ page }) => {
+test('sin canal configurado, ninguna otra pantalla dice una palabra de avisos', async ({ page }) => {
   await loginAs(page, 'employee');
 
-  // El ofrecimiento contextual se descartó a propósito: en esta casa aparecería
-  // sobre todo a quien menos margen tiene para ignorarlo. Queda el interruptor,
-  // en reposo, en la pantalla que es suya. Ninguna otra menciona los avisos.
+  // La política ya no es «el interruptor vive solo en Tu cuenta»: al entrar en
+  // el hogar hay un banner propio y descartable (Frente C, AppShell) que SÍ
+  // puede decir «Activa los avisos» — pero solo cuando hay canal VAPID
+  // configurado y el permiso del navegador está por decidir, y el diálogo
+  // nativo del sistema sigue sin dispararse hasta que alguien lo toca (§0.5).
+  // Esta maqueta corre sin claves VAPID: sin canal no hay nada que ofrecer, así
+  // que estas pantallas siguen mudas al respecto — la ausencia se debe a que no
+  // hay dónde escribir, no a que el banner no exista.
   for (const module of ['today', 'employment', 'routines', 'menu']) {
     await page.goto(`/h/${HOUSEHOLD}/${module}`);
     await expect(page.getByText(/activar los avisos|permitir notificaciones|avísame en este teléfono/i))

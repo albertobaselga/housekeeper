@@ -10,14 +10,14 @@ import { addDays, mondayOf } from '../src/lib/food/dates';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_today_login';
+const APP_LOGIN = 'it_housekeeper_today_login';
 // Base de datos propia (como wiki, auth y food): las otras suites recrean el
 // esquema entero en paralelo y ninguna puede compartir instancia.
-const TODAY_DB = 'casaclara_today_it';
+const TODAY_DB = 'housekeeper_today_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
-// Acuerdo laboral de las fixtures sintéticas de @casa-clara/db.
+// Acuerdo laboral de las fixtures sintéticas de @housekeeper/db.
 const AGREEMENT = '12000000-0000-4000-8000-000000000001';
 // La segunda persona empleada del mismo hogar, con su propio acuerdo: lo que
 // tenga pendiente también necesita decisión y también tiene que salir en Hoy.

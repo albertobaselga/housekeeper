@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { withAuthorizedTransaction } from '@casa-clara/server';
+import { withAuthorizedTransaction } from '@housekeeper/server';
 
 import {
   loadFoodCatalog,
@@ -17,10 +17,10 @@ import {
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_food_login';
+const APP_LOGIN = 'it_housekeeper_food_login';
 // Base de datos propia (como wiki y auth): las otras suites recrean el esquema
 // entero en paralelo y ninguna puede compartir instancia.
-const FOOD_DB = 'casaclara_food_it';
+const FOOD_DB = 'housekeeper_food_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 
@@ -235,7 +235,7 @@ describe.runIf(Boolean(adminUrl))('comida y rutinas desde Postgres bajo RLS', ()
     const slotFirst = first!.slots.find((slot) => slot.id === SLOT_COMIDA)!;
     const slotSecond = second!.slots.find((slot) => slot.id === SLOT_COMIDA)!;
     expect(slotFirst.contentHash).toMatch(/^[0-9a-f]{64}$/);
-    // La web delega en computeMenuSlotHash de @casa-clara/server (la misma
+    // La web delega en computeMenuSlotHash de @housekeeper/server (la misma
     // función contra la que compara el comando confirm): mismo hash para
     // cualquier lector del mismo contenido.
     expect(slotFirst.contentHash).toBe(slotSecond.contentHash);

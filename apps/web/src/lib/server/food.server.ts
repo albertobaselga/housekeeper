@@ -1,13 +1,13 @@
 import type { Pool } from 'pg';
 
-import type { Role } from '@casa-clara/contracts';
+import type { Role } from '@housekeeper/contracts';
 import {
   PENDING_LOOKBACK_DAYS,
   nextOccurrenceOnOrAfter,
   pendingFor,
   type RoutineOverduePolicy,
   type RoutineSchedule
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 import {
   buildShoppingBoard,
   createLogger,
@@ -15,7 +15,7 @@ import {
   withAuthorizedTransaction,
   type ShoppingLine,
   type ShoppingSection
-} from '@casa-clara/server';
+} from '@housekeeper/server';
 
 import { fromHundredths, toHundredths } from '$lib/food/quantities';
 import { weekDays } from '$lib/food/dates';
@@ -36,7 +36,7 @@ export type MealSlot = 'desayuno' | 'almuerzo' | 'comida' | 'merienda' | 'cena';
 export const MEAL_SLOTS: readonly MealSlot[] = ['desayuno', 'almuerzo', 'comida', 'merienda', 'cena'];
 
 // El hash de confirmación (menu_confirmations.content_hash) tiene UNA sola
-// implementación: computeMenuSlotHash de @casa-clara/server, la misma contra la
+// implementación: computeMenuSlotHash de @housekeeper/server, la misma contra la
 // que el comando confirm compara. La web la invoca dentro de su transacción de
 // lectura; así es imposible que ambos lados divieran en el formato canónico.
 
@@ -522,7 +522,7 @@ export async function loadRecipe(
   }
 }
 
-export type { ShoppingLine, ShoppingPart, ShoppingSection } from '@casa-clara/server';
+export type { ShoppingLine, ShoppingPart, ShoppingSection } from '@housekeeper/server';
 
 export interface ShoppingList {
   householdId: string;
@@ -544,7 +544,7 @@ export interface ShoppingList {
 
 /**
  * Lista de compra semanal ya fusionada, tal como se ve. Toda la regla vive en
- * `buildShoppingBoard` (@casa-clara/server): parte derivada del menú calculada
+ * `buildShoppingBoard` (@housekeeper/server): parte derivada del menú calculada
  * en lectura y escalada con aritmética decimal exacta, añadidos a mano
  * fusionados en la misma línea cuando son el mismo alimento, redondeo a
  * paquetes cuando el alimento lo declara y marcado por línea (que es lo que

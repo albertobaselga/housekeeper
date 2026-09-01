@@ -9,7 +9,7 @@ import { resolveFixtureLogin } from './src/lib/server/fixture-login-flag.js';
 
 /**
  * Deja escrito, tras cada construcción del cliente, qué módulo fuente aporta
- * cuántos bytes a cada trozo: `.svelte-kit/casa-clara-module-map.json`.
+ * cuántos bytes a cada trozo: `.svelte-kit/housekeeper-module-map.json`.
  *
  * No viaja al despliegue (vive fuera de `output/`) y no cuesta nada en `dev`.
  * Existe porque el presupuesto de arranque de Hoy se mide en bytes de FICHERO y
@@ -20,7 +20,7 @@ import { resolveFixtureLogin } from './src/lib/server/fixture-login-flag.js';
  */
 function clientModuleMap(): Plugin {
   return {
-    name: 'casa-clara:client-module-map',
+    name: 'housekeeper:client-module-map',
     apply: 'build',
     async writeBundle(options, bundle) {
       const directory = (options.dir ?? '').replaceAll('\\', '/');
@@ -37,7 +37,7 @@ function clientModuleMap(): Plugin {
         }
         map[fileName] = modules;
       }
-      const target = path.resolve(directory, '../../casa-clara-module-map.json');
+      const target = path.resolve(directory, '../../housekeeper-module-map.json');
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, `${JSON.stringify(map, null, 1)}\n`);
     }

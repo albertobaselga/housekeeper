@@ -19,6 +19,8 @@ describe('título de la pestaña: una sola fuente', () => {
     expect(documentTitle('No encontrado')).toBe(`No encontrado · ${APP_NAME}`);
     for (const title of [documentTitle(null), documentTitle('Sin conexión')]) {
       expect(title).not.toMatch(/Casa Clara/);
+      // El nombre del proyecto tampoco: ni el viejo ni el nuevo se muestran.
+      expect(title).not.toMatch(/Housekeeper/i);
     }
   });
 

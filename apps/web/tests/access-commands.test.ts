@@ -7,7 +7,7 @@ import {
   membershipCommandPayloadSchema,
   membershipRevokePayloadSchema,
   membershipSetExpiryPayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import { revokeMembership, setMembershipExpiry } from '../src/lib/access/commands';
 

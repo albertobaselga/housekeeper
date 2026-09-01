@@ -1,9 +1,9 @@
 import type { Pool } from 'pg';
 
-import type { Role } from '@casa-clara/contracts';
-import type { RoutineOverduePolicy, RoutineSchedule } from '@casa-clara/domain';
-import { cadenceClause } from '@casa-clara/domain';
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import type { Role } from '@housekeeper/contracts';
+import type { RoutineOverduePolicy, RoutineSchedule } from '@housekeeper/domain';
+import { cadenceClause } from '@housekeeper/domain';
+import { createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import {
   monthGridRange,
@@ -39,7 +39,7 @@ const log = createLogger('web:calendar');
  *   mes o año sin volver al servidor —y por tanto sin red—. Mandar las
  *   ocurrencias ya expandidas costaría una fila por rutina y día (un año son
  *   ~12.000) y dejaría muerta la navegación sin conexión. La expansión la hace
- *   el motor puro de `@casa-clara/domain`, el mismo que usan Hoy y el ICS.
+ *   el motor puro de `@housekeeper/domain`, el mismo que usan Hoy y el ICS.
  *
  * · LOS EVENTOS Y LA AUTORÍA NO SE PUEDEN CALCULAR: se descargan. Por eso hay
  *   una VENTANA DE DETALLE explícita —la rejilla de seis semanas del mes del

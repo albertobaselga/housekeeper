@@ -8,6 +8,7 @@ import { fixturesAllowed, isDataUnavailable } from '$lib/server/data-source.serv
 import { financeAccessGranted } from '$lib/server/finance-access.server';
 import { getHousehold } from '$lib/server/fixtures.server';
 import { getSnapshotKeys } from '$lib/server/keys.server';
+import { pushPublicKey } from '$lib/server/push.server';
 import { buildCriticalSnapshot, loadSnapshotHousehold } from '$lib/server/snapshot.server';
 import type { AppContext } from '$lib/auth/types';
 import type { LayoutServerLoad } from './$types';
@@ -95,5 +96,8 @@ export const load: LayoutServerLoad = async ({ locals, params, url }) => {
     synthetic: locals.syntheticOnly,
     passwordAuth: Boolean(getAuth())
   };
-  return { context };
+  // Campo hermano de `context`, no parte de `AppContext`: la verificación de
+  // avisos al entrar (Frente C) es una decisión de AppShell, no de identidad.
+  // Sin las tres claves VAPID esta instalación no tiene canal, y vale null.
+  return { context, pushPublicKey: pushPublicKey() };
 };

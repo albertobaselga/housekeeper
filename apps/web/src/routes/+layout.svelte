@@ -1,5 +1,11 @@
 <script lang="ts">
   import '../app.css';
+  // Registro TEMPRANO y estático de `beforeinstallprompt` (Frente B): Chromium
+  // dispara ese evento una sola vez, a menudo antes de que nada diferido llegue
+  // a escucharlo. Importado aquí, en la raíz, para que se evalúe antes de que
+  // monte cualquier componente. Módulo diminuto y sin dependencias a propósito:
+  // viaja en el arranque de TODA la aplicación, incluida Hoy (verify:bundle).
+  import '$lib/pwa/prompt-capture';
   import { page } from '$app/state';
   import { documentTitle, sectionLabelFor } from '$lib/app-title';
 

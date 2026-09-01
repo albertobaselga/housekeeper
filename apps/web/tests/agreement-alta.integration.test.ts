@@ -1,8 +1,8 @@
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import type { CommandAckV1, CommandEnvelopeV1 } from '@casa-clara/contracts';
-import { employmentCommandHandlers, processSyncBatch } from '@casa-clara/server';
+import type { CommandAckV1, CommandEnvelopeV1 } from '@housekeeper/contracts';
+import { employmentCommandHandlers, processSyncBatch } from '@housekeeper/server';
 
 import { buildExtraWorkTypeView } from '../src/lib/employment/model';
 import { createAgreement, loadAgreementAdmin } from '../src/lib/server/agreement-terms.server';
@@ -34,8 +34,8 @@ import { loadEmploymentOverview } from '../src/lib/server/employment.server';
  * Base propia, como las suites de comida y wiki: todas recrean el esquema.
  */
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_alta_login';
-const ALTA_DB = 'casaclara_alta_it';
+const APP_LOGIN = 'it_housekeeper_alta_login';
+const ALTA_DB = 'housekeeper_alta_it';
 
 const HOUSEHOLD = '7a000000-0000-4000-8000-000000000001';
 const ADMIN_MEMBERSHIP = '7a000000-0000-4000-8000-000000000002';

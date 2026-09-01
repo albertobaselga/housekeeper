@@ -4,7 +4,7 @@ import type { Pool } from 'pg';
 import { strToU8, zipSync } from 'fflate';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { AuthorizationError, createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import {
   buildExtraWorkTypeView,

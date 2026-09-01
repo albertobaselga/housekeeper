@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalJson } from "@casa-clara/contracts";
+import { canonicalJson } from "@housekeeper/contracts";
 
 export { canonicalJson };
 

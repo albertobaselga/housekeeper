@@ -1,6 +1,6 @@
 import { invalidate } from '$app/navigation';
 import { writable, type Writable } from 'svelte/store';
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { describeErrorCodeLazy } from './error-codes-lazy';
 import { listOutbox } from './idb';

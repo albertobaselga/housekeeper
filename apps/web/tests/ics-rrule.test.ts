@@ -4,7 +4,7 @@ import {
   nextOccurrenceOnOrAfter,
   occurrencesBetween,
   type RoutineRule
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 
 import { routineRrule } from '../src/lib/server/ics-rrule.server';
 import { expandRrule } from './rrule-expand';

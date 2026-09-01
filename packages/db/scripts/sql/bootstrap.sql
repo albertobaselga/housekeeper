@@ -1,4 +1,4 @@
--- Bootstrap de la base de datos de Casa Clara: roles de ejecución, esquema de
+-- Bootstrap de la base de datos de Housekeeper: roles de ejecución, esquema de
 -- Better Auth y compatibilidad de extensiones. Se ejecuta UNA VEZ por base y
 -- SIEMPRE ANTES de las migraciones (0001 ya concede a casa_clara_app y
 -- casa_clara_worker, así que esos roles tienen que existir).
@@ -11,9 +11,9 @@
 -- Las contraseñas llegan por parámetro de sesión para que el mismo fichero
 -- sirva a psql y al runner de Node:
 --
---   SET casa_clara.app_password    = '…';
---   SET casa_clara.worker_password = '…';
---   SET casa_clara.auth_password   = '…';
+--   SET housekeeper.app_password    = '…';
+--   SET housekeeper.worker_password = '…';
+--   SET housekeeper.auth_password   = '…';
 --
 -- Si un parámetro falta o va vacío, el rol de login se crea (o se conserva) sin
 -- tocarle la contraseña: útil para volver a pasar el bootstrap sin tener los
@@ -47,9 +47,9 @@ BEGIN
   FOR login_role, group_role, secret IN
     SELECT *
       FROM (VALUES
-        ('casa_clara_app_login',    'casa_clara_app',    current_setting('casa_clara.app_password', true)),
-        ('casa_clara_worker_login', 'casa_clara_worker', current_setting('casa_clara.worker_password', true)),
-        ('casa_clara_auth_login',   NULL,                current_setting('casa_clara.auth_password', true))
+        ('casa_clara_app_login',    'casa_clara_app',    current_setting('housekeeper.app_password', true)),
+        ('casa_clara_worker_login', 'casa_clara_worker', current_setting('housekeeper.worker_password', true)),
+        ('casa_clara_auth_login',   NULL,                current_setting('housekeeper.auth_password', true))
       ) AS wanted(login_role, group_role, secret)
   LOOP
     IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = login_role) THEN

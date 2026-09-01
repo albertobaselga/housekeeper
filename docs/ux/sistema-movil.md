@@ -1,4 +1,4 @@
-# Sistema móvil de Casa Clara
+# Sistema móvil de Housekeeper
 
 > Decisión de diseño, no informe. Las tres auditorías (interna, administración y
 > sistema) coinciden en los síntomas y se contradicen en cuatro o cinco números;
@@ -652,7 +652,7 @@ comprobación de tamaño del subconjunto (≤ 40 KB) en el mismo script de presu
 
 ## 7 · El resumen en una frase
 
-Casa Clara no necesita rediseñarse: necesita **dos escalas, un presupuesto de marco y
+Housekeeper no necesita rediseñarse: necesita **dos escalas, un presupuesto de marco y
 una columna para el dinero**. Lo caro no es lo que hay que dibujar, es lo que hay que
 dejar de dibujar — y son 237 px por pantalla que hoy se gastan en decirle a alguien
 dónde está en lugar de enseñarle lo que ha venido a ver.

@@ -79,7 +79,7 @@ test('Ana sin conexión ve el día y las instrucciones fijadas REALES del hogar'
   });
   await page.waitForFunction(
     async (householdId) => {
-      const request = indexedDB.open('casa-clara-web');
+      const request = indexedDB.open('housekeeper-web');
       const database = await new Promise<IDBDatabase | null>((resolve) => {
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => resolve(null);

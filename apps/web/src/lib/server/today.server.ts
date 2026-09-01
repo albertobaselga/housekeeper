@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 
-import type { Role } from '@casa-clara/contracts';
-import { createLogger, computeMenuSlotHash, withAuthorizedTransaction } from '@casa-clara/server';
+import type { Role } from '@housekeeper/contracts';
+import { createLogger, computeMenuSlotHash, withAuthorizedTransaction } from '@housekeeper/server';
 import {
   cadenceClause,
   occurrencesBetween,
@@ -10,7 +10,7 @@ import {
   PENDING_LOOKBACK_DAYS,
   type RoutineOverduePolicy,
   type RoutineSchedule
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 
 import { dateLabel, formatCents, formatMinutes, parseCents, periodLabel } from '$lib/employment/model';
 import { addDays, mondayOf } from '$lib/food/dates';
@@ -42,7 +42,7 @@ const log = createLogger('web:today');
  * `apps/web/scripts/verify-today-bundle.mjs` mide el JavaScript de arranque de
  * esta ruta, y el HTML servido no cuenta. Cada cadena que se arma en el
  * servidor es un formateador que el móvil no descarga. Por el mismo motivo el
- * generador de recurrencia (`@casa-clara/domain`) se importa desde este módulo
+ * generador de recurrencia (`@housekeeper/domain`) se importa desde este módulo
  * `.server.ts` y no desde el componente.
  */
 

@@ -1,4 +1,4 @@
-// La matriz se importa del submódulo, NUNCA de la raíz `@casa-clara/contracts`:
+// La matriz se importa del submódulo, NUNCA de la raíz `@housekeeper/contracts`:
 // la raíz viaja en el arranque de todas las pantallas (verifica la firma del
 // paquete offline) y arrastraría ~1,2 kB de tablas que el cliente no usa —
 // las capacidades de la sesión llegan ya resueltas en `AppContextV1`.
@@ -10,7 +10,7 @@ import {
   roles,
   type Capability,
   type Role
-} from '@casa-clara/contracts/capabilities';
+} from '@housekeeper/contracts/capabilities';
 
 export const ROLES = roles;
 export const CAPABILITIES = capabilities;

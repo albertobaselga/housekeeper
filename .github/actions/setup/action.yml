@@ -1,4 +1,4 @@
-name: Setup Casa Clara workspace
+name: Setup Housekeeper workspace
 description: Install the pinned Node and pnpm toolchain and restore dependencies
 
 runs:

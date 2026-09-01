@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sha256 } from "./documents.js";
+import { renderReceiptPdf, sha256 } from "./documents.js";
 import { createRenderReceiptHandler, receiptObjectKey } from "./handlers.js";
 import { PermanentJobError, type ClaimedJob } from "./queue.js";
 
@@ -104,6 +104,142 @@ describe("handler de render de recibo", () => {
     ).rejects.toThrow("el almacén no responde");
     // «Ya está tu recibo» con el recibo sin subir es mentira, y además la
     // llevaría a una pantalla que no puede enseñárselo.
+    expect(announced).toEqual([]);
+  });
+
+  // Frente E: el recibo queda registrado (app.settlement_receipts) tras subirlo
+  // y antes de anunciarlo, y solo cuando el trabajo trae `settlementId`.
+  it("registra el recibo tras subirlo y antes de anunciarlo", async () => {
+    const order: string[] = [];
+    const recorded: Array<{ settlementId: string; objectKey: string; sha256: string; byteSize: number }> = [];
+    const handler = createRenderReceiptHandler({
+      upload: async () => {
+        order.push("upload");
+      },
+      recordReceipt: async (input) => {
+        order.push("record");
+        recorded.push(input);
+      },
+      announceReceipt: async () => {
+        order.push("announce");
+      },
+    });
+
+    await handler(renderJob({ ...receiptPayload(), settlementId: SETTLEMENT }));
+
+    expect(order).toEqual(["upload", "record", "announce"]);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.settlementId).toBe(SETTLEMENT);
+    expect(recorded[0]?.objectKey).toBe(
+      receiptObjectKey(HOUSEHOLD, "REC-2025-03/Roble", sha256(await renderReceiptPdf(receiptPayload().receipt))),
+    );
+    expect(recorded[0]?.byteSize).toBeGreaterThan(0);
+  });
+
+  it("si falla la subida no registra el recibo", async () => {
+    const recorded: unknown[] = [];
+    const handler = createRenderReceiptHandler({
+      upload: async () => {
+        throw new Error("el almacén no responde");
+      },
+      recordReceipt: async (input) => {
+        recorded.push(input);
+      },
+    });
+
+    await expect(
+      handler(renderJob({ ...receiptPayload(), settlementId: SETTLEMENT })),
+    ).rejects.toThrow("el almacén no responde");
+    expect(recorded).toEqual([]);
+  });
+
+  // Frente E, corrección de revisión: `recordReceipt` puede fallar por un
+  // motivo de NEGOCIO, no solo por una avería. `55000` es una liquidación que
+  // ya no está cerrada —p. ej. se anuló justo después de encolar este
+  // render—: el comportamiento correcto es completar en silencio, sin
+  // registrar ni anunciar, y sin reintentar (reintentar solo volvería a
+  // chocar con la misma liquidación anulada).
+  it("si recordReceipt falla con 55000 (liquidación anulada) el trabajo completa en silencio", async () => {
+    const order: string[] = [];
+    const announced: unknown[] = [];
+    const handler = createRenderReceiptHandler({
+      upload: async () => {
+        order.push("upload");
+      },
+      recordReceipt: async () => {
+        order.push("record");
+        const error = new Error("la liquidación ya no está cerrada") as Error & { code: string };
+        error.code = "55000";
+        throw error;
+      },
+      announceReceipt: async () => {
+        order.push("announce");
+        announced.push(true);
+      },
+    });
+
+    await expect(
+      handler(renderJob({ ...receiptPayload(), settlementId: SETTLEMENT })),
+    ).resolves.toBeUndefined();
+    // Subió (el PDF ya está en el almacén, huérfano y sin problema) pero ni
+    // registró de verdad ni anunció nada: silencio limpio.
+    expect(order).toEqual(["upload", "record"]);
+    expect(announced).toEqual([]);
+  });
+
+  // `22023` es una liquidación que no existe en absoluto: fallo permanente,
+  // no un contratiempo del día. Reintentar no lo arreglaría.
+  it("si recordReceipt falla con 22023 (liquidación inexistente) es un fallo permanente", async () => {
+    const announced: unknown[] = [];
+    const handler = createRenderReceiptHandler({
+      upload: async () => {},
+      recordReceipt: async () => {
+        const error = new Error("la liquidación no existe") as Error & { code: string };
+        error.code = "22023";
+        throw error;
+      },
+      announceReceipt: async () => {
+        announced.push(true);
+      },
+    });
+
+    await expect(
+      handler(renderJob({ ...receiptPayload(), settlementId: SETTLEMENT })),
+    ).rejects.toBeInstanceOf(PermanentJobError);
+    expect(announced).toEqual([]);
+  });
+
+  // Cualquier otro código (avería del día: la base no responde, etc.) sigue
+  // tumbando el trabajo para que la cola lo reintente entero.
+  it("cualquier otro fallo de recordReceipt sigue reintentando el trabajo entero", async () => {
+    const handler = createRenderReceiptHandler({
+      upload: async () => {},
+      recordReceipt: async () => {
+        throw new Error("la base no responde");
+      },
+    });
+
+    await expect(
+      handler(renderJob({ ...receiptPayload(), settlementId: SETTLEMENT })),
+    ).rejects.toThrow("la base no responde");
+  });
+
+  it("sin settlementId no registra ni anuncia (recibos encolados por la versión anterior)", async () => {
+    const recorded: unknown[] = [];
+    const announced: unknown[] = [];
+    const handler = createRenderReceiptHandler({
+      upload: async () => {},
+      recordReceipt: async (input) => {
+        recorded.push(input);
+      },
+      announceReceipt: async (input) => {
+        announced.push(input);
+      },
+    });
+
+    await handler(renderJob(receiptPayload()));
+
+    expect(recorded).toEqual([]);
     expect(announced).toEqual([]);
   });
 });

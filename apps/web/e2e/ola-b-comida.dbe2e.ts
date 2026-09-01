@@ -38,7 +38,7 @@ async function outboxDrained(page: Page): Promise<void> {
     page.evaluate(
       () =>
         new Promise<number>((resolve, reject) => {
-          const open = indexedDB.open('casa-clara-web');
+          const open = indexedDB.open('housekeeper-web');
           open.onerror = () => reject(open.error);
           open.onsuccess = () => {
             const db = open.result;

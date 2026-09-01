@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 
-import type { Role } from '@casa-clara/contracts';
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import type { Role } from '@housekeeper/contracts';
+import { createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { CONTACT_KINDS, type ContactKind } from '$lib/contacts/kinds';
 

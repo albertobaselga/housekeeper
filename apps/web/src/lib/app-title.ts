@@ -2,7 +2,7 @@
  * Fuente única de la identidad que se muestra: el nombre genérico del producto
  * y el título de la pestaña del navegador.
  *
- * «Casa Clara» es el nombre del PROYECTO y se coló como si fuera el del
+ * «Housekeeper» es el nombre del PROYECTO y se coló como si fuera el del
  * producto en uso. Una misma instalación sirve a varias casas, así que:
  *
  * · Sin sesión (acceso, error, sin conexión) se anuncia el producto genérico.

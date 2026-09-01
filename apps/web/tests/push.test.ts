@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { loadVapidConfig } from '@housekeeper/worker/push-channel';
+
 import { endpointIsAcceptable, pushPublicKey } from '../src/lib/server/push.server';
 import { decodeVapidKey } from '../src/lib/push/subscribe';
 
@@ -18,6 +20,43 @@ describe('la clave pública del canal', () => {
     expect(pushPublicKey({ ...complete, VAPID_PRIVATE_KEY: '' })).toBeNull();
     expect(pushPublicKey({ ...complete, VAPID_SUBJECT: '  ' })).toBeNull();
     expect(pushPublicKey({})).toBeNull();
+  });
+
+  // El defecto que esto cierra, con nombre y apellidos: en Vercel se pega
+  // `VAPID_SUBJECT='<mailto:avisos@ejemplo.es>'` con los corchetes, la web
+  // dibujaba el interruptor y el banner ofrecía «Activar», el navegador se
+  // suscribía y la fila se guardaba... mientras la cola no registraba ni un
+  // emisor porque el worker sí miraba la forma del `sub`. La casa creía tener
+  // los avisos encendidos y no llegaba ninguno, para siempre y sin una línea de
+  // registro. La lista es la misma que la de `apps/worker/src/push.test.ts`.
+  it('declara que no hay canal con un `sub` que solo fallaría en los iPhone', () => {
+    for (const dirty of [
+      '<mailto:casa@ejemplo.es>',
+      'mailto: casa@ejemplo.es',
+      'casa@ejemplo.es',
+      'http://casa.ejemplo.es',
+      'mailto:casa@localhost'
+    ]) {
+      expect(pushPublicKey({ ...complete, VAPID_SUBJECT: dirty })).toBeNull();
+    }
+  });
+
+  it('responde exactamente lo mismo que el worker, que es de lo que se trata', () => {
+    // Dos criterios distintos para «¿hay canal?» son un canal que miente: uno
+    // enseña el interruptor y el otro no manda nada. Aquí se comprueba la
+    // equivalencia sobre los casos límite, no que cada mitad acierte por su
+    // cuenta.
+    for (const subject of [
+      'mailto:casa@ejemplo.es',
+      ' https://casa.ejemplo.es ',
+      '<mailto:casa@ejemplo.es>',
+      'mailto: casa@ejemplo.es',
+      'casa@ejemplo.es',
+      '  '
+    ]) {
+      const environment = { ...complete, VAPID_SUBJECT: subject };
+      expect(pushPublicKey(environment) === null).toBe(loadVapidConfig(environment) === null);
+    }
   });
 
   it('no deja escapar la privada por ninguna parte', () => {

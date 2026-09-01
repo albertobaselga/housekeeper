@@ -1,4 +1,4 @@
-name: casaclara-worker
+name: housekeeper-worker
 
 # Host del worker (Fly.io, Hetzner, un VPS cualquiera) para el despliegue
 # «web en Vercel + base en Supabase». Aquí NO hay Postgres, ni MinIO, ni Caddy,
@@ -29,12 +29,12 @@ x-hardening: &hardening
 services:
   worker:
     <<: *hardening
-    image: casaclara/worker:${RELEASE_TAG:?set RELEASE_TAG}
+    image: housekeeper/worker:${RELEASE_TAG:?set RELEASE_TAG}
     build:
       context: ..
       dockerfile: infra/docker/worker.Dockerfile
       args:
-        WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+        WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@housekeeper/worker}
     environment:
       NODE_ENV: production
       # Rol casa_clara_worker_login. Directa (5432) o pooler (6543): el worker
@@ -46,7 +46,7 @@ services:
       S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET:?set S3_PRIVATE_BUCKET}
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID}
       S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY}
-      WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+      WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@housekeeper/worker}
       HOST: 0.0.0.0
       WORKER_HEALTH_PORT: "3001"
     ports:
@@ -67,18 +67,18 @@ services:
     init: true
     security_opt:
       - no-new-privileges:true
-    image: casaclara/clamav-gateway:${RELEASE_TAG:?set RELEASE_TAG}
+    image: housekeeper/clamav-gateway:${RELEASE_TAG:?set RELEASE_TAG}
     build:
       context: ..
       dockerfile: infra/docker/clamav-gateway.Dockerfile
     environment:
       # El MISMO valor que CLAMAV_TOKEN en las variables de la web en Vercel.
       CLAMAV_GATEWAY_TOKEN: ${CLAMAV_GATEWAY_TOKEN:?set CLAMAV_GATEWAY_TOKEN}
-      CLAMAV_GATEWAY_CERT: /etc/casaclara/tls/fullchain.pem
-      CLAMAV_GATEWAY_KEY: /etc/casaclara/tls/privkey.pem
+      CLAMAV_GATEWAY_CERT: /etc/housekeeper/tls/fullchain.pem
+      CLAMAV_GATEWAY_KEY: /etc/housekeeper/tls/privkey.pem
       CLAMAV_GATEWAY_PORT: "3311"
     volumes:
-      - ${CLAMAV_TLS_DIR:?set CLAMAV_TLS_DIR}:/etc/casaclara/tls:ro
+      - ${CLAMAV_TLS_DIR:?set CLAMAV_TLS_DIR}:/etc/housekeeper/tls:ro
       - clamav_signatures:/var/lib/clamav
     ports:
       # Este SÍ es público: es el único punto por el que la web de Vercel

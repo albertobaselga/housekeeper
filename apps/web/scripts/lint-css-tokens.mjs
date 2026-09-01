@@ -1,6 +1,6 @@
 // Guardián de las dos escalas.
 //
-// Casa Clara no tenía sistema: tenía 529 reglas acumuladas. `app.css` declaraba
+// Housekeeper no tenía sistema: tenía 529 reglas acumuladas. `app.css` declaraba
 // 33 tokens —23 de color, 4 de radio, 3 de sombra, 3 de layout— y CERO de
 // espaciado y CERO de tipografía. Los dos ejes que deciden la densidad en un
 // teléfono eran exactamente los dos que nadie había tokenizado, así que cada

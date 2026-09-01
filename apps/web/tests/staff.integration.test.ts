@@ -9,8 +9,8 @@ import { loadStaffOverview } from '../src/lib/server/staff.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_staff_login';
-const STAFF_DB = 'casaclara_staff_it';
+const APP_LOGIN = 'it_housekeeper_staff_login';
+const STAFF_DB = 'housekeeper_staff_it';
 
 const ADMIN_USER = { id: 'fixture:roble:admin' };
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };

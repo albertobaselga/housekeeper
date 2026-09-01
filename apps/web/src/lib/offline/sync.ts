@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { invalidateAll } from '$app/navigation';
 import { writable } from 'svelte/store';
-import { API_VERSION, MAX_SYNC_COMMANDS } from '@casa-clara/contracts';
+import { API_VERSION, MAX_SYNC_COMMANDS } from '@housekeeper/contracts';
 import type { CriticalSnapshotV1, OutboxRecord } from './schema';
 import {
   acknowledgeOutbox,

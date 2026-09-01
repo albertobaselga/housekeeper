@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import pg from 'pg';
 
-export const INTEGRATION_APP_LOGIN = 'it_casa_clara_app_login';
+export const INTEGRATION_APP_LOGIN = 'it_housekeeper_app_login';
 
 // Provisiona una sola vez por ejecución de vitest el esquema, las fixtures y el
 // login sin BYPASSRLS que comparten todos los tests de integración del paquete.

@@ -11,6 +11,7 @@
  * Nada de aquí se ejecuta al entrar en la aplicación. El permiso se pide cuando
  * la persona acaba de pedirlo, y en ningún otro momento.
  */
+import { isInstalled, looksLikeApple } from '../pwa/install';
 
 /** Qué puede hacer este navegador, antes de ofrecerle nada a nadie. */
 export type PushAvailability =
@@ -26,21 +27,6 @@ export type PushAvailability =
   | { kind: 'needs-home-screen' }
   /** Este navegador no sabe hacerlo, y no hay nada que la persona pueda cambiar. */
   | { kind: 'unsupported' };
-
-function looksLikeApple(): boolean {
-  // iPadOS se anuncia como Macintosh con puntero táctil desde iPadOS 13.
-  const ua = navigator.userAgent;
-  return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-}
-
-function isInstalled(): boolean {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    // Safari en iOS no implementa `display-mode: standalone` en versiones
-    // antiguas y expone esta propiedad no estándar en su lugar.
-    (navigator as unknown as { standalone?: boolean }).standalone === true
-  );
-}
 
 export function pushAvailability(): PushAvailability {
   if (!('serviceWorker' in navigator) || !('Notification' in window)) {

@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 
-import type { Role, UUID } from "@casa-clara/contracts";
+import type { Role, UUID } from "@housekeeper/contracts";
 
 export interface AuthenticatedPrincipal {
   userId: UUID;

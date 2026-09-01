@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 
 import type { Pool } from 'pg';
 
-import type { AgreementCreateInputV1 } from '@casa-clara/contracts';
-import { agreementTermsInputSchema } from '@casa-clara/contracts/schemas';
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import type { AgreementCreateInputV1 } from '@housekeeper/contracts';
+import { agreementTermsInputSchema } from '@housekeeper/contracts/schemas';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { parseEuroInput } from '$lib/employment/commands';
 

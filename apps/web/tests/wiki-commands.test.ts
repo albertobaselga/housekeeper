@@ -9,7 +9,7 @@ import {
   wikiPageEditPayloadSchema,
   wikiPageSetStatePayloadSchema,
   wikiSpaceCreatePayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import {
   createWikiPage,

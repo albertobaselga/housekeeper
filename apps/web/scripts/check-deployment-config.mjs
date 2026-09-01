@@ -54,7 +54,7 @@ export function inspectBuildEnvironment(environment) {
   // se está construyendo y no de con qué se está sirviendo.
   if (vercelProduction && fixtureLogin) {
     fatal.push(
-      'No se construye producción con CASA_CLARA_FIXTURE_LOGIN=true. Esa variable mete el selector de cuentas ' +
+      'No se construye producción con HOUSEKEEPER_FIXTURE_LOGIN=true. Esa variable mete el selector de cuentas ' +
         'sintéticas dentro del paquete; sin declararla, `vite build` ya lo deja fuera.'
     );
   }
@@ -108,7 +108,7 @@ function main() {
 
   if (verdict.level === 'fail') {
     console.error(
-      ['', 'La build de Casa Clara se detiene por configuración incoherente:', ...verdict.lines.map((l) => `  - ${l}`), ''].join(
+      ['', 'La build se detiene por configuración incoherente:', ...verdict.lines.map((l) => `  - ${l}`), ''].join(
         '\n'
       )
     );

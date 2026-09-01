@@ -31,7 +31,7 @@ function listXml(keys: string[], nextToken: string | null): string {
     .join("");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-  <Name>casaclara</Name>
+  <Name>housekeeper</Name>
   <IsTruncated>${nextToken ? "true" : "false"}</IsTruncated>
   ${nextToken ? `<NextContinuationToken>${nextToken}</NextContinuationToken>` : ""}
   ${contents}
@@ -86,8 +86,8 @@ describe("copia manual de adjuntos (pnpm backup:full)", () => {
   });
 
   it("descarga TODAS las páginas del bucket con su contenido intacto", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "casaclara-backup-"));
-    const result = await downloadBucket(client, "casaclara", directory);
+    const directory = mkdtempSync(join(tmpdir(), "housekeeper-backup-"));
+    const result = await downloadBucket(client, "housekeeper", directory);
 
     expect(result).toEqual({ objects: 3, bytes: Object.values(OBJECTS).join("").length });
     for (const [key, body] of Object.entries(OBJECTS)) {
@@ -96,8 +96,8 @@ describe("copia manual de adjuntos (pnpm backup:full)", () => {
   });
 
   it("una clave con ../ no puede escribir fuera del destino", () => {
-    const base = "/tmp/casaclara-copia";
-    expect(safeTarget(base, "hogar/attachments/x.jpg")).toBe("/tmp/casaclara-copia/hogar/attachments/x.jpg");
+    const base = "/tmp/housekeeper-copia";
+    expect(safeTarget(base, "hogar/attachments/x.jpg")).toBe("/tmp/housekeeper-copia/hogar/attachments/x.jpg");
     expect(() => safeTarget(base, "../../etc/passwd")).toThrow(/fuera del destino/);
   });
 });

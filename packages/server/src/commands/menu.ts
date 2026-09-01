@@ -1,10 +1,10 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { UUID } from "@housekeeper/contracts";
 import {
   menuGroupCommandPayloadSchema,
   menuSlotCommandPayloadSchema,
-} from "@casa-clara/contracts/schemas";
+} from "@housekeeper/contracts/schemas";
 
 import type { ActiveMembership } from "../database.js";
 import { computeMenuSlotHash } from "../menu-hash.js";

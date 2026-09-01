@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { UUID } from "@housekeeper/contracts";
 
 import { canonicalSha256 } from "./canonical-json.js";
 

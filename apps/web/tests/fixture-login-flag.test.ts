@@ -32,34 +32,45 @@ describe('resolveFixtureLogin: el olvido cae del lado seguro', () => {
   });
 
   it('una variable vacía o en blanco es «sin declarar», no «sí»', () => {
-    expect(resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: '' }, 'build')).toBe(false);
-    expect(resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: '   ' }, 'build')).toBe(false);
+    expect(resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: '' }, 'build')).toBe(false);
+    expect(resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: '   ' }, 'build')).toBe(false);
   });
 });
 
 describe('resolveFixtureLogin: la declaración explícita manda', () => {
   it('"true" lo mete: es lo que piden las dos configuraciones de Playwright', () => {
-    expect(resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: 'true' }, 'build')).toBe(true);
+    expect(resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: 'true' }, 'build')).toBe(true);
   });
 
   it('"false" lo saca incluso del servidor de desarrollo', () => {
     // Sirve para comprobar en local cómo se comporta el paquete de producción.
-    expect(resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: 'false' }, 'serve')).toBe(false);
+    expect(resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: 'false' }, 'serve')).toBe(false);
   });
 
   it('tolera mayúsculas y espacios alrededor, que es como se cuelan en un panel', () => {
-    expect(resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: ' TRUE ' }, 'build')).toBe(true);
-    expect(resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: 'False' }, 'serve')).toBe(false);
+    expect(resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: ' TRUE ' }, 'build')).toBe(true);
+    expect(resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: 'False' }, 'serve')).toBe(false);
   });
 
   it('un valor que no es ni "true" ni "false" mata la build en vez de adivinar', () => {
     // Interpretar `1` como falso sería un fallo silencioso justo en la variable
     // que no los admite; interpretarlo como cierto sería peor.
-    expect(() => resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: '1' }, 'build')).toThrow(
-      /CASA_CLARA_FIXTURE_LOGIN="1"/
+    expect(() => resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: '1' }, 'build')).toThrow(
+      /HOUSEKEEPER_FIXTURE_LOGIN="1"/
     );
-    expect(() => resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: 'yes' }, 'build')).toThrow(
+    expect(() => resolveFixtureLogin({ HOUSEKEEPER_FIXTURE_LOGIN: 'yes' }, 'build')).toThrow(
       /"true" o "false"/
+    );
+  });
+
+  it('la variable renombrada revienta en voz alta en vez de leerse como «sin declarar»', () => {
+    // CASA_CLARA_FIXTURE_LOGIN era el nombre anterior al renombrado del
+    // proyecto. Si alguien la deja puesta en un panel de variables, el fallo
+    // silencioso más peligroso sería tratarla como ausente y dejar el selector
+    // fuera sin que nadie se entere de que la variable que cree haber puesto
+    // no hace nada.
+    expect(() => resolveFixtureLogin({ CASA_CLARA_FIXTURE_LOGIN: 'true' }, 'build')).toThrow(
+      /CASA_CLARA_FIXTURE_LOGIN ya no existe; renombrada a HOUSEKEEPER_FIXTURE_LOGIN/
     );
   });
 });
