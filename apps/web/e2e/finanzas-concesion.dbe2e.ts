@@ -156,11 +156,18 @@ async function expectRowSays(row: Locator, state: 'activado' | 'apagado'): Promi
  */
 async function observarFila(page: Page, nombre: string): Promise<void> {
   await page.evaluate((name) => {
-    const fila = [...document.querySelectorAll('ul[data-lista="finanzas"] > li')].find((item) =>
-      item.textContent?.includes(name)
-    );
-    if (!fila) throw new Error(`Sin fila para ${name}`);
+    // Se vigila la LISTA, no la fila, y la fila se vuelve a buscar en cada
+    // instantánea. Un observador atado al <li> deja de ver nada en cuanto el
+    // framework SUSTITUYE ese nodo —un `{#key}` alrededor basta—: se queda
+    // mirando un nodo separado, registra sólo la foto inicial, y mientras tanto
+    // la fila de la pantalla puede decir lo que quiera.
+    const lista = document.querySelector('ul[data-lista="finanzas"]');
+    if (!lista) throw new Error('Sin lista de concesiones de Finanzas');
     const instantanea = () => {
+      const fila = [...lista.querySelectorAll(':scope > li')].find((item) =>
+        item.textContent?.includes(name)
+      );
+      if (!fila) return { chips: [], frase: '', botonVisible: '', botonEtiqueta: '' };
       const boton = fila.querySelector('button');
       return {
         chips: [...fila.querySelectorAll('.status-chip')].map((chip) => chip.textContent?.trim() ?? ''),
@@ -171,7 +178,7 @@ async function observarFila(page: Page, nombre: string): Promise<void> {
     };
     const registro = [instantanea()];
     const observer = new MutationObserver(() => registro.push(instantanea()));
-    observer.observe(fila, { subtree: true, childList: true, characterData: true, attributes: true });
+    observer.observe(lista, { subtree: true, childList: true, characterData: true, attributes: true });
     Reflect.set(window, '__filaObservada', { registro, observer });
   }, nombre);
 }
@@ -187,9 +194,22 @@ async function instantaneas(page: Page): Promise<Instantanea[]> {
   });
 }
 
+/**
+ * El observador tiene que haber visto MOVERSE la fila: el chip «Enviando…»
+ * aparece siempre al pulsar. Que el registro no esté vacío no basta —la foto
+ * inicial siempre está—, y un registro que sólo tiene esa foto significa que se
+ * vigiló un nodo que ya no es el de la pantalla.
+ */
+function expectObservoLaFilaDeVerdad(vistas: Instantanea[]): void {
+  expect(
+    vistas.filter((vista) => vista.chips.includes('Enviando…')),
+    'el observador no llegó a ver el chip «Enviando…»: vigilaba un nodo que dejó de estar en la pantalla'
+  ).not.toEqual([]);
+}
+
 /** En NINGUNA de las instantáneas la fila pudo decir que la cuenta tiene Finanzas. */
 function expectNuncaDijoActivado(vistas: Instantanea[]): void {
-  expect(vistas.length, 'el observador no registró ni la instantánea inicial').toBeGreaterThan(0);
+  expectObservoLaFilaDeVerdad(vistas);
   const mentiras = vistas.filter(
     (vista) =>
       vista.chips.includes('Activado') ||
@@ -198,6 +218,24 @@ function expectNuncaDijoActivado(vistas: Instantanea[]): void {
       vista.botonEtiqueta.startsWith('Desactivar')
   );
   expect(mentiras, 'la fila dijo que la cuenta tiene Finanzas en algún instante').toEqual([]);
+}
+
+/**
+ * El simétrico, y no es una comprobación de adorno: adelantarse al REVOCAR dice
+ * «Apagado» de una cuenta que sigue viendo las cifras de la casa. Quien lo mira
+ * cree que ha cerrado el acceso y no lo ha cerrado, que es la peor de las dos
+ * mentiras posibles en esta tarjeta.
+ */
+function expectNuncaDijoApagado(vistas: Instantanea[]): void {
+  expectObservoLaFilaDeVerdad(vistas);
+  const mentiras = vistas.filter(
+    (vista) =>
+      vista.chips.includes('Apagado') ||
+      vista.frase === 'No ve el módulo de Finanzas' ||
+      vista.botonVisible === 'Activar Finanzas' ||
+      vista.botonEtiqueta.startsWith('Activar')
+  );
+  expect(mentiras, 'la fila dijo que la cuenta ya no tiene Finanzas en algún instante').toEqual([]);
 }
 
 async function gotoSettings(page: Page): Promise<Locator> {
@@ -267,6 +305,46 @@ function casos(): void {
     );
     expectNuncaDijoActivado(await instantaneas(page));
     await expectRowSays(row, 'apagado');
+    await page.unroute('**/api/v1/sync');
+  });
+
+  test('revocando, la fila tampoco se adelanta: sigue diciendo que la cuenta ve Finanzas', async ({
+    page
+  }) => {
+    // La única dirección que no medía nadie. Los otros casos parten de la fila
+    // apagada y conceden; aquí se parte de la concesión puesta y se retira.
+    await onDatabase(`
+      INSERT INTO app.finance_module_grants (household_id, membership_id, granted_by_membership_id)
+        VALUES ('${HOUSEHOLD}', '${ADMIN2_MEMBERSHIP}', '11000000-0000-4000-8000-000000000001');
+    `);
+    const row = await gotoSettings(page);
+    await expectRowSays(row, 'activado');
+
+    await page.route('**/api/v1/sync', async (route) => {
+      const body = route.request().postDataJSON() as { commands: { operationId: string }[] };
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          apiVersion: 1,
+          acknowledgements: body.commands.map((command) => ({
+            operationId: command.operationId,
+            status: 'rejected',
+            errorCode: 'not_granted'
+          }))
+        })
+      });
+    });
+
+    await observarFila(page, ADMIN2_NAME);
+    await row.getByRole('button', { name: `Desactivar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
+
+    await expect(page.locator(TARJETA).locator('.form-error')).toContainText(
+      'Esa cuenta no tiene Finanzas activado'
+    );
+    expectNuncaDijoApagado(await instantaneas(page));
+    await expectRowSays(row, 'activado');
     await page.unroute('**/api/v1/sync');
   });
 
