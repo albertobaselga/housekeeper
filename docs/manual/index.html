@@ -1438,13 +1438,17 @@ thead th { border-top: 0; }
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
       <img src="capturas/familia-contrato-historial.png" loading="lazy" width="2560" height="1600"
-           alt="Historial con pagos y confirmación: la cuenta de marzo 2025 con el chip Pagada y cobro confirmado, desglosada en salario base, domingo trabajado, dos horas extra, descanso compensado, cuota del anticipo, dos reembolsos y el pago por transferencia.">
+           alt="Historial con pagos y confirmación: una fila plegada por mes, cada una con el nombre del mes, su importe, su chip de estado y el botón PDF; el mes desplegado enseña su desglose línea a línea —salario base, domingo trabajado, dos horas extra, descanso compensado, cuota del anticipo y dos reembolsos—, el pago por transferencia y lo que queda pendiente.">
     </div>
     <figcaption>
-      <span class="ui">Historial con pagos y confirmación</span>: cada mes cerrado con
-      su chip (<span class="chip exito">Pagada y cobro confirmado</span>,
-      <span class="chip alerta">Pendiente de pago</span>…), línea a línea, y cada línea
-      enlazada con el hecho que la originó.
+      <span class="ui">Historial con pagos y confirmación</span>: <strong>una fila por
+      mes</strong>, plegada. En la fila cerrada, lo que se viene a mirar —el mes, el
+      importe, el estado (<span class="chip exito">Pagada y cobro confirmado</span>,
+      <span class="chip alerta">Pendiente de pago</span>…) y el botón
+      <span class="ui">PDF</span> del documento de pago, que no obliga a desplegar
+      nada—. Al tocar el mes se abre su detalle: cada línea con el hecho que la
+      originó, los pagos registrados y lo que queda pendiente. Se pueden tener dos
+      meses abiertos a la vez, que es lo que se hace al comparar una discrepancia.
     </figcaption>
   </figure>
   <div class="tarjeta">
@@ -1758,16 +1762,29 @@ thead th { border-top: 0; }
   <div class="tarjeta">
     <h4>Anular, no borrar</h4>
     <p>
-      Un concepto mal apuntado se <span class="ui">Anular</span> con su motivo y
-      <strong>se queda en la lista</strong>, con quién lo anuló y por qué, sin contar en
-      ningún total. Lo que ya entró en una cuenta <strong>cerrada</strong> no se puede
-      anular: para corregirlo se apunta el concepto contrario en un mes abierto, y la
-      aplicación lo dice así cuando lo intentas.
+      Un concepto mal apuntado se <span class="ui">Anular</span> con su motivo. No se
+      borra: <strong>queda en el expediente</strong> con quién lo anuló y por qué —sale
+      así en la copia del expediente—, deja de contar en cualquier total y sale de esta
+      lista, porque ya no hay nada que decidir sobre él. Lo que ya entró en una cuenta
+      <strong>cerrada</strong> no se puede anular: para corregirlo se apunta el concepto
+      contrario en un mes abierto, y la aplicación lo dice así cuando lo intentas.
+    </p>
+  </div>
+  <div class="tarjeta">
+    <h4>Esta lista es una bandeja, no un archivo</h4>
+    <p>
+      Aquí solo está lo que <strong>todavía</strong> espera algo: lo apuntado en los
+      últimos tres meses que ninguna cuenta cerrada ha aplicado aún, y lo imputado a un
+      mes que aún no ha llegado. En cuanto una cuenta se cierra, sus conceptos pasan a
+      leerse <strong>dentro de esa cuenta</strong>, en <span class="ui">Pagos</span>,
+      que es donde viven para siempre con el resto del mes. Un adelanto de agosto ya
+      descontado en la nómina de agosto no es un concepto de septiembre, y tenerlo
+      delante cada mes solo obliga a descartarlo otra vez.
     </p>
   </div>
   <p>
     Los conceptos los apunta y los anula <strong>quien administra</strong>. La empleada
-    <strong>los ve todos</strong> —en la lista y en la cuenta de su mes, con su etiqueta
+    <strong>ve los suyos</strong> —en la lista y en la cuenta de su mes, con su etiqueta
     y su motivo—, incluidos los que solo constan. Enterarse de que se ha decidido algo
     sobre su dinero no es un detalle: es el motivo por el que esto existe.
   </p>
