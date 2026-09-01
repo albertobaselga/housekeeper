@@ -182,3 +182,168 @@ calcular un derecho de cero, que no sería un vacío sino una cifra inventada.
 El historial las enseña **todas**, una tarjeta por contrato visible. Es la
 diferencia con la tarjeta del año en curso dentro de Contrato, que enseña una y
 se cambia con el selector.
+
+---
+
+## Segunda enmienda (1 de septiembre de 2026): el salto de año
+
+La decisión original resolvió **dónde se guardan** las vacaciones y **quién las
+escribe**; la primera enmienda, **que se entere y que quede el historial**. Al
+usarlo un año entero apareció el hueco que quedaba, y el propietario lo cerró
+con dos frases literales: «hasta que se cumplan los 12 meses del inicio del
+contrato, ese es el periodo en el que se calculan los días de vacaciones» y «al
+saltar de año, los días no consumidos se pueden mover al año siguiente hasta una
+fecha determinada; pasada esa fecha salta un aviso de compensación económica que
+se puede rechazar (se pierden) o aceptar (se incorporan como días a pagar)».
+
+### 1 · El año de vacaciones es el del contrato, no el del calendario
+
+`vacationYearBalance` recibía un año natural y recortaba por 1-ene/31-dic. Pasa a
+recibir un **año de contrato**: doce meses contados desde `agreementStartsOn`. Un
+contrato que empezó el 5 de marzo de 2025 tiene su primer año del 5-mar-2025 al
+4-mar-2026, y el aniversario ABRE el año nuevo.
+
+Tres consecuencias, todas buenas:
+
+- **Desaparece el prorrateo del primer año.** El año empieza el día del contrato,
+  así que se devenga el derecho completo. El prorrateo sobrevive sólo para el
+  **último** año, cuando el contrato termina a media anualidad. La decisión
+  original —«el primer año se prorratea»— queda derogada por ésta; el porqué de
+  aquélla (no enseñar «30 días» a quien empezó en noviembre) sigue valiendo, pero
+  ahora lo resuelve el corte y no la regla de tres.
+- **La pantalla cambia de voz.** Deja de decir «Vacaciones 2026» y dice el año de
+  contrato con sus fechas: «Segundo año · 5 mar 2026 – 4 mar 2027». Sin las
+  fechas, el ordinal no le dice nada a quien lo lee.
+- **Un aniversario clavado.** Doce meses después de un 29 de febrero es el 28 de
+  febrero, y los años se cuentan siempre desde la fecha ORIGINAL del contrato,
+  nunca encadenando uno sobre el anterior: si no, el aniversario de un contrato
+  firmado un 29 de febrero se iría desplazando y no volvería nunca a su día.
+
+También se añade lo que faltaba para responder la pregunta que de verdad se hace
+quien administra a mitad de año: **los días devengados a día de hoy**,
+proporcionales dentro del año de contrato, con la fecha **inyectada** y no leída
+del reloj. Son dos cifras distintas y las dos son ciertas: *lo que quedará al
+terminar el año* (derecho − disfrutados) y *lo disponible ahora mismo*
+(devengado − disfrutados). Mezclarlas hace mentir a la pantalla. La segunda puede
+salir **negativa**, y no es un error: son vacaciones disfrutadas por adelantado,
+lo normal cuando se dan en agosto y el año de contrato acaba en marzo. Se enseña
+como un anticipo, no como una alarma, y sólo cuando ocurre.
+
+El devengo se divide por los días que el acuerdo **cubre** de ese año, no por los
+del año entero. La diferencia sólo aparece en el último año de un contrato que
+termina a media anualidad, pero ahí es grande: el derecho de ese año ya viene
+prorrateado por el final del contrato, y dividir además por el año completo lo
+descontaría **dos veces**.
+
+### 2 · Tabla nueva, y por qué no columnas
+
+Migración **0035**: `app.vacation_carryovers`. Un arrastre no cabe en nada de lo
+que ya existía:
+
+- `app.vacation_periods` guarda días **disfrutados**; un arrastre no es un
+  periodo disfrutado.
+- `app.agreement_versions` guarda lo **pactado**, y además es inmutable; un
+  arrastre es un hecho de un año concreto, no un cambio de contrato.
+- Un cálculo derivado tampoco vale, y ésta es la razón de fondo: **un derivado no
+  puede recordar que alguien dijo que no**. Antes de la 0035 el derecho se
+  reiniciaba por aritmética y la casa no podía distinguir «se decidió que se
+  perdían» de «a nadie se le ocurrió mirarlo».
+
+Es un hecho con decisión, autoría, motivo y consecuencia económica, así que se
+construye con el mismo patrón append-only que los periodos (0020) y los conceptos
+(0022): disparador que prohíbe el DELETE, transiciones tasadas, auditoría y
+cerrojo consultivo por (acuerdo, año de contrato) en el **espacio de nombres 6**,
+que estaba libre. Sin ese cerrojo, dos administradores aceptando a la vez
+generarían dos conceptos por los mismos días.
+
+`app.manual_adjustments` estrena `vacation_carryover_id` para cerrar la cadena de
+procedencia por los dos extremos, y eso obligó a **reescribir**
+`app.enforce_manual_adjustment_append`, que enumera columna a columna lo que la
+anulación no puede tocar. Sin ese repaso, anular un concepto habría sido una
+puerta para mover un pago de vacaciones de un año a otro sin dejar rastro.
+
+### 3 · Por qué los días van congelados
+
+Al decidir se guardan los días con derecho, los disfrutados, los no disfrutados,
+el año de contrato con sus fechas, la versión del acuerdo, el importe y la frase
+que lo explica. **Nada de eso se recalcula nunca al leer.**
+
+Si en marzo se anula un periodo del año anterior, la propuesta que alguien vio y
+decidió —y que quizá ya se pagó— no puede cambiar debajo. Es el mismo criterio
+que ya siguen la nota de aplazamiento de los conceptos (0022) y las tarifas
+congeladas de la jornada extra, y aquí importa más que en ninguno de los dos,
+porque detrás hay una transferencia a una persona real.
+
+Lo que **no** se congela es cuándo aparece la propuesta: **se calcula al leer** y
+la fila sólo se escribe al decidir. No hace falta ni trabajo periódico ni
+disparador por calendario —ninguno de los dos existe en esta casa—, y el cálculo
+es reproducible desde los periodos, que sí son append-only. La propuesta aparece
+**en cuanto termina el año de contrato**, no en la fecha límite: avisar cuando ya
+no se pueden disfrutar sería avisar tarde.
+
+### 4 · Por qué NO se reutiliza la marca de agua de 0028
+
+`app.vacation_notice_marks` guarda un instante que se pisa a sí mismo, sin
+auditoría, y esta misma ADR dice tres cosas que la marca **no** es —y la primera
+es que **no es una conformidad**. Colar en ella una decisión sobre días y dinero
+insinuaría exactamente la aprobación que el hogar decidió no pedirle a la
+empleada, y rompería la razón de existir de la marca.
+
+Por lo mismo, el arrastre no entra en `vacationNewsSince`: el aviso de la empleada
+sigue contando lo que le han apuntado o anulado, y nada más.
+
+### 5 · Qué eligió el propietario en cada punto
+
+- **Margen de caducidad:** seis meses desde el fin del año de contrato por
+  omisión, otro número de meses si se pacta, o «nunca expiran». Va en
+  `agreement_versions.terms` y no en una columna porque es política pactada con
+  forma propia. **Ausente = seis meses**, así que ningún contrato ya firmado hubo
+  que tocarlo.
+- **Precio del día:** *«el precio del día de vacaciones no disfrutado tiene otro
+  valor que se cierra en el contrato, no se auto calcula»*. Es una tarifa más de
+  las condiciones (`unused_vacation_day_rate_cents`, migración 0034), hermana del
+  precio de la hora extra y del día de descanso trabajado. **La columna es
+  NULLABLE a propósito:** vacía dice «no se pactó», que es la verdad de los
+  contratos anteriores; un cero por omisión dejaría escrito en una tabla inmutable
+  que se acordó pagar cero euros por día. **Sin tarifa pactada no hay
+  compensación**: la pantalla ofrece arrastrar o rechazar, y para compensar dice
+  lo que falta y lleva a pactarlo. No se estima, no se deduce del salario, no se
+  pone cero.
+- **Qué versión fija cada cosa:** el **derecho** del año que se cierra lo fija la
+  versión vigente al terminar aquel año —subir hoy los días pactados no reescribe
+  un año ya vivido—, y con él viaja la política de caducidad, porque el margen es
+  de esos días. El **precio** lo fija la versión vigente **al decidir pagar**,
+  porque el dinero es del mes en que se paga; la frase congelada deja constancia
+  de desde cuándo regía esa tarifa, y eso es lo que la hace comprobable dentro de
+  dos años.
+- **Quién decide:** quien administra la casa (`family_admin`), como todo lo demás
+  del contrato. La empleada lo ve, no lo decide. Es coherente con la decisión ya
+  tomada aquí de que no hay flujo de aprobación por su parte.
+- **Quién lo lee:** administración y la propia empleada
+  (`employee_row_visible(..., false)`, como los conceptos de 0022 y **no** como
+  los periodos de 0020). La fila lleva importe, y los importes de esta casa no
+  llegan a la familia no administradora.
+- **Cómo llega a la nómina:** aceptar la compensación crea, **en la misma
+  transacción**, un concepto a mano («Vacaciones del segundo año no disfrutadas»)
+  con el importe y la frase como motivo, enlazado con el arrastre en las dos
+  direcciones. Si el mes que toca ya está cerrado se aplaza al primer mes abierto
+  con su nota, como cualquier concepto.
+- **Cómo se enseñan los días arrastrados:** como **línea aparte**, nunca sumados
+  al derecho del año siguiente. Un «48» se lee como un error de la aplicación.
+- **Dónde aparece la decisión:** una tarjeta en la pestaña Vacaciones y **un
+  elemento más** de la lista de decisiones de Hoy, con el texto escrito por el
+  servidor. En Hoy no cabe una rama nueva de plantilla: el presupuesto de bytes
+  del arranque está medido y se comprueba en cada rama.
+
+### 6 · Lo que queda fuera, a propósito
+
+- **Avisar a la empleada por el móvil.** El canal existe pero su catálogo de temas
+  es cerrado, y mezclar el arrastre con la marca de agua rompería lo dicho en el
+  punto 4.
+- **Vencer solo los días arrastrados.** El estado `expired` y el paso
+  `carried → expired` están definidos y guardados por el disparador, pero hoy
+  nadie los escribe: haría falta un trabajo por calendario que esta casa no tiene.
+  Mientras tanto, un arrastre pasada su fecha límite se sigue viendo con la fecha
+  que tenía, que es la verdad.
+- **Partir la decisión** («arrastro diez y me pagas ocho»). Obligaría a dos
+  contadores donde hoy hay uno; no se ha pedido.
