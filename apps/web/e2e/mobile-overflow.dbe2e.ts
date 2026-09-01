@@ -31,6 +31,22 @@ const ROUTES: readonly OverflowRoute[] = [
   // gastos. Son maquetaciones distintas y ambas desbordaban.
   { path: 'employment', label: 'Contrato (familia)', as: 'admin' },
   { path: 'employment', label: 'Contrato (empleada)', as: 'employee' },
+  // La tabla de meses en reposo: cuatro cosas en la fila cerrada (mes, importe,
+  // estado y la descarga) y la descarga fuera del pliegue, que es la que puede
+  // robarle ancho al importe.
+  { path: 'employment/pagos', label: 'Pagos (familia)', as: 'admin' },
+  // Y con un mes abierto: lo que espera dentro —las líneas, los pagos y los
+  // formularios de cerrar y pagar— nace plegado, así que la vista de reposo no
+  // lo mide, igual que pasa con los subcontroles de Rutinas.
+  {
+    path: 'employment/pagos',
+    label: 'Pagos · un mes desplegado',
+    as: 'admin',
+    reveal: async (page) => {
+      await page.locator('details.mes > summary').first().click();
+      await expect(page.locator('details.mes[open] .ledger-list').first()).toBeVisible();
+    }
+  },
   { path: 'menu', label: 'Menú', as: 'admin' },
   {
     path: 'menu',

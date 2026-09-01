@@ -50,6 +50,10 @@ const ROUTES: readonly DensityRoute[] = [
   { path: 'menu', label: 'Menú', as: 'admin', lista: false },
   { path: 'employment', label: 'Contrato (familia)', as: 'admin' },
   { path: 'employment', label: 'Contrato (interna)', as: 'employee' },
+  // Pagos es una TABLA: una fila por mes, plegada, con la columna del dinero a
+  // la derecha. Es la pantalla que más se parece a lo que A6 y A7 quieren
+  // medir, y hasta ahora ninguna ruta las ponía a prueba sobre una tabla.
+  { path: 'employment/pagos', label: 'Pagos (familia)', as: 'admin' },
   { path: 'calendar', label: 'Calendario', as: 'employee', lista: false },
   { path: 'contacts', label: 'Contactos', as: 'admin' },
   { path: 'emergency', label: 'Emergencias', as: 'employee' },
