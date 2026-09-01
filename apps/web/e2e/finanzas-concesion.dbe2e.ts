@@ -13,10 +13,8 @@ import { HOUSEHOLD, loginAs } from './helpers';
  * expresiones regulares sobre el código, después con un tipo, después con un
  * ayudante que no reenvía ganchos y después con un recorrido del árbol
  * sintáctico. Cada defensa cayó ante una forma de escribirlo que no habíamos
- * imaginado: la clave computada, envolver el bloque vigilado en lugar de
- * sustituirlo, reasignar la fuente río arriba, mutar la fila con
- * `admin.granted = !admin.granted`. Siempre queda una escritura más, porque
- * todas esas pruebas miraban CÓMO está escrito el componente.
+ * imaginado, porque todas miraban CÓMO está escrito el componente. Siempre
+ * queda una escritura más.
  *
  * Aquí se mira otra cosa: con el servidor diciendo que no, ¿qué acaba viendo
  * quien pulsa? Eso no depende de la sintaxis, así que cubre también las formas
@@ -24,13 +22,24 @@ import { HOUSEHOLD, loginAs } from './helpers';
  * baratas y cazan antes —en el compilador, o en un test de milisegundos—, pero
  * la que manda es esta.
  *
- * Las tres superficies se comprueban JUNTAS y en cada caso: el chip, la frase
- * de debajo del nombre y la etiqueta del botón. Una fila que dice «Apagado»
- * mientras su botón ofrece «Desactivar Finanzas» no es media verdad: no hay
- * forma de saber cuál de las dos es.
+ * Tres decisiones que no son de adorno:
+ *
+ * 1. **Las tres superficies, juntas y en cada caso**: el chip, la frase de
+ *    debajo del nombre y el botón —su texto VISIBLE y su nombre accesible—. Una
+ *    fila que dice «Apagado» mientras su botón ofrece «Desactivar Finanzas» no
+ *    es media verdad: no hay forma de saber cuál de las dos es.
+ * 2. **La ventana en vuelo, con un observador de mutaciones**. Mirar la fila
+ *    después del acuse deja libre todo el viaje de red: se puede pintar la
+ *    mentira entera durante dos segundos y deshacerla al resolver. Y añadir una
+ *    aserción «en vuelo» tampoco vale, porque las de Playwright reintentan: en
+ *    cuanto la mentira desaparece, pasan. El observador se instala ANTES del
+ *    clic, guarda una instantánea por cada cambio del DOM de la fila, y al
+ *    final se afirma sobre el registro entero. Es determinista y no reintenta.
+ * 3. **En los dos tamaños**, incluido el móvil de 390 px: pintar la mentira
+ *    solo por debajo de 500 px la escondería de una batería que corre a 1.280,
+ *    y esta es una aplicación pensada para el móvil.
  */
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
-test.describe.configure({ mode: 'serial' });
 // Sin service worker: el `page.route` que intercepta /api/v1/sync solo alcanza
 // las peticiones que emite la página, no las de un SW que controle la pestaña.
 test.use({ serviceWorkers: 'block' });
@@ -48,50 +57,62 @@ const ADMIN2_MEMBERSHIP = 'ab900000-0000-4000-8000-000000000001';
 const ADMIN2_USER = 'e2e:roble:admin2';
 const ADMIN2_NAME = 'Ada Concesión E2E';
 
-async function onDatabase(work: (client: pg.Client) => Promise<void>): Promise<void> {
+const TARJETA = 'section[aria-labelledby="finance-grants-title"]';
+
+async function onDatabase(sql: string): Promise<void> {
   const client = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL });
   await client.connect();
   try {
-    await work(client);
+    await client.query(`BEGIN; SET LOCAL row_security = off;\n${sql}\nCOMMIT;`);
   } finally {
     await client.end();
   }
 }
 
+/** Retira todo rastro de la segunda administración. Vale como limpieza y como preludio del alta. */
+const RETIRAR = `
+  DELETE FROM app.finance_module_grants WHERE membership_id = '${ADMIN2_MEMBERSHIP}';
+  DELETE FROM app.household_memberships WHERE id = '${ADMIN2_MEMBERSHIP}';
+  DELETE FROM app.user_profiles WHERE user_id = '${ADMIN2_USER}';
+`;
+
 test.beforeAll(async () => {
-  await onDatabase(async (client) => {
-    await client.query(`
-      BEGIN;
-      SET LOCAL row_security = off;
-      INSERT INTO app.user_profiles (user_id, display_name)
-        VALUES ('${ADMIN2_USER}', '${ADMIN2_NAME}');
-      INSERT INTO app.household_memberships (id, household_id, user_id, role)
-        VALUES ('${ADMIN2_MEMBERSHIP}', '${HOUSEHOLD}', '${ADMIN2_USER}', 'family_admin');
-      COMMIT;
-    `);
-  });
+  // El alta empieza por retirar: si una ejecución anterior se cortó antes de
+  // limpiar, sin esto la siguiente revienta por clave duplicada y deja una fila
+  // de más en Ajustes para las baterías vecinas.
+  await onDatabase(`
+    ${RETIRAR}
+    INSERT INTO app.user_profiles (user_id, display_name)
+      VALUES ('${ADMIN2_USER}', '${ADMIN2_NAME}');
+    INSERT INTO app.household_memberships (id, household_id, user_id, role)
+      VALUES ('${ADMIN2_MEMBERSHIP}', '${HOUSEHOLD}', '${ADMIN2_USER}', 'family_admin');
+  `);
+});
+
+test.beforeEach(async () => {
+  // Cada caso parte de la fila APAGADA: el que concede de verdad (el simétrico)
+  // deja la concesión puesta, y el siguiente tamaño de pantalla la encontraría.
+  await onDatabase(`DELETE FROM app.finance_module_grants WHERE membership_id = '${ADMIN2_MEMBERSHIP}';`);
 });
 
 test.afterAll(async () => {
-  await onDatabase(async (client) => {
-    // Las concesiones primero: la clave foránea a la membresía es RESTRICT.
-    await client.query(`
-      BEGIN;
-      SET LOCAL row_security = off;
-      DELETE FROM app.finance_module_grants WHERE membership_id = '${ADMIN2_MEMBERSHIP}';
-      DELETE FROM app.household_memberships WHERE id = '${ADMIN2_MEMBERSHIP}';
-      DELETE FROM app.user_profiles WHERE user_id = '${ADMIN2_USER}';
-      COMMIT;
-    `);
-  });
+  await onDatabase(RETIRAR);
 });
 
 function financeRow(page: Page, name: string): Locator {
   return page.locator('ul[data-lista="finanzas"] > li').filter({ hasText: name });
 }
 
+/** Lo que la fila enseña de sí misma en un instante dado. */
+interface Instantanea {
+  chips: string[];
+  frase: string;
+  botonVisible: string;
+  botonEtiqueta: string;
+}
+
 /**
- * Lo que la fila dice de sí misma, por sus tres superficies a la vez. Se afirma
+ * Lo que la fila dice de sí misma, por sus superficies a la vez. Se afirma
  * también la AUSENCIA del estado contrario: un chip que miente no se detecta
  * comprobando que el verdadero sigue por ahí, sino que el falso no está.
  */
@@ -103,13 +124,21 @@ async function expectRowSays(row: Locator, state: 'activado' | 'apagado'): Promi
   await expect(row.locator('small')).toHaveText(
     granted ? 'Ve el módulo de Finanzas' : 'No ve el módulo de Finanzas'
   );
-  await expect(
-    row.getByRole('button', {
-      name: `${granted ? 'Desactivar' : 'Activar'} Finanzas a ${ADMIN2_NAME}`,
-      exact: true
-    })
-  ).toBeVisible();
-  // Y el botón contrario no existe: si existieran los dos, la fila ofrecería
+
+  const boton = row.getByRole('button', {
+    name: `${granted ? 'Desactivar' : 'Activar'} Finanzas a ${ADMIN2_NAME}`,
+    exact: true
+  });
+  await expect(boton).toBeVisible();
+  // El TEXTO VISIBLE, no solo el nombre accesible: localizar el botón por su
+  // `aria-label` deja que lo que se lee en pantalla diga lo contrario sin que
+  // nadie se entere.
+  const visible = granted ? 'Desactivar Finanzas' : 'Activar Finanzas';
+  await expect(boton).toHaveText(visible);
+  // Y el nombre accesible CONTIENE el visible (WCAG 2.5.3, «etiqueta en el
+  // nombre»): quien maneja la casa por voz dice lo que lee.
+  expect(await boton.getAttribute('aria-label')).toContain(visible);
+  // El botón contrario no existe: si existieran los dos, la fila ofrecería
   // encender y apagar lo mismo al mismo tiempo.
   await expect(
     row.getByRole('button', {
@@ -117,6 +146,58 @@ async function expectRowSays(row: Locator, state: 'activado' | 'apagado'): Promi
       exact: true
     })
   ).toHaveCount(0);
+}
+
+/**
+ * Instala un observador de mutaciones sobre la fila y guarda una instantánea de
+ * sus superficies por cada cambio del DOM. Es lo único que distingue «no pinta»
+ * de «la prueba mira tarde»: una aserción normal reintenta, y una mentira que
+ * dura lo que dura el viaje de red pasaría inadvertida.
+ */
+async function observarFila(page: Page, nombre: string): Promise<void> {
+  await page.evaluate((name) => {
+    const fila = [...document.querySelectorAll('ul[data-lista="finanzas"] > li')].find((item) =>
+      item.textContent?.includes(name)
+    );
+    if (!fila) throw new Error(`Sin fila para ${name}`);
+    const instantanea = () => {
+      const boton = fila.querySelector('button');
+      return {
+        chips: [...fila.querySelectorAll('.status-chip')].map((chip) => chip.textContent?.trim() ?? ''),
+        frase: fila.querySelector('small')?.textContent?.trim() ?? '',
+        botonVisible: boton?.textContent?.trim() ?? '',
+        botonEtiqueta: boton?.getAttribute('aria-label') ?? ''
+      };
+    };
+    const registro = [instantanea()];
+    const observer = new MutationObserver(() => registro.push(instantanea()));
+    observer.observe(fila, { subtree: true, childList: true, characterData: true, attributes: true });
+    Reflect.set(window, '__filaObservada', { registro, observer });
+  }, nombre);
+}
+
+async function instantaneas(page: Page): Promise<Instantanea[]> {
+  return page.evaluate(() => {
+    const observado = Reflect.get(window, '__filaObservada') as
+      | { registro: unknown[]; observer: MutationObserver }
+      | undefined;
+    if (!observado) throw new Error('El observador no llegó a instalarse');
+    observado.observer.disconnect();
+    return observado.registro as never[];
+  });
+}
+
+/** En NINGUNA de las instantáneas la fila pudo decir que la cuenta tiene Finanzas. */
+function expectNuncaDijoActivado(vistas: Instantanea[]): void {
+  expect(vistas.length, 'el observador no registró ni la instantánea inicial').toBeGreaterThan(0);
+  const mentiras = vistas.filter(
+    (vista) =>
+      vista.chips.includes('Activado') ||
+      vista.frase === 'Ve el módulo de Finanzas' ||
+      vista.botonVisible === 'Desactivar Finanzas' ||
+      vista.botonEtiqueta.startsWith('Desactivar')
+  );
+  expect(mentiras, 'la fila dijo que la cuenta tiene Finanzas en algún instante').toEqual([]);
 }
 
 async function gotoSettings(page: Page): Promise<Locator> {
@@ -128,72 +209,96 @@ async function gotoSettings(page: Page): Promise<Locator> {
   return row;
 }
 
-test('con el servidor rechazando el comando, la fila NO dice que esté activado', async ({ page }) => {
-  const row = await gotoSettings(page);
-  await expectRowSays(row, 'apagado');
+/** Los tres casos, declarados una vez y ejecutados en los dos tamaños. */
+function casos(): void {
+  test('con el servidor rechazando el comando, la fila NO dice que esté activado', async ({ page }) => {
+    const row = await gotoSettings(page);
+    await expectRowSays(row, 'apagado');
 
-  // El servidor contesta que no. Es un ACK de rechazo real —el mismo que
-  // devuelve el dispatcher ante `already_granted`—, no un fallo de transporte:
-  // la aplicación SÍ recibe respuesta, y la respuesta es «no».
-  await page.route('**/api/v1/sync', async (route) => {
-    const body = route.request().postDataJSON() as { commands: { operationId: string }[] };
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({
-        apiVersion: 1,
-        acknowledgements: body.commands.map((command) => ({
-          operationId: command.operationId,
-          status: 'rejected',
-          errorCode: 'already_granted'
-        }))
-      })
+    // El servidor contesta que no, y TARDA: sin esa espera no habría ventana en
+    // vuelo que vigilar, que es justo donde cabía la mentira. Es un ACK de
+    // rechazo real —el que devuelve el dispatcher ante `already_granted`—, no
+    // un fallo de transporte: la aplicación recibe respuesta, y es «no».
+    await page.route('**/api/v1/sync', async (route) => {
+      const body = route.request().postDataJSON() as { commands: { operationId: string }[] };
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          apiVersion: 1,
+          acknowledgements: body.commands.map((command) => ({
+            operationId: command.operationId,
+            status: 'rejected',
+            errorCode: 'already_granted'
+          }))
+        })
+      });
     });
+
+    await observarFila(page, ADMIN2_NAME);
+    await row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
+
+    // El acuse dice la verdad, con la causa traducida de ESTA tarjeta (la
+    // pantalla tiene dos notas: esta y la de accesos).
+    await expect(page.locator(TARJETA).locator('.form-error')).toContainText(
+      'Esa cuenta ya tiene Finanzas activado'
+    );
+    // …y en NINGÚN instante del viaje la fila dijo lo contrario.
+    expectNuncaDijoActivado(await instantaneas(page));
+    await expectRowSays(row, 'apagado');
+    await page.unroute('**/api/v1/sync');
   });
 
-  await row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
+  test('con la red cortada, la fila tampoco se adelanta: queda en cola y lo dice', async ({ page }) => {
+    const row = await gotoSettings(page);
+    await expectRowSays(row, 'apagado');
 
-  // El acuse dice la verdad, con la causa traducida de esta tarjeta…
-  await expect(page.locator('.form-error')).toContainText('Esa cuenta ya tiene Finanzas activado');
-  // …y la fila sigue diciendo lo que dice el servidor, por las tres.
-  await expectRowSays(row, 'apagado');
-  await page.unroute('**/api/v1/sync');
+    // Sin respuesta ninguna: el comando queda en el almacén local y se enviará
+    // al recuperar la conexión. Lo que NO puede hacer la tarjeta es dar por
+    // hecho el final: mientras nadie lo haya aceptado, la fila sigue apagada.
+    await page.route('**/api/v1/sync', (route) => route.abort());
+    await observarFila(page, ADMIN2_NAME);
+    await row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
 
-  // Y no era una carrera ganada por poco: sigue igual pasado un momento.
-  await page.waitForTimeout(1000);
-  await expectRowSays(row, 'apagado');
-});
-
-test('con la red cortada, la fila tampoco se adelanta: queda en cola y lo dice', async ({ page }) => {
-  const row = await gotoSettings(page);
-  await expectRowSays(row, 'apagado');
-
-  // Sin respuesta ninguna: el comando queda en el almacén local y se enviará al
-  // recuperar la conexión. Lo que NO puede hacer la tarjeta es dar por hecho el
-  // final: mientras nadie lo haya aceptado, la fila sigue apagada.
-  await page.route('**/api/v1/sync', (route) => route.abort());
-  await row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
-
-  await expect(page.locator('.queued-note')).toContainText('se enviará al recuperar la conexión', {
-    timeout: 15_000
+    await expect(page.locator(TARJETA).locator('.queued-note')).toContainText(
+      'se enviará al recuperar la conexión',
+      { timeout: 15_000 }
+    );
+    expectNuncaDijoActivado(await instantaneas(page));
+    await expectRowSays(row, 'apagado');
+    await page.unroute('**/api/v1/sync');
   });
-  await expectRowSays(row, 'apagado');
-  await page.unroute('**/api/v1/sync');
+
+  test('con el servidor aceptando, la fila SÍ refleja el cambio', async ({ page }) => {
+    // El caso simétrico, que es lo que impide «arreglar» los dos de arriba
+    // dejando la fila clavada: aceptado el comando, la concesión aparece.
+    const row = await gotoSettings(page);
+    await expectRowSays(row, 'apagado');
+
+    await row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
+
+    await expect(page.locator(TARJETA).locator('.success-message')).toContainText('Guardado ✓', {
+      timeout: 15_000
+    });
+    await expectRowSays(row, 'activado');
+
+    // Y sobrevive a una recarga: lo que se ve es lo que hay en la base, no un
+    // estado de pantalla que se deshace al volver a entrar.
+    await page.reload();
+    await expectRowSays(financeRow(page, ADMIN2_NAME), 'activado');
+  });
+}
+
+test.describe('la tarjeta de concesiones no miente · escritorio', () => {
+  test.describe.configure({ mode: 'serial' });
+  casos();
 });
 
-test('con el servidor aceptando, la fila SÍ refleja el cambio', async ({ page }) => {
-  // El caso simétrico, que es lo que impide «arreglar» los dos de arriba
-  // dejando la fila clavada: aceptado el comando, la concesión aparece.
-  const row = await gotoSettings(page);
-  await expectRowSays(row, 'apagado');
-
-  await row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
-
-  await expect(page.locator('.success-message')).toContainText('Guardado ✓', { timeout: 15_000 });
-  await expectRowSays(row, 'activado');
-
-  // Y sobrevive a una recarga: lo que se ve es lo que hay en la base, no un
-  // estado de pantalla que se deshace al volver a entrar.
-  await page.reload();
-  await expectRowSays(financeRow(page, ADMIN2_NAME), 'activado');
+test.describe('la tarjeta de concesiones no miente · móvil de 390', () => {
+  test.describe.configure({ mode: 'serial' });
+  // El tamaño real del contrato móvil (mismo que mobile-densidad): una mentira
+  // pintada solo por debajo de 500 px no se le escapa a esta mitad.
+  test.use({ viewport: { width: 390, height: 844 } });
+  casos();
 });
