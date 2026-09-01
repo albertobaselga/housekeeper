@@ -53,7 +53,21 @@ const ROUTES: readonly DensityRoute[] = [
   { path: 'calendar', label: 'Calendario', as: 'employee', lista: false },
   { path: 'contacts', label: 'Contactos', as: 'admin' },
   { path: 'emergency', label: 'Emergencias', as: 'employee' },
-  { path: 'settings', label: 'Ajustes', as: 'admin' }
+  { path: 'settings', label: 'Ajustes', as: 'admin' },
+  // Las siete rutas esqueleto de Finanzas (Task 8): ninguna declara lista
+  // principal (son PageHeader + estado vacío), y la única cuenta que puede
+  // verlas es la administración con concesión viva —la del roble—, así que
+  // `as: 'admin'` ejercita de paso el estado «con datos» (esta casa tiene 2
+  // cuentas y 2 movimientos sintéticos, no cero): si cualquiera de los siete
+  // `+page.svelte` desapareciera o invirtiera su condición de estado vacío,
+  // esta batería tiene que notarlo.
+  { path: 'finanzas', label: 'Finanzas · panel', as: 'admin', lista: false },
+  { path: 'finanzas/analitica', label: 'Finanzas · analítica', as: 'admin', lista: false },
+  { path: 'finanzas/movimientos', label: 'Finanzas · movimientos', as: 'admin', lista: false },
+  { path: 'finanzas/revision', label: 'Finanzas · revisión', as: 'admin', lista: false },
+  { path: 'finanzas/eventos', label: 'Finanzas · eventos', as: 'admin', lista: false },
+  { path: 'finanzas/importar', label: 'Finanzas · importar', as: 'admin', lista: false },
+  { path: 'finanzas/ajustes', label: 'Finanzas · ajustes', as: 'admin', lista: false }
 ];
 
 /**
@@ -288,7 +302,15 @@ for (const viewport of VIEWPORTS) {
       test(`${route.label} respeta el sistema`, async ({ page }) => {
         await page.context().clearCookies();
         await loginAs(page, route.as);
-        await page.goto(`/h/${HOUSEHOLD}/${route.path}`);
+        // A0 · La ruta responde 200. `page.goto` no lanza ante un 500: sin
+        // esto, una ruta que perdiera su `+page.svelte` caería en la página de
+        // error genérica de SvelteKit, que —al no tener casi contenido— pasaba
+        // los chequeos estructurales de abajo igual que una pantalla sana.
+        const response = await page.goto(`/h/${HOUSEHOLD}/${route.path}`);
+        expect(
+          response?.ok(),
+          `A0 · ${route.label}: la ruta respondió ${response?.status() ?? 'sin respuesta'}, no 200`
+        ).toBe(true);
         await page.waitForLoadState('networkidle');
         await page.evaluate(() => window.scrollTo(0, 0));
         const m = await measure(page);
