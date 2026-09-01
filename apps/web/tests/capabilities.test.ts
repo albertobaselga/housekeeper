@@ -25,7 +25,7 @@ describe('capability matrix', () => {
       'access.manage', 'agreement.read', 'agreement.write', 'calendar.read', 'calendar.write',
       'comment.create', 'contact.read', 'contact.write', 'content.read', 'content.write',
       'content.publish', 'emergency.read', 'expense.create.self', 'export.employment.self',
-      'guide.write', 'leave.approve', 'leave.request.self', 'menu.read', 'menu.write', 'payment.confirm.self',
+      'finance.access', 'guide.write', 'leave.approve', 'leave.request.self', 'menu.read', 'menu.write', 'payment.confirm.self',
       'payment.register', 'routine.read', 'routine.toggle', 'search.use', 'settlement.close',
       'settlement.read', 'work.confirm', 'work.register.self'
     ]);
@@ -54,6 +54,13 @@ describe('capability matrix', () => {
       expect.arrayContaining(['contact.read', 'emergency.read', 'calendar.read'])
     );
     expect(capabilitiesFor('viewer')).toHaveLength(3);
+    // Finanzas: la capacidad solo existe para la administración; la segunda
+    // llave (la concesión por membresía) vive en la base, no en esta matriz.
+    expect(can('family_admin', 'finance.access')).toBe(true);
+    expect(can('family_member', 'finance.access')).toBe(false);
+    expect(can('employee_live_in', 'finance.access')).toBe(false);
+    expect(can('helper', 'finance.access')).toBe(false);
+    expect(can('viewer', 'finance.access')).toBe(false);
   });
 
   it('fails closed for unknown roles and capabilities', () => {

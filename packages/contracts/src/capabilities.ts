@@ -59,6 +59,7 @@ export const capabilities = [
   "emergency.read",
   "expense.create.self",
   "export.employment.self",
+  "finance.access",
   "guide.write",
   "leave.approve",
   "leave.request.self",
