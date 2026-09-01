@@ -272,7 +272,9 @@
           </small>
         </span>
         <span class="inline-actions">
-          <strong>{expense.amountLabel}</strong>
+          <!-- Sin permiso para ver importes no llega ninguno: la fila queda con
+               su fecha y su descripción, no con un hueco donde iba la cifra. -->
+          {#if expense.amountLabel}<strong>{expense.amountLabel}</strong>{/if}
           {#if acted.includes(expense.id)}
             <span class="status-chip success">Enviado</span>
           {:else if canResolve}

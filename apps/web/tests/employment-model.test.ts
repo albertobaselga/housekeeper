@@ -889,11 +889,34 @@ describe('trabajo y gastos pendientes de acción', () => {
   });
 
   it('presenta los gastos pendientes con importe en céntimos formateado', () => {
-    const views = buildPendingExpenseViews([
-      { id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850', employeeMembershipId: 'm1' }
-    ]);
+    const views = buildPendingExpenseViews(
+      [
+        { id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850', employeeMembershipId: 'm1' }
+      ],
+      true
+    );
     expect(views[0]!.amountLabel).toBe('18,50 €');
+    expect(views[0]!.amountCents).toBe('1850');
     expect(views[0]!.incurredOnLabel).toBe('5 ago 2026');
+  });
+
+  it('a quien no ve importes no le viaja la cifra, ni siquiera en crudo', () => {
+    // Defensa en profundidad: la RLS de 0036 ya no le devuelve la fila a la
+    // familia no administradora. Si por lo que sea llegara, la ausencia por
+    // permiso se serializa como ausencia y no como número que alguien pinte.
+    const views = buildPendingExpenseViews(
+      [
+        { id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850', employeeMembershipId: 'm1' }
+      ],
+      false
+    );
+    expect(views[0]!.amountLabel).toBeNull();
+    expect(views[0]!.amountCents).toBeNull();
+    expect(JSON.stringify(views)).not.toContain('1850');
+    // El gasto se sigue pudiendo mirar: la fecha y la descripción son las que
+    // la BASE decide enseñar, y ese corte no se duplica aquí arriba.
+    expect(views[0]!.incurredOnLabel).toBe('5 ago 2026');
+    expect(views[0]!.description).toBe('Farmacia');
   });
 });
 

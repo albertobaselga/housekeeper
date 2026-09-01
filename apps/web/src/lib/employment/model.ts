@@ -734,8 +734,12 @@ export interface PendingExpenseView {
   incurredOn: string;
   incurredOnLabel: string;
   description: string;
-  amountCents: string;
-  amountLabel: string;
+  /**
+   * null cuando quien mira no ve importes: la ausencia por permiso se serializa
+   * como ausencia y no como cifra, para que nada pueda pintarla por descuido.
+   */
+  amountCents: string | null;
+  amountLabel: string | null;
   employeeMembershipId: string;
   hasReceipt: boolean;
 }
@@ -1867,16 +1871,27 @@ export function buildPendingExtraViews(
   }));
 }
 
+/**
+ * Los gastos que esperan decisión. El importe solo viaja si quien mira puede
+ * verlo, y `seesAmounts` es una ENTRADA explícita decidida por el papel, igual
+ * que en la portada: es defensa en profundidad, porque la fuga de verdad ya la
+ * corta la RLS de 0036 —a la familia no administradora no le llega ni la fila—.
+ *
+ * Solo el importe: la descripción y el justificante son igual de sensibles y
+ * por eso se cortan en la BASE. Repetir aquí esa decisión crearía dos sitios
+ * donde mantenerla, que es justo como se acaba enseñando lo que no se debe.
+ */
 export function buildPendingExpenseViews(
-  rows: readonly PendingExpenseRow[]
+  rows: readonly PendingExpenseRow[],
+  seesAmounts: boolean
 ): PendingExpenseView[] {
   return rows.map((row) => ({
     id: row.id,
     incurredOn: row.incurredOn,
     incurredOnLabel: dateLabel(row.incurredOn),
     description: row.description,
-    amountCents: row.amountCents,
-    amountLabel: formatCents(row.amountCents),
+    amountCents: seesAmounts ? row.amountCents : null,
+    amountLabel: seesAmounts ? formatCents(row.amountCents) : null,
     employeeMembershipId: row.employeeMembershipId,
     hasReceipt: row.hasReceipt === true
   }));

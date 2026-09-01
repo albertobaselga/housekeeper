@@ -112,7 +112,11 @@ export async function loadEmploymentOverview(
   const { first, last } = monthBounds(period);
 
   try {
-    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      // Mismo corte que la portada: los importes los ven quien administra y la
+      // propia empleada, y se decide por el PAPEL, no por si llegó alguna cifra.
+      const seesAmounts =
+        can(membership.role, 'settlement.close') || can(membership.role, 'payment.confirm.self');
       // Todos los acuerdos visibles, no el primero: un hogar puede tener varios
       // vivos a la vez y quien administra tiene que poder elegir. El nombre sale
       // del perfil de la persona empleada; si la RLS no deja verlo (la propia
@@ -623,7 +627,7 @@ export async function loadEmploymentOverview(
           hrefBases
         ),
         pendingExtras: buildPendingExtraViews(pendingExtras.rows),
-        pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows),
+        pendingExpenses: buildPendingExpenseViews(pendingExpenses.rows, seesAmounts),
         // Sin versiones visibles no hay derecho que enseñar: RLS ya decidió que
         // esta persona no ve los términos, y un saldo sobre cero días mentiría.
         vacations:
