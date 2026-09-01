@@ -116,6 +116,13 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
   let page = '';
   /** El `<script>` de la página, con los espacios colapsados. */
   let script = '';
+  /**
+   * El `<script>` SIN comentarios: lo que se prohíbe se prohíbe en el código, no
+   * en la prosa que lo explica (patrón de `calendar-no-metrics.test.ts`). Sin
+   * esto, el comentario que dice «sin `apply`» satisfaría —o rompería— por sí
+   * solo las comprobaciones que buscan esa palabra.
+   */
+  let scriptCode = '';
   /** La tarjeta de Finanzas y nada más, con los espacios colapsados. */
   let card = '';
 
@@ -125,7 +132,11 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
       'utf8'
     );
     const flat = (text: string): string => text.replace(/\s+/g, ' ').trim();
-    script = flat(page.slice(page.indexOf('<script'), page.indexOf('</script>')));
+    const code = (text: string): string =>
+      text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+    const rawScript = page.slice(page.indexOf('<script'), page.indexOf('</script>'));
+    script = flat(rawScript);
+    scriptCode = flat(code(rawScript));
     // La tarjeta se acota por su propia sección para que nada de lo que se
     // afirma abajo pueda quedar satisfecho por la tarjeta de accesos vecina,
     // que tiene filas, chips y botones parecidos.
@@ -174,8 +185,30 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     // de la tarjeta sigue siendo el que trajo el `load` hasta que un comando se
     // confirma y `cc:settings` lo refresca. Un rechazo deja la fila como estaba
     // y la nota roja al lado.
-    expect(script).not.toContain('apply:');
+    //
+    // Se prohíbe la PROPIEDAD en sus dos formas, no solo `apply:`: en un objeto
+    // literal, `{ apply, messageOverrides }` es la misma entrega del gancho
+    // escrita en abreviado, y buscando únicamente los dos puntos el pintado
+    // optimista vuelve a entrar con la prueba en verde.
+    expect(scriptCode, 'el despacho entrega un gancho `apply` y vuelve a pintar antes de tiempo').not.toMatch(
+      /\bapply\s*[,:}]/
+    );
     expect(card).toContain('<ActionStatus status={financeStatus} />');
+  });
+
+  it('cambiar la concesión PROPIA refresca también la navegación', () => {
+    // La promesa del copy de la confirmación —«desaparecerá de la
+    // navegación»— la sostiene esto y nada más: la capacidad `finance.access`
+    // la retira el layout, y `cc:settings` solo re-ejecuta el load de ESTA
+    // página. Sin el `invalidateAll`, la barra seguiría ofreciendo un módulo
+    // que ya devuelve 403, y la tarjeta habría prometido algo que no pasa.
+    expect(script).toContain("import { invalidateAll } from '$app/navigation'");
+    // Va como `settle`, es decir DESPUÉS de que el servidor confirme (un
+    // rechazo no tiene por qué mover la navegación), y solo en el caso propio:
+    // la concesión de otra persona no cambia lo que ve quien está mirando.
+    expect(scriptCode, 'la navegación ya no se refresca al cambiar la concesión propia').toMatch(
+      /settle: admin\.isSelf \?[^:]*invalidateAll\(\)/
+    );
   });
 
   it('mientras el comando está en vuelo la fila lo dice y nadie puede repetirlo', () => {
@@ -198,7 +231,7 @@ describe('la tarjeta «Finanzas» está en la pantalla y dice la verdad', () => 
     // `can(context.role, …)` es un camino paralelo que ignoraría la retirada de
     // capacidad del layout. Quien decide aquí es el servidor: `data.finance` es
     // null salvo para la administración, y la tarjeta no se pinta.
-    expect(script).not.toMatch(/\bcan\(/);
-    expect(script).not.toContain('context.role');
+    expect(scriptCode).not.toMatch(/\bcan\(/);
+    expect(scriptCode).not.toContain('context.role');
   });
 });

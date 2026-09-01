@@ -294,6 +294,43 @@ describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layou
     ]);
   });
 
+  it('una concesión REVOCADA no cuenta: la fila vuelve a decir que está apagada', async () => {
+    // Revocar no borra la fila, le pone `revoked_at` (el histórico se conserva,
+    // migración 0034: la tabla no tiene DELETE). Así que el primer refresco tras
+    // CUALQUIER desactivación pasa por aquí, y si la lectura no descartara las
+    // concesiones muertas la tarjeta diría «Activado» a una cuenta a la que el
+    // layout ya le ha retirado el módulo. No es un caso raro: es el camino
+    // normal del botón «Desactivar Finanzas».
+    await asOwner(async (client) => {
+      await client.query(
+        `insert into app.finance_module_grants (household_id, membership_id, granted_by_membership_id)
+         values ($1, $2, $3)`,
+        [FIXTURE_HOUSEHOLD, ROBLE_ADMIN_2, ROBLE_ADMIN]
+      );
+    });
+    const granted = await loadFinanceGrantOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(granted?.admins.map((admin) => [admin.membershipId, admin.granted])).toEqual([
+      [ROBLE_ADMIN, true],
+      [ROBLE_ADMIN_2, true]
+    ]);
+
+    await asOwner(async (client) => {
+      // Exactamente lo que escribe `revokeFinance` (commands/finance.ts): fecha
+      // y autoría, sin borrar la fila.
+      await client.query(
+        `update app.finance_module_grants
+            set revoked_at = statement_timestamp(), revoked_by_membership_id = $3
+          where household_id = $1 and membership_id = $2 and revoked_at is null`,
+        [FIXTURE_HOUSEHOLD, ROBLE_ADMIN_2, ROBLE_ADMIN]
+      );
+    });
+    const revoked = await loadFinanceGrantOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool);
+    expect(revoked?.admins.map((admin) => [admin.membershipId, admin.granted])).toEqual([
+      [ROBLE_ADMIN, true],
+      [ROBLE_ADMIN_2, false]
+    ]);
+  });
+
   it('una administración con el acceso retirado deja de aparecer en la tarjeta', async () => {
     await asOwner(async (client) => {
       await client.query('update app.household_memberships set revoked_at = statement_timestamp() where id = $1', [
