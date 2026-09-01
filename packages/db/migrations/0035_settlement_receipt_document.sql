@@ -53,7 +53,8 @@ COMMENT ON TABLE app.settlement_receipts IS
   'app_private.record_settlement_receipt (SECURITY DEFINER). Ver esa función.';
 
 ALTER TABLE app.settlement_receipts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app.settlement_receipts FORCE ROW LEVEL SECURITY;
+-- El FORCE va al FINAL de esta migración, no aquí. El porqué, junto a la
+-- propia línea, después de crear `app_private.record_settlement_receipt`.
 
 -- Mismo criterio que `settlements_read`/`settlement_lines_read` (0005): el
 -- EXISTS sobre `app.settlements` hereda su propia RLS (`employee_row_visible`
@@ -187,5 +188,22 @@ COMMENT ON FUNCTION app_private.record_settlement_receipt(uuid, text, text, text
 REVOKE ALL ON FUNCTION app_private.record_settlement_receipt(uuid, text, text, text, bigint) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app_private.record_settlement_receipt(uuid, text, text, text, bigint)
   TO casa_clara_worker;
+
+-- El FORCE va aquí abajo, después de la función, y no junto a su tabla.
+--
+-- Hoy daría igual: con un propietario NOSUPERUSER + NOBYPASSRLS —Supabase— el
+-- validador de funciones planifica el cuerpo al CREARLA sólo si es `LANGUAGE
+-- sql`, y `record_settlement_receipt` es plpgsql, cuyo cuerpo no se planifica
+-- hasta que se ejecuta. Comprobado con `probe:supabase`, que instala el esquema
+-- entero con un dueño de esa forma: aplica con el FORCE arriba y con él abajo.
+--
+-- Se pone abajo igualmente porque el margen es de una palabra: el día que
+-- alguien reescriba esta función en `LANGUAGE sql` —o añada una— el FORCE de
+-- arriba la mataría en su propio CREATE FUNCTION con un 42501, la transacción
+-- haría ROLLBACK y una base se quedaría en la 0034 sin recibos archivados y sin
+-- decirlo. No es hipotético: le pasó a la 0032, y por eso su FORCE también vive
+-- al final. `0018_rls_force_compat.sql` no cubre esto, porque el runner la
+-- ejecuta ENTRE ficheros y aquí todo pasa en la misma transacción.
+ALTER TABLE app.settlement_receipts FORCE ROW LEVEL SECURITY;
 
 COMMIT;
