@@ -6,6 +6,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { financeAccessGranted } from '../src/lib/server/finance-access.server';
+import { loadFinanceStatus } from '../src/lib/server/finance-status.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -189,5 +190,20 @@ describe.runIf(Boolean(adminUrl))('doble cerrojo de Finanzas leído por el layou
   it('falla cerrado: sin membresía en el hogar la respuesta es false', async () => {
     expect(await financeAccessGranted({ id: 'fixture:olivo:admin' }, FIXTURE_HOUSEHOLD, appPool)).toBe(false);
     expect(await financeAccessGranted({ id: 'nadie:desconocido' }, FIXTURE_HOUSEHOLD, appPool)).toBe(false);
+  });
+
+  it('loadFinanceStatus cuenta bajo RLS lo que ve ESTA membresía', async () => {
+    // Admin con concesión: los datos sintéticos del roble (002_finance.sql).
+    expect(await loadFinanceStatus(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool)).toEqual({
+      accountCount: 2,
+      transactionCount: 2
+    });
+    // Admin del olivo sin concesión: el cerrojo devuelve ceros, no un error.
+    expect(await loadFinanceStatus(OLIVO_ADMIN_USER, OLIVO_HOUSEHOLD, appPool)).toEqual({
+      accountCount: 0,
+      transactionCount: 0
+    });
+    // Sin membresía en el hogar: null (la página lo traduce a 403/404).
+    expect(await loadFinanceStatus({ id: 'nadie:desconocido' }, FIXTURE_HOUSEHOLD, appPool)).toBeNull();
   });
 });
