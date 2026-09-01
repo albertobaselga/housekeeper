@@ -52,10 +52,16 @@ test('leer las condiciones y pactarlas piden permisos distintos', async ({ page 
   // Pactarlas es escribir el acuerdo, y eso no es de ella.
   const denied = await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo`);
   expect(denied?.status()).toBe(403);
+  // Y dar de alta a alguien crea un ACCESO a la casa: la ruta pide
+  // `access.manage`, la misma llave que Personal y Ajustes.
+  const alta = await page.goto(`/h/${HOUSEHOLD}/employment/alta`);
+  expect(alta?.status()).toBe(403);
 });
 
 test('el apoyo no alcanza ni las condiciones del contrato', async ({ page }) => {
   await loginAs(page, 'helper');
   const denied = await page.goto(`/h/${HOUSEHOLD}/employment/condiciones`);
   expect(denied?.status()).toBe(403);
+  const alta = await page.goto(`/h/${HOUSEHOLD}/employment/alta`);
+  expect(alta?.status()).toBe(403);
 });

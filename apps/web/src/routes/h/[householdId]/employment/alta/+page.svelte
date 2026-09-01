@@ -32,15 +32,7 @@
     description="Primero quién es y cómo entra; después, sus condiciones."
   />
 
-  {#if !data.canHire}
-    <article class="card">
-      <p>
-        Este entorno no gestiona cuentas de acceso, así que desde aquí no se puede crear
-        ninguna. El acceso se repone y se da desde
-        <a href={`/h/${data.householdId}/settings`}>Ajustes del hogar</a>.
-      </p>
-    </article>
-  {:else if data.personaNoEncontrada}
+  {#if data.personaNoEncontrada}
     <article class="card">
       <p>
         Esa persona no está entre las que tienen acceso y les falta contrato. Puede que ya
@@ -218,6 +210,23 @@
           {/if}
         </div>
       </form>
+    </article>
+  {:else if !data.canHire}
+    <!-- Sin identidad real no hay cuentas que crear, y la pantalla lo dice en
+         vez de ofrecer un alta imposible. Va DESPUÉS de la etapa del contrato a
+         propósito: pactar el contrato de alguien que ya está en la casa no crea
+         ninguna cuenta y no depende de esto. -->
+    <article class="card">
+      <p>
+        Este entorno no gestiona cuentas de acceso, así que desde aquí no se puede crear
+        ninguna. El acceso se repone y se da desde
+        <a href={`/h/${data.householdId}/settings`}>Ajustes del hogar</a>.
+      </p>
+      <div class="action-row">
+        <a class="button secondary" href={`/h/${data.householdId}/employment`}>
+          Volver a la lista de personas
+        </a>
+      </div>
     </article>
   {:else}
     <!-- Etapa 1. No escribe nada: valida y pasa a la etapa 2. -->

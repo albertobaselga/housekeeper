@@ -234,11 +234,16 @@ test('Alberto cambia de empleada por la portada y el expediente entero es el de 
   await expect(personBar).toContainText('Fixture Empleada Roble');
   await personBar.getByRole('link', { name: 'Cambiar' }).click();
 
-  // La portada: la cuenta total de la casa y una tarjeta por empleada con su
-  // gasto del mes.
-  await expect(page.locator('.summary-strip')).toContainText('Total de la casa');
+  // La portada: lo que se DEBE en la celda destacada —no lo que va sumando el
+  // mes, que es previsión— y una línea por empleada. Sin deuda dice «Al día»,
+  // que es la respuesta y no un «0,00 €».
+  const tira = page.locator('.summary-strip');
+  await expect(tira).toContainText('Va sumando este mes');
+  await expect(tira).toContainText('Pendiente de pago');
   const tarjetas = page.locator('[data-lista="principal"] > div');
   await expect(tarjetas).toHaveCount(2);
+  // Y el alta sale de aquí, que es de donde el propietario pidió que saliera.
+  await expect(page.getByRole('link', { name: 'Añadir una persona' })).toBeVisible();
   await tarjetas
     .filter({ hasText: 'Fixture Segunda Empleada Roble' })
     .getByRole('link', { name: 'Abrir su expediente' })

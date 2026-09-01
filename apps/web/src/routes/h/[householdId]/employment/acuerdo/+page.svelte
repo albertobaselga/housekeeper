@@ -266,9 +266,13 @@
   let editorAbierto = $state(false);
 
   $effect(() => {
-    const id = agreement?.id ?? null;
-    if (id === sembradoPara) return;
-    sembradoPara = id;
+    // La clave lleva también la versión vigente: al apilar una, el editor tiene
+    // que reabrirse partiendo de lo que rige AHORA, no de lo que regía antes de
+    // guardar. Mientras la versión no cambie —un envío rechazado, por ejemplo—
+    // lo tecleado se conserva.
+    const clave = `${agreement?.id ?? ''}:${current?.id ?? ''}`;
+    if (clave === sembradoPara) return;
+    sembradoPara = clave;
     draft = draftFromVersion(current, data.today);
   });
 
