@@ -41,6 +41,7 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
   today: 'Hoy',
   employment: 'Contrato',
   'employment/acuerdo': 'Condiciones del contrato',
+  'employment/alta': 'Añadir una persona',
   'employment/condiciones': 'Mis condiciones',
   'employment/vacaciones': 'Vacaciones',
   'employment/conceptos': 'Conceptos del mes',

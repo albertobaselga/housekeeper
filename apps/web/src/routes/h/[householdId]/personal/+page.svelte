@@ -1,11 +1,10 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
-  import StaffHireForm from '$lib/components/employment/StaffHireForm.svelte';
   import { useAppContext } from '$lib/auth/context';
   import type { StaffMemberView } from '$lib/staff/model';
-  import type { ActionData, PageData } from './$types';
+  import type { PageData } from './$types';
 
-  let { data, form }: { data: PageData; form: ActionData } = $props();
+  let { data }: { data: PageData } = $props();
   const context = useAppContext();
 
   const staff = $derived(data.staff);
@@ -110,17 +109,25 @@
       </li>
     {/snippet}
 
-    {#if data.canHire}
-      <!-- El formulario vive en un componente compartido con la pestaña
-           Contrato: la misma action `?/hire` en cada ruta, el mismo
-           `hireHouseholdMember()` detrás. -->
-      <StaffHireForm
-        householdId={context.household.id}
-        hired={form?.hired ?? null}
-        hireError={form?.hireError ?? null}
-        draft={form?.draft ?? null}
-      />
-    {/if}
+    <!-- El alta ya no vive aquí. Estaba en esta pantalla y en la pestaña
+         Contrato, y las dos prometían lo mismo con rótulos distintos: dos sitios
+         para un acto que sólo tiene uno. Ahora Personal enseña el expediente y
+         enlaza al único alta que queda. -->
+    <section class="card">
+      <div class="section-heading">
+        <div><p class="eyebrow">Alta</p><h2>Entra alguien nuevo en la casa</h2></div>
+      </div>
+      <p>
+        Dar de alta a una persona es una operación de la casa, no de este expediente: se
+        hace en dos pasos —sus datos y su acceso, después sus condiciones— desde la lista
+        de personas de Contrato.
+      </p>
+      <div class="action-row">
+        <a class="button primary" href={`/h/${context.household.id}/employment/alta`}>
+          Añadir una persona
+        </a>
+      </div>
+    </section>
 
     <section class="card" aria-labelledby="staff-current">
       <div class="section-heading">

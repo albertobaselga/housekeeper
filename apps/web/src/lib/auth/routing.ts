@@ -62,9 +62,15 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
  *   les llega ni la ruta ni una fila. A la familia no administradora le llegan
  *   los periodos pero no los términos, y la pantalla lo dice en vez de fingir
  *   un derecho de cero días.
+ * · `employment/alta` — dar de alta a una persona en la casa. La llave es
+ *   `access.manage`, la misma que Personal y Ajustes, y no `agreement.write`:
+ *   hoy las dos son exclusivas de quien administra, así que no cambia quién
+ *   entra, pero sí lo que esta tabla dice que se está haciendo. Lo que se crea
+ *   es un ACCESO a la casa; el contrato viene después y puede no venir.
  */
 export const NESTED_ROUTE_CAPABILITY: Readonly<Record<string, Capability>> = {
   'employment/acuerdo': 'agreement.write',
+  'employment/alta': 'access.manage',
   'employment/condiciones': 'agreement.read',
   'employment/vacaciones': 'agreement.read',
   // · `employment/conceptos` — registrar y decidir extras, gastos y conceptos a
