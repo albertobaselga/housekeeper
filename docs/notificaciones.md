@@ -107,7 +107,7 @@ ahora en tres sitios que fallan si alguien la contradice.
 
 | Qué impide | Dónde |
 |---|---|
-| Que exista un aviso fuera de los dos: tareas, recuentos, presencia, ausencia de acción, relleno | `apps/worker/src/push.ts` (catálogo cerrado) y su suite, más el `22023` de `app_private.push_notice_targets` |
+| Que exista un aviso fuera de los tres: tareas, recuentos, presencia, ausencia de acción, relleno | `apps/worker/src/push.ts` (catálogo cerrado, `PUSH_TOPICS`) y su suite; el `22023` de `app_private.push_notice_targets` (0032) cubre los dos primeros, y `app_private.close_due_households`/`push_close_due_targets` (0034) son la única puerta del tercero — ver §0ter |
 | Que quien administra vea —o encienda, o apague— el canal de otra persona | RLS de `app.push_subscriptions` (0032), `packages/db/tests/170_*.sql` y `apps/web/tests/push.integration.test.ts` |
 | Que se encole un aviso fuera de la ventana horaria | `app.push_run_at` (0032), pinada en la suite 170 y en `mail-retirement.integration.test.ts` |
 | Que la escalada alcance a quien no puede resolver el asunto | La audiencia de `settlement.due` es `family_admin` por construcción: la empleada no entra en la consulta |
@@ -127,6 +127,129 @@ no lo permita —que tampoco—: es que el comando no debe existir.
 - **El `TimeZone` efectivo del proyecto Supabase real.** Ya no importa para esto:
   `app.push_run_at` y `app.job_run_at` convierten con `AT TIME ZONE
   'Europe/Madrid'` explícito y no dependen de la zona de la sesión.
+
+---
+
+## 0ter. Enmienda de 31/08/2026 — el tercero, la puerta de entrada real, y el recibo descargable
+
+> Lo que sigue amplía §0bis: no la contradice, la completa. §0bis seguía siendo
+> exacta el 11/08/2026 —dos avisos, doble puerta reducida a un solo
+> interruptor—. Desde entonces se construyeron el tercer aviso (Frente D), una
+> puerta de entrada real (Frente C), el banner de instalación (Frente B) y el
+> recibo descargable (Frente E). Esta sección documenta lo que hay HOY; donde
+> discrepe de §0bis, manda esta.
+
+### El catálogo pasa de dos a tres
+
+| Aviso | A quién | Cuándo se dispara |
+|---|---|---|
+| «El recibo de junio ya está» | La persona del contrato, y solo ella | Cuando `document.render_receipt` **acaba de subir el PDF** |
+| «La cuenta de junio está sin pagar» | `family_admin`, y solo ellos | Tres días antes del vencimiento, reaviso cada tres días, tope de tres reavisos |
+| **«Junio está a punto de acabar»** *(nuevo)* | `family_admin`, y solo ellos | El **penúltimo día del mes**, por la mañana, **solo si queda algún acuerdo activo sin liquidación cerrada del mes** |
+
+El tercero es la migración **0034** (`app_private.close_due_households`,
+`app_private.push_close_due_targets`) y el job periódico
+`notification.close_due_sweep` (`apps/worker/src/close-due.ts`), auto-rearmado
+al arrancar y en cada pasada, igual que `maintenance.prune_discovery` e
+`ics.sync_all`. Se envía **una sola vez, sin escalada**: si el mes se cierra
+tarde de todos modos, es `settlement.due` —el segundo aviso, que ya existía—
+quien toma el relevo después. Título: «{Mes} está a punto de acabar». Cuerpo:
+«El mes se acaba: toca cerrar la cuenta y preparar el pago.». URL:
+`/h/{hogar}/employment`. `tag`: `cierre-{YYYY-MM}`. Ningún nombre, ningún
+importe: el hecho («queda algo por cerrar») se reevalúa en el instante del
+envío exactamente como los otros dos, así que si alguien cerró la cuenta un
+minuto antes, `push_close_due_targets` devuelve cero filas y el trabajo termina
+sin efectos.
+
+Si el penúltimo día cae en domingo, la ventana de silencio universal (§5.1)
+pospone el envío al lunes por la mañana —que puede ser ya el último día del
+mes—: aceptado y documentado, no es un defecto.
+
+### La decisión 4 de §0bis, revisada: sí hay puerta de entrada, pero no es la de §4.1
+
+§0bis descartó «la segunda puerta» de §4.1 —ofrecerlo tras cerrar una
+liquidación o confirmar un cobro— porque hacia la empleada era indistinguible
+de un empujón. Esa razón sigue en pie y **esa puerta contextual sigue sin
+existir**. Lo que se construyó es otra cosa: no un ofrecimiento ligado a un
+evento de negocio, sino una **verificación de estado al entrar al hogar**
+(`apps/web/src/lib/components/PushCheck.svelte` +
+`apps/web/src/lib/push/entry-check.ts`), igual para los cinco papeles y sin
+ningún matiz de «justo después de que te paguen».
+
+Cuatro estados, resueltos por `entryPushAction(availability, hasLiveSubscription,
+dismissed)`:
+
+| Estado del permiso | Qué pasa |
+|---|---|
+| `granted` + suscripción viva en este dispositivo | Nada. |
+| `granted` **sin** suscripción (caché borrada, fila borrada en el servidor) | **Se repara sola, en silencio**: `enablePush()` no dispara ningún diálogo porque el permiso ya está concedido; el `POST` es un upsert idempotente. |
+| Sin decidir (`default`) | Banner **propio** de la aplicación, descartable: «Activa los avisos en este dispositivo para enterarte del cierre del mes y del recibo.» + botón **Activar** + **Ahora no**. |
+| Bloqueado (`denied`) | **Silencio.** La regla del §0.5 no cambia: «Tu cuenta» sigue siendo el único sitio que explica cómo desbloquear. |
+
+**El diálogo nativo del sistema solo aparece tras el toque del botón
+«Activar»**, nunca al entrar ni al montar el banner: la regla de §0 (nº 5) —el
+permiso jamás se dispara solo— se sostiene exactamente igual que antes, solo
+que ahora hay un paso previo propio delante del diálogo del sistema, igual que
+pedía §4.1 desde el principio.
+
+El descarte dura **la visita**: `sessionStorage['housekeeper-push-dismissed']`,
+no `localStorage`. El banner reaparece en la siguiente visita — a propósito, no
+es una fuga: con tres personas y avisos que solo llegan dos o tres veces al
+mes, un descarte permanente sería indistinguible de haberlo apagado sin
+querer.
+
+**El interruptor de «Tu cuenta» sigue existiendo y sigue siendo el único sitio
+para apagarlo** una vez encendido. La puerta de entrada solo ofrece
+encenderlo; no hay ningún otro sitio que lo apague por la persona.
+
+### Banner de instalación (Frente B): la puerta anterior a la de avisos
+
+Antes de la de avisos hay otra, y tiene prioridad: si se entra desde un
+navegador móvil sin la aplicación instalada (`display-mode` distinto de
+`standalone`), `InstallBanner.svelte` ofrece instalarla —botón real de
+instalación en Chromium (`beforeinstallprompt`, capturado y diferido) o
+instrucciones de Compartir → «Añadir a pantalla de inicio» en iOS—. No aparece
+si ya se entra por el acceso directo, se puede cerrar (reaparece en la próxima
+visita, mismo patrón de `sessionStorage`) y **nunca coincide con el banner de
+avisos**: `AppShell.svelte` pasa `suppressed={installOffer !== 'none'}` a
+`PushCheck`, así que si hay algo que instalar, el de avisos se calla hasta la
+próxima vez. Primero instalar, después avisos — nunca los dos a la vez.
+
+### El recibo, ahora con destino
+
+El tercer aviso apunta a `/h/{hogar}/employment`, y desde la migración 0035 esa
+pantalla tiene algo que enseñar cuando se llega: si la liquidación está
+cerrada y el recibo ya se registró (`app.settlement_receipts`), un enlace
+«Recibo (PDF)» (`GET
+/api/v1/households/{hogar}/settlements/{liquidación}/receipt`, RLS decide
+quién lo ve: quien administra y la persona de ese contrato); si aún no, «El
+recibo se está generando». No es un cuarto aviso ni cambia el texto de ninguno
+de los tres — es simplemente que ahora, al abrir el enlace del aviso, hay algo
+real que ver.
+
+**Sobre §6.1, regla 3 («avisos disparados por ausencia de acción»): el tercer
+aviso no la incumple.** No dice «no has cerrado la cuenta» de un hecho pasado
+que alguien debería haber hecho ya —eso sería la versión-notificación del
+recuento que prohíbe la regla 2—; dice que un plazo real (el mes) está a punto
+de cumplirse, con la misma lógica con la que el aviso B avisa de un
+vencimiento antes de que llegue. Y se reevalúa en el instante del envío
+exactamente como los otros dos: si ya no queda nada por cerrar,
+`push_close_due_targets` devuelve cero filas y no se manda nada. La diferencia
+con un recordatorio de tareas es esa: un recordatorio de tareas señala lo que
+YA no se hizo; este señala un plazo que TODAVÍA no se ha cumplido, y dejaría
+de enviarse solo si el hecho cambiara antes del envío.
+
+**Fuentes de esta enmienda:** `apps/worker/src/push.ts` ·
+`apps/worker/src/close-due.ts` ·
+`packages/db/migrations/0034_close_due_notice.sql` ·
+`packages/db/migrations/0035_settlement_receipt_document.sql` ·
+`apps/web/src/lib/components/PushCheck.svelte` ·
+`apps/web/src/lib/push/entry-check.ts` ·
+`apps/web/src/lib/components/InstallBanner.svelte` ·
+`apps/web/src/lib/pwa/install.ts` ·
+`apps/web/src/lib/components/AppShell.svelte` ·
+`apps/web/src/routes/h/[householdId]/employment/+page.svelte` ·
+`apps/web/src/routes/api/v1/households/[householdId]/settlements/[settlementId]/receipt/+server.ts`
 
 ---
 
@@ -411,6 +534,44 @@ Los destinatarios se resuelven **en el instante del envío**, no en el del encol
 
 > Perfecto. No volvemos a preguntártelo. Si algún día los quieres, están en **Tu cuenta → Tus avisos**.
 
+### 4.2bis Enmienda de 31/08/2026 — el copy que se construyó de verdad
+
+La tarjeta de §4.2 documentaba el diseño de una oferta contextual que §0bis
+descartó (decisión 4) y que no se construyó tal cual. Lo que sí se construyó
+—la puerta de entrada real de §0ter— usa un texto más corto, coherente con que
+ahora son tres avisos y no una promesa por evento:
+
+**Banner de entrada, permiso sin decidir** (`PushCheck.svelte`):
+
+> Activa los avisos en este dispositivo para enterarte del cierre del mes y del recibo.
+>
+> `[ Activar ]`  `[ Ahora no ]`
+
+Al tocar «Activar»: el diálogo nativo del sistema, y solo entonces. Mientras
+responde, el botón dice «Un momento…».
+
+**Banner de instalación** (Frente B, `InstallBanner.svelte`; aparece antes que
+el de avisos y nunca a la vez — §0ter):
+
+> Instala la aplicación en tu pantalla de inicio: se abre como una aplicación, sin pasar por el navegador.
+>
+> `[ Instalar ]`  `[ Ahora no ]`
+
+En iPhone, sin `beforeinstallprompt` posible:
+
+> Añádela a tu pantalla de inicio: toca **Compartir** y luego «Añadir a pantalla de inicio». Aparecerá como «{APP_HOME_SCREEN_NAME}».
+>
+> `[ Entendido ]`
+
+**El aviso nuevo, tal como se compone al enviarse** (`push.ts`, función
+`composeNotice`):
+
+> **{Mes} está a punto de acabar**
+>
+> El mes se acaba: toca cerrar la cuenta y preparar el pago.
+
+Sin nombres, sin importes: igual que los otros dos.
+
 ### 4.3 Qué pasa si se deniega
 
 **No pasa nada, y eso es un requisito de diseño, no una cortesía.** Si se deniega: no se degrada ninguna función, no hay insignia de «actívalo», no hay asterisco, no hay recordatorio mensual, no hay reintento. **Nada vive solo detrás del push.** La pantalla dentro de la app sigue siendo la fuente de verdad.
@@ -542,7 +703,7 @@ La doctrina no hay que inventarla: **ya está escrita en esta casa**, y un push 
 
 1. **Recordatorios de tareas o rutinas hacia la empleada.** `notification.routine_due` con audiencia `employee` o `all` no genera push a `employee_live_in`. La rutina se ve en Hoy cuando ella abre la app: ese es el diseño y funciona. *(Matiz honesto: ella misma podría querer un recordatorio propio. Se admitiría solo como **alarma que se pone a sí misma** —la crea ella, la apaga ella, invisible para la administración, nadie más puede crearla—. Si no se puede garantizar esa asimetría en la RLS, no se hace.)*
 2. **Cualquier recuento de trabajo.** «Te quedan 3», «llevas 2 días sin marcar», rachas, medias, porcentajes. En pantalla es una cuenta; en el bolsillo es una nota.
-3. **Avisos disparados por ausencia de acción.** El silencio no es notificable: no envió el parte, no marcó, no abrió la app, no confirmó el cobro. La casa ya resolvió esto bien **y al revés**: `time_report.autoconfirm` (`time-entry.ts:78-88`) confirma sola a los tres días **en vez de** dar la lata. Consérvese.
+3. **Avisos disparados por ausencia de acción.** El silencio no es notificable: no envió el parte, no marcó, no abrió la app, no confirmó el cobro. La casa ya resolvió esto bien **y al revés**: `time_report.autoconfirm` (`time-entry.ts:78-88`) confirma sola a los tres días **en vez de** dar la lata. Consérvese. *(El tercer aviso, «el mes está a punto de acabar» — §0ter —, no es una excepción a esta regla: no señala una ausencia pasada, señala un plazo que TODAVÍA no se ha cumplido, y se reevalúa en el instante del envío igual que el aviso B. Si el hecho deja de ser cierto antes de enviarse, no se manda nada.)*
 4. **Repetición y escalada hacia la empleada.** `notification.settlement_due` se reencola cada 3 días mientras siga pendiente y hoy va a admins **y a ella** (`reminders.ts:100-109`). Como correo a la familia es correcto: es su deuda y ellos pueden pagarla. Como push repetido a ella es acoso de bajo nivel sobre algo que no está en su mano. **Regla: el push nunca repite hacia quien no puede resolverlo. Una vez y calla.**
 5. **Presencia y actividad.** «X ha entrado», «X marcó a las 23:14», «visto por última vez». Nada.
 6. **Avisos sobre el desempeño de una persona, aunque el destinatario sea el jefe.** «Ana no ha completado…». Lo prohibido es que **el mensaje exista**, no quién lo recibe.

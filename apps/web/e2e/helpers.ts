@@ -54,11 +54,11 @@ export const E2E_SEED = {
 } as const;
 
 export const ACCOUNT_EMAILS = {
-  admin: 'alberto.admin@housekeeper.demo',
-  family: 'marta.familia@housekeeper.demo',
-  employee: 'ana.empleada@housekeeper.demo',
-  helper: 'lucia.apoyo@housekeeper.demo',
-  viewer: 'diego.canguro@housekeeper.demo'
+  admin: 'alberto.admin@hogar.demo',
+  family: 'marta.familia@hogar.demo',
+  employee: 'ana.empleada@hogar.demo',
+  helper: 'lucia.apoyo@hogar.demo',
+  viewer: 'diego.canguro@hogar.demo'
 } as const;
 
 /**

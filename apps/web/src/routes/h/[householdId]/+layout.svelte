@@ -61,6 +61,6 @@
   });
 </script>
 
-<AppShell {context}>
+<AppShell {context} pushPublicKey={data.pushPublicKey}>
   {@render children()}
 </AppShell>

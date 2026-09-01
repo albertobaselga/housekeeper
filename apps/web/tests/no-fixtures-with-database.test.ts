@@ -76,7 +76,7 @@ const FIXTURE_MARKERS = [
   'Carmen · 2.º B',
   'Colegio Las Encinas',
   'Familia Roble',
-  'alberto.admin@housekeeper.demo'
+  'alberto.admin@hogar.demo'
 ];
 
 function fixtureLeak(value: unknown): string | null {

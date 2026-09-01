@@ -465,15 +465,23 @@ cuál.
 
 ## Avisos push
 
-**Sólo hay dos avisos, y ninguno más**: el recibo del mes a quien trabaja en la
-casa, y la cuenta del mes por pagar a quien administra. Recordatorios de tareas,
-de rutinas, recuentos de lo hecho o lo pendiente, y avisos por ausencia de acción
-**están prohibidos**, y no es una opción apagada: es código que no existe, con
-pruebas que lo sostienen. El porqué está en
-[docs/notificaciones.md §6](../../../docs/notificaciones.md).
+**Sólo hay tres avisos, y ninguno más**: el recibo del mes a quien trabaja en la
+casa, la cuenta del mes por pagar a quien administra, y —desde la migración
+0034— «el mes está a punto de acabar», también a quien administra (el
+penúltimo día del mes, por la mañana, y solo si queda algún acuerdo activo sin
+liquidación cerrada del mes). Recordatorios de tareas, de rutinas, recuentos de
+lo hecho o lo pendiente, y avisos por ausencia de acción **están prohibidos**,
+y no es una opción apagada: es código que no existe, con pruebas que lo
+sostienen. El porqué está en
+[docs/notificaciones.md §6](../../../docs/notificaciones.md) (y su enmienda,
+§0ter, para el tercero).
 
 **(a) Por dónde.** Cada quien enciende los suyos en `/h/<hogar>/account`. Alta y
-baja del dispositivo: `POST` / `DELETE /api/v1/push/subscription`.
+baja del dispositivo: `POST` / `DELETE /api/v1/push/subscription`. Además, al
+entrar al hogar la aplicación comprueba sola el estado del permiso en ese
+dispositivo: si está sin decidir, ofrece un banner propio y descartable
+(«Activa los avisos…» + **Activar**); el diálogo del sistema solo aparece tras
+tocar ese botón, nunca antes.
 
 **(b) Rol.** Cualquiera, sobre su propio teléfono. **Nadie de la casa puede ver si
 otra persona los tiene encendidos**, ni siquiera quien administra.
@@ -511,11 +519,20 @@ Puesta en marcha: [docs/runbooks/notificaciones-push.md](../../../docs/runbooks/
 | `payment` | registrar un pago | `payment.register` (`family_admin`) |
 
 Cerrar la cuenta del mes **encola** el trabajo `document.render_receipt`, que
-genera el PDF determinista del recibo y lo deja en el depósito privado.
+genera el PDF determinista del recibo y lo deja en el depósito privado. Desde
+la migración 0035 ese recibo queda además **registrado**
+(`app.settlement_receipts`) y **descargable** desde la propia pantalla de
+Empleo: `GET /api/v1/households/<hogar>/settlements/<liquidación>/receipt`,
+con enlace «Recibo (PDF)» — visible para quien administra y para la persona de
+ese contrato (la RLS decide, por liquidación y por empleada). Si la cuenta
+está cerrada pero el trabajo aún no ha subido el PDF, la pantalla dice «El
+recibo se está generando» en su lugar.
 
 Quien trabaja se descarga **su propio** expediente (PDF + CSV) en
 `GET /api/v1/households/<hogar>/employment-export`. Esa ruta es **sólo para
-`employee_live_in`**: incluso `family_admin` recibe 403, a propósito.
+`employee_live_in`**: incluso `family_admin` recibe 403, a propósito. Es
+distinta del recibo por liquidación de arriba: aquel es un PDF por mes y por
+empleada; este es todo el histórico en un solo export.
 
 **(b) Rol.** Ver: `settlement.read` — `family_admin`, `family_member` y
 `employee_live_in`. Cerrar y registrar pagos: sólo `family_admin`. Confirmar que

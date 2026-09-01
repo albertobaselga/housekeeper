@@ -20,6 +20,14 @@ generaban.
 > encolarse. El de rutinas NO vuelve, y las razones están en
 > `docs/notificaciones.md` §6. Puesta en marcha del canal:
 > `docs/runbooks/notificaciones-push.md`.
+>
+> **Enmienda de 31/08/2026.** Se suma un sexto: `notification.close_due_sweep`
+> (migración 0034), el barrido mensual que encola el tercer aviso —«el mes
+> está a punto de acabar», a quien administra, el penúltimo día del mes y solo
+> si queda algo por cerrar—. **Son seis** tipos de trabajo ahora. Comparte la
+> misma condición que `notification.push`: **solo se registra si hay claves
+> VAPID**. El catálogo de avisos pasa de dos a tres — ver
+> `docs/notificaciones.md` §0ter.
 
 **Cómo se resuelve, sin host extra y sin coste.** El planificador vive en la
 propia base: `pg_cron` dispara cada pocos minutos una llamada HTTP con `pg_net`
@@ -354,3 +362,121 @@ logger que redacta: `{"scope":"web:jobs","msg":"job queue drained",
 "counts":{"ran":…,"remaining":…,"requeued":…,"dead":…},"ms":…}`, y cada trabajo
 otra con su `jobId`, `jobType`, `householdId` y duración. Ni nombres ni
 contenido: solo identificadores técnicos.
+
+---
+
+## 7. Backfill de recibos históricos (Frente E)
+
+Antes de la migración `0035_settlement_receipt_document.sql`, `document.render_receipt`
+generaba el PDF y lo subía al almacén, pero no quedaba ningún registro en la
+base: ni documento, ni fila que dijera «este objeto es EL recibo de esta
+liquidación». Las liquidaciones cerradas ANTES de esa migración siguen así —
+el PDF existe en el bucket, pero `app.settlement_receipts` no tiene su fila, y
+`employment/+page.svelte` enseña «El recibo se está generando» para siempre en
+vez de un enlace.
+
+**No hay backfill automático** (fuera de alcance, ver el diseño de este
+frente). Se corrige re-encolando el mismo trabajo: el PDF es determinista dado
+el mismo snapshot canónico, así que el propio backfill es idempotente CONSIGO
+MISMO — volver a lanzarlo produce el mismo `generatedAt`, el mismo hash y la
+misma clave de objeto cada vez, y `app_private.record_settlement_receipt`
+reutiliza el `storage_object` de la vez anterior en lugar de subir un segundo
+PDF (ver el comentario de esa función en la migración 0035).
+
+Ojo con `generatedAt`: **no puede ser `now()`**. El SQL de abajo usa
+`settlement.closed_at`, que es estable, precisamente para esa idempotencia
+consigo mismo; con `now()` cada ejecución del backfill generaría un hash y una
+clave distintos. Eso no rompería nada de golpe —`record_settlement_receipt`
+mira primero si ya existe fila para ese `settlement_id` y, si la hay, devuelve
+su documento sin tocar nada más—, pero cada relanzamiento subiría un PDF nuevo
+y huérfano sin que el registro llegara a apuntar a él: puro gasto de almacén,
+repetido cada vez que alguien tuviera que volver a lanzar el mismo backfill.
+
+Eso sí: la clave que produce el backfill (con `generatedAt = closed_at`) casi
+seguro **no coincide** con la del render original en línea —el que disparó el
+propio cierre, con `generatedAt = new Date().toISOString()` del instante real
+del cierre (`packages/server/src/commands/settlement.ts`)—, así que la
+primera vez que se lanza el backfill de una liquidación sube un PDF NUEVO a
+una clave nueva. El objeto del render original queda huérfano en el bucket:
+nadie lo referencia, nadie lo borra, y es inocuo (bytes de más, nada roto).
+
+**El payload no se puede reconstruir desde `app.settlement_lines` sin más**: el
+snapshot canónico que exige `document.render_receipt` (`householdName`,
+`employeeName`, las líneas con su `concept`/`detail`/`amountCents`, los tres
+totales y la `reference`) es justo la forma que ya fabrica `closeSettlement`
+(`packages/server/src/commands/settlement.ts`) al cerrar. Reconstruirlo aquí
+sería duplicar esa lógica; en su lugar, el SQL de abajo la re-arma leyendo las
+líneas ya congeladas de la propia liquidación, que es exactamente lo que el
+cierre real congeló y no cambia.
+
+```sql
+-- Ejecutar como el propietario de la migración (o cualquier rol con BYPASSRLS):
+-- INSERT directo en app_private.job_queue, igual que hace el propio worker
+-- (`createMaintenanceQueries`/`createPushQueries`/`createCloseDueQueries` en
+-- apps/worker/src). NO usar app.enqueue_job: exige un contexto de sesión
+-- completo (app.user_id/household_id/membership_id) que una operación de
+-- mantenimiento entre hogares no tiene por qué tener.
+begin;
+set local row_security = off;
+
+insert into app_private.job_queue (household_id, job_type, payload, run_at)
+select
+  settlement.household_id,
+  'document.render_receipt',
+  jsonb_build_object(
+    'settlementId', settlement.id,
+    'receipt', jsonb_build_object(
+      'householdName', household.display_name,
+      'employeeName', employee_profile.display_name,
+      'period', to_char(settlement.period_start, 'YYYY-MM'),
+      -- Estable, NO now(): el backfill tiene que producir el mismo hash y la
+      -- misma clave cada vez que se re-lance (ver el párrafo de arriba).
+      'generatedAt', settlement.closed_at,
+      'lines', (
+        select jsonb_agg(
+                 jsonb_build_object(
+                   'concept', line.concept,
+                   'detail', case when line.provenance ? 'unitCents' and (line.provenance->>'unitCents') is not null
+                                  then (line.provenance->>'quantity') || ' × ' || (line.provenance->>'unitCents') || ' cts'
+                                  else line.provenance->>'quantity' end,
+                   'amountCents', line.amount_cents::text
+                 )
+                 order by line.line_number
+               )
+          from app.settlement_lines as line
+         where line.household_id = settlement.household_id and line.settlement_id = settlement.id
+      ),
+      'salaryTotalCents', settlement.salary_total_cents::text,
+      'reimbursementTotalCents', settlement.reimbursement_total_cents::text,
+      'transferTotalCents', settlement.transfer_total_cents::text,
+      'reference', 'liq-' || to_char(settlement.period_start, 'YYYY-MM') || '-' || left(settlement.id::text, 8)
+    )
+  ),
+  now()
+  from app.settlements as settlement
+  join app.households as household on household.id = settlement.household_id
+  join app.household_memberships as employee_membership
+    on employee_membership.household_id = settlement.household_id
+   and employee_membership.id = settlement.employee_membership_id
+  join app.user_profiles as employee_profile on employee_profile.user_id = employee_membership.user_id
+ where settlement.status = 'closed'
+   and not exists (
+     select 1 from app.settlement_receipts as receipt
+      where receipt.household_id = settlement.household_id and receipt.settlement_id = settlement.id
+   )
+   -- Acotar aquí a los hogares/periodos concretos del backfill; sin filtro,
+   -- esto re-encola TODAS las liquidaciones cerradas históricas de golpe.
+   and settlement.household_id = '00000000-0000-0000-0000-000000000000'::uuid /* ← sustituir por el hogar */;
+
+commit;
+```
+
+El resto lo hace la cola normal: el drenaje (worker o `pg_cron`) reclama cada
+`document.render_receipt`, renderiza, sube (reutilizando el objeto si ya
+existía) y esta vez SÍ registra. No se encola ningún aviso de «tu recibo ya
+está» para estos re-renders históricos —`announceReceipt` también corre, y
+avisar meses después de un recibo que ya se cobró hace tiempo sería ruido—,
+así que conviene lanzar el backfill sin claves VAPID a mano si se quiere
+evitarlo del todo, o aceptar el aviso si el canal ya está activo: no hay
+manera de re-encolar el render sin re-disparar también el aviso, porque los
+dos viven en el mismo trabajo por diseño (ver `apps/worker/src/handlers.ts`).

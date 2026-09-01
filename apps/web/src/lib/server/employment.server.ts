@@ -72,6 +72,75 @@ export function employmentHrefBases(
   };
 }
 
+export interface SettlementReceiptDownload {
+  /** Documento de tipo `settlement_receipt` (app.documents), Frente E. */
+  documentId: string;
+  objectKey: string;
+  bucket: string;
+  mediaType: string;
+  byteSize: string;
+  /** `YYYY-MM`: sirve de nombre de fichero al descargarlo. */
+  period: string;
+}
+
+/**
+ * El recibo PDF registrado de una liquidación (Frente E, migración 0035). Solo
+ * lectura: quien decide el acceso es RLS (`settlement_receipts_read`, calcada
+ * de `settlements_read`) — family_admin del hogar y la propia empleada del
+ * contrato, y nadie más. Sin fila (aún no registrado, o quien pregunta no debe
+ * verlo) devuelve null, sin distinguir un caso del otro.
+ */
+export async function loadSettlementReceipt(
+  user: { id: string },
+  householdId: string,
+  settlementId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<SettlementReceiptDownload | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client) => {
+      const result = await client.query<{
+        documentId: string;
+        objectKey: string;
+        bucket: string;
+        byteSize: string;
+        periodStart: string;
+      }>(
+        `select document.id as "documentId",
+                receipt.object_key as "objectKey",
+                receipt.bucket,
+                receipt.byte_size::text as "byteSize",
+                settlement.period_start::text as "periodStart"
+           from app.settlement_receipts as receipt
+           join app.documents as document
+             on document.household_id = receipt.household_id
+            and document.id = receipt.document_id
+           join app.settlements as settlement
+             on settlement.household_id = receipt.household_id
+            and settlement.id = receipt.settlement_id
+          where receipt.household_id = $1 and receipt.settlement_id = $2`,
+        [householdId, settlementId]
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        documentId: row.documentId,
+        objectKey: row.objectKey,
+        bucket: row.bucket,
+        // El tipo del objeto lo pone la lista blanca del endpoint, no la fila:
+        // el recibo SIEMPRE es el PDF que renderiza el worker.
+        mediaType: 'application/pdf',
+        byteSize: row.byteSize,
+        period: row.periodStart.slice(0, 7)
+      };
+    });
+  } catch (cause) {
+    // Misma separación que loadExpenseReceipt: una avería del almacén no debe
+    // leerse como «este recibo no existe», que es un hecho distinto y falso.
+    return unreadable(log, 'settlement receipt', cause);
+  }
+}
+
 function monthBounds(period: string): { first: string; last: string } {
   const [year, month] = period.split('-').map(Number);
   const lastDay = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
@@ -422,7 +491,10 @@ export async function loadEmploymentOverview(
                 totals.paid_cents as "paidCents",
                 totals.pending_cents as "pendingCents",
                 confirmation.confirmed_at::text as "receiptConfirmedAt",
-                confirmation.note as "receiptNote"
+                confirmation.note as "receiptNote",
+                -- Frente E: si el PDF ya quedó registrado (RLS decide qué fila
+                -- se ve; ausente = «se está generando» o «aún no hay recibo»).
+                (receipt.settlement_id is not null) as "hasReceiptDocument"
            from app.settlements as settlement
            join app.settlement_payment_totals as totals
              on totals.household_id = settlement.household_id
@@ -430,6 +502,9 @@ export async function loadEmploymentOverview(
            left join app.settlement_receipt_confirmations as confirmation
              on confirmation.household_id = settlement.household_id
             and confirmation.settlement_id = settlement.id
+           left join app.settlement_receipts as receipt
+             on receipt.household_id = settlement.household_id
+            and receipt.settlement_id = settlement.id
           where settlement.household_id = $1 and settlement.agreement_id = $2
           order by settlement.period_start desc`,
         [householdId, agreement.id]

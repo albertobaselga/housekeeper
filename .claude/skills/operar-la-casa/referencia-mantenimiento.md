@@ -96,9 +96,12 @@ pg_cron ──cada 5 min──▶ pg_net ──POST──▶ /api/v1/jobs/run (V
                                 runOneJob() sobre app_private.job_queue
 ```
 
-**Son cinco tipos de trabajo**: `document.render_receipt`, `ics.sync_source`,
-`ics.sync_all`, `notification.push` y `maintenance.prune_discovery`. El de push
-**sólo se registra si hay claves VAPID**; sin ellas la cola se vacía igual.
+**Son seis tipos de trabajo**: `document.render_receipt`, `ics.sync_source`,
+`ics.sync_all`, `notification.push`, `notification.close_due_sweep`
+(barrido mensual del tercer aviso, «el mes está a punto de acabar»; migración
+0034) y `maintenance.prune_discovery`. Los dos de avisos —`notification.push`
+y `notification.close_due_sweep`— **sólo se registran si hay claves VAPID**;
+sin ellas la cola se vacía igual, solo que sin esos dos.
 
 ### Comprobar que drena
 

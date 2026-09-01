@@ -62,7 +62,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000001',
     'Alberto',
     'A',
-    'alberto.admin@housekeeper.demo',
+    'alberto.admin@hogar.demo',
     'family_admin'
   ),
   demoUser(
@@ -70,7 +70,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000002',
     'Marta',
     'M',
-    'marta.familia@housekeeper.demo',
+    'marta.familia@hogar.demo',
     'family_member'
   ),
   demoUser(
@@ -78,7 +78,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000003',
     'Ana',
     'AN',
-    'ana.empleada@housekeeper.demo',
+    'ana.empleada@hogar.demo',
     'employee_live_in'
   ),
   demoUser(
@@ -86,7 +86,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000004',
     'Lucía',
     'L',
-    'lucia.apoyo@housekeeper.demo',
+    'lucia.apoyo@hogar.demo',
     'helper'
   ),
   demoUser(
@@ -94,7 +94,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000005',
     'Diego',
     'D',
-    'diego.canguro@housekeeper.demo',
+    'diego.canguro@hogar.demo',
     'viewer'
   )
 ];

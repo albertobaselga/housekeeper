@@ -36,8 +36,10 @@ import { env } from '$env/dynamic/private';
 import {
   countReadyJobs,
   createJobHandlers,
+  ensureCloseDueScheduled,
   ensureIcsSyncScheduled,
   ensurePruneDiscoveryScheduled,
+  loadVapidConfig,
   reclaimStaleJobs,
   runOneJob,
   type JobHandler
@@ -98,7 +100,7 @@ function positiveInteger(raw: string | undefined, fallback: number): number {
 /**
  * Configuración del drenaje, o null si falta algo imprescindible.
  *
- * Exige TODO lo que necesitan los cuatro tipos de trabajo, no solo la base: un
+ * Exige TODO lo que necesita el catálogo entero de trabajos, no solo la base: un
  * drenaje a medias mandaría a `dead` los recibos por falta de almacén, y lo
  * haría en silencio. Sin configuración completa el endpoint responde 503 y la
  * cola espera intacta.
@@ -167,6 +169,12 @@ export interface DrainOptions {
   maxAttempts: number;
   budgetMs: number;
   leaseMs?: number | undefined;
+  /**
+   * Si el barrido «el mes está por cerrar» (Frente D) debe re-armarse en esta
+   * pasada. Solo tiene sentido —y solo tiene manejador registrado, ver
+   * `registry.ts`— cuando hay canal de avisos: sin VAPID, `false`.
+   */
+  closeDueEnabled?: boolean;
   /** Reloj inyectable para pruebas deterministas. */
   now?: () => number;
 }
@@ -198,17 +206,19 @@ export async function drainJobQueue(pool: pg.Pool, options: DrainOptions): Promi
 
   const reclaimed = await reclaimStaleJobs(pool, options.maxAttempts, options.leaseMs);
 
-  // Las dos cadenas periódicas se re-arman aquí. En el demonio se hacía al
-  // arrancar, pero una función serverless no «arranca»: si la cadena se rompe
+  // Las cadenas periódicas se re-arman aquí. En el demonio se hacía al
+  // arrancar, pero una función serverless no «arranca»: si una cadena se rompe
   // (el último `ics.sync_all` acabó en `dead`, o el hogar es nuevo y nadie la
-  // sembró), sin esto no vuelve a haber sincronización de calendarios ni poda
-  // nunca más. Ambas son idempotentes y baratas: si ya hay una pendiente, no
-  // hacen nada.
+  // sembró), sin esto no vuelve a haber sincronización de calendarios, poda ni
+  // barrido de cierre de mes nunca más. Todas son idempotentes y baratas: si ya
+  // hay una pendiente, no hacen nada.
   //
   // Un fallo re-armando no puede impedir el drenaje —igual que en el demonio,
   // donde tampoco tumba el bucle—: queda en el log y la pasada sigue con lo que
   // ya estuviera encolado.
-  for (const rearm of [ensurePruneDiscoveryScheduled, ensureIcsSyncScheduled]) {
+  const rearms = [ensurePruneDiscoveryScheduled, ensureIcsSyncScheduled];
+  if (options.closeDueEnabled) rearms.push(ensureCloseDueScheduled);
+  for (const rearm of rearms) {
     try {
       await rearm(pool);
     } catch (error) {
@@ -302,6 +312,9 @@ export async function runJobDrainRequest(
       // es HTTP y por el de S3 el SDK se importa bajo demanda. La pasada normal
       // no genera ningún PDF y no paga ninguna de las dos cosas.
       uploadDocument: (key, body, contentType) => config.storage.putObject(key, body, contentType),
+      // Frente E: dónde queda anotado el recibo registrado. Es EL MISMO almacén
+      // que sube el PDF, así que su bucket es el de este mismo `config.storage`.
+      documentsBucket: config.storage.bucket,
       log,
       errorCode,
       // De aquí salen las claves VAPID. No entran en `loadJobRunnerConfig` —y
@@ -318,7 +331,10 @@ export async function runJobDrainRequest(
       handlers,
       maxAttempts: config.maxAttempts,
       budgetMs: config.budgetMs,
-      leaseMs: config.leaseMs
+      leaseMs: config.leaseMs,
+      // Mismo criterio que el manejador (registry.ts): el barrido de cierre de
+      // mes solo se re-arma cuando hay canal de avisos.
+      closeDueEnabled: loadVapidConfig(config.environment) !== null
     });
     log.info('job queue drained', {
       counts: {

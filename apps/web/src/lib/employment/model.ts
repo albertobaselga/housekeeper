@@ -322,6 +322,13 @@ export interface SettlementRow {
   pendingCents: string;
   receiptConfirmedAt: string | null;
   receiptNote: string | null;
+  /**
+   * Frente E: si el PDF del recibo ya quedó registrado
+   * (`app.settlement_receipts`). Opcional porque no todas las consultas que
+   * usan esta fila lo seleccionan (p. ej. el ZIP del expediente, que no ofrece
+   * descarga); ausente se trata como «todavía no».
+   */
+  hasReceiptDocument?: boolean;
 }
 
 export interface SettlementLineRow {
@@ -628,6 +635,13 @@ export interface SettlementView {
   receiptConfirmedAt: string | null;
   receiptNote: string | null;
   paymentStateLabel: string;
+  /**
+   * Frente E: si el PDF del recibo ya está registrado y por tanto descargable
+   * desde `/api/v1/households/{householdId}/settlements/{id}/receipt`. Solo
+   * tiene sentido preguntarlo con la liquidación cerrada — una abierta no
+   * tiene recibo que generar todavía.
+   */
+  receiptDocumentAvailable: boolean;
   lines: SettlementLineView[];
   payments: SettlementPaymentView[];
 }
@@ -1590,6 +1604,7 @@ export function buildSettlementViews(
       receiptConfirmedAt: row.receiptConfirmedAt,
       receiptNote: row.receiptNote,
       paymentStateLabel: paymentStateLabel(row, fullyPaid, ownPayments.length > 0),
+      receiptDocumentAvailable: row.hasReceiptDocument === true,
       lines: ownLines,
       payments: ownPayments
     };

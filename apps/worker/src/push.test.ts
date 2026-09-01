@@ -40,9 +40,11 @@ describe("catálogo de avisos", () => {
   // Esta prueba es la que sostiene la frase que se le enseña a la empleada en
   // «Tu cuenta»: «lo que nunca te vamos a mandar… la app no sabe hacerlo». Si
   // alguien añade un tópico, esto falla y le obliga a leer docs/notificaciones.md
-  // §6 antes de seguir. Mismo trato que se le dio al AC-26.
-  it("tiene exactamente dos avisos y ninguno de tareas, recuentos ni presencia", () => {
-    expect([...PUSH_TOPICS]).toEqual(["settlement.receipt_ready", "settlement.due"]);
+  // §6 antes de seguir. Mismo trato que se le dio al AC-26. El catálogo pasó de
+  // dos a TRES con el Frente D (`settlement.close_due`, migración 0034): sigue
+  // cerrado, solo que ahora con un aviso más.
+  it("tiene exactamente tres avisos y ninguno de tareas, recuentos ni presencia", () => {
+    expect([...PUSH_TOPICS]).toEqual(["settlement.receipt_ready", "settlement.due", "settlement.close_due"]);
   });
 
   it("rechaza como fallo permanente cualquier aviso fuera del catálogo", () => {
@@ -65,11 +67,29 @@ describe("catálogo de avisos", () => {
     expect(parsePushNoticePayload({ topic: "settlement.due", settlementId: SETTLEMENT }))
       .toEqual({ topic: "settlement.due", settlementId: SETTLEMENT, repeat: 0 });
   });
+
+  // El tercer aviso es del hogar y del mes, no de una liquidación: al revés que
+  // los otros dos, llevar un settlementId es el error.
+  it("el aviso de cierre de mes NO lleva settlementId", () => {
+    expect(parsePushNoticePayload({ topic: "settlement.close_due" }))
+      .toEqual({ topic: "settlement.close_due", settlementId: null, repeat: 0 });
+    expect(() => parsePushNoticePayload({ topic: "settlement.close_due", settlementId: SETTLEMENT }))
+      .toThrow(PermanentJobError);
+  });
 });
 
 describe("el texto de un aviso", () => {
   const receipt = composeNotice("settlement.receipt_ready", target(), HOUSEHOLD, TODAY);
   const due = composeNotice("settlement.due", target(), HOUSEHOLD, TODAY);
+  // El tercer aviso no lleva PushTarget de verdad (push_close_due_targets no
+  // trae agreementId/periodStart/dueOn): un objeto sin esos tres campos basta,
+  // y sirve para demostrar que composeNotice no los necesita para este tópico.
+  const closeDue = composeNotice(
+    "settlement.close_due",
+    { subscriptionId: "fb300000-0000-4000-8000-000000000001", endpoint: "https://push.ejemplo.test/cierre", p256dh: "clave-publica", auth: "secreto" },
+    HOUSEHOLD,
+    TODAY,
+  );
 
   it("dice de qué tipo es y dónde mirar, nunca el dato", () => {
     expect(receipt.title).toBe("El recibo de junio ya está");
@@ -78,12 +98,20 @@ describe("el texto de un aviso", () => {
     expect(due.body).toBe("Vence el 5 de julio. El importe se ve al abrir.");
   });
 
+  it("el aviso de cierre habla del mes en curso, sin acuerdo ni persona concreta", () => {
+    // TODAY = 2026-07-02: el mes en curso es julio, no el periodo del target.
+    expect(closeDue.title).toBe("Julio está a punto de acabar");
+    expect(closeDue.body).toBe("El mes se acaba: toca cerrar la cuenta y preparar el pago.");
+    expect(closeDue.url).toBe(`/h/${HOUSEHOLD}/employment`);
+    expect(closeDue.url).not.toContain("?empleada=");
+  });
+
   // La regla dura de docs/notificaciones.md §5.4, convertida en aserción: el
   // texto se dibuja en la pantalla de bloqueo, sin sesión y sin desbloquear el
   // teléfono, delante de cualquiera que pase. En un piso donde la administración
   // y quien trabaja comparten cocina, ese es el canal de fuga.
   it("no lleva importes ni nombres propios en ninguna parte", () => {
-    for (const notice of [receipt, due]) {
+    for (const notice of [receipt, due, closeDue]) {
       const visible = `${notice.title} ${notice.body}`;
       // Ni dígitos de dinero, ni el símbolo, ni la palabra.
       expect(visible).not.toMatch(/\d[\d.,]*\s*(?:€|eur)/i);
@@ -97,7 +125,7 @@ describe("el texto de un aviso", () => {
   it("habla del hecho y no da órdenes al teléfono de nadie", () => {
     // «Hay una cuenta sin pagar» sí; «paga la cuenta» no. El sujeto es el hecho
     // o la casa, nunca «tú» en imperativo.
-    for (const notice of [receipt, due]) {
+    for (const notice of [receipt, due, closeDue]) {
       expect(notice.title).not.toMatch(/^(?:confirma|paga|revisa|entra|abre|recuerda)\b/i);
     }
   });
@@ -109,11 +137,20 @@ describe("el texto de un aviso", () => {
 
   it("agrupa por asunto con una etiqueta que la norma admite", () => {
     // RFC 8030: la cabecera `Topic` es alfabeto de base64url y ≤ 32 caracteres.
-    for (const notice of [receipt, due]) {
+    for (const notice of [receipt, due, closeDue]) {
       expect(notice.tag).toMatch(/^[A-Za-z0-9_-]{1,32}$/);
     }
-    // Y distingue los dos asuntos: no deben sustituirse el uno al otro.
+    // Y distingue los tres asuntos: no deben sustituirse unos a otros.
     expect(receipt.tag).not.toBe(due.tag);
+    expect(closeDue.tag).not.toBe(receipt.tag);
+    expect(closeDue.tag).not.toBe(due.tag);
+    expect(closeDue.tag).toBe("cierre-2026-07");
+  });
+
+  it("sin datos de acuerdo, los otros dos avisos fallan alto y claro (error de programación, no de negocio)", () => {
+    const { agreementId: _agreementId, ...withoutAgreement } = target();
+    expect(() => composeNotice("settlement.due", withoutAgreement, HOUSEHOLD, TODAY))
+      .toThrow(/sin datos de acuerdo/);
   });
 
   it("añade el año solo cuando el periodo no es del año que corre", () => {
@@ -202,6 +239,7 @@ function handlerWith(options: {
     rescheduleSettlementDue: async (input) => {
       options.rescheduled?.push(input);
     },
+    today: async () => TODAY,
     now: () => TODAY,
   });
 }
@@ -288,5 +326,33 @@ describe("el trabajo notification.push", () => {
     // la empleada algo que no está en su mano es acoso de bajo nivel, y su aviso
     // no pide nada: cuenta que su recibo ya existe.
     expect(rescheduled).toEqual([]);
+  });
+
+  it("el aviso de cierre de mes tampoco escala: una vez y calla, sin settlementId que reencolar", async () => {
+    const sent: string[] = [];
+    const recorded: Recorded[] = [];
+    const rescheduled: unknown[] = [];
+    // El destinatario de este tópico no trae agreementId/periodStart/dueOn:
+    // push_close_due_targets no los devuelve, así que aquí tampoco se simulan.
+    const closeDueTarget: PushTarget = {
+      subscriptionId: "fb300000-0000-4000-8000-000000000001",
+      endpoint: "https://push.ejemplo.test/cierre-admin",
+      p256dh: "clave-publica",
+      auth: "secreto",
+    };
+    const handler = handlerWith({ targets: [closeDueTarget], sent, recorded, rescheduled });
+
+    await expect(handler(noticeJob({ topic: "settlement.close_due" }))).resolves.toBeUndefined();
+
+    expect(sent).toEqual(["https://push.ejemplo.test/cierre-admin"]);
+    expect(recorded).toEqual([
+      { subscriptionId: "fb300000-0000-4000-8000-000000000001", delivered: true, gone: false },
+    ]);
+    expect(rescheduled).toEqual([]);
+  });
+
+  it("el aviso de cierre con cero destinatarios completa sin efectos", async () => {
+    const handler = handlerWith({ targets: [] });
+    await expect(handler(noticeJob({ topic: "settlement.close_due" }))).resolves.toBeUndefined();
   });
 });

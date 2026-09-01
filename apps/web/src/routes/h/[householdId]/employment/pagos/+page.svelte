@@ -240,6 +240,24 @@
               >Descargar el documento de pago (PDF)</a>
             </div>
           {/if}
+          <!-- El recibo que archivó el worker al cerrar: el mismo fichero que
+               anunció el aviso al móvil, byte a byte. No es el documento de
+               arriba —ese se dibuja al momento—, así que se nombra distinto: si
+               algún día no coincidieran, quien mira tiene que poder decir cuál
+               está mirando. Entre cerrar y tenerlo pasa una vuelta de la cola. -->
+          {#if settlement.status === 'closed'}
+            <p class="audit-note">
+              {#if settlement.receiptDocumentAvailable}
+                <a
+                  href={`/api/v1/households/${overview.householdId}/settlements/${settlement.id}/receipt`}
+                  target="_blank"
+                  rel="noopener"
+                >Recibo archivado (PDF)</a>
+              {:else}
+                El recibo archivado se está generando.
+              {/if}
+            </p>
+          {/if}
           <SettlementActions
             householdId={overview.householdId}
             {settlement}

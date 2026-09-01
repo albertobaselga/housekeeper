@@ -8,9 +8,20 @@
   import { householdPath, type HouseholdModule } from '$lib/auth/routing';
   import type { AppContext } from '$lib/auth/types';
   import { startSyncMonitor, syncStatus } from '$lib/offline/sync';
+  import type { InstallOffer } from '$lib/pwa/install';
+  import InstallBanner from './InstallBanner.svelte';
   import NavIcon from './NavIcon.svelte';
+  import PushCheck from './PushCheck.svelte';
 
-  let { context, children }: { context: AppContext; children: Snippet } = $props();
+  let {
+    context,
+    pushPublicKey = null,
+    children
+  }: { context: AppContext; pushPublicKey?: string | null; children: Snippet } = $props();
+
+  // Prioridad entre los dos banners de entrada: si procede el de instalación
+  // (Frente B), el de avisos (Frente C) se calla. Nunca los dos a la vez.
+  let installOffer = $state<InstallOffer>('none');
 
   const has = (capability: Capability) => context.capabilities.includes(capability);
 
@@ -309,6 +320,8 @@
     </header>
 
     <main id="main-content" tabindex="-1" aria-busy={navBusy}>
+      <InstallBanner onOfferChange={(next) => (installOffer = next)} />
+      <PushCheck {pushPublicKey} suppressed={installOffer !== 'none'} householdId={context.household.id} />
       {@render children()}
     </main>
   </div>
