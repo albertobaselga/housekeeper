@@ -1,4 +1,10 @@
-import { vacationYearBalance } from '@casa-clara/domain';
+import {
+  contractYear,
+  contractYearOn,
+  vacationDaysInWindow,
+  vacationYearBalance,
+  type ContractYear
+} from '@casa-clara/domain';
 
 import { dateLabel, vacationRangeLabel } from './model';
 
@@ -6,18 +12,23 @@ import { dateLabel, vacationRangeLabel } from './model';
  * Vacaciones contadas como se cuentan en una casa.
  *
  * Este módulo escribe las FRASES; los números los calcula el motor puro del
- * dominio (`vacationYearBalance`), que es quien sabe prorratear el primer año y
- * repartir un periodo que cruza el 31 de diciembre. Aquí no se vuelve a sumar
- * nada: si esta capa hiciera su propia aritmética, la sección de la empleada y
- * la tarjeta del contrato podrían decir dos cifras distintas del mismo año.
+ * dominio (`vacationYearBalance`), que es quien sabe dónde empieza y acaba cada
+ * año de contrato, prorratear el último y repartir un periodo que cruza el
+ * aniversario. Aquí no se vuelve a sumar nada: si esta capa hiciera su propia
+ * aritmética, la sección de la empleada y la tarjeta del contrato podrían decir
+ * dos cifras distintas del mismo año.
  *
- * Tres reglas de redacción, que vienen del encargo y no son decorativas:
+ * Cuatro reglas de redacción, que vienen del encargo y no son decorativas:
  *
+ *  · EL AÑO SE DICE CON SUS FECHAS. «Segundo año · 5 mar 2026 – 4 mar 2027». El
+ *    año de vacaciones es el del contrato, no el del calendario, así que un
+ *    ordinal a secas no le dice nada a quien lo lee: sin las fechas nadie sabe
+ *    de qué doce meses se está hablando.
  *  · NADA DE PORCENTAJES NI DE INDICADORES. Esto es historia, no evaluación. No
  *    hay barras de progreso, ni «has usado el 50 % de tus días», ni nada que
  *    puntúe a nadie por descansar más o menos.
- *  · NADA DE JERGA CONTABLE. Ni «saldo», ni «devengo», ni «disponible». Se dice
- *    «te quedan», «has disfrutado», «te tocan».
+ *  · NADA DE JERGA CONTABLE. Ni «saldo», ni «disponible». Se dice «te quedan»,
+ *    «has disfrutado», «te tocan», «llevas devengados».
  *  · LA VOZ CAMBIA SEGÚN QUIÉN MIRA. La empleada lee sobre sí misma («te
  *    quedan»); quien administra lee sobre otra persona («le quedan»). Es la
  *    misma verdad dicha a quien corresponde, no dos cálculos.
@@ -57,33 +68,55 @@ export interface VacationHistoryPeriodView {
   /** La nota que escribió quien lo apuntó, o el motivo de la anulación. */
   detail: string;
   /**
-   * Cuando el periodo cruza el fin de año, cuántos de sus días caen en ESTE
-   * año. Sin esto, «del 24 de diciembre al 5 de enero · 13 días» dentro del
-   * bloque de 2026 parecería que gasta trece días de 2026, y gasta ocho.
+   * Cuando el periodo cruza el aniversario del contrato, cuántos de sus días
+   * caen en ESTE año. Sin esto, «del 1 al 10 de marzo · 10 días» dentro del
+   * bloque del segundo año parecería que gasta diez días de ese año, y gasta
+   * cuatro.
    */
   splitLabel: string | null;
 }
 
 export interface VacationYearView {
-  year: number;
-  /** El año natural en curso, el que la gente mira primero. */
+  /** Año de contrato: 1 el primero, 2 el segundo… No es un año natural. */
+  index: number;
+  /** Primer día del año de contrato. */
+  startsOn: string;
+  /** Último día del año de contrato. */
+  endsOn: string;
+  /** «Segundo año · 5 mar 2026 – 4 mar 2027». */
+  label: string;
+  /** El año de contrato en curso, el que la gente mira primero. */
   current: boolean;
   /**
-   * Días pactados de este año, ya prorrateados. `null` cuando quien mira no
-   * puede ver los términos del contrato: la familia no administradora ve los
-   * días disfrutados (son un hecho de la casa) pero no el derecho anual, que es
-   * lo pactado. Un cero en su lugar sería una cifra inventada.
+   * Días pactados de este año, ya prorrateados si el contrato termina dentro.
+   * `null` cuando quien mira no puede ver los términos del contrato: la familia
+   * no administradora ve los días disfrutados (son un hecho de la casa) pero no
+   * el derecho anual, que es lo pactado. Un cero en su lugar sería una cifra
+   * inventada.
    */
   entitledDays: number | null;
   takenDays: number;
-  /** Negativo si se pasó de los días pactados; se enseña, no se esconde. */
+  /** Lo que quedará al terminar el año. Negativo si se pasó de lo pactado. */
   remainingDays: number | null;
+  /** Días ya ganados a día de hoy. `null` sin acceso a lo pactado. */
+  accruedDays: number | null;
+  /** Devengado menos disfrutado: lo que tiene ahora mismo. Puede ser negativo. */
+  availableNowDays: number | null;
   /** La frase del año entera, en la voz de quien mira. */
   headline: string;
-  /** Explicación del prorrateo del primer o del último año, o null. */
+  /**
+   * «A 1 sep 2026 llevas devengados 15 de los 30 días del año», sólo en el año
+   * en curso. En uno ya cerrado el devengo es el derecho entero y repetirlo en
+   * cada bloque del historial sería llenar la pantalla de números que no dicen
+   * nada; en uno que aún no ha empezado sería un cero sin sentido.
+   */
+  accruedNote: string | null;
+  /** Explicación del prorrateo del último año, o null. */
   prorationNote: string | null;
   /** Aviso de que se han apuntado más días de los pactados, o null. */
   excessNote: string | null;
+  /** Días disfrutados por delante de lo devengado, sin dramatizarlo. O null. */
+  advanceNote: string | null;
   periods: VacationHistoryPeriodView[];
 }
 
@@ -97,7 +130,7 @@ export interface VacationPersonView {
   agreementEndsOn: string | null;
   /** «Desde el 3 feb 2025» / «Del 3 feb 2025 al 30 jun 2026». */
   agreementRangeLabel: string;
-  /** Del año más reciente al más antiguo. Todos, no solo el corriente. */
+  /** Del año de contrato más reciente al primero. Todos, no solo el corriente. */
   years: VacationYearView[];
   /** true si no hay ni un solo periodo apuntado en ningún año. */
   empty: boolean;
@@ -112,21 +145,53 @@ function days(count: number): string {
 }
 
 /**
- * Derecho anual que rige un año concreto.
- *
- * Para un año ya cerrado se pregunta por su 31 de diciembre, no por hoy: si el
- * contrato subió de 30 a 32 días en 2026, el historial de 2025 tiene que seguir
- * diciendo 30. Para el año en curso se pregunta por hoy, que es lo que la
- * migración 0020 y su ADR fijaron («se aplica el de la última versión ya en
- * vigor»). Sin ninguna versión en vigor todavía se toma la primera, porque el
- * derecho de un contrato recién firmado no es cero.
+ * Los años de contrato se dicen con el ordinal que usaría una persona hasta el
+ * décimo; a partir de ahí «el año 11», porque «undécimo» suena a otra cosa y
+ * nadie lo diría en voz alta.
  */
-export function annualVacationDaysForYear(
+const ORDINALS = [
+  'primer',
+  'segundo',
+  'tercer',
+  'cuarto',
+  'quinto',
+  'sexto',
+  'séptimo',
+  'octavo',
+  'noveno',
+  'décimo'
+] as const;
+
+/** «segundo año» · «año 12». En minúscula: casi siempre va dentro de una frase. */
+export function contractYearName(index: number): string {
+  const ordinal = ORDINALS[index - 1];
+  return ordinal ? `${ordinal} año` : `año ${index}`;
+}
+
+/** «Segundo año · 5 mar 2026 – 4 mar 2027». */
+export function contractYearLabel(year: ContractYear): string {
+  const name = contractYearName(year.index);
+  return `${name[0]?.toLocaleUpperCase('es') ?? ''}${name.slice(1)} · ${dateLabel(
+    year.startsOn
+  )} – ${dateLabel(year.endsOn)}`;
+}
+
+/**
+ * Derecho anual que rige un año de contrato concreto.
+ *
+ * Para un año ya cerrado se pregunta por su último día, no por hoy: si el
+ * contrato subió de 30 a 32 días a mitad del segundo año, el historial del
+ * primero tiene que seguir diciendo 30. Para el año en curso se pregunta por
+ * hoy, que es lo que la migración 0020 y su ADR fijaron («se aplica el de la
+ * última versión ya en vigor»). Sin ninguna versión en vigor todavía se toma la
+ * primera, porque el derecho de un contrato recién firmado no es cero.
+ */
+export function annualVacationDaysForContractYear(
   versions: readonly VacationEntitlementRow[],
-  year: number,
+  year: ContractYear,
   today: string
 ): number {
-  const onDate = `${year}-12-31` < today ? `${year}-12-31` : today;
+  const onDate = year.endsOn < today ? year.endsOn : today;
   const ordered = [...versions].sort((left, right) =>
     left.effectiveFrom.localeCompare(right.effectiveFrom)
   );
@@ -158,7 +223,7 @@ const STATE_LABELS: Readonly<Record<VacationHistoryPeriodView['state'], string>>
  */
 function yearHeadline(
   voice: VacationVoice,
-  year: number,
+  yearName: string,
   entitled: number | null,
   taken: number,
   remaining: number | null
@@ -172,33 +237,32 @@ function yearHeadline(
   // exactamente lo que se dice. Ni un número redondo de relleno.
   if (entitled === null || remaining === null) {
     return taken === 0
-      ? `En ${year} no consta ningún día de vacaciones.`
-      : `En ${year} constan ${days(taken)} de vacaciones.`;
+      ? `En el ${yearName} no consta ningún día de vacaciones.`
+      : `En el ${yearName} constan ${days(taken)} de vacaciones.`;
   }
 
   if (taken === 0) {
-    return `De los ${days(entitled)} que ${belong} en ${year}, todavía no ${has} ninguno.`;
+    return `De los ${days(entitled)} que ${belong} en el ${yearName}, todavía no ${has} ninguno.`;
   }
   if (remaining < 0) {
     return (
-      `En ${year} ${has} ${days(taken)} y el contrato reconoce ${days(entitled)}: ` +
+      `En el ${yearName} ${has} ${days(taken)} y el contrato reconoce ${days(entitled)}: ` +
       `hay ${days(-remaining)} de más.`
     );
   }
   if (remaining === 0) {
-    return `De los ${days(entitled)} que ${belong} en ${year}, ${has} todos.`;
+    return `De los ${days(entitled)} que ${belong} en el ${yearName}, ${has} todos.`;
   }
-  return `De los ${days(entitled)} que ${belong} en ${year}, ${has} ${taken}. ${left} ${remaining}.`;
+  return `De los ${days(entitled)} que ${belong} en el ${yearName}, ${has} ${taken}. ${left} ${remaining}.`;
 }
 
 function periodView(
   row: VacationHistoryPeriodRow,
-  year: number,
+  yearName: string,
   today: string,
   daysThisYear: number
 ): VacationHistoryPeriodView {
   const state = periodState(row, today);
-  const crossesYear = row.startsOn.slice(0, 4) !== row.endsOn.slice(0, 4);
   return {
     id: row.id,
     startsOn: row.startsOn,
@@ -215,15 +279,15 @@ function periodView(
         ? `Eran ${days(row.calendarDays)}. Anuladas${row.voidReason ? `: ${row.voidReason}` : ''}`
         : row.note || 'Vacaciones',
     splitLabel:
-      state !== 'voided' && crossesYear
-        ? `${days(daysThisYear)} de estas caen en ${year}`
+      state !== 'voided' && daysThisYear < row.calendarDays
+        ? `${days(daysThisYear)} de estas caen en el ${yearName}`
         : null
   };
 }
 
 /**
- * El historial de una persona: todos los años que cubre su contrato, del más
- * reciente al más antiguo, con lo anulado a la vista como anulado.
+ * El historial de una persona: todos los años de contrato, del más reciente al
+ * primero, con lo anulado a la vista como anulado.
  *
  * Se enseñan también los años SIN nada apuntado. Un año en blanco es
  * información («ese año no se apuntó ni un día»), y saltárselo dejaría un
@@ -241,52 +305,74 @@ export function buildVacationPersonView(input: {
   today: string;
 }): VacationPersonView {
   const voice: VacationVoice = input.own ? 'own' : 'other';
-  const currentYear = Number(input.today.slice(0, 4));
-  const startYear = Number(input.agreementStartsOn.slice(0, 4));
-  const periodYears = input.periods.flatMap((period) => [
-    Number(period.startsOn.slice(0, 4)),
-    Number(period.endsOn.slice(0, 4))
-  ]);
-  const endYear = input.agreementEndsOn === null ? null : Number(input.agreementEndsOn.slice(0, 4));
-  // El último año con algo que decir: el corriente, o más allá si ya hay días
-  // apuntados para el que viene. Un contrato terminado no llega más lejos de su
-  // último día, aunque el calendario siga.
-  let lastYear = Math.max(currentYear, startYear, ...periodYears);
-  if (endYear !== null) lastYear = Math.min(lastYear, Math.max(endYear, startYear));
+  const currentYear = contractYearOn(input.agreementStartsOn, input.today);
+
+  // El último año con algo que decir: el que corre hoy, o más allá si ya hay
+  // días apuntados para el siguiente. Un contrato terminado no llega más lejos
+  // del año en el que terminó, aunque el calendario siga.
+  let lastIndex = currentYear?.index ?? 1;
+  for (const period of input.periods) {
+    const year = contractYearOn(input.agreementStartsOn, period.endsOn);
+    if (year !== null && year.index > lastIndex) lastIndex = year.index;
+  }
+  if (input.agreementEndsOn !== null) {
+    const closing = contractYearOn(input.agreementStartsOn, input.agreementEndsOn);
+    lastIndex = Math.min(lastIndex, closing?.index ?? 1);
+  }
 
   // Sin ninguna versión visible no se puede decir cuántos días le tocan. Es el
   // caso de la familia no administradora: la RLS le enseña los periodos —lo que
   // pasó en la casa— pero no los términos del contrato.
   const entitlementKnown = input.versions.length > 0;
+  const you = input.own;
 
   const years: VacationYearView[] = [];
-  for (let year = lastYear; year >= startYear; year -= 1) {
+  for (let index = lastIndex; index >= 1; index -= 1) {
+    const year = contractYear(input.agreementStartsOn, index);
+    const yearName = contractYearName(index);
     const touching = input.periods.filter(
-      (period) => period.startsOn <= `${year}-12-31` && period.endsOn >= `${year}-01-01`
+      (period) => period.startsOn <= year.endsOn && period.endsOn >= year.startsOn
     );
     const balance = vacationYearBalance({
-      year,
-      annualVacationDays: annualVacationDaysForYear(input.versions, year, input.today),
+      contractYearIndex: index,
+      annualVacationDays: annualVacationDaysForContractYear(input.versions, year, input.today),
       agreementStartsOn: input.agreementStartsOn,
       agreementEndsOn: input.agreementEndsOn,
       periods: touching
         .filter((period) => period.status === 'recorded')
-        .map((period) => ({ startsOn: period.startsOn, endsOn: period.endsOn }))
+        .map((period) => ({ startsOn: period.startsOn, endsOn: period.endsOn })),
+      asOf: input.today
     });
     const entitledDays = entitlementKnown ? balance.entitledDays : null;
     const remainingDays = entitlementKnown ? balance.remainingDays : null;
+    const accruedDays = entitlementKnown ? balance.accruedDays : null;
+    const availableNowDays = entitlementKnown ? balance.availableNowDays : null;
+    const current = currentYear !== null && currentYear.index === index;
 
     years.push({
-      year,
-      current: year === currentYear,
+      index,
+      startsOn: year.startsOn,
+      endsOn: year.endsOn,
+      label: contractYearLabel(year),
+      current,
       entitledDays,
       takenDays: balance.takenDays,
       remainingDays,
-      headline: yearHeadline(voice, year, entitledDays, balance.takenDays, remainingDays),
+      accruedDays,
+      availableNowDays,
+      headline: yearHeadline(voice, yearName, entitledDays, balance.takenDays, remainingDays),
+      // El devengo lleva la fecha dicha porque sin ella no significa nada: «15
+      // de 30 días» sólo se entiende sabiendo a qué día se ha mirado.
+      accruedNote:
+        current && accruedDays !== null && entitledDays !== null
+          ? `A ${dateLabel(input.today)} ${you ? 'llevas' : 'lleva'} devengados ` +
+            `${accruedDays} de los ${days(entitledDays)} del año.`
+          : null,
       prorationNote:
         entitlementKnown && balance.prorated
-          ? `El contrato cubre ${days(balance.coveredDays)} de ${year}, así que de los ` +
-            `${days(balance.annualVacationDays)} del año ${voice === 'own' ? 'te tocan' : 'le tocan'} ` +
+          ? `El contrato termina dentro del ${yearName}: cubre ${days(balance.coveredDays)} de ` +
+            `los ${balance.daysInContractYear}, así que de los ` +
+            `${days(balance.annualVacationDays)} del año ${you ? 'te tocan' : 'le tocan'} ` +
             `${balance.entitledDays}.`
           : null,
       excessNote:
@@ -294,18 +380,28 @@ export function buildVacationPersonView(input: {
           ? 'Se han apuntado más días de los que reconoce el contrato. Casa Clara no lo corrige ' +
             'sola: lo enseña para que lo habléis y decidáis qué hacer.'
           : null,
+      // Sólo cuando ha gastado por delante de lo devengado y AÚN le quedan días
+      // del año: si ya se pasó de lo pactado, lo que hay que decir es el exceso
+      // y no dos avisos que se pisan. No es una alarma, es una explicación: dar
+      // las vacaciones en agosto de un año de contrato que acaba en marzo es lo
+      // normal, no un descuadre.
+      advanceNote:
+        current && availableNowDays !== null && availableNowDays < 0 && (remainingDays ?? 0) >= 0
+          ? `${you ? 'Has' : 'Ha'} disfrutado ${days(-availableNowDays)} por delante de lo ` +
+            'devengado a día de hoy. Es lo corriente cuando las vacaciones se cogen antes de ' +
+            'que acabe el año de contrato; no hay nada que corregir.'
+          : null,
       periods: touching
         .slice()
         .sort((left, right) => right.startsOn.localeCompare(left.startsOn))
-        .map((period) => {
-          const from = period.startsOn > `${year}-01-01` ? period.startsOn : `${year}-01-01`;
-          const through = period.endsOn < `${year}-12-31` ? period.endsOn : `${year}-12-31`;
-          const inYear =
-            Math.round(
-              (Date.parse(`${through}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
-            ) + 1;
-          return periodView(period, year, input.today, inYear);
-        })
+        .map((period) =>
+          periodView(
+            period,
+            yearName,
+            input.today,
+            vacationDaysInWindow(period, year.startsOn, year.endsOn)
+          )
+        )
     });
   }
 
