@@ -35,10 +35,33 @@ function monthLastDay(period: PeriodMonth): string {
   return `${period}-${String(lastDay).padStart(2, "0")}`;
 }
 
+/** Un concepto a punto de escribirse, ya decidido el importe y su motivo. */
+export interface ManualAdjustmentDraft {
+  agreementId: UUID;
+  /** Mes al que se PIDE imputar. Puede acabar siendo otro si ese ya está cerrado. */
+  period: PeriodMonth;
+  label: string;
+  reason: string;
+  /** Céntimos con su signo, en cadena: el dinero nunca pasa por Number. */
+  amountCents: string;
+  addsToPay: boolean;
+  /**
+   * Arrastre de vacaciones que lo originó, cuando lo hay (migración 0035). Sin
+   * él, «Vacaciones del segundo año no disfrutadas» sería indistinguible de una
+   * gratificación cualquiera y nada impediría apuntarlo dos veces.
+   */
+  vacationCarryoverId?: UUID | null;
+}
+
 /**
  * Apunta un concepto a mano y lo imputa al mes que toque.
  *
- * Las tres cosas que decide este comando, con su porqué:
+ * Vive aquí y no dentro del comando porque tiene DOS llamantes: quien apunta un
+ * concepto a mano y la compensación de vacaciones, que crea uno en la misma
+ * transacción en la que decide el arrastre. Dos copias de esta función serían
+ * dos formas distintas de decidir en qué mes cae el dinero.
+ *
+ * Las tres cosas que decide, con su porqué:
  *
  * · **El mes.** Quien administra elige. Un mes ya empezado vale: apuntar sobre
  *   la cuenta en curso es el caso normal. Un mes ya CERRADO no se reescribe —el
@@ -57,13 +80,14 @@ function monthLastDay(period: PeriodMonth): string {
  *   grande o que un descuento sea discutible no es asunto de la aplicación,
  *   pero que el total del mes mienta sí lo es.
  */
-async function recordManualAdjustment(
+export async function insertManualAdjustment(
   client: PoolClient,
   membership: ActiveMembership,
   householdId: UUID,
-  payload: RecordPayload,
-): Promise<{ resourceId: UUID }> {
-  const requested = payload.period as PeriodMonth;
+  draft: ManualAdjustmentDraft,
+): Promise<{ id: UUID; period: PeriodMonth; deferralNote: string }> {
+  const payload = draft;
+  const requested = payload.period;
 
   // Una sola lectura del acuerdo: de ella salen a quién pertenece la cuenta y
   // entre qué fechas existe.
@@ -127,8 +151,8 @@ async function recordManualAdjustment(
     `insert into app.manual_adjustments
        (household_id, agreement_id, employee_membership_id, period_month,
         requested_period_month, label, reason, amount_cents, adds_to_pay,
-        deferral_note, recorded_by_membership_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        deferral_note, vacation_carryover_id, recorded_by_membership_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      returning id`,
     [
       householdId,
@@ -141,12 +165,31 @@ async function recordManualAdjustment(
       payload.amountCents,
       payload.addsToPay,
       imputation.note,
+      payload.vacationCarryoverId ?? null,
       membership.id,
     ],
   );
   const row = inserted.rows[0];
   if (!row) throw new Error("La inserción del concepto no devolvió identificador");
-  return { resourceId: row.id };
+  return { id: row.id, period: imputation.period, deferralNote: imputation.note };
+}
+
+/** El comando de apuntar: valida el mes y delega en el apunte compartido. */
+async function recordManualAdjustment(
+  client: PoolClient,
+  membership: ActiveMembership,
+  householdId: UUID,
+  payload: RecordPayload,
+): Promise<{ resourceId: UUID }> {
+  const inserted = await insertManualAdjustment(client, membership, householdId, {
+    agreementId: payload.agreementId,
+    period: payload.period as PeriodMonth,
+    label: payload.label,
+    reason: payload.reason,
+    amountCents: payload.amountCents,
+    addsToPay: payload.addsToPay,
+  });
+  return { resourceId: inserted.id };
 }
 
 /**

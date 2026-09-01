@@ -380,6 +380,48 @@ export interface VacationVoidPayloadV1 {
 }
 
 /**
+ * `aggregateType: "leave_request"` — qué se hace con los días que quedaron sin
+ * disfrutar al cerrarse un año de CONTRATO (migración 0035).
+ *
+ * Las tres salidas nombran el año por su ordinal y nada más: los días, la
+ * versión del acuerdo y el importe los recalcula el servidor al decidir y los
+ * congela en la fila. Mandarlos desde el cliente sería dejar que quien fabrique
+ * la petición elija cuánto se le paga.
+ */
+export interface VacationCarryOverPayloadV1 {
+  action: "carry_over";
+  agreementId: UUID;
+  /** Año de contrato que se cierra: 1 el primero. No es un año natural. */
+  sourceYearIndex: number;
+}
+
+/**
+ * `aggregateType: "leave_request"` — pagar los días sin disfrutar. Crea, en la
+ * MISMA transacción, el concepto a mano que los materializa, con el importe y
+ * la frase congelados. Sin tarifa pactada en el contrato no hay compensación
+ * posible y el comando lo rechaza diciéndolo: no se estima ningún importe.
+ */
+export interface VacationCompensateCarryoverPayloadV1 {
+  action: "compensate_carryover";
+  agreementId: UUID;
+  sourceYearIndex: number;
+  /** Mes al que se pide imputar el concepto, `YYYY-MM`. */
+  period: string;
+}
+
+/**
+ * `aggregateType: "leave_request"` — los días se pierden, y queda escrito quién
+ * lo decidió y por qué. El motivo es obligatorio: perder días en silencio es
+ * exactamente lo que esta tabla existe para impedir.
+ */
+export interface VacationRejectCarryoverPayloadV1 {
+  action: "reject_carryover";
+  agreementId: UUID;
+  sourceYearIndex: number;
+  reason: string;
+}
+
+/**
  * `aggregateType: "manual_adjustment"` — un importe suelto que no nace de
  * ningún hecho del sistema (una gratificación, un descuento acordado, la parte
  * proporcional de algo) y que se imputa a la cuenta de un mes concreto.

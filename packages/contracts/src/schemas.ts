@@ -150,6 +150,12 @@ export const expenseResolvePayloadSchema = z.object({
 });
 
 /**
+ * Un mes natural, `YYYY-MM`: la unidad de la cuenta. Lo usan los conceptos
+ * apuntados a mano y la compensación de vacaciones, que crea uno de ellos.
+ */
+export const periodMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+/**
  * Vacaciones. Los días son NATURALES (es la unidad del contrato) y el año se
  * acota a un rango con sentido para un hogar: fuera de él lo que hay es un
  * dedazo en el teclado, no un periodo.
@@ -181,14 +187,58 @@ export const vacationVoidPayloadSchema = z.object({
 });
 
 /**
+ * Las tres salidas del arrastre de un año de contrato que se cierra con días
+ * sin disfrutar (migración 0035, apartado 4.3 del diseño).
+ *
+ * Ninguna lleva los días ni el importe: los recalcula el servidor al decidir,
+ * desde los periodos y la versión vigente del acuerdo, y los CONGELA en la
+ * fila. Si el cliente los mandara, quien fabricara la petición a mano elegiría
+ * cuánto se le paga.
+ *
+ * El año se identifica por su ORDINAL de contrato —1 el primero— y no por sus
+ * fechas: las fechas salen del acuerdo, y dejar que las mande el cliente sería
+ * dejarle mover el corte del año.
+ */
+const carryoverTargetShape = {
+  agreementId: uuidSchema,
+  sourceYearIndex: z.number().int().min(1).max(200),
+} as const;
+
+export const vacationCarryOverPayloadSchema = z.object({
+  action: z.literal("carry_over"),
+  ...carryoverTargetShape,
+});
+
+export const vacationCompensateCarryoverPayloadSchema = z.object({
+  action: z.literal("compensate_carryover"),
+  ...carryoverTargetShape,
+  /**
+   * Mes al que se pide imputar el concepto. Como cualquier concepto: si ese mes
+   * ya está cerrado, el servidor lo aplaza al primer mes abierto y lo deja
+   * dicho en la fila.
+   */
+  period: periodMonthSchema,
+});
+
+export const vacationRejectCarryoverPayloadSchema = z.object({
+  action: z.literal("reject_carryover"),
+  ...carryoverTargetShape,
+  /** Obligatorio: perder días sin decir por qué es lo que hay que impedir. */
+  reason: z.string().trim().min(1).max(500),
+});
+
+/**
  * Unión sin `discriminatedUnion` a propósito: `vacationRecordPayloadSchema`
  * lleva `.refine`, y un ZodEffects no puede ser miembro de una unión
- * discriminada. La unión normal prueba las dos ramas y devuelve el error de la
- * que más encaje, que aquí basta porque solo hay dos acciones.
+ * discriminada. La unión normal prueba las ramas y devuelve el error de la que
+ * más encaje.
  */
 export const vacationCommandPayloadSchema = z.union([
   vacationRecordPayloadSchema,
   vacationVoidPayloadSchema,
+  vacationCarryOverPayloadSchema,
+  vacationCompensateCarryoverPayloadSchema,
+  vacationRejectCarryoverPayloadSchema,
 ]);
 
 /**
@@ -198,8 +248,6 @@ export const vacationCommandPayloadSchema = z.union([
  * corta a propósito —es un título de línea, no una carta— y el motivo tiene
  * sitio para explicarse.
  */
-export const periodMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-
 export const manualAdjustmentRecordPayloadSchema = z
   .object({
     action: z.literal("record"),
