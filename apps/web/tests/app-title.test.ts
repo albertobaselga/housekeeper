@@ -50,6 +50,13 @@ describe('título de la pestaña: una sola fuente', () => {
     expect(sectionLabelFor('/h/abc/wiki/libro/lavadora')).toBe('Guía de la casa');
     // Una ruta que nadie declaró no inventa etiqueta: se titula con la casa.
     expect(sectionLabelFor('/h/abc/inventada')).toBeNull();
+    expect(sectionLabelFor('/h/abc/finanzas')).toBe('Finanzas');
+    expect(sectionLabelFor('/h/abc/finanzas/analitica')).toBe('Analítica');
+    expect(sectionLabelFor('/h/abc/finanzas/movimientos')).toBe('Movimientos');
+    expect(sectionLabelFor('/h/abc/finanzas/revision')).toBe('Revisión');
+    expect(sectionLabelFor('/h/abc/finanzas/eventos')).toBe('Eventos');
+    expect(sectionLabelFor('/h/abc/finanzas/importar')).toBe('Importar');
+    expect(sectionLabelFor('/h/abc/finanzas/ajustes')).toBe('Ajustes de Finanzas');
   });
 
   it('el nombre del icono es el del manifiesto, o mandaríamos a buscar algo que no existe', () => {

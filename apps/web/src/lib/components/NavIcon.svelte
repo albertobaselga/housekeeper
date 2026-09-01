@@ -18,6 +18,8 @@
       'M12 4.5v-2M12 21.5v-2M19.5 12h2M2.5 12h2M17.3 6.7l1.4-1.4M5.3 18.7l1.4-1.4M17.3 17.3l1.4 1.4M5.3 5.3l1.4 1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
     // Documento con firma: el acuerdo laboral.
     employment: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h3',
+    // Barras sobre ejes: el dinero de la casa, mes a mes.
+    finanzas: 'M4 4v16h16M8 16v-6M12 16V7M16 16v-3',
     // Tenedor y cuchillo: lo que se come.
     menu: 'M8 3v7a2 2 0 0 1-4 0V3M6 10v11M16 3c-1.5 1.5-1.5 5 0 6.5V21',
     // Cazuela con tapa: el recetario.

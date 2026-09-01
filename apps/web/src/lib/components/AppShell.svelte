@@ -27,6 +27,9 @@
     // la ruta, la capacidad y las tablas siguen llamándose employment. Es un
     // cambio de idioma de cara a la persona, no de arquitectura.
     employment: { module: 'employment', label: 'Contrato', short: 'Contrato', capability: 'settlement.read' },
+    // Solo la ve quien tiene finance.access EFECTIVO: el servidor ya la retiró
+    // del contexto si la membresía no tiene concesión viva (spec §4).
+    finanzas: { module: 'finanzas', label: 'Finanzas', short: 'Finanzas', capability: 'finance.access' },
     menu: { module: 'menu', label: 'Menú', short: 'Menú', capability: 'menu.read' },
     wiki: { module: 'wiki', label: 'Guía de la casa', short: 'Guía', capability: 'content.read' },
     routines: { module: 'routines', label: 'Rutinas', short: 'Rutinas', capability: 'routine.read' },
@@ -45,8 +48,8 @@
   // a qué hora recogen a los niños— y estaba escondida detrás de «Más», que es
   // justo donde ella menos puede navegar; Contrato se mira una vez al mes y
   // ocupaba un sitio principal de la barra.
-  const handsOnOrder = ['today', 'routines', 'menu', 'wiki', 'employment', 'calendar', 'contacts'];
-  const familyOrder = ['today', 'menu', 'employment', 'calendar', 'wiki', 'routines', 'contacts'];
+  const handsOnOrder = ['today', 'routines', 'menu', 'wiki', 'employment', 'finanzas', 'calendar', 'contacts'];
+  const familyOrder = ['today', 'menu', 'employment', 'calendar', 'finanzas', 'wiki', 'routines', 'contacts'];
   const order = has('work.register.self') || !has('settlement.read') ? handsOnOrder : familyOrder;
 
   const visibleNavigation = order

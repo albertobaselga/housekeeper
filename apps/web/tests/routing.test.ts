@@ -12,7 +12,7 @@ describe('household route contract', () => {
   it('keeps every required stable module addressable', () => {
     expect(HOUSEHOLD_MODULES).toEqual([
       'today', 'employment', 'menu', 'recipes', 'wiki', 'search',
-      'routines', 'calendar', 'contacts', 'emergency', 'account', 'personal', 'settings'
+      'routines', 'calendar', 'contacts', 'emergency', 'account', 'personal', 'finanzas', 'settings'
     ]);
 
     // «Tu cuenta» la alcanza todo el mundo; Ajustes sigue siendo de la familia.
@@ -101,5 +101,23 @@ describe('household route contract', () => {
     expect(guardForPath('/h/casa-roble/employment/acuerdo/mas')).toMatchObject({ known: false });
     expect(guardForPath('/h/%E0%A4%A/today')).toMatchObject({ known: false });
     expect(guardForPath('/login')).toBeNull();
+  });
+
+  it('finanzas exige el doble cerrojo en el módulo y en cada ruta hija', () => {
+    expect(MODULE_CAPABILITY.finanzas).toBe('finance.access');
+    for (const child of ['analitica', 'movimientos', 'revision', 'eventos', 'importar', 'ajustes']) {
+      expect(guardForPath(`/h/casa-roble/finanzas/${child}`)).toEqual({
+        householdId: 'casa-roble',
+        module: 'finanzas',
+        capability: 'finance.access',
+        known: true
+      });
+    }
+    // Fail-closed: una hija sin declarar no hereda nada.
+    expect(guardForPath('/h/casa-roble/finanzas/otra')).toMatchObject({ known: false, capability: null });
+    // La capacidad solo existe en la matriz para la administración.
+    expect(can('family_admin', 'finance.access')).toBe(true);
+    expect(can('family_member', 'finance.access')).toBe(false);
+    expect(can('helper', 'finance.access')).toBe(false);
   });
 });

@@ -55,6 +55,13 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
   emergency: 'Emergencias',
   account: 'Tu acceso',
   settings: 'Ajustes',
+  finanzas: 'Finanzas',
+  'finanzas/analitica': 'Analítica',
+  'finanzas/movimientos': 'Movimientos',
+  'finanzas/revision': 'Revisión',
+  'finanzas/eventos': 'Eventos',
+  'finanzas/importar': 'Importar',
+  'finanzas/ajustes': 'Ajustes de Finanzas',
   offline: 'Sin conexión'
 };
 

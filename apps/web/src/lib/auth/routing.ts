@@ -13,6 +13,7 @@ export const HOUSEHOLD_MODULES = [
   'emergency',
   'account',
   'personal',
+  'finanzas',
   'settings'
 ] as const;
 
@@ -39,6 +40,10 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
   // nombres, fechas y sueldos: la misma llave que Ajustes, que solo tiene la
   // familia administradora.
   personal: 'access.manage',
+  // Finanzas es de la administración Y de cuenta activada: la capacidad la
+  // tiene el rol, pero el layout la retira sin concesión viva (spec §4). La
+  // segunda llave nunca vive aquí: este mapa no consulta la base.
+  finanzas: 'finance.access',
   settings: 'access.manage'
 };
 
@@ -66,7 +71,15 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
 export const NESTED_ROUTE_CAPABILITY: Readonly<Record<string, Capability>> = {
   'employment/acuerdo': 'agreement.write',
   'employment/condiciones': 'agreement.read',
-  'employment/vacaciones': 'agreement.read'
+  'employment/vacaciones': 'agreement.read',
+  // Finanzas: cada hija declarada una a una (fail-closed), todas con la misma
+  // llave del módulo — el doble cerrojo real lo aplican layout y RLS.
+  'finanzas/analitica': 'finance.access',
+  'finanzas/movimientos': 'finance.access',
+  'finanzas/revision': 'finance.access',
+  'finanzas/eventos': 'finance.access',
+  'finanzas/importar': 'finance.access',
+  'finanzas/ajustes': 'finance.access'
 };
 
 export interface HouseholdRouteGuard {
