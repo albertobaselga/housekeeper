@@ -5,7 +5,7 @@ import { HOUSEHOLD, loginAs } from './helpers';
 // UX-P1-5 / I-03: Emergencias debe abrir sin conexión también por el camino
 // REAL — navegar por la SPA sin haber visitado nunca la página. El layout del
 // hogar calienta la caché del service worker al montarse (una petición con el
-// header x-casa-clara-warm-page que el SW guarda como página navegable); si la
+// header x-housekeeper-warm-page que el SW guarda como página navegable); si la
 // caché faltara, el fallback /offline pinta 112 y contactos desde el
 // CriticalSnapshot de IndexedDB. Cualquiera de los dos caminos debe enseñar
 // el 112 y algún contacto prioritario.
@@ -20,7 +20,7 @@ test('Ana abre Emergencias offline sin haberla visitado: 112 y contactos visible
     timeout: 20_000
   });
   await page.waitForFunction(
-    (householdId) => sessionStorage.getItem(`casa-clara-warmed-emergency:${householdId}`) !== null,
+    (householdId) => sessionStorage.getItem(`housekeeper-warmed-emergency:${householdId}`) !== null,
     HOUSEHOLD,
     { timeout: 20_000 }
   );

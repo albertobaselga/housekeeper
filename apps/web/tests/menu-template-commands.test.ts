@@ -6,7 +6,7 @@ import {
   commandEnvelopeSchema,
   menuSlotCommandPayloadSchema,
   menuTemplateCommandPayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import {
   applyMenuTemplate,

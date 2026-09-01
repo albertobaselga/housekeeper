@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { API_VERSION, type CommandEnvelopeV1, type UUID } from "@casa-clara/contracts";
+import { API_VERSION, type CommandEnvelopeV1, type UUID } from "@housekeeper/contracts";
 
 import { wikiCommandHandlers } from "./commands/wiki.js";
 import { withAuthorizedTransaction, type AuthenticatedPrincipal } from "./database.js";
@@ -14,7 +14,7 @@ const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const ROBLE_HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
 const OLIVO_HOUSEHOLD = "20000000-0000-4000-8000-000000000001";
 const ROBLE_ADMIN_MEMBERSHIP = "11000000-0000-4000-8000-000000000001";
-const APP_LOGIN = "it_casa_clara_app_login";
+const APP_LOGIN = "it_housekeeper_app_login";
 
 const ROBLE_ADMIN: AuthenticatedPrincipal = { userId: "fixture:roble:admin" };
 const ROBLE_EMPLOYEE: AuthenticatedPrincipal = { userId: "fixture:roble:employee" };

@@ -1,7 +1,7 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
-import { menuTemplateCommandPayloadSchema } from "@casa-clara/contracts/schemas";
+import type { UUID } from "@housekeeper/contracts";
+import { menuTemplateCommandPayloadSchema } from "@housekeeper/contracts/schemas";
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";

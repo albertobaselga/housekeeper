@@ -31,7 +31,7 @@ Todos viven en `.github/workflows/ci.yml`, un job por puerta:
 | `unit` | `test:unit` | no |
 | `compose` | `scripts/ci/validate-compose.sh` | no |
 | `database` | `db:migrate` desde cero → `test:db` → `test:rls` → `test:import` → `db:migrate` otra vez | sí |
-| `integration` | `@casa-clara/server`, `@casa-clara/web` y `@casa-clara/worker`, **en secuencia** | sí |
+| `integration` | `@housekeeper/server`, `@housekeeper/web` y `@housekeeper/worker`, **en secuencia** | sí |
 | `e2e-fixture` | `test:e2e` y `test:a11y` | no |
 | `e2e-database` | `test:e2e:db` | sí |
 | `lighthouse` | `test:lighthouse` | no |
@@ -40,7 +40,7 @@ Todos viven en `.github/workflows/ci.yml`, un job por puerta:
 
 `security.yml` corre aparte en cada PR, en push a `main` y cada lunes: gitleaks sobre el historial completo, `pnpm audit --prod --audit-level high` y `dependency-review`.
 
-**Aislamiento de bases.** Las suites de integración recrean el esquema y crean bases y roles de nombre fijo (`casaclara_access_it`, `it_casa_clara_app_login`, `e2e_casa_clara_web`…). Cada job que necesita PostgreSQL declara su **propio contenedor de servicio**, de modo que los nombres fijos no pueden colisionar entre jobs; dentro de un job, los pasos son secuenciales. En local, la misma regla: una suite de base de datos a la vez por clúster.
+**Aislamiento de bases.** Las suites de integración recrean el esquema y crean bases y roles de nombre fijo (`housekeeper_access_it`, `it_housekeeper_app_login`, `e2e_housekeeper_web`…). Cada job que necesita PostgreSQL declara su **propio contenedor de servicio**, de modo que los nombres fijos no pueden colisionar entre jobs; dentro de un job, los pasos son secuenciales. En local, la misma regla: una suite de base de datos a la vez por clúster.
 
 **Fase:** todos los AC de la fase, backup/restauración y revisión adversarial por una persona/agente distinto del autor.
 
@@ -56,7 +56,7 @@ Este tercer gate no se relaja nunca: si falla, se le da al fichero el job o el e
 
 ## Presupuesto de arranque de Hoy
 
-`pnpm --filter @casa-clara/web verify:bundle` acota en 120 kB el JavaScript que
+`pnpm --filter @housekeeper/web verify:bundle` acota en 120 kB el JavaScript que
 la pantalla Hoy necesita antes de ser interactiva, y de paso vigila dos fugas
 concretas. Conviene entender **por qué** se escapan los bytes antes de tocarlo.
 
@@ -69,13 +69,13 @@ anterior.
 
 Eso costó dos apaños fallidos y medio presupuesto:
 
-- **`@casa-clara/contracts` (la raíz) la carga cualquier pantalla**, porque de
+- **`@housekeeper/contracts` (la raíz) la carga cualquier pantalla**, porque de
   ahí sale `canonicalJson` y con él se verifica la firma del paquete offline en
   el arranque. La matriz de roles y capacidades vivía en ese mismo módulo, así
   que sus ~1,2 kB de tablas viajaban con él sin que nadie los usara: el servidor
   resuelve las capacidades de la sesión en `+layout.server.ts` y las manda ya
   resueltas dentro de `AppContextV1`. Vive ahora en
-  `@casa-clara/contracts/capabilities`, **sin reexport desde `index.ts`**.
+  `@housekeeper/contracts/capabilities`, **sin reexport desde `index.ts`**.
 - **El layout `/h/[householdId]` se carga en todas las pantallas
   autenticadas.** `AppShell` solo necesitaba las cinco etiquetas de rol, pero
   convivían con `can()` y el troceo juntaba las dos cosas: 1,6 kB para escribir
@@ -86,8 +86,8 @@ tipos y funciones pequeñas; las tablas de datos van a un submódulo propio.**
 
 Dos herramientas la sostienen:
 
-- El plugin `casa-clara:client-module-map` de `apps/web/vite.config.ts` escribe
-  `.svelte-kit/casa-clara-module-map.json` (fuera de `output/`, no se despliega)
+- El plugin `housekeeper:client-module-map` de `apps/web/vite.config.ts` escribe
+  `.svelte-kit/housekeeper-module-map.json` (fuera de `output/`, no se despliega)
   con los bytes que cada módulo fuente aporta a cada trozo. Sin él, un trozo que
   engorda es un misterio: el manifiesto de Vite no dice qué módulo cae dónde.
 - `apps/web/scripts/verify-today-bundle.mjs` usa ese mapa para listar los doce

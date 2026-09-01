@@ -10,7 +10,7 @@
  * cifrado y un «quién eres». Publicar el 3310 en abierto NO es una opción.
  *
  * QUÉ HACE. Escucha en TLS (certificado y clave por fichero), exige como
- * primera línea `CASACLARA <token>\n` con el secreto compartido, y a partir de
+ * primera línea `HOUSEKEEPER <token>\n` con el secreto compartido, y a partir de
  * ahí conecta con clamd en 127.0.0.1:3310 y hace de tubería en los dos
  * sentidos SIN tocar un byte: el cliente ve exactamente el diálogo INSTREAM de
  * siempre y clamd ve exactamente el cliente de siempre. El saludo se consume
@@ -35,7 +35,7 @@ import net from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
 import tls from 'node:tls';
 
-const GREETING = 'CASACLARA ';
+const GREETING = 'HOUSEKEEPER ';
 const MAX_GREETING_BYTES = 512;
 
 function required(key) {

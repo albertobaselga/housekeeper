@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 
-import type { Role } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import type { Role } from '@housekeeper/contracts';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';

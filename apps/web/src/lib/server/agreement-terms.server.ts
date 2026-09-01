@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 
-import type { AgreementCreateInputV1, AgreementTermsInputV1 } from '@casa-clara/contracts';
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import type { AgreementCreateInputV1, AgreementTermsInputV1 } from '@housekeeper/contracts';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 
 import {
   buildExtraWorkTypeView,

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { error } from '@sveltejs/kit';
 import ical from 'ical-generator';
-import { nextOccurrenceOnOrAfter, occurrencesBetween } from '@casa-clara/domain';
+import { nextOccurrenceOnOrAfter, occurrencesBetween } from '@housekeeper/domain';
 
 import { getDatabasePool } from '$lib/server/db.server';
 import { routineRrule } from '$lib/server/ics-rrule.server';
@@ -46,7 +46,7 @@ function addDaysISO(isoDate: string, days: number): string {
  * revocación corta el acceso al instante. La emisión usa ical-generator para
  * producir un .ics interoperable (plegado, CRLF, escapado).
  *
- * Las ocurrencias las genera el motor puro de `@casa-clara/domain` desde las
+ * Las ocurrencias las genera el motor puro de `@housekeeper/domain` desde las
  * columnas de patrón, que son la verdad de la cadencia. Antes se proyectaban
  * avanzando `next_due_on` con la frecuencia heredada; eso dejó de funcionar en
  * cuanto la 0023 sacó `frequency` del tipo de retorno de la función —el feed
@@ -99,7 +99,7 @@ export const GET: RequestHandler = async ({ params }) => {
     // El feed es público por token: se nombra por lo que trae, no por la casa
     // que hay detrás (quien tenga la URL no tiene por qué saberlo).
     name: 'Rutinas del hogar',
-    prodId: { company: 'Casa Clara', product: 'routines', language: 'ES' }
+    prodId: { company: 'Housekeeper', product: 'routines', language: 'ES' }
   });
 
   // El día del hogar, no el del proceso: una ocurrencia es un día de calendario.
@@ -123,7 +123,7 @@ export const GET: RequestHandler = async ({ params }) => {
     const seriesStart = rrule === null ? null : nextOccurrenceOnOrAfter(schedule, schedule.anchorOn);
     if (rrule !== null && seriesStart !== null) {
       calendar.createEvent({
-        id: `${row.routine_id}@casaclara`,
+        id: `${row.routine_id}@housekeeper`,
         start: new Date(`${seriesStart}T00:00:00.000Z`),
         allDay: true,
         summary,
@@ -142,7 +142,7 @@ export const GET: RequestHandler = async ({ params }) => {
       limit: MAX_EVENTS_PER_ROUTINE
     })) {
       calendar.createEvent({
-        id: `${row.routine_id}-${dueOn}@casaclara`,
+        id: `${row.routine_id}-${dueOn}@housekeeper`,
         start: new Date(`${dueOn}T00:00:00.000Z`),
         allDay: true,
         summary,

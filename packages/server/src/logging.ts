@@ -9,7 +9,7 @@
  * técnico (identidad de usuario) JAMÁS pasa.
  *
  * Sin dependencias: lo consumen `apps/web` (vía el export raíz del paquete) y
- * `apps/worker` (vía el subpath `@casa-clara/server/logging`, resuelto a dist).
+ * `apps/worker` (vía el subpath `@housekeeper/server/logging`, resuelto a dist).
  */
 
 export type LogLevel = "debug" | "info" | "warn" | "error";

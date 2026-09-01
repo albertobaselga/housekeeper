@@ -18,8 +18,9 @@ import { lookup } from 'node:dns/promises';
 import type { Pool } from 'pg';
 
 import { env } from '$env/dynamic/private';
-import { createLogger } from '@casa-clara/server';
-import { isForbiddenAddress } from '@casa-clara/worker/net';
+import { createLogger } from '@housekeeper/server';
+import { isForbiddenAddress } from '@housekeeper/worker/net';
+import { loadVapidConfig } from '@housekeeper/worker/push-channel';
 
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -52,18 +53,19 @@ export interface PushDeviceView {
  * ninguna ruta. Que esta función devuelva `null` es la señal de que en esta
  * instalación no hay canal, y la interfaz lo dice en vez de ofrecer un
  * interruptor que no puede funcionar.
+ *
+ * El «¿hay canal?» lo decide `loadVapidConfig` y NO una comprobación propia de
+ * esta mitad, que es lo que había antes: aquí bastaba con que las tres cadenas
+ * no estuvieran vacías, mientras el worker exigía además que el `sub` tuviera la
+ * forma de la norma. Con esa diferencia, un `VAPID_SUBJECT` sucio dibujaba el
+ * interruptor y dejaba suscribirse a una casa a la que la cola nunca iba a
+ * mandar nada. La respuesta tiene que ser la misma en las dos mitades o el
+ * canal miente.
  */
 export function pushPublicKey(
   environment: Partial<Record<string, string>> = env
 ): string | null {
-  const publicKey = environment.VAPID_PUBLIC_KEY?.trim();
-  const privateKey = environment.VAPID_PRIVATE_KEY?.trim();
-  const subject = environment.VAPID_SUBJECT?.trim();
-  // Las tres o ninguna: con la pública puesta y la privada a medias, el
-  // navegador se suscribiría a un servidor que jamás podrá escribirle, y el
-  // silencio se leería como «no funciona» en vez de como «no está configurado».
-  if (!publicKey || !privateKey || !subject) return null;
-  return publicKey;
+  return loadVapidConfig(environment)?.publicKey ?? null;
 }
 
 /**

@@ -1,3 +1,5 @@
+import type { Pool } from "pg";
+
 import { renderReceiptPdf, sha256, type ReceiptInput } from "./documents.js";
 import { PermanentJobError, type JobHandler } from "./queue.js";
 
@@ -67,6 +69,24 @@ function optionalSettlementId(payload: unknown): string | null {
 export interface RenderReceiptDeps {
   upload: DocumentUploader;
   /**
+   * Registra el recibo (Frente E: `app_private.record_settlement_receipt`,
+   * migración 0035) tras subirlo: sin esto el PDF existía en el almacén y en
+   * ningún otro sitio, así que no había manera de descargarlo desde la
+   * aplicación. Va DESPUÉS de `upload` y ANTES de `announceReceipt` — si el
+   * registro falla, el trabajo se reintenta entero (re-renderizar el mismo
+   * contenido es barato y determinista) y el aviso de «tu recibo ya está» no
+   * debe salir con el recibo sin registrar: llevaría a una pantalla que no
+   * puede enseñárselo.
+   *
+   * Igual que `announceReceipt`, solo aplica cuando el trabajo trae
+   * `settlementId`: los recibos encolados por la versión anterior a este
+   * frente siguen subiendo sin registrar — compatibilidad ya prevista por
+   * `optionalSettlementId`.
+   */
+  recordReceipt?:
+    | ((input: { settlementId: string; objectKey: string; sha256: string; byteSize: number }) => Promise<void>)
+    | undefined;
+  /**
    * Encola el aviso de «tu recibo ya está» para la persona del contrato.
    *
    * **Este es el único momento en que se le avisa de algo.** No es una elección
@@ -92,15 +112,58 @@ export function createRenderReceiptHandler(deps: RenderReceiptDeps): JobHandler 
     const receipt = parseReceiptPayload(job.payload);
     const pdf = await renderReceiptPdf(receipt);
     const hash = sha256(pdf);
-    await deps.upload(
-      receiptObjectKey(job.householdId, receipt.reference, hash),
-      pdf,
-      "application/pdf",
-    );
+    const key = receiptObjectKey(job.householdId, receipt.reference, hash);
+    await deps.upload(key, pdf, "application/pdf");
 
     const settlementId = optionalSettlementId(job.payload);
+    if (settlementId && deps.recordReceipt) {
+      try {
+        await deps.recordReceipt({ settlementId, objectKey: key, sha256: hash, byteSize: pdf.byteLength });
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "55000") {
+          // La liquidación ya no está cerrada (p. ej. se anuló después de
+          // encolar este render): el PDF ya subido queda huérfano en el
+          // almacén, y eso es inocuo. El trabajo se completa en silencio —ni
+          // registro ni anuncio— y no hay nada que reintentar: reintentarlo
+          // solo volvería a chocar con la misma liquidación anulada.
+          return;
+        }
+        if (code === "22023") {
+          // La liquidación no existe: fallo permanente, no un contratiempo del
+          // día. Reintentar no lo arreglaría.
+          throw new PermanentJobError(`La liquidación ${settlementId} no existe`);
+        }
+        throw error;
+      }
+    }
     if (settlementId && deps.announceReceipt) {
       await deps.announceReceipt({ householdId: job.householdId, settlementId });
     }
+  };
+}
+
+/**
+ * La consulta real sobre el pool del worker: una sola llamada a la función
+ * definer de la 0035, que hace el upsert de `app.storage_objects`, inserta
+ * `app.documents` y `app.settlement_receipts` en una sola transacción e
+ * idempotente por su cuenta (ver la migración). El `bucket` no viaja aquí
+ * dentro: lo cierra quien construye esta dependencia (`registry.ts`), que es
+ * quien conoce el almacén configurado.
+ */
+export function createReceiptQueries(
+  pool: Pool,
+  bucket: string,
+): { recordReceipt: NonNullable<RenderReceiptDeps["recordReceipt"]> } {
+  return {
+    recordReceipt: async ({ settlementId, objectKey, sha256: contentSha256, byteSize }) => {
+      await pool.query("select app_private.record_settlement_receipt($1, $2, $3, $4, $5)", [
+        settlementId,
+        bucket,
+        objectKey,
+        contentSha256,
+        byteSize,
+      ]);
+    },
   };
 }

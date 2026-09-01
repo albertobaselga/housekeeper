@@ -1,5 +1,5 @@
 {
-  "name": "@casa-clara/web",
+  "name": "@housekeeper/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,15 +16,15 @@
     "test": "vitest run",
     "test:a11y": "PLAYWRIGHT_JUNIT_OUTPUT_NAME=../../artifacts/e2e/junit-a11y.xml playwright test --project=a11y",
     "test:e2e": "playwright test --project=e2e",
-    "test:e2e:db": "E2E_DATABASE_URL=${E2E_DATABASE_URL:-postgresql://casa_admin@127.0.0.1:54329/casaclara_wt_u} playwright test --config=playwright.db.config.ts",
+    "test:e2e:db": "E2E_DATABASE_URL=${E2E_DATABASE_URL:-postgresql://casa_admin@127.0.0.1:54329/housekeeper_wt_u} playwright test --config=playwright.db.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1105.0",
-    "@casa-clara/contracts": "workspace:*",
-    "@casa-clara/domain": "workspace:*",
-    "@casa-clara/server": "workspace:*",
-    "@casa-clara/worker": "workspace:*",
+    "@housekeeper/contracts": "workspace:*",
+    "@housekeeper/domain": "workspace:*",
+    "@housekeeper/server": "workspace:*",
+    "@housekeeper/worker": "workspace:*",
     "@milkdown/kit": "7.22.0",
     "better-auth": "1.6.26",
     "fflate": "0.8.3",

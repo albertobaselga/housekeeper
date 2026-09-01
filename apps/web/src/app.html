@@ -15,6 +15,13 @@
       así que la instalación tiene que quedar bien hecha o nadie la conserva.
     -->
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!--
+      El estándar es `mobile-web-app-capable`; la variante `apple-` se queda
+      porque las versiones de iOS que todavía la necesitan son justo las de los
+      teléfonos que no se renuevan. Chromium avisa por consola si falta la
+      primera, y ese aviso lo lee cualquiera que abra el inspector.
+    -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Hogar" />
     %sveltekit.head%

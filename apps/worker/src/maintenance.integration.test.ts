@@ -18,8 +18,8 @@ const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 // Base propia: las suites de packages/server y apps/web recrean el esquema de
 // la base compartida en paralelo, así que la retención se prueba aislada, con
 // un login real del grupo casa_clara_worker (NOBYPASSRLS) igual que en runtime.
-const PRUNE_DB = "casaclara_prune_it";
-const WORKER_LOGIN = "it_casa_clara_prune_worker_login";
+const PRUNE_DB = "housekeeper_prune_it";
+const WORKER_LOGIN = "it_housekeeper_prune_worker_login";
 
 const ROBLE_HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
 const ADMIN_MEMBERSHIP = "11000000-0000-4000-8000-000000000001";

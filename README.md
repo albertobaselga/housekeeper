@@ -1,4 +1,4 @@
-# Casa Clara
+# Housekeeper
 
 Aplicación web instalable para llevar una casa y la relación laboral con quien
 trabaja en ella: qué toca hoy, la guía de la casa, el menú y la compra, el
@@ -7,7 +7,7 @@ liquidaciones, todo en céntimos—. Cinco papeles —administración, familia,
 empleada, apoyo y acceso puntual— con aislamiento real por hogar mediante Row
 Level Security **forzada** en PostgreSQL.
 
-> **«Casa Clara» es el nombre del proyecto, no el del producto.** Una misma
+> **«Housekeeper» es el nombre del proyecto, no el del producto.** Una misma
 > instalación sirve a varias casas: sin sesión la aplicación se anuncia con un
 > nombre genérico, y con sesión manda el nombre del hogar. Si vas a escribir
 > texto de interfaz, lee primero
@@ -62,8 +62,10 @@ congeladas al resolver, versiones inmutables, RLS).
 Node **24.18.0** (fijado en `.nvmrc`, `.node-version` y `engines`) y pnpm
 **10.17.1**. Para las suites que tocan base de datos hace falta un PostgreSQL
 **18** al que puedas conectarte con permiso para crear bases y roles: las
-migraciones crean los roles de grupo `casa_clara_app` y `casa_clara_worker`, y
-varias suites crean bases hermanas.
+migraciones crean los roles de grupo `casa_clara_app` y `casa_clara_worker`
+(nombres legados del proyecto anterior; ver
+[docs/despliegue/identificadores-legado.md](docs/despliegue/identificadores-legado.md)),
+y varias suites crean bases hermanas.
 
 > Producción corre sobre **PostgreSQL 17** (es lo que ofrece Supabase). Ninguna
 > migración usa sintaxis exclusiva de la 18, y esa diferencia está verificada.
@@ -85,7 +87,7 @@ pnpm dev        # http://localhost:5173, cuentas sintéticas en memoria
 Sin `DATABASE_URL` la web sirve maquetas y `/api/v1/sync` responde 503: nunca
 finge una confirmación. Con Postgres configurado, cada sesión opera bajo RLS de
 verdad. El selector de cuentas sintéticas **desaparece del paquete** al
-construir salvo que se declare `CASA_CLARA_FIXTURE_LOGIN`, y un despliegue que
+construir salvo que se declare `HOUSEKEEPER_FIXTURE_LOGIN`, y un despliegue que
 lo lleve puesto con base de datos se niega a arrancar.
 
 ### Node y PostgreSQL portátiles (sin Docker)
@@ -96,22 +98,22 @@ export PGBIN="$PG_HOME/usr/lib/postgresql/18/bin"
 export LD_LIBRARY_PATH="$PG_HOME/usr/lib/x86_64-linux-gnu"
 "$PGBIN/initdb" -D "$PGDATA" -U casa_admin --auth-local=trust --auth-host=trust
 "$PGBIN/pg_ctl" -D "$PGDATA" -o "-p 54329 -k /tmp/ccpg-socket" -l "$PGDATA/log" start
-"$PGBIN/createdb" -h 127.0.0.1 -p 54329 -U casa_admin casaclara_dev
+"$PGBIN/createdb" -h 127.0.0.1 -p 54329 -U casa_admin housekeeper_dev
 
-export DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
+export DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/housekeeper_dev"
 ```
 
 Luego, **en este orden**:
 
 ```bash
 # 1 · Esquema casa_auth y roles de login (sin esto, el paso 3 no tiene con qué entrar)
-pnpm --filter @casa-clara/db bootstrap
+pnpm --filter @housekeeper/db bootstrap
 
 # 2 · Migraciones. Repetir el comando debe aplicar cero: la idempotencia es contrato
 pnpm db:migrate
 
 # 3 · Cuentas del hogar (requiere DATABASE_AUTH_URL, BETTER_AUTH_SECRET y SEED_DATABASE_URL)
-pnpm --filter @casa-clara/web seed:accounts
+pnpm --filter @housekeeper/web seed:accounts
 ```
 
 Detalle de cada paso en [`packages/db/README.md`](packages/db/README.md).
@@ -158,13 +160,13 @@ de [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
 | Comando | Qué cubre | Necesita Postgres | Job |
 |---|---|---|---|
 | `pnpm lint` / `pnpm typecheck` / `pnpm build` | Análisis estático de todos los workspaces | no | `static-analysis` |
-| `pnpm --filter @casa-clara/web verify:bundle` | Presupuesto del JS inicial de Hoy, módulos desterrados del arranque y fuga de maquetas al cliente ([por qué](docs/architecture/delivery-quality-contract.md#presupuesto-de-arranque-de-hoy)) | no | `static-analysis` |
+| `pnpm --filter @housekeeper/web verify:bundle` | Presupuesto del JS inicial de Hoy, módulos desterrados del arranque y fuga de maquetas al cliente ([por qué](docs/architecture/delivery-quality-contract.md#presupuesto-de-arranque-de-hoy)) | no | `static-analysis` |
 | `pnpm test:unit` | Unidades y dominio de todos los workspaces | no | `unit` |
 | `scripts/ci/validate-compose.sh` | Contratos de los modelos Compose | no | `compose` |
 | `pnpm db:migrate` → `test:db` → `test:rls` → `test:import` → `db:migrate` | Migraciones desde cero, invariantes de esquema, matriz negativa de RLS, importador del manual e idempotencia del runner | **sí** | `database` |
-| `pnpm --filter @casa-clara/server test` | Transacción autorizada, idempotencia y sync bajo RLS | **sí** | `integration` |
-| `pnpm --filter @casa-clara/web test` | Suites de integración de los cargadores de servidor bajo RLS | **sí** | `integration` |
-| `pnpm --filter @casa-clara/worker exec vitest run` | Retención, cola y avisos con un login `NOBYPASSRLS` | **sí** | `integration` |
+| `pnpm --filter @housekeeper/server test` | Transacción autorizada, idempotencia y sync bajo RLS | **sí** | `integration` |
+| `pnpm --filter @housekeeper/web test` | Suites de integración de los cargadores de servidor bajo RLS | **sí** | `integration` |
+| `pnpm --filter @housekeeper/worker exec vitest run` | Retención, cola y avisos con un login `NOBYPASSRLS` | **sí** | `integration` |
 | `pnpm test:e2e` | Specs `*.e2e.ts`: PWA, sin conexión e IndexedDB en modo maqueta | no | `e2e-fixture` |
 | `pnpm test:a11y` | axe sobre acceso, Hoy, Emergencias y la hoja «Más» | no | `e2e-fixture` |
 | `pnpm test:e2e:db` | **Specs `*.dbe2e.ts`: la aceptación de los cinco papeles contra Postgres real** | **sí** | `e2e-database` |
@@ -173,13 +175,13 @@ de [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
 Para las suites con base de datos, exporta antes la conexión administradora:
 
 ```bash
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
-export E2E_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_e2e"
+export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/housekeeper_dev"
+export E2E_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/housekeeper_e2e"
 ```
 
 > **Ejecuta las suites de base de datos en secuencia, nunca en paralelo.** Cada
 > una recrea el esquema y varias crean bases y roles de **nombre fijo**
-> (`casaclara_access_it`, `it_casa_clara_app_login`…). Dos suites a la vez sobre
+> (`housekeeper_access_it`, `it_housekeeper_app_login`…). Dos suites a la vez sobre
 > el mismo clúster se pisan y fallan de formas confusas. En CI cada job levanta
 > su propio contenedor de PostgreSQL, que es la manera limpia de aislarlas.
 
@@ -218,6 +220,7 @@ Detalle en
 - Runbook de despliegue: [docs/despliegue/runbook-despliegue.md](docs/despliegue/runbook-despliegue.md)
 - Puesta en producción, paso a paso y con lo que salió mal: [docs/despliegue/puesta-en-produccion-eg112.md](docs/despliegue/puesta-en-produccion-eg112.md)
 - Vercel + Supabase (viabilidad, bloqueantes y coste): [docs/despliegue/plan-vercel-supabase.md](docs/despliegue/plan-vercel-supabase.md)
+- Identificadores legados del proyecto anterior (Casa Clara) que siguen vivos en producción: [docs/despliegue/identificadores-legado.md](docs/despliegue/identificadores-legado.md)
 - Runbooks: [planificador de la cola](docs/runbooks/planificador-cola.md) · [avisos push](docs/runbooks/notificaciones-push.md) · [copia y restauración](docs/runbooks/backup-restore.md) · [importar el manual](docs/runbooks/importar-manual.md) · [staging sintético](docs/runbooks/staging-synthetic.md) · [incidente de seguridad](docs/runbooks/security-incident.md)
 
 **Cómo está pensado**

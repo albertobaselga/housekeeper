@@ -7,7 +7,7 @@ import {
   wikiSpaceClonePayloadSchema,
   wikiSpaceCommandPayloadSchema,
   wikiSpaceSetTemplatePayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import { cloneWikiTemplate, setWikiSpaceTemplate } from '../src/lib/wiki/commands';
 

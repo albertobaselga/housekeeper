@@ -1,12 +1,12 @@
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
-import type { RoutineSchedule } from '@casa-clara/domain';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
+import type { RoutineSchedule } from '@housekeeper/domain';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import { queueCommand, type QueueOutcome } from '$lib/offline/queue-command';
 
 /**
  * Constructores puros de envelopes para comida, menú, compra y rutinas.
- * Producen los payloads CONGELADOS de @casa-clara/contracts/schemas
+ * Producen los payloads CONGELADOS de @housekeeper/contracts/schemas
  * (foodUpsert, dinerUpsert, recipeSetDetails, menuGroupUpsert, menuSlot
  * set/clear/duplicate_week/confirm, shoppingAdd, shoppingSetChecked,
  * routineUpsert y routineComplete). La validación zod vive en los tests y en

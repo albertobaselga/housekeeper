@@ -8,7 +8,7 @@
 
 ## 1 · Qué falta hoy
 
-Casa Clara sabe repetir una tarea `daily | weekly | monthly | quarterly` con un
+Housekeeper sabe repetir una tarea `daily | weekly | monthly | quarterly` con un
 intervalo de 1 a 12 y una única fecha, `next_due_on`
 (`packages/db/migrations/0008_food_and_rhythm.sql:196-214`). Con eso no se puede
 decir «la cocina a fondo los lunes **y** los jueves»: el modelo no tiene conjunto
@@ -240,7 +240,7 @@ descarta. Nunca puede ocultar nada.
 **Un único módulo puro, `packages/domain/src/recurrence.ts`.** Hoy la misma
 aritmética está triplicada (`0009:105-110`, `rhythm.ts:47`, `dates.ts:41`, cuyo
 comentario dice literalmente «réplica exacta») y las tres copias tienen que coincidir
-a mano. Las tres desaparecen. `@casa-clara/domain` ya es dependencia de `apps/web`
+a mano. Las tres desaparecen. `@housekeeper/domain` ya es dependencia de `apps/web`
 (`apps/web/package.json:24`) y de `packages/server` (`packages/server/package.json:20`).
 
 ```ts
@@ -358,8 +358,10 @@ en este orden exacto:
    quedó sin patrón.
 7. `DROP FUNCTION app_private.ics_feed_events(text)` + `CREATE` con la nueva firma de
    salida (`CREATE OR REPLACE` **no puede** cambiar el tipo de retorno) + **reemitir
-   `REVOKE ALL … FROM PUBLIC` y `GRANT EXECUTE … TO casa_clara_app`**. La migración
-   0011 existe precisamente porque un grant de este feed se perdió una vez.
+   `REVOKE ALL … FROM PUBLIC` y `GRANT EXECUTE … TO casa_clara_app`** (`casa_clara_app`
+   y `casa_clara_worker` son nombres legados del proyecto anterior; ver
+   [docs/despliegue/identificadores-legado.md](despliegue/identificadores-legado.md)).
+   La migración 0011 existe precisamente porque un grant de este feed se perdió una vez.
 8. `CREATE FUNCTION app.set_routine_due_hint(uuid, date)` (§5.1) y
    `CREATE FUNCTION app_private.routine_digest_inputs(date)` con
    `GRANT EXECUTE … TO casa_clara_worker`.

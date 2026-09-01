@@ -1,11 +1,11 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { UUID } from "@housekeeper/contracts";
 import {
   dinerUpsertPayloadSchema,
   foodCommandPayloadSchema,
   recipeCommandPayloadSchema,
-} from "@casa-clara/contracts/schemas";
+} from "@housekeeper/contracts/schemas";
 
 import { CommandRejectedError, type CommandHandler } from "../sync.js";
 

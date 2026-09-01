@@ -20,7 +20,7 @@
  * de `app.storage_objects` y `app.documents`, no el del bucket.
  */
 
-import { createLogger } from '@casa-clara/server';
+import { createLogger } from '@housekeeper/server';
 
 import { ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES } from './attachments.server';
 
@@ -77,6 +77,9 @@ export function readSupabaseStorageConfig(
     log.warn('supabase service key set but no project url could be resolved');
     return null;
   }
+  // 'casaclara': nombre legado del proyecto anterior; ver
+  // docs/despliegue/identificadores-legado.md. Es el bucket real de
+  // producción y no se renombra con el resto del código.
   const bucket = environment.SUPABASE_STORAGE_BUCKET?.trim() || environment.S3_PRIVATE_BUCKET?.trim() || 'casaclara';
   return { url, serviceKey, bucket };
 }

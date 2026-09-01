@@ -41,16 +41,16 @@ importers:
       '@aws-sdk/client-s3':
         specifier: 3.1105.0
         version: 3.1105.0
-      '@casa-clara/contracts':
+      '@housekeeper/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@casa-clara/domain':
+      '@housekeeper/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@casa-clara/server':
+      '@housekeeper/server':
         specifier: workspace:*
         version: link:../../packages/server
-      '@casa-clara/worker':
+      '@housekeeper/worker':
         specifier: workspace:*
         version: link:../worker
       '@milkdown/kit':
@@ -117,7 +117,7 @@ importers:
       '@aws-sdk/client-s3':
         specifier: 3.1105.0
         version: 3.1105.0
-      '@casa-clara/server':
+      '@housekeeper/server':
         specifier: workspace:*
         version: link:../../packages/server
       fflate:
@@ -201,10 +201,10 @@ importers:
 
   packages/server:
     dependencies:
-      '@casa-clara/contracts':
+      '@housekeeper/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@casa-clara/domain':
+      '@housekeeper/domain':
         specifier: workspace:*
         version: link:../domain
       pg:

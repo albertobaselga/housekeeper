@@ -26,14 +26,14 @@ Nunca restaurar sobre la base activa. Crear una base aislada con nombre exacto:
 
 ```bash
 docker compose -f infra/compose.local.yml exec -T postgres \
-  sh -eu -c 'dropdb --if-exists -U "$POSTGRES_USER" casaclara_restore_verify && createdb -U "$POSTGRES_USER" casaclara_restore_verify'
+  sh -eu -c 'dropdb --if-exists -U "$POSTGRES_USER" housekeeper_restore_verify && createdb -U "$POSTGRES_USER" housekeeper_restore_verify'
 ```
 
 Verificar checksum y restaurar el dump más reciente desde el volumen de backup:
 
 ```bash
 docker compose -f infra/compose.local.yml --profile backup run --rm \
-  -e PGDATABASE=casaclara_restore_verify \
+  -e PGDATABASE=housekeeper_restore_verify \
   --entrypoint /bin/sh db-backup -eu -c '
     restore_archive="$(find /backups/postgres -maxdepth 1 -type f -name "*.dump" | sort | tail -n 1)"
     test -n "$restore_archive"
@@ -42,20 +42,20 @@ docker compose -f infra/compose.local.yml --profile backup run --rm \
   '
 ```
 
-Ejecutar migraciones y la batería DB/RLS contra `casaclara_restore_verify`. Comparar, como mínimo, recuentos de hogares, membresías, asientos, liquidaciones cerradas, pagos, auditoría y objetos referenciados. La prueba falla ante referencias a adjuntos inexistentes.
+Ejecutar migraciones y la batería DB/RLS contra `housekeeper_restore_verify`. Comparar, como mínimo, recuentos de hogares, membresías, asientos, liquidaciones cerradas, pagos, auditoría y objetos referenciados. La prueba falla ante referencias a adjuntos inexistentes.
 
 Cuando la evidencia esté guardada, eliminar solo la base de verificación explícita:
 
 ```bash
 docker compose -f infra/compose.local.yml exec -T postgres \
-  sh -eu -c 'dropdb --if-exists -U "$POSTGRES_USER" casaclara_restore_verify'
+  sh -eu -c 'dropdb --if-exists -U "$POSTGRES_USER" housekeeper_restore_verify'
 ```
 
 El destino permanece como literal deliberadamente; no sustituirlo por una variable no comprobada.
 
 ## Drill de objetos
 
-Restaurar siempre a un bucket nuevo `casaclara-restore-verify`, nunca al bucket fuente. El job `object-backup` monta los snapshots bajo `/backups/objects/<bucket>/<timestamp>`.
+Restaurar siempre a un bucket nuevo `housekeeper-restore-verify`, nunca al bucket fuente. El job `object-backup` monta los snapshots bajo `/backups/objects/<bucket>/<timestamp>`.
 
 1. Validar `SHA256SUMS` desde dentro del snapshot.
 2. Crear el bucket de verificación como privado.

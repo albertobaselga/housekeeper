@@ -17,9 +17,9 @@ import { loadStaffOverview } from '../src/lib/server/staff.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_hire_login';
-const APP_DB = 'casaclara_hire_it';
-const AUTH_DB = 'casaclara_hire_auth_it';
+const APP_LOGIN = 'it_housekeeper_hire_login';
+const APP_DB = 'housekeeper_hire_it';
+const AUTH_DB = 'housekeeper_hire_auth_it';
 const BASE_URL = 'http://localhost:3000';
 
 const ADMIN_PASSWORD = 'alberto-clave-de-casa-2026';

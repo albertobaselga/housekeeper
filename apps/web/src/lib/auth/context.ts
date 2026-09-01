@@ -1,7 +1,7 @@
 import { getContext, setContext } from 'svelte';
 import type { AppContext } from './types';
 
-const APP_CONTEXT_KEY = Symbol('casa-clara-app-context');
+const APP_CONTEXT_KEY = Symbol('housekeeper-app-context');
 
 export function provideAppContext(context: AppContext): AppContext {
   setContext(APP_CONTEXT_KEY, context);

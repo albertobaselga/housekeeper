@@ -16,10 +16,10 @@ import {
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_wiki_login';
+const APP_LOGIN = 'it_housekeeper_wiki_login';
 // Base de datos propia (como la suite de auth): la de employment recrea el
 // esquema entero en paralelo y ambas no pueden compartir instancia.
-const WIKI_DB = 'casaclara_wiki_it';
+const WIKI_DB = 'housekeeper_wiki_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 // La validación zod del payload congelado vive AQUÍ, en el test: el código de
 // `$lib/calendar/commands.ts` que llega al navegador no importa zod.
-import { commandEnvelopeSchema, icsSourceUpsertPayloadSchema } from '@casa-clara/contracts/schemas';
+import { commandEnvelopeSchema, icsSourceUpsertPayloadSchema } from '@housekeeper/contracts/schemas';
 
 import { upsertCalendarSource } from '../src/lib/calendar/commands';
 

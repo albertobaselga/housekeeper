@@ -4,7 +4,7 @@ import {
   type CommandAckV1,
   type CommandEnvelopeV1,
   type UUID,
-} from "@casa-clara/contracts";
+} from "@housekeeper/contracts";
 
 import { canonicalSha256 } from "./canonical-json.js";
 

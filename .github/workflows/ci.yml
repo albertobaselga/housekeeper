@@ -10,7 +10,7 @@ name: CI
 #
 # Aislamiento de bases de datos: cada job que necesita Postgres declara su
 # PROPIO contenedor de servicio. Las suites de integración crean bases y roles
-# de nombre fijo (casaclara_access_it, it_casa_clara_app_login…) y se pisarían
+# de nombre fijo (housekeeper_access_it, it_housekeeper_app_login…) y se pisarían
 # entre sí sobre un clúster compartido; con un servicio por job cada una tiene
 # su clúster. Dentro de un job las suites van en pasos SECUENCIALES, nunca en
 # paralelo, por la misma razón.
@@ -44,7 +44,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - name: Enforce Today bundle and fixture-leak budgets
-        run: pnpm --filter @casa-clara/web verify:bundle
+        run: pnpm --filter @housekeeper/web verify:bundle
 
   unit:
     name: Unit and domain tests
@@ -90,18 +90,18 @@ jobs:
         env:
           POSTGRES_USER: ci_admin
           POSTGRES_PASSWORD: ci-only-password
-          POSTGRES_DB: casaclara_ci_db
+          POSTGRES_DB: housekeeper_ci_db
           POSTGRES_INITDB_ARGS: --data-checksums
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ci_admin -d casaclara_ci_db"
+          --health-cmd "pg_isready -U ci_admin -d housekeeper_ci_db"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
-      DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_db
-      TEST_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_db
+      DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_db
+      TEST_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_db
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -123,10 +123,10 @@ jobs:
         env:
           # La base tiene que ser una que EXISTA en el clúster: la sonda solo se
           # conecta aquí para crear el rol y su base desechable. Apuntaba a
-          # `casaclara_ci`, que no existe —el servicio crea `casaclara_ci_db`—,
+          # `housekeeper_ci`, que no existe —el servicio crea `housekeeper_ci_db`—,
           # así que este paso nunca llegó a ejecutarse desde que se añadió.
-          PROBE_ADMIN_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_db
-        run: pnpm --filter @casa-clara/db probe:supabase
+          PROBE_ADMIN_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_db
+        run: pnpm --filter @housekeeper/db probe:supabase
 
   integration:
     name: Server, web and worker integration
@@ -138,36 +138,36 @@ jobs:
         env:
           POSTGRES_USER: ci_admin
           POSTGRES_PASSWORD: ci-only-password
-          POSTGRES_DB: casaclara_ci_integration
+          POSTGRES_DB: housekeeper_ci_integration
           POSTGRES_INITDB_ARGS: --data-checksums
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ci_admin -d casaclara_ci_integration"
+          --health-cmd "pg_isready -U ci_admin -d housekeeper_ci_integration"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
       # Clúster propio de este job. Las suites lo usan como login administrador:
       # recrean el esquema de esta base y CREAN bases hermanas de nombre fijo
-      # (casaclara_access_it, casaclara_prune_it…). Por eso necesita permisos de
+      # (housekeeper_access_it, housekeeper_prune_it…). Por eso necesita permisos de
       # creación de bases y por eso los pasos van en secuencia.
-      TEST_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_integration
+      TEST_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_integration
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - name: Run server transaction, RLS and idempotency integration
-        run: scripts/ci/run-tests-nonempty.sh pnpm --filter @casa-clara/server test
+        run: scripts/ci/run-tests-nonempty.sh pnpm --filter @housekeeper/server test
       - name: Run web server-side integration against Postgres
         # Antes corría en el job `unit`, sin Postgres: las 14 suites de
         # integración quedaban saltadas y nadie lo notaba.
-        run: scripts/ci/run-tests-nonempty.sh pnpm --filter @casa-clara/web test
+        run: scripts/ci/run-tests-nonempty.sh pnpm --filter @housekeeper/web test
       - name: Run worker integration against Postgres
         # apps/worker no tiene vitest.config.ts, así que el JUnit se pide por
         # línea de órdenes en vez de tocar el paquete.
         run: >-
           scripts/ci/run-tests-nonempty.sh
-          pnpm --filter @casa-clara/worker exec vitest run
+          pnpm --filter @housekeeper/worker exec vitest run
           --reporter=default --reporter=junit
           --outputFile.junit=../../artifacts/unit/worker.xml
       - name: Assert JUnit integration evidence is non-empty
@@ -192,7 +192,7 @@ jobs:
       - name: Install Chromium runtime
         # El paquete @playwright/test es devDependency de apps/web, no de la
         # raíz: `pnpm exec playwright` desde la raíz falla con «Command not found».
-        run: pnpm --filter @casa-clara/web exec playwright install --with-deps chromium
+        run: pnpm --filter @housekeeper/web exec playwright install --with-deps chromium
       - name: Run non-empty browser suite
         run: scripts/ci/run-tests-nonempty.sh pnpm test:e2e
       - name: Run non-empty axe suite
@@ -220,12 +220,12 @@ jobs:
         env:
           POSTGRES_USER: ci_admin
           POSTGRES_PASSWORD: ci-only-password
-          POSTGRES_DB: casaclara_ci_e2e
+          POSTGRES_DB: housekeeper_ci_e2e
           POSTGRES_INITDB_ARGS: --data-checksums
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U ci_admin -d casaclara_ci_e2e"
+          --health-cmd "pg_isready -U ci_admin -d housekeeper_ci_e2e"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -240,14 +240,14 @@ jobs:
       # webServer con `{...process.env, ...webServer.env}`, así que una
       # variable del job se cuela en el servidor bajo prueba y le hace decir
       # «datos exclusivamente sintéticos» sobre datos reales.
-      E2E_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/casaclara_ci_e2e
+      E2E_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_e2e
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - name: Install Chromium runtime
         # El paquete @playwright/test es devDependency de apps/web, no de la
         # raíz: `pnpm exec playwright` desde la raíz falla con «Command not found».
-        run: pnpm --filter @casa-clara/web exec playwright install --with-deps chromium
+        run: pnpm --filter @housekeeper/web exec playwright install --with-deps chromium
       - name: Run the role acceptance battery against Postgres
         run: scripts/ci/run-tests-nonempty.sh pnpm test:e2e:db
       - name: Assert JUnit database e2e evidence is non-empty
@@ -274,7 +274,7 @@ jobs:
       - name: Install Chromium runtime
         # El paquete @playwright/test es devDependency de apps/web, no de la
         # raíz: `pnpm exec playwright` desde la raíz falla con «Command not found».
-        run: pnpm --filter @casa-clara/web exec playwright install --with-deps chromium
+        run: pnpm --filter @housekeeper/web exec playwright install --with-deps chromium
       - name: Enforce brief performance budgets
         run: pnpm test:lighthouse -- --config=infra/quality/lighthouserc.json
       - name: Upload Lighthouse reports

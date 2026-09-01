@@ -30,6 +30,7 @@ export {
 } from "./registry.js";
 export { ensureIcsSyncScheduled, ICS_SYNC_INTERVAL_HOURS } from "./ics.js";
 export { ensurePruneDiscoveryScheduled, PRUNE_INTERVAL_DAYS } from "./maintenance.js";
+export { ensureCloseDueScheduled, CLOSE_DUE_SWEEP_JOB } from "./close-due.js";
 export { objectStore, putPrivateObject, type ObjectStoreConfig } from "./object-store.js";
 export {
   PUSH_NOTICE_JOB,

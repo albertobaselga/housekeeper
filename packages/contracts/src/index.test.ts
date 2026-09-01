@@ -53,7 +53,7 @@ describe("contratos públicos", () => {
    * `apps/web/scripts/verify-today-bundle.mjs` aplica sobre el paquete ya
    * construido: falla en segundos, sin necesitar una construcción entera.
    */
-  it("no reexporta el modelo de autorización: vive en @casa-clara/contracts/capabilities", () => {
+  it("no reexporta el modelo de autorización: vive en @housekeeper/contracts/capabilities", () => {
     expect(Object.keys(barrel).sort()).toEqual([
       "API_VERSION",
       "CRITICAL_SNAPSHOT_TTL_MS",

@@ -7,7 +7,7 @@
 // Supabase con el rol `postgres`.
 //
 //   DATABASE_URL=… APP_DB_PASSWORD=… WORKER_DB_PASSWORD=… AUTH_DB_PASSWORD=… \
-//     pnpm --filter @casa-clara/db bootstrap
+//     pnpm --filter @housekeeper/db bootstrap
 //
 // Ejecutar SIEMPRE antes de las migraciones: 0001 concede sobre casa_clara_app y
 // casa_clara_worker, así que esos roles tienen que existir ya.
@@ -23,9 +23,9 @@ const packageRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 export const bootstrapSqlPath = path.join(packageRoot, 'scripts', 'sql', 'bootstrap.sql');
 
 const PASSWORD_SETTINGS = [
-  ['casa_clara.app_password', 'APP_DB_PASSWORD'],
-  ['casa_clara.worker_password', 'WORKER_DB_PASSWORD'],
-  ['casa_clara.auth_password', 'AUTH_DB_PASSWORD']
+  ['housekeeper.app_password', 'APP_DB_PASSWORD'],
+  ['housekeeper.worker_password', 'WORKER_DB_PASSWORD'],
+  ['housekeeper.auth_password', 'AUTH_DB_PASSWORD']
 ];
 
 // Las contraseñas viajan como parámetros de sesión para que psql y este runner

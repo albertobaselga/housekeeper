@@ -44,7 +44,7 @@ describe('isLocalHostname', () => {
     for (const host of ['localhost', '127.0.0.1', '::1', '[::1]']) {
       expect(isLocalHostname(host), host).toBe(true);
     }
-    for (const host of ['staging.casaclara.test', 'casaclara.example', '192.168.1.10', 'localhost.evil.com']) {
+    for (const host of ['staging.housekeeper.test', 'housekeeper.example', '192.168.1.10', 'localhost.evil.com']) {
       expect(isLocalHostname(host), host).toBe(false);
     }
   });

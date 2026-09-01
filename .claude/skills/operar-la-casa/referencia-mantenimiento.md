@@ -10,7 +10,7 @@ pruebas y qué mirar cuando algo falla.
 ### El runner
 
 `packages/db/scripts/migrate.mjs`, que se invoca como `pnpm db:migrate` (o
-`pnpm --filter @casa-clara/db migrate`). Sólo lee `DATABASE_URL`.
+`pnpm --filter @housekeeper/db migrate`). Sólo lee `DATABASE_URL`.
 
 Aplica en orden todos los ficheros `NNNN_*.sql` de `packages/db/migrations/` que
 falten, **cada uno en su propia transacción junto con su fila de registro** en
@@ -96,15 +96,18 @@ pg_cron ──cada 5 min──▶ pg_net ──POST──▶ /api/v1/jobs/run (V
                                 runOneJob() sobre app_private.job_queue
 ```
 
-**Son cinco tipos de trabajo**: `document.render_receipt`, `ics.sync_source`,
-`ics.sync_all`, `notification.push` y `maintenance.prune_discovery`. El de push
-**sólo se registra si hay claves VAPID**; sin ellas la cola se vacía igual.
+**Son seis tipos de trabajo**: `document.render_receipt`, `ics.sync_source`,
+`ics.sync_all`, `notification.push`, `notification.close_due_sweep`
+(barrido mensual del tercer aviso, «el mes está a punto de acabar»; migración
+0034) y `maintenance.prune_discovery`. Los dos de avisos —`notification.push`
+y `notification.close_due_sweep`— **sólo se registran si hay claves VAPID**;
+sin ellas la cola se vacía igual, solo que sin esos dos.
 
 ### Comprobar que drena
 
 ```bash
 curl -si -X POST https://casa.ejemplo.es/api/v1/jobs/run \
-  -H "x-casa-clara-job-token: $JOB_RUNNER_TOKEN"
+  -H "x-housekeeper-job-token: $JOB_RUNNER_TOKEN"
 ```
 
 Una respuesta sana:
@@ -151,6 +154,10 @@ re-encola a sí mismo.
 ```sql
 update cron.job set active = false where jobname = 'casa-clara-drenaje-cola';
 ```
+
+(`casa-clara-drenaje-cola` es el nombre legado de la tarea de cron del proyecto
+anterior; ver
+[docs/despliegue/identificadores-legado.md](../../../docs/despliegue/identificadores-legado.md).)
 
 Los dos ejecutores —el demonio y el drenaje— **pueden convivir**: el reclamo usa
 `for update skip locked`, así que se reparten los trabajos y ninguno ejecuta el
@@ -205,7 +212,7 @@ tocarlos.
 | `JOB_RUNNER_TOKEN` | Ventana de 401 en el drenaje | **Primero el Vault de Supabase, después Vercel.** Al revés hay 401 seguro. Perder una o dos pasadas da igual: la cola espera |
 | `VAPID_*` | **Invalida TODAS las suscripciones a la vez.** Hay que volver a suscribir a cada persona **con su teléfono delante** | No se rotan por higiene. Sólo ante compromiso |
 | `SNAPSHOT_SIGNING_KEY_B64` | Los snapshots offline ya emitidos dejan de verificar; los dispositivos piden uno nuevo | Poco daño, pero hazlo fuera de hora |
-| Contraseñas de rol (`APP_DB_PASSWORD`…) | Reponerlas es `pnpm --filter @casa-clara/db bootstrap` con la variable nueva; hay que actualizar **la cadena de conexión de cada consumidor** | Rol a rol, comprobando cada uno |
+| Contraseñas de rol (`APP_DB_PASSWORD`…) | Reponerlas es `pnpm --filter @housekeeper/db bootstrap` con la variable nueva; hay que actualizar **la cadena de conexión de cada consumidor** | Rol a rol, comprobando cada uno |
 | `SUPABASE_SERVICE_ROLE_KEY` | Los adjuntos dejan de subirse y de servirse | Rotar en Supabase y en Vercel en la misma operación |
 | Token del feed ICS | El calendario suscrito deja de actualizarse en el dispositivo de quien lo tenga | Comando `ics_feed` / `revoke` y volver a enlazar |
 
@@ -228,7 +235,7 @@ job está en el [README](../../../README.md#cómo-se-ejecutan-las-suites) y en
 pnpm lint
 pnpm typecheck
 pnpm build
-pnpm --filter @casa-clara/web verify:bundle   # presupuesto de arranque de Hoy
+pnpm --filter @housekeeper/web verify:bundle   # presupuesto de arranque de Hoy
 pnpm test:unit
 pnpm test:legacy                              # el prototipo conservado
 pnpm test:e2e                                 # 8 specs *.e2e.ts (PWA, offline)
@@ -241,8 +248,8 @@ Exporta primero la conexión **administradora** (no la de la aplicación: estas
 suites crean y destruyen esquemas):
 
 ```bash
-export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_dev"
-export E2E_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/casaclara_e2e"
+export TEST_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/housekeeper_dev"
+export E2E_DATABASE_URL="postgresql://casa_admin@127.0.0.1:54329/housekeeper_e2e"
 ```
 
 ```bash
@@ -251,9 +258,9 @@ pnpm test:db                                  # invariantes de esquema
 pnpm test:rls                                 # matriz negativa de RLS
 pnpm test:import                              # importador del manual
 pnpm db:migrate                               # y otra vez: idempotencia del runner
-pnpm --filter @casa-clara/server test
-pnpm --filter @casa-clara/web test
-pnpm --filter @casa-clara/worker exec vitest run
+pnpm --filter @housekeeper/server test
+pnpm --filter @housekeeper/web test
+pnpm --filter @housekeeper/worker exec vitest run
 pnpm test:e2e:db                              # 18 specs *.dbe2e.ts, los cinco roles
 ```
 
@@ -261,8 +268,8 @@ Verificado: `pnpm test:rls` contra una base propia responde
 `# tests 1 passed, 0 failed of 1`.
 
 > **En secuencia, nunca en paralelo.** Cada suite recrea el esquema y varias
-> crean bases y roles de **nombre fijo** (`casaclara_access_it`,
-> `it_casa_clara_app_login`…). Dos a la vez sobre el mismo clúster se pisan y
+> crean bases y roles de **nombre fijo** (`housekeeper_access_it`,
+> `it_housekeeper_app_login`…). Dos a la vez sobre el mismo clúster se pisan y
 > fallan de formas confusas. En CI cada job levanta su propio contenedor, que es
 > la manera limpia de aislarlas.
 

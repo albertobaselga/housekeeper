@@ -1,12 +1,12 @@
-import type { UUID } from "@casa-clara/contracts";
-import { contactCommandPayloadSchema } from "@casa-clara/contracts/schemas";
+import type { UUID } from "@housekeeper/contracts";
+import { contactCommandPayloadSchema } from "@housekeeper/contracts/schemas";
 
 import { CommandRejectedError, type CommandHandler, type CommandHandlers } from "../sync.js";
 import { requireFamilyRole } from "./food.js";
 
 /**
  * `contact` — directorio real del hogar (P2-2 de la re-auditoría UX v2).
- * Payload CONGELADO en @casa-clara/contracts (contactCommandPayloadSchema):
+ * Payload CONGELADO en @housekeeper/contracts (contactCommandPayloadSchema):
  * upsert (alta/edición, familia) y archive (baja lógica, familia). La lectura
  * es de los cinco roles vía RLS; la escritura la limita este handler además de
  * la policy contacts_family_write de 0013_contacts.sql.

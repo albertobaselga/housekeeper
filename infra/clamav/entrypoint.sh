@@ -40,6 +40,6 @@ while kill -0 "${clamd_pid}" 2>/dev/null && kill -0 "${gateway_pid}" 2>/dev/null
   sleep 5
 done
 
-echo "[casaclara-clamav] uno de los procesos ha terminado; parando el contenedor" >&2
+echo "[housekeeper-clamav] uno de los procesos ha terminado; parando el contenedor" >&2
 stop
 exit 1

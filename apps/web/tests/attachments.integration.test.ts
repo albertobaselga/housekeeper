@@ -15,10 +15,10 @@ import {
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_attach_login';
+const APP_LOGIN = 'it_housekeeper_attach_login';
 // Base de datos propia (patrón de la suite de comida): las demás suites
 // recrean el esquema entero en paralelo y ninguna puede compartir instancia.
-const ATTACH_DB = 'casaclara_attach_it';
+const ATTACH_DB = 'housekeeper_attach_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
@@ -29,7 +29,7 @@ const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
 const HELPER_USER = { id: 'fixture:roble:helper' };
 const OUTSIDER_USER = { id: 'fixture:no-membership' };
 
-const BUCKET = 'casaclara-test';
+const BUCKET = 'housekeeper-test';
 
 // Regex del esquema (0003) y de putPrivateObject del worker: la clave que
 // generamos debe pasar ambas para que la tubería completa sea coherente.

@@ -46,7 +46,7 @@ cualquier nombre inventado.
 
 **La regla de resolución, y por qué esa:**
 
-| `CASA_CLARA_FIXTURE_LOGIN` | `vite dev` | `vite build` |
+| `HOUSEKEEPER_FIXTURE_LOGIN` | `vite dev` | `vite build` |
 | --- | --- | --- |
 | sin declarar | dentro | **fuera** |
 | `true` | dentro | dentro |
@@ -161,12 +161,12 @@ que puede hacer cualquiera.
 ## Consecuencias
 
 - Para Casa EG112: **no se define** `ALLOW_SYNTHETIC_DATA_ONLY`, ni a `true` ni a
-  `false`; **no se define** `CASA_CLARA_FIXTURE_LOGIN`; y `DATABASE_URL`,
+  `false`; **no se define** `HOUSEKEEPER_FIXTURE_LOGIN`; y `DATABASE_URL`,
   `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET` y `BETTER_AUTH_URL` entran en la
   misma operación.
 - `playwright.db.config.ts` sigue ejercitando la combinación «selector + base
   real», que es legítima con fixtures y fuera de la plataforma. Deja de ser
-  alcanzable por descuido: exige declarar `CASA_CLARA_FIXTURE_LOGIN`, y con ella
+  alcanzable por descuido: exige declarar `HOUSEKEEPER_FIXTURE_LOGIN`, y con ella
   el paquete se niega a arrancar en cualquier despliegue de Vercel que tenga base
   de datos.
 - `ENABLE_DEMO_PASSWORD_AUTH` no existe en el código desde hace tiempo. Se retira

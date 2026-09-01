@@ -6,7 +6,7 @@ import { queueCommand } from '../src/lib/offline/queue-command';
 import { FIXTURE_HOUSEHOLD as HOUSEHOLD, envelopeFixture } from './helpers';
 
 function databaseName(label: string): string {
-  return `casa-clara-queue-command-${label}-${crypto.randomUUID()}`;
+  return `housekeeper-queue-command-${label}-${crypto.randomUUID()}`;
 }
 
 function ackResponse(operationId: string, status: string, errorCode?: string): Response {

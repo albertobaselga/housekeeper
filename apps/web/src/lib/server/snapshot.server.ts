@@ -1,15 +1,15 @@
 import type { Pool } from 'pg';
 
-import { API_VERSION, CRITICAL_SNAPSHOT_TTL_MS, type CriticalSnapshotV1 } from '@casa-clara/contracts';
+import { API_VERSION, CRITICAL_SNAPSHOT_TTL_MS, type CriticalSnapshotV1 } from '@housekeeper/contracts';
 import {
   canonicalSha256,
   computeMenuSlotHash,
   createLogger,
   signCriticalSnapshot,
   withAuthorizedTransaction
-} from '@casa-clara/server';
+} from '@housekeeper/server';
 
-import { pendingFor, PENDING_LOOKBACK_DAYS } from '@casa-clara/domain';
+import { pendingFor, PENDING_LOOKBACK_DAYS } from '@housekeeper/domain';
 
 import { dateLabel } from '$lib/employment/model';
 import type { MealSlot } from '$lib/food/commands';

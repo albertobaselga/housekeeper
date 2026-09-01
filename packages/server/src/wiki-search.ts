@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { UUID } from "@housekeeper/contracts";
 
 export interface WikiSearchResult {
   id: UUID;

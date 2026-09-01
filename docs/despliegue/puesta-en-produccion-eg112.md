@@ -14,7 +14,7 @@
 ## 1. Estado actual
 
 **Lo que hay desplegado.** El dominio `www.homekeeping.app` sirve la aplicación
-Casa Clara construida y desplegada en Vercel, y la build es correcta: el
+Housekeeper construida y desplegada en Vercel, y la build es correcta: el
 proyecto tiene *Root Directory* = `apps/web`, que es el ajuste bueno, y el
 adaptador se elige solo porque la plataforma exporta `VERCEL=1`
 (`apps/web/svelte.config.js:31-33`). Eso funciona **por un arreglo de ayer**:
@@ -25,7 +25,10 @@ proyecto no tiene ninguna de las variables de ejecución que la aplicación
 necesita: solo están las que dejó la integración de Supabase (`POSTGRES_*`,
 `SUPABASE_*`, `NEXT_PUBLIC_*`), y **ninguna de ellas la lee una sola línea de
 este repositorio**. La base de datos de Supabase está vacía: el esquema no se ha
-instalado nunca, no existen los roles `casa_clara_*` y no hay hogar dado de alta.
+instalado nunca, no existen los roles `casa_clara_*` (nombres legados del
+proyecto anterior; ver
+[docs/despliegue/identificadores-legado.md](identificadores-legado.md)) y no
+hay hogar dado de alta.
 El `apps/worker` no está desplegado en ningún sitio.
 
 **Qué está mal.** Sin `DATABASE_AUTH_URL` ni `BETTER_AUTH_SECRET`, `getAuth()`
@@ -121,7 +124,7 @@ declara, `packages/db/fixtures/001_two_households.sql:12-16` los inserta como
 
   ```ts
   define: {
-    __FIXTURE_LOGIN__: JSON.stringify(process.env.CASA_CLARA_FIXTURE_LOGIN === 'true')
+    __FIXTURE_LOGIN__: JSON.stringify(process.env.HOUSEKEEPER_FIXTURE_LOGIN === 'true')
   }
   ```
 
@@ -132,7 +135,7 @@ declara, `packages/db/fixtures/001_two_households.sql:12-16` los inserta como
   auditable con `grep` sobre `.vercel/output`, no una promesa. Las dos configs
   de Playwright (`apps/web/playwright.config.ts:39`,
   `apps/web/playwright.db.config.ts:54`) son el único consumidor legítimo y
-  añaden `CASA_CLARA_FIXTURE_LOGIN=true` a su comando de build.
+  añaden `HOUSEKEEPER_FIXTURE_LOGIN=true` a su comando de build.
 
 ---
 
@@ -476,7 +479,7 @@ que a partir de aquí todo despliegue tenga commit conocido (R6).
 | Include source files outside of the Root Directory | **activado** | Verificar la casilla |
 | Framework Preset | SvelteKit | Ya está bien |
 | Node.js Version | 24.x | Ya está bien |
-| Install Command | `pnpm install --frozen-lockfile --filter "@casa-clara/web..."` | Cambio recomendado |
+| Install Command | `pnpm install --frozen-lockfile --filter "@housekeeper/web..."` | Cambio recomendado |
 | Build Command | `pnpm run build` | Igual al defecto del preset |
 | Output Directory | vacío / override desactivado | El adaptador entrega Build Output API v3 |
 
@@ -502,12 +505,12 @@ el adaptador traza dependencias con `@vercel/nft` y con pnpm los módulos reales
 viven en `<raíz>/node_modules/.pnpm/…`, así que el ancestro común sube a la raíz
 del repositorio.
 
-**Recorte del install.** Verificado en local: `pnpm --filter "@casa-clara/web..."
+**Recorte del install.** Verificado en local: `pnpm --filter "@housekeeper/web..."
 ls --depth -1` selecciona exactamente `web`, `contracts`, `domain` y `server`. Sin
 filtro se instalan los 6 proyectos, lo que arrastra `sharp` 0.35.3 (nativo, con
 scripts habilitados en `pnpm-workspace.yaml:5-8`), `tesseract.js`, `nodemailer`,
 `web-push`, `@aws-sdk/client-s3` y Playwright, a cambio de nada: `apps/web` no
-depende de `@casa-clara/db` ni de `@casa-clara/worker` (las tres menciones a `db`
+depende de `@housekeeper/db` ni de `@housekeeper/worker` (las tres menciones a `db`
 dentro de `apps/web` son comentarios).
 
 **No añadir `.vercelignore`** para excluir `apps/worker`: si el directorio no
@@ -534,7 +537,7 @@ que es el Root Directory y el sitio donde el propio adaptador lo busca,
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "sveltekit",
-  "installCommand": "pnpm install --frozen-lockfile --filter \"@casa-clara/web...\"",
+  "installCommand": "pnpm install --frozen-lockfile --filter \"@housekeeper/web...\"",
   "buildCommand": "pnpm run build"
 }
 ```
@@ -558,7 +561,7 @@ lleve las variables reales.
    en `apps/web/package.json:8` como `"build": "node scripts/check-production-env.mjs && vite build"`.
    Rechaza la build cuando `VERCEL_ENV === 'production'` y falte alguna de
    `DATABASE_URL`, `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, o
-   exista alguna de `ALLOW_SYNTHETIC_DATA_ONLY`, `CASA_CLARA_FIXTURE_LOGIN`, o
+   exista alguna de `ALLOW_SYNTHETIC_DATA_ONLY`, `HOUSEKEEPER_FIXTURE_LOGIN`, o
    `BETTER_AUTH_URL` no empiece por `https://`.
 
    **Por qué en la build y no en el arranque.** En Vercel la web es una función
@@ -644,7 +647,7 @@ export APP_DB_PASSWORD="$(openssl rand -base64 32)"
 export WORKER_DB_PASSWORD="$(openssl rand -base64 32)"
 export AUTH_DB_PASSWORD="$(openssl rand -base64 32)"
 
-pnpm --filter @casa-clara/db bootstrap
+pnpm --filter @housekeeper/db bootstrap
 ```
 
 Criterio de salida literal (`bootstrap.mjs:66-73`):
@@ -661,7 +664,7 @@ de login se crean sin tocar su contraseña` (`bootstrap.mjs:41-43`) y el síntom
 aparece días después, cuando la web no puede conectar.
 
 ```bash
-pnpm --filter @casa-clara/db migrate
+pnpm --filter @housekeeper/db migrate
 ```
 
 **Criterio de salida: `Applied 20 migration(s).`** Hay 20 ficheros en
@@ -672,13 +675,13 @@ migraciones», `runbook-despliegue.md:95` dice «17/17» y
 20.**
 
 ```bash
-pnpm --filter @casa-clara/db migrate   # -> Database is up to date; no migrations applied.
+pnpm --filter @housekeeper/db migrate   # -> Database is up to date; no migrations applied.
 ```
 
 **Suites SQL — DESTRUCTIVAS. Solo ahora, con la base vacía.**
 
 ```bash
-TEST_DATABASE_URL="$DATABASE_URL" pnpm --filter @casa-clara/db test:db
+TEST_DATABASE_URL="$DATABASE_URL" pnpm --filter @housekeeper/db test:db
 ```
 
 `packages/db/scripts/run-sql-tests.mjs:27-31` hace, sin preguntar y sin bandera
@@ -702,7 +705,7 @@ DROP SCHEMA IF EXISTS app_private CASCADE;
 DROP TABLE IF EXISTS public.schema_migrations;
 ```
 ```bash
-pnpm --filter @casa-clara/db migrate      # -> Applied 20 migration(s).
+pnpm --filter @housekeeper/db migrate      # -> Applied 20 migration(s).
 ```
 ```sql
 REVOKE ALL ON TABLE public.schema_migrations FROM anon, authenticated;
@@ -756,8 +759,8 @@ export DATABASE_AUTH_URL='postgresql://casa_clara_auth_login:<PWD_AUTH>@<HOST_PO
 export SEED_DATABASE_URL="$DATABASE_URL"        # la directa 5432, propietario
 export BETTER_AUTH_SECRET='<SECRETO>'           # el MISMO que irá a Vercel
 
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/hogar.json --dry-run
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/hogar.json > /ruta/credenciales.txt
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/hogar.json --dry-run
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/hogar.json > /ruta/credenciales.txt
 chmod 600 /ruta/credenciales.txt
 ```
 
@@ -823,7 +826,7 @@ operación.
 **Comprobar que no queda basura peligrosa:**
 
 ```bash
-vercel env ls production | grep -E 'DEPLOY_TARGET|ALLOW_SYNTHETIC_DATA_ONLY|ENABLE_DEMO_PASSWORD_AUTH|CASA_CLARA_FIXTURE_LOGIN'
+vercel env ls production | grep -E 'DEPLOY_TARGET|ALLOW_SYNTHETIC_DATA_ONLY|ENABLE_DEMO_PASSWORD_AUTH|HOUSEKEEPER_FIXTURE_LOGIN'
 # no debe devolver nada
 ```
 
@@ -915,8 +918,8 @@ propietario, igual que `migrate`. El formato del JSON y las dos vías, en
 
 ```bash
 export DATABASE_URL='postgresql://postgres:<CLAVE>@db.<REF>.supabase.co:5432/postgres?sslmode=verify-full'
-pnpm --filter @casa-clara/db manual:import --household "<ID_DEL_PASO_5>" --dry-run
-pnpm --filter @casa-clara/db manual:import --household "<ID_DEL_PASO_5>"
+pnpm --filter @housekeeper/db manual:import --household "<ID_DEL_PASO_5>" --dry-run
+pnpm --filter @housekeeper/db manual:import --household "<ID_DEL_PASO_5>"
 ```
 
 Funciona igual contra Supabase. No toma cerrojos de sesión (a diferencia de
@@ -961,7 +964,7 @@ un fallo concreto.
 
 | Fichero | Qué corregir |
 |---|---|
-| `docs/despliegue/runbook-despliegue.md:259-264` | *Root Directory* = `apps/web`; *Install Command* con `--filter "@casa-clara/web..."`; *Output Directory* vacío; casilla de ficheros externos activada. Explicar que `.vercel/output` es relativo al cwd de la build |
+| `docs/despliegue/runbook-despliegue.md:259-264` | *Root Directory* = `apps/web`; *Install Command* con `--filter "@housekeeper/web..."`; *Output Directory* vacío; casilla de ficheros externos activada. Explicar que `.vercel/output` es relativo al cwd de la build |
 | `docs/despliegue/runbook-despliegue.md:95` y `:96-104` | «17/17» → **20**; y aviso destructivo sobre `test:db` / `test:rls` |
 | `docs/despliegue/runbook-despliegue.md:283`, `.env.example:148-152` | `SMTP_*` no van en Vercel |
 | `docs/despliegue/runbook-despliegue.md:81-87`, `:105-107` | Superado por `bootstrap.sql`; §1.3 declara B-1 sin resolver y sí lo resuelve `0018` |
@@ -1038,9 +1041,9 @@ es fetch HTTPS con guarda SSRF y expansión de RRULE
 así: `nodemailer.createTransport({host, port, secure:false})` **sin objeto
 `auth`**, o sea, sin `SMTP_USER`/`SMTP_PASS` en el repositorio; solo hablaba con
 Mailpit y ningún proveedor real habría funcionado sin tocar código. Y había una
-contradicción de producto: el manual afirmaba **dos veces** «Casa Clara no envía
-correos a nadie en ningún momento», y los únicos correos del sistema eran esos
-dos avisos.
+contradicción de producto: el manual afirmaba **dos veces** «Housekeeper no
+envía correos a nadie en ningún momento», y los únicos correos del sistema eran
+esos dos avisos.
 
 La contradicción se resolvió el 11/08/2026 a favor del manual: **el canal es la
 aplicación**. La migración 0029 retiró la salida SMTP entera y los dos avisos

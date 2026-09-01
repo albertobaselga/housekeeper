@@ -1,4 +1,4 @@
-name: casaclara-staging
+name: housekeeper-staging
 
 x-app-environment: &app-environment
   NODE_ENV: production
@@ -30,7 +30,7 @@ services:
       web:
         condition: service_healthy
     environment:
-      STAGING_HOST: ${STAGING_HOST:-staging.casaclara.test}
+      STAGING_HOST: ${STAGING_HOST:-staging.housekeeper.test}
     ports:
       - "127.0.0.1:${CADDY_HTTP_PORT:-8081}:8081"
       - "127.0.0.1:${CADDY_HTTPS_PORT:-8443}:8443"
@@ -56,21 +56,21 @@ services:
 
   web:
     <<: *app-hardening
-    image: casaclara/web:${RELEASE_TAG:?set RELEASE_TAG}
+    image: housekeeper/web:${RELEASE_TAG:?set RELEASE_TAG}
     build:
       context: ..
       dockerfile: infra/docker/web.Dockerfile
       args:
-        WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
+        WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@housekeeper/web}
     environment:
       <<: *app-environment
       DATABASE_URL: postgresql://casa_clara_app_login:${APP_DB_PASSWORD:?set APP_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
       DATABASE_AUTH_URL: postgresql://casa_clara_auth_login:${AUTH_DB_PASSWORD:?set AUTH_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: https://${STAGING_HOST:-staging.casaclara.test}:${CADDY_HTTPS_PORT:-8443}
-      ORIGIN: https://${STAGING_HOST:-staging.casaclara.test}:${CADDY_HTTPS_PORT:-8443}
+      BETTER_AUTH_URL: https://${STAGING_HOST:-staging.housekeeper.test}:${CADDY_HTTPS_PORT:-8443}
+      ORIGIN: https://${STAGING_HOST:-staging.housekeeper.test}:${CADDY_HTTPS_PORT:-8443}
       SNAPSHOT_SIGNING_KEY_B64: ${SNAPSHOT_SIGNING_KEY_B64:?set SNAPSHOT_SIGNING_KEY_B64}
-      WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@casa-clara/web}
+      WORKSPACE_FILTER: ${WEB_WORKSPACE_FILTER:-@housekeeper/web}
       WEB_HEALTH_PATH: ${WEB_HEALTH_PATH:-/api/health}
       HOST: 0.0.0.0
       PORT: "3000"
@@ -93,16 +93,16 @@ services:
 
   worker:
     <<: *app-hardening
-    image: casaclara/worker:${RELEASE_TAG:?set RELEASE_TAG}
+    image: housekeeper/worker:${RELEASE_TAG:?set RELEASE_TAG}
     build:
       context: ..
       dockerfile: infra/docker/worker.Dockerfile
       args:
-        WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+        WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@housekeeper/worker}
     environment:
       <<: *app-environment
       DATABASE_URL: postgresql://casa_clara_worker_login:${WORKER_DB_PASSWORD:?set WORKER_DB_PASSWORD}@postgres:5432/${POSTGRES_DB:?set POSTGRES_DB}
-      WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@casa-clara/worker}
+      WORKSPACE_FILTER: ${WORKER_WORKSPACE_FILTER:-@housekeeper/worker}
       HOST: 0.0.0.0
       WORKER_HEALTH_PORT: "3001"
     depends_on:
@@ -136,7 +136,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./postgres/00-create-roles.sh:/docker-entrypoint-initdb.d/00-create-roles.sh:ro
-      - ../packages/db/scripts/sql/bootstrap.sql:/opt/casa-clara/bootstrap.sql:ro
+      - ../packages/db/scripts/sql/bootstrap.sql:/opt/housekeeper/bootstrap.sql:ro
     security_opt:
       - no-new-privileges:true
     healthcheck:

@@ -1,10 +1,10 @@
 /**
  * Modelo de autorización: los cinco roles del producto, las capacidades y la
- * matriz que las reparte. Vive en un submódulo propio —`@casa-clara/contracts/
+ * matriz que las reparte. Vive en un submódulo propio —`@housekeeper/contracts/
  * capabilities`— y NO se reexporta desde `./index.ts`. La regla es deliberada y
  * hay que respetarla:
  *
- * > `@casa-clara/contracts` (la raíz) lo carga TODA pantalla del cliente, porque
+ * > `@housekeeper/contracts` (la raíz) lo carga TODA pantalla del cliente, porque
  * > de ahí sale `canonicalJson`, que verifica la firma del paquete offline en el
  * > arranque. Cualquier dato que se reexporte desde la raíz viaja con él.
  *

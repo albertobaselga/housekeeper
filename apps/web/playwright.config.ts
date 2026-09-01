@@ -40,7 +40,7 @@ export default defineConfig({
     // `vite build` deja el selector de cuentas sintéticas FUERA del paquete
     // salvo que se pida explícitamente. Estas suites entran por ese selector,
     // así que lo piden. Es la variable que ninguna build de producción declara.
-    env: { CASA_CLARA_FIXTURE_LOGIN: 'true' },
+    env: { HOUSEKEEPER_FIXTURE_LOGIN: 'true' },
     url: `http://127.0.0.1:${PORT}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 240_000

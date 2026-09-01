@@ -29,7 +29,7 @@ export function addDays(dateISO: string, days: number): string {
  * `addMonthsClamped` no era neutral: recortar el día al último del mes destino
  * es lo que convertía «el 31» en «el 28» al pasar por febrero, y para siempre,
  * porque la fecha recortada pasaba a ser el nuevo punto de partida. El motor
- * puro de `@casa-clara/domain` no recorta el estado: guarda «el día 31» como
+ * puro de `@housekeeper/domain` no recorta el estado: guarda «el día 31» como
  * regla y resuelve cada mes por separado (31 ene → 28 feb → 31 mar).
  *
  * Ningún componente las llamaba ya: el chip optimista de «Hecha ✓ · próxima el

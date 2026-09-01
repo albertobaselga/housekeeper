@@ -8,7 +8,7 @@ import {
   type AggregateType,
   type CommandAckV1,
   type CommandEnvelopeV1,
-} from "@casa-clara/contracts";
+} from "@housekeeper/contracts";
 
 import { submitExpenseHandler } from "./commands/expense.js";
 import { extraWorkCommandHandler } from "./commands/extra-work.js";
@@ -22,7 +22,7 @@ const ROBLE_HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
 const ROBLE_AGREEMENT = "12000000-0000-4000-8000-000000000001";
 const ROBLE_EMPLOYEE_MEMBERSHIP = "11000000-0000-4000-8000-000000000003";
 const ROBLE_ADMIN_MEMBERSHIP = "11000000-0000-4000-8000-000000000001";
-const APP_LOGIN = "it_casa_clara_app_login";
+const APP_LOGIN = "it_housekeeper_app_login";
 
 const ADMIN: AuthenticatedPrincipal = { userId: "fixture:roble:admin" };
 const EMPLOYEE: AuthenticatedPrincipal = { userId: "fixture:roble:employee" };

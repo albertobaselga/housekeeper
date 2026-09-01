@@ -1,4 +1,4 @@
-import type { AggregateType, CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { AggregateType, CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import type { OutboxRecord } from '$lib/offline/schema';
 import { dateLabel } from '$lib/employment/model';

@@ -99,6 +99,6 @@ export function describeErrorCode(code: string | undefined): string | null {
   if (!code) return null;
   const label = ERROR_CODE_LABELS[code];
   if (label) return label;
-  console.warn('[casa-clara] código de error sin traducir:', code);
+  console.warn('[housekeeper] código de error sin traducir:', code);
   return null;
 }
