@@ -3,6 +3,7 @@ export * from "./commands/contact.js";
 export * from "./commands/employment.js";
 export * from "./commands/expense.js";
 export * from "./commands/extra-work.js";
+export * from "./commands/finance.js";
 export * from "./commands/food-handlers.js";
 export * from "./commands/membership.js";
 export * from "./commands/payment.js";
