@@ -625,6 +625,30 @@ describe('liquidaciones y saldos', () => {
     expect(unconfirmed.paymentStateLabel).toBe('Pagada · cobro sin confirmar');
   });
 
+  it('un mes cerrado sin importe no anuncia un pago pendiente que no existe', () => {
+    const vacia = buildSettlementViews(
+      [
+        {
+          ...settlement,
+          salaryTotalCents: '0',
+          reimbursementTotalCents: '0',
+          transferTotalCents: '0',
+          paidCents: '0',
+          pendingCents: '0',
+          receiptConfirmedAt: null,
+          receiptNote: null
+        }
+      ],
+      [],
+      []
+    )[0]!;
+    // `fullyPaid` sigue siendo false a propósito: una cuenta sin un euro no se
+    // ha «pagado». Lo que no puede es leerse como una deuda, y desde que Pagos
+    // pliega cada mes en una fila esta frase es lo único que se ve del estado.
+    expect(vacia.fullyPaid).toBe(false);
+    expect(vacia.paymentStateLabel).toBe('Cerrada · nada que pagar');
+  });
+
   it('presenta el crédito de descanso como permanente y el anticipo con su pendiente', () => {
     const compensation = buildCompensationBalanceViews([
       { accountId: 'c1', balanceType: 'worked_rest_day', balanceMinutes: '1440' }

@@ -1590,6 +1590,12 @@ export function settlementLineHref(
 function paymentStateLabel(row: SettlementRow, fullyPaid: boolean, anyPayment: boolean): string {
   if (row.status === 'void') return 'Anulada';
   if (row.status === 'open') return 'Periodo abierto';
+  // Un mes cerrado sin un solo euro que transferir no está «pendiente de pago»:
+  // no hay nada que pagar. `fullyPaid` no lo cubre a propósito —exige un
+  // importe mayor que cero para no llamar «pagada» a una cuenta vacía—, y desde
+  // que Pagos es una tabla plegada esta frase es el distintivo de la fila del
+  // mes: anunciaría una deuda que no existe.
+  if (parseCents(row.transferTotalCents) === 0n) return 'Cerrada · nada que pagar';
   if (fullyPaid && row.receiptConfirmedAt) return 'Pagada y cobro confirmado';
   if (fullyPaid) return 'Pagada · cobro sin confirmar';
   if (anyPayment) return 'Pago parcial registrado';

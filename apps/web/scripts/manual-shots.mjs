@@ -86,6 +86,12 @@ const DEVICES = {
 
 const hogar = (ruta) => `/h/${HOUSEHOLD}${ruta}`;
 
+// El acuerdo de Ana en la fixture. Contrato va en pestañas y, con dos empleadas
+// en la casa, `/employment` a secas es la PORTADA: hay que decir de quién es el
+// expediente o las capturas de dentro no llegan a existir.
+const ANA = '12000000-0000-4000-8000-000000000001';
+const expediente = (pestana = '') => hogar(`/employment${pestana}?empleada=${ANA}`);
+
 // ── Utilidades de puesta en escena ─────────────────────────────────────────
 
 /**
@@ -302,40 +308,43 @@ const CAPTURAS = [
   },
 
   // ── Contrato (familia) ───────────────────────────────────────────────────
-  { nombre: 'familia-contrato', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/employment') },
+  { nombre: 'familia-contrato', cuenta: 'alberto', aparato: 'escritorio', ruta: expediente() },
   {
+    // La elección de persona ya no es una tira de chips dentro del expediente:
+    // es la portada del hogar, que es por donde se entra a Contrato.
     nombre: 'familia-contrato-empleadas',
     cuenta: 'alberto',
     aparato: 'escritorio',
     ruta: hogar('/employment'),
-    foco: 'nav[aria-label="Elegir de quién es el expediente"]'
+    foco: 'h2:has-text("El expediente de cada una")'
   },
   {
     nombre: 'familia-contrato-cuenta',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
+    ruta: expediente(),
     foco: 'h2:has-text("Lo que va sumando")'
   },
   {
+    // Las versiones se mudaron a la pestaña del contrato, donde se pactan.
     nombre: 'familia-contrato-versiones',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
-    foco: 'h2:has-text("Versiones y cambios de salario")'
+    ruta: hogar('/employment/acuerdo'),
+    foco: 'h2:has-text("Desde el")'
   },
   {
     nombre: 'familia-contrato-historial',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
+    ruta: expediente('/pagos'),
     foco: 'h2:has-text("Historial con pagos")'
   },
   {
     nombre: 'familia-vacaciones',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
+    ruta: expediente('/vacaciones'),
     foco: 'h2:has-text("Días disfrutados")'
   },
   {
