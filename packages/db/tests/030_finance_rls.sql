@@ -411,6 +411,15 @@ ROLLBACK;
 -- ─────────────────────────────────────────────────────────────────────────────
 BEGIN;
 SET LOCAL row_security = off;
+-- Reejecutable a propósito: si una ejecución anterior se cayó entre este
+-- sembrado y la limpieza del final, las cuatro filas siguen ahí y los INSERT de
+-- abajo morirían por clave duplicada, tapando el fallo de verdad. Primero las
+-- membresías, que apuntan a los perfiles.
+DELETE FROM app.household_memberships
+ WHERE id IN ('fa900000-0000-4000-8000-000000000001',
+              'fa900000-0000-4000-8000-000000000002');
+DELETE FROM app.user_profiles
+ WHERE user_id IN ('fixture:roble:admin2', 'fixture:roble:admin3');
 INSERT INTO app.user_profiles (user_id, display_name) VALUES
   ('fixture:roble:admin2', 'Fixture Segunda Admin Roble'),
   ('fixture:roble:admin3', 'Fixture Admin Roble Revocada');
@@ -425,6 +434,26 @@ UPDATE app.household_memberships
 COMMIT;
 
 BEGIN;
+
+-- Control positivo, como propietario y antes de bajar de rol: que el olivo
+-- TENGA finanzas. Toda la matriz del segundo hogar dice «su hogar tiene datos
+-- sembrados y aun así ve cero», y hasta aquí nadie comprobaba la primera mitad
+-- de esa frase: vaciando la fixture del olivo la matriz seguía entera en verde.
+-- Es el único punto por donde esto puede volverse vacuo en silencio el día que
+-- alguien «limpie» la fixture.
+DO $assert_olivo_tiene_finanzas$
+BEGIN
+  IF (SELECT count(*) FROM app.finance_accounts
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') = 0
+     OR (SELECT count(*) FROM app.finance_categories
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') = 0
+     OR (SELECT count(*) FROM app.finance_transactions
+       WHERE household_id = '20000000-0000-4000-8000-000000000001') = 0 THEN
+    RAISE EXCEPTION 'la fixture dejó el olivo sin finanzas: el bloque del admin del olivo no probaría nada';
+  END IF;
+END
+$assert_olivo_tiene_finanzas$;
+
 SET LOCAL ROLE casa_clara_app;
 
 -- Admin del roble CON concesión: ve lo suyo, nada del olivo, y las seis rejas
@@ -438,27 +467,55 @@ SELECT app.set_household_context(
 );
 
 DO $assert_granted_admin$
+DECLARE
+  finance_tables text[] := ARRAY[
+    'finance_module_grants', 'finance_accounts', 'finance_categories',
+    'finance_rules', 'finance_import_batches', 'finance_transactions',
+    'finance_provider_aliases', 'finance_events', 'finance_transaction_events',
+    'finance_event_rules'
+  ];
+  probed_table text;
+  expected record;
+  visible integer;
 BEGIN
-  IF (SELECT count(*) FROM app.finance_module_grants) <> 1
-     OR (SELECT count(*) FROM app.finance_accounts) <> 2
-     OR (SELECT count(*) FROM app.finance_categories) <> 4
-     OR (SELECT count(*) FROM app.finance_rules) <> 1
-     OR (SELECT count(*) FROM app.finance_import_batches) <> 1
-     OR (SELECT count(*) FROM app.finance_transactions) <> 2
-     OR (SELECT count(*) FROM app.finance_provider_aliases) <> 1
-     OR (SELECT count(*) FROM app.finance_events) <> 1
-     OR (SELECT count(*) FROM app.finance_transaction_events) <> 1
-     OR (SELECT count(*) FROM app.finance_event_rules) <> 1 THEN
-    RAISE EXCEPTION 'granted family_admin read matrix failed';
-  END IF;
-  IF (SELECT count(*) FROM app.finance_accounts
-       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0
-     OR (SELECT count(*) FROM app.finance_transactions
-       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0
-     OR (SELECT count(*) FROM app.finance_categories
-       WHERE household_id = '20000000-0000-4000-8000-000000000001') <> 0 THEN
-    RAISE EXCEPTION 'granted admin leaked olivo finance rows';
-  END IF;
+  -- La fuga entre hogares va PRIMERO, y sobre las diez tablas. Cuando iba
+  -- después de los conteos exactos era código muerto: cualquier fila del olivo
+  -- que se colara subía uno de esos conteos y disparaba la genérica, de modo que
+  -- esta comprobación no podía ejecutarse jamás. La reja más importante del
+  -- módulo —«nadie ve el hogar de al lado»— existía, pero informaba con el
+  -- mensaje equivocado y su aserción propia era decorativa.
+  FOREACH probed_table IN ARRAY finance_tables LOOP
+    EXECUTE format('SELECT count(*) FROM app.%I WHERE household_id = $1', probed_table)
+       INTO visible USING '20000000-0000-4000-8000-000000000001'::uuid;
+    IF visible <> 0 THEN
+      RAISE EXCEPTION 'fuga entre hogares: la administración del roble ve % filas del olivo en app.%',
+        visible, probed_table;
+    END IF;
+  END LOOP;
+
+  -- Y después los conteos exactos del hogar propio, tabla por tabla. Colapsar
+  -- diez `count(*)` en un solo mensaje obligaba a bisecarlos a mano el día que
+  -- la fase 2 amplíe la fixture y esto se ponga rojo.
+  FOR expected IN
+    SELECT * FROM (VALUES
+      ('finance_module_grants', 1),
+      ('finance_accounts', 2),
+      ('finance_categories', 4),
+      ('finance_rules', 1),
+      ('finance_import_batches', 1),
+      ('finance_transactions', 2),
+      ('finance_provider_aliases', 1),
+      ('finance_events', 1),
+      ('finance_transaction_events', 1),
+      ('finance_event_rules', 1)
+    ) AS pairs(table_name, expected_rows)
+  LOOP
+    EXECUTE format('SELECT count(*) FROM app.%I', expected.table_name) INTO visible;
+    IF visible <> expected.expected_rows THEN
+      RAISE EXCEPTION 'la administración con concesión ve % filas en app.%, se esperaban %',
+        visible, expected.table_name, expected.expected_rows;
+    END IF;
+  END LOOP;
 
   -- Suplantación de hogar: escribir en el olivo desde el roble → 42501.
   BEGIN
@@ -531,18 +588,24 @@ SELECT app.set_household_context(
 );
 
 DO $assert_ungranted_admin$
+DECLARE
+  -- Las nueve del módulo; las concesiones van aparte, porque de esas sí ve una.
+  finance_tables text[] := ARRAY[
+    'finance_accounts', 'finance_categories', 'finance_rules',
+    'finance_import_batches', 'finance_transactions',
+    'finance_provider_aliases', 'finance_events',
+    'finance_transaction_events', 'finance_event_rules'
+  ];
+  probed_table text;
+  visible integer;
 BEGIN
-  IF (SELECT count(*) FROM app.finance_accounts) <> 0
-     OR (SELECT count(*) FROM app.finance_categories) <> 0
-     OR (SELECT count(*) FROM app.finance_rules) <> 0
-     OR (SELECT count(*) FROM app.finance_import_batches) <> 0
-     OR (SELECT count(*) FROM app.finance_transactions) <> 0
-     OR (SELECT count(*) FROM app.finance_provider_aliases) <> 0
-     OR (SELECT count(*) FROM app.finance_events) <> 0
-     OR (SELECT count(*) FROM app.finance_transaction_events) <> 0
-     OR (SELECT count(*) FROM app.finance_event_rules) <> 0 THEN
-    RAISE EXCEPTION 'ungranted family_admin must see zero finance rows';
-  END IF;
+  FOREACH probed_table IN ARRAY finance_tables LOOP
+    EXECUTE format('SELECT count(*) FROM app.%I', probed_table) INTO visible;
+    IF visible <> 0 THEN
+      RAISE EXCEPTION 'la administración sin concesión ve % filas en app.%',
+        visible, probed_table;
+    END IF;
+  END LOOP;
   IF (SELECT count(*) FROM app.finance_module_grants) <> 1
      OR (SELECT app.finance_enabled()) THEN
     RAISE EXCEPTION 'grant visibility or lock state wrong for ungranted admin';
@@ -559,6 +622,14 @@ $assert_ungranted_admin$;
 -- Los otros cuatro papeles del roble: cero en TODO, concesiones incluidas.
 DO $assert_non_admin_roles$
 DECLARE
+  finance_tables text[] := ARRAY[
+    'finance_module_grants', 'finance_accounts', 'finance_categories',
+    'finance_rules', 'finance_import_batches', 'finance_transactions',
+    'finance_provider_aliases', 'finance_events', 'finance_transaction_events',
+    'finance_event_rules'
+  ];
+  probed_table text;
+  visible integer;
   role_pair record;
 BEGIN
   FOR role_pair IN
@@ -575,18 +646,12 @@ BEGIN
     PERFORM set_config('app.role', '', true);
     PERFORM app.set_household_context(
       '10000000-0000-4000-8000-000000000001', role_pair.membership_id);
-    IF (SELECT count(*) FROM app.finance_module_grants) <> 0
-       OR (SELECT count(*) FROM app.finance_accounts) <> 0
-       OR (SELECT count(*) FROM app.finance_categories) <> 0
-       OR (SELECT count(*) FROM app.finance_rules) <> 0
-       OR (SELECT count(*) FROM app.finance_import_batches) <> 0
-       OR (SELECT count(*) FROM app.finance_transactions) <> 0
-       OR (SELECT count(*) FROM app.finance_provider_aliases) <> 0
-       OR (SELECT count(*) FROM app.finance_events) <> 0
-       OR (SELECT count(*) FROM app.finance_transaction_events) <> 0
-       OR (SELECT count(*) FROM app.finance_event_rules) <> 0 THEN
-      RAISE EXCEPTION '% unexpectedly read finance rows', role_pair.user_id;
-    END IF;
+    FOREACH probed_table IN ARRAY finance_tables LOOP
+      EXECUTE format('SELECT count(*) FROM app.%I', probed_table) INTO visible;
+      IF visible <> 0 THEN
+        RAISE EXCEPTION '% ve % filas en app.%', role_pair.user_id, visible, probed_table;
+      END IF;
+    END LOOP;
   END LOOP;
 END
 $assert_non_admin_roles$;
@@ -603,13 +668,26 @@ SELECT app.set_household_context(
 );
 
 DO $assert_olivo_admin$
+DECLARE
+  -- Las diez, no las cuatro de antes: hoy el olivo solo tiene filas en tres, y
+  -- las otras seis serían vacuas, pero costaba lo mismo cerrarlas todas que
+  -- dejar el segundo hogar más fino de lo que promete el comentario de arriba.
+  finance_tables text[] := ARRAY[
+    'finance_module_grants', 'finance_accounts', 'finance_categories',
+    'finance_rules', 'finance_import_batches', 'finance_transactions',
+    'finance_provider_aliases', 'finance_events', 'finance_transaction_events',
+    'finance_event_rules'
+  ];
+  probed_table text;
+  visible integer;
 BEGIN
-  IF (SELECT count(*) FROM app.finance_accounts) <> 0
-     OR (SELECT count(*) FROM app.finance_categories) <> 0
-     OR (SELECT count(*) FROM app.finance_transactions) <> 0
-     OR (SELECT count(*) FROM app.finance_module_grants) <> 0 THEN
-    RAISE EXCEPTION 'olivo admin without grant read finance rows';
-  END IF;
+  FOREACH probed_table IN ARRAY finance_tables LOOP
+    EXECUTE format('SELECT count(*) FROM app.%I', probed_table) INTO visible;
+    IF visible <> 0 THEN
+      RAISE EXCEPTION 'la administración del olivo, sin concesión, ve % filas en app.%',
+        visible, probed_table;
+    END IF;
+  END LOOP;
 END
 $assert_olivo_admin$;
 
@@ -712,15 +790,25 @@ COMMIT;
 -- La sonda de la 0035 (más arriba) prueba la restrictiva con filas que ella
 -- misma inserta y revirtiendo la concesión de la fixture. Esto es el caso de
 -- verdad y el que pidió el encargo: una administración a la que NADIE ha
--- concedido Finanzas, con las quince filas financieras que la fixture 002 dejó
+-- concedido Finanzas, con todas las filas financieras que la fixture 002 dejó
 -- auditadas en el hogar del roble, ahí delante y sin poder leer ni una.
 --
--- Las quince: 1 concesión + 2 cuentas + 4 categorías + 1 regla + 1 lote +
--- 2 movimientos + 1 alias + 1 evento + 1 vínculo + 1 regla de evento. Si la
--- fixture crece, este número se actualiza a mano: es el precio de que la
--- aserción positiva muerda en vez de conformarse con «alguna».
+-- Cuántas son se cuenta como propietario antes de bajar de rol, no se escribe a
+-- mano: así la aserción positiva conserva la igualdad exacta —que es lo que la
+-- hace morder: una restrictiva demasiado ancha da 0, y 0 no es el total— y a la
+-- vez se autoajusta cuando la fase 2 amplíe la fixture. El suelo de diez filas
+-- impide que la comparación se vuelva vacua si alguien adelgaza la fixture hasta
+-- dejar el rastro casi vacío.
 -- ─────────────────────────────────────────────────────────────────────────────
 BEGIN;
+SET LOCAL row_security = off;
+SELECT set_config(
+  'casaclara.finance_audit_esperado',
+  (SELECT count(*)::text FROM app.audit_events
+    WHERE household_id = '10000000-0000-4000-8000-000000000001'
+      AND entity_table LIKE 'finance\_%'),
+  true);
+SET LOCAL row_security = on;
 SET LOCAL ROLE casa_clara_app;
 
 SELECT set_config('app.user_id', 'fixture:roble:admin2', true);
@@ -783,7 +871,7 @@ END
 $assert_audit_matrix_other_roles$;
 
 -- Y el control positivo, sin el cual todo lo anterior lo cumpliría también una
--- restrictiva que tapara la tabla entera: CON concesión, las quince están.
+-- restrictiva que tapara la tabla entera: CON concesión, están todas.
 SELECT set_config('app.user_id', 'fixture:roble:admin', true);
 SELECT set_config('app.household_id', '', true);
 SELECT set_config('app.membership_id', '', true);
@@ -796,14 +884,20 @@ SELECT app.set_household_context(
 DO $assert_audit_matrix_granted$
 DECLARE
   finance_rows integer;
+  expected_rows integer;
 BEGIN
   IF NOT app.finance_enabled() THEN
     RAISE EXCEPTION 'la concesión de la fixture no encendió el módulo';
   END IF;
+  expected_rows := current_setting('casaclara.finance_audit_esperado')::integer;
+  IF expected_rows < 10 THEN
+    RAISE EXCEPTION 'la fixture solo dejó % filas auditadas: la aserción perdería mordida', expected_rows;
+  END IF;
   SELECT count(*)::integer INTO finance_rows
     FROM app.audit_events WHERE entity_table LIKE 'finance\_%';
-  IF finance_rows <> 15 THEN
-    RAISE EXCEPTION 'con concesión el rastro financiero tiene % filas, se esperaban 15', finance_rows;
+  IF finance_rows <> expected_rows THEN
+    RAISE EXCEPTION 'con concesión el rastro financiero tiene % filas, se esperaban %',
+      finance_rows, expected_rows;
   END IF;
 END
 $assert_audit_matrix_granted$;
