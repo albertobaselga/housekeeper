@@ -2,6 +2,8 @@ import type { Cookies, RequestEvent } from '@sveltejs/kit';
 import { describe, expect, it } from 'vitest';
 
 import { handle } from '../src/hooks.server';
+import { GET } from '../src/routes/h/[householdId]/calendar/ventana/+server';
+import { getDemoUser } from '../src/lib/server/fixtures.server';
 import { createDemoSession } from '../src/lib/server/session.server';
 
 /**
@@ -121,6 +123,63 @@ describe('lo que no se rompe', () => {
     // SvelteKit que renderiza un error lanzado en el hook.
     const intento = await intentar(FAMILIA, 'GET', `/h/${CASA}/employment/alta`);
     expect(intento.atraviesa).toBe(true);
+  });
+});
+
+describe('el cambio de mes del calendario vuelve a llegar al servidor', () => {
+  /*
+   * Regresión con nombre y apellidos: `/h/<casa>/calendar/ventana` no estaba en
+   * NESTED_ROUTE_CAPABILITY, así que `guardForPath` la daba por desconocida y
+   * ESTA MISMA función la convertía en `error(404, 'Esta ruta no existe')`. El
+   * `fetch` del cambio de mes está escrito para poder fallar sin consecuencias
+   * —si no hay red, la pantalla se queda donde está—, de modo que el 404 se
+   * disfrazaba de «sin conexión» y la culpa se la llevaba la red de quien
+   * miraba. Se prueba desde el hook porque el hook era el que la mataba.
+   */
+  const VENTANA = `/h/${CASA}/calendar/ventana?d=2026-10-15`;
+
+  it('quien puede leer el calendario atraviesa la puerta', async () => {
+    for (const quien of [ADMIN, FAMILIA, EMPLEADA]) {
+      const intento = await intentar(quien, 'GET', VENTANA);
+      expect(intento.atraviesa, quien).toBe(true);
+    }
+  });
+
+  it('y ya no se responde «esta ruta no existe» a una ruta que existe', async () => {
+    const intento = await intentar(ADMIN, 'GET', VENTANA);
+    expect(intento.status).not.toBe(404);
+    expect(intento.message).not.toBe('Esta ruta no existe');
+  });
+
+  /*
+   * Un `+server.ts` NO tiene layout, así que el 403 por capacidad de
+   * +layout.server.ts no lo cubre; y la guarda del hook sólo aplica la llave a
+   * lo que no es GET. Entre las dos quedaba un hueco que mientras la ruta
+   * estuvo sin declarar tapaba el 404 accidental. Declararla sin esto lo habría
+   * dejado abierto, así que el manejador comprueba su propia llave.
+   */
+  /** Llama al manejador de verdad y devuelve con qué se queda por el camino. */
+  async function pedirVentana(userId: string): Promise<number | null> {
+    try {
+      const respuesta = await GET({
+        locals: { user: getDemoUser(userId) },
+        params: { householdId: CASA },
+        url: new URL(`http://casa.test${VENTANA}`)
+      } as unknown as Parameters<typeof GET>[0]);
+      return respuesta.status;
+    } catch (cause) {
+      return (cause as { status?: number }).status ?? null;
+    }
+  }
+
+  it('el manejador aplica su propia llave: el apoyo del hogar no la tiene', async () => {
+    expect(await pedirVentana(APOYO)).toBe(403);
+  });
+
+  it('y a quien sí la tiene le deja pasar de la llave (aquí se queda sin base, no sin permiso)', async () => {
+    // 503 = «no se ha podido leer el calendario» (sin DATABASE_URL en pruebas).
+    // Lo que importa es que NO sea 403: la llave dejó pasar.
+    expect(await pedirVentana(ADMIN)).toBe(503);
   });
 });
 

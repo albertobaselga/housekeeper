@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 
-import { belongsToHousehold } from '$lib/auth/membership';
+import { can } from '$lib/auth/capabilities';
+import { membershipIn } from '$lib/auth/membership';
 import type { CalendarWindow } from '$lib/calendar/view';
 import { loadCalendar } from '$lib/server/calendar.server';
 import type { RequestHandler } from './$types';
@@ -26,11 +27,28 @@ import type { RequestHandler } from './$types';
  */
 export const GET: RequestHandler = async ({ locals, params, url }) => {
   if (!locals.user) error(401, 'Inicia sesión para continuar');
-  // `belongsToHousehold`, no `householdIds`: mientras se escribía el calendario,
-  // main sustituyó la lista plana de hogares por membresías con su papel, y el
-  // rol dejó de ser una propiedad de la persona. La comprobación es la misma que
+  // `membershipIn`, no `householdIds`: mientras se escribía el calendario, main
+  // sustituyó la lista plana de hogares por membresías con su papel, y el rol
+  // dejó de ser una propiedad de la persona. La comprobación es la misma que
   // hace el resto de la API (vacaciones, guía) y sale del mismo sitio.
-  if (!belongsToHousehold(locals.user, params.householdId)) error(404, 'Hogar no encontrado');
+  const membership = membershipIn(locals.user, params.householdId);
+  if (!membership) error(404, 'Hogar no encontrado');
+  /*
+   * Y la llave, AQUÍ. Un `+server.ts` no tiene layout, así que el 403 por
+   * capacidad de `+layout.server.ts` no lo cubre; y la guarda del hook sólo
+   * aplica la llave a lo que no es GET, para que la navegación conserve su
+   * error amable. Entre las dos quedaba este hueco: mientras la ruta estuvo sin
+   * declarar lo tapaba el 404 accidental, y al declararla habría quedado
+   * abierto. Es la misma llave que `NESTED_ROUTE_CAPABILITY` declara para esta
+   * ruta —comprobarla en otro sitio con otro criterio es cómo se separan las
+   * dos—, y coincide exactamente con los cuatro papeles que
+   * `ics_source_events_read` deja leer: quien no tiene `calendar.read` no
+   * recibía ningún evento de todas formas, así que esto no cierra una puerta
+   * buena, sólo deja de fingir que estaba cerrada por casualidad.
+   */
+  if (!can(membership.role, 'calendar.read')) {
+    error(403, 'Esta parte la lleva la familia.');
+  }
 
   const live = await loadCalendar({ id: locals.user.id }, params.householdId, {
     anchor: url.searchParams.get('d')

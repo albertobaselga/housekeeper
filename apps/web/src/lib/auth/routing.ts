@@ -67,8 +67,26 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
  *   hoy las dos son exclusivas de quien administra, así que no cambia quién
  *   entra, pero sí lo que esta tabla dice que se está haciendo. Lo que se crea
  *   es un ACCESO a la casa; el contrato viene después y puede no venir.
+ * · `calendar/ventana` — la ventana del calendario que el navegador pide al
+ *   cambiar de mes (`GET …/calendar/ventana?d=…`). `calendar.read`, y no por
+ *   colgar de `calendar`: es que sirve EXACTAMENTE el resultado de
+ *   `loadCalendar` que ya sirvió la página, recortado a otra ventana. No enseña
+ *   ni una fila que la página no enseñe, así que pedir una llave distinta sería
+ *   inventarse una frontera que no existe. Las finalizaciones de rutinas que
+ *   viajan dentro NO piden además `routine.read`: las acota la RLS
+ *   (`routine_completions` se apoya en un EXISTS sobre `routines_read`), que es
+ *   más estrecha que cualquier capacidad y ya gobierna la página.
+ *
+ *   Faltaba, y no fallaba en silencio a medias sino del todo: sin entrada aquí
+ *   `guardForPath` devolvía `known: false`, el hook lo convertía en 404 y el
+ *   `fetch` del cambio de mes fallaba SIEMPRE. Como ese fetch está escrito para
+ *   poder fallar sin consecuencias, la pantalla se quedaba donde estaba y
+ *   enseñaba la banda de «sin conexión»: le echaba la culpa a la red de la
+ *   persona por una ruta sin declarar. Lo vigila `routes-declared.test.ts`,
+ *   que recorre el árbol real de `src/routes` y ya no deja que vuelva a pasar.
  */
 export const NESTED_ROUTE_CAPABILITY: Readonly<Record<string, Capability>> = {
+  'calendar/ventana': 'calendar.read',
   'employment/acuerdo': 'agreement.write',
   'employment/alta': 'access.manage',
   'employment/condiciones': 'agreement.read',
