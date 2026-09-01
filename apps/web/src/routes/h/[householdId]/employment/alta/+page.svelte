@@ -74,9 +74,11 @@
         </p>
       </div>
       <p class="audit-note">
-        El trabajo extra y los complementos todavía no están pactados, así que hasta que lo
-        estén no podrá registrar ninguna jornada extra. Se pactan en «Cambiar las
-        condiciones», dentro de su expediente.
+        Su contrato queda a medias a propósito: falta el <strong>horario</strong> —hasta que se
+        pacte, ella no ve ninguna sección de horario— y el <strong>catálogo de trabajo
+        extra</strong>, sin el cual no puede registrar ninguna jornada. Las dos cosas se pactan
+        en «Cambiar las condiciones», dentro de su expediente, que además lo avisa mientras
+        falten.
       </p>
       <div class="action-row">
         {#if hired.agreementId}
@@ -184,14 +186,18 @@
               <option value="never">no expiran nunca</option>
             </select>
           </label>
+          <!-- `required`, como su gemelo del acuerdo: borrar el 6 con el modo en
+               «meses» mandaba el campo vacío y salía NaN. El servidor lo ignora
+               cuando el modo es «nunca». -->
           <label for="alta-vac-months">Meses de margen (si caducan)
-            <input id="alta-vac-months" name="carryoverExpiryMonths" type="number" min="1" max="120" value="6" />
+            <input id="alta-vac-months" name="carryoverExpiryMonths" type="number" min="1" max="120" value="6" required />
           </label>
         </details>
 
         <p class="audit-note">
-          El trabajo extra y los complementos se pactan luego en «Cambiar las condiciones»,
-          apilando una versión: lo pactado no se reescribe nunca.
+          El horario, el trabajo extra y los complementos se pactan luego en «Cambiar las
+          condiciones», apilando una versión: lo pactado no se reescribe nunca. Aquí sólo lo
+          básico, porque al dar de alta no se sabe todo.
         </p>
 
         <div class="action-row">

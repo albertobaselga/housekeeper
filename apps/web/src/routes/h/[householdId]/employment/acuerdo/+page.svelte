@@ -24,6 +24,25 @@
       null
   );
 
+  /**
+   * Lo que la versión vigente todavía no pacta, en las palabras de lo que ella
+   * NO puede hacer mientras falte. Es lo que el alta deja aplazado a propósito,
+   * y el aplazamiento sólo vale si la pantalla lo dice.
+   */
+  const faltaPorPactar = $derived.by(() => {
+    if (!current) return [];
+    const falta: string[] = [];
+    if (!current.schedule) {
+      falta.push('el horario, y mientras falte ella no ve ninguna sección de horario');
+    }
+    // La misma condición que la política `extra_work_types_employee_read` de la
+    // 0021 —activo Y con tarifa—, que es la que decide qué puede registrar.
+    if (!current.extraWorkTypes.some((type) => type.available)) {
+      falta.push('el trabajo extra, y mientras falte ella no puede registrar ninguna jornada');
+    }
+    return falta;
+  });
+
   const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
   const capitalise = (text: string) => `${text[0]!.toLocaleUpperCase('es')}${text.slice(1)}`;
 
@@ -479,6 +498,26 @@
         </span>
       </div>
 
+      <!--
+        Lo que el alta deja sin pactar, dicho ARRIBA y no enterrado en su
+        sección. El alta pide inicio, salario, jornada y días de vacaciones, y
+        nada más: el horario y el catálogo de trabajo extra se pactan luego aquí.
+        Ese aplazamiento es deliberado —veintiocho campos en el segundo paso de
+        un alta es la forma más segura de que alguien rellene cualquier cosa para
+        poder seguir— pero sólo vale si se dice, porque las dos ausencias tienen
+        consecuencias que ella nota y quien administra no ve: sin horario no se le
+        enseña ninguna sección de horario, y sin catálogo no puede registrar ni
+        una jornada extra. Un contrato a medias que nadie anuncia es peor que un
+        formulario largo.
+      -->
+      {#if current && faltaPorPactar.length > 0}
+        <p class="a-medias" role="status">
+          <strong>Este contrato está a medias.</strong>
+          Falta por pactar {faltaPorPactar.join(' y ')}. Se hace aquí abajo, en «Cambiar las
+          condiciones»: apilar una versión no reescribe nada de lo ya pactado.
+        </p>
+      {/if}
+
       {#if !current}
         <p>Este contrato no tiene ninguna versión visible.</p>
       {:else}
@@ -638,11 +677,16 @@
                 <option value="never">no expiran nunca</option>
               </select>
             </label>
-            {#if draft.carryoverExpiryMode === 'months'}
-              <label>Meses de margen
-                <input type="number" name="carryoverExpiryMonths" bind:value={draft.carryoverExpiryMonths} min="1" max="120" required />
-              </label>
-            {/if}
+            <!-- El campo se pinta SIEMPRE, aunque hoy rija «nunca expiran».
+                 Pintarlo sólo con el modo en «meses» dejaba el HTML servido de
+                 un contrato que pactó «nunca» sin este campo, así que sin
+                 JavaScript no se podía volver a «caducan pasados unos meses»: el
+                 formulario mandaba el `<select>` y nada más, y salía NaN. El
+                 servidor lo ignora cuando el modo es «nunca», que es donde esa
+                 decisión pertenece. -->
+            <label>Meses de margen (si caducan)
+              <input type="number" name="carryoverExpiryMonths" bind:value={draft.carryoverExpiryMonths} min="1" max="120" required />
+            </label>
           </div>
         </fieldset>
 
@@ -877,5 +921,18 @@
     font-size: var(--text-strong);
     font-weight: 500;
     line-height: var(--lh-base);
+  }
+
+  /* El aviso de contrato a medias: se tiene que ver antes que las condiciones,
+     no después de bajar hasta su sección. Ámbar, que en esta casa significa
+     «esto te espera», y no rojo: no es un error, es trabajo pendiente. */
+  .a-medias {
+    border-radius: var(--r-md);
+    background: var(--warning-soft);
+    color: var(--warning);
+    margin: 0 0 var(--space-4);
+    padding: var(--space-3);
+    font-size: var(--text-body);
+    line-height: var(--lh-loose);
   }
 </style>

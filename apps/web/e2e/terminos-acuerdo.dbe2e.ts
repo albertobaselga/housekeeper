@@ -207,3 +207,48 @@ test('Ana ve la tarifa y el horario nuevos, y sigue sin ver ninguna tarifa horar
   expect(html).not.toContain('per_hour');
   expect(html).not.toContain('Hora extraordinaria');
 });
+
+/*
+ * El alta deja el contrato a medias A PROPÓSITO —pide inicio, salario, jornada y
+ * días de vacaciones, y nada más—, y el aplazamiento sólo vale si la pantalla lo
+ * dice. La segunda empleada de las fixtures tiene catálogo de trabajo extra pero
+ * NO declara horario, que es exactamente el estado en que queda un contrato
+ * recién dado de alta.
+ */
+const AGREEMENT_SEGUNDA = '12000000-0000-4000-8000-000000000002';
+
+test('un contrato sin horario lo dice arriba, no enterrado en su sección', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo?empleada=${AGREEMENT_SEGUNDA}`);
+  await expect(page.locator('.person-bar')).toContainText('Fixture Segunda Empleada Roble');
+
+  const aviso = page.locator('.a-medias');
+  await expect(aviso).toBeVisible();
+  await expect(aviso).toContainText('Este contrato está a medias');
+  await expect(aviso).toContainText('el horario');
+  await expect(aviso).toContainText('no ve ninguna sección de horario');
+  // Su catálogo sí está pactado, así que del trabajo extra no se avisa.
+  await expect(aviso).not.toContainText('no puede registrar ninguna jornada');
+
+  // Y el aviso desaparece cuando no falta nada: el contrato de Ana declara
+  // horario y catálogo, así que ahí no hay nada que anunciar.
+  await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo`);
+  await expect(page.locator('.person-bar')).toContainText('Fixture Empleada Roble');
+  await expect(page.locator('.a-medias')).toHaveCount(0);
+});
+
+test('los meses de margen se pueden volver a pactar sin JavaScript', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo`);
+  const editor = page.locator('details.card').filter({ hasText: 'Cambiar las condiciones' });
+  await editor.locator('summary').click();
+
+  // El campo se sirve SIEMPRE, también cuando rige «nunca expiran». Pintarlo
+  // sólo con el modo en «meses» dejaba el HTML de un contrato que pactó «nunca»
+  // sin este campo: elegir «caducan pasados unos meses» mandaba el select y nada
+  // más, y salía NaN.
+  const meses = editor.getByLabel('Meses de margen (si caducan)');
+  await expect(meses).toHaveAttribute('required', '');
+  await editor.getByLabel('Los días arrastrados').selectOption('never');
+  await expect(meses).toBeVisible();
+});
