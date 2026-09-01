@@ -860,6 +860,14 @@ git commit -m "feat(db): migración 0034 — esquema de finanzas con doble cerro
 
 ### Task 4: Fixtures `002_finance.sql` y matriz negativa completa
 
+> **Nota posterior a la ejecución (2026-09-01):** esta tarea se completó y su revisión encontró
+> dos aserciones que no podían fallar (la de fuga entre hogares era código muerto, y el bloque del
+> segundo hogar no tenía control positivo). El fichero final `packages/db/tests/030_finance_rls.sql`
+> **ha evolucionado respecto al SQL literal que aparece más abajo**: los mensajes de error nombran
+> ahora la tabla y el hogar, el conteo del rastro de auditoría se autoajusta, y el bloque del olivo
+> comprueba las diez tablas. No compares el fichero byte a byte con este texto: manda el fichero.
+> El SQL de abajo se conserva como el argumento original de la tarea.
+
 Los tres runners de fixtures del repo (`packages/db/scripts/run-sql-tests.mjs`, `packages/server/test-support/global-setup.mjs`, `apps/web/e2e/db-global-setup.ts`) recorren `packages/db/fixtures/*.sql` ordenado: `002_finance.sql` se carga solo con existir — NO hay que extender ningún runner (verifícalo en el Step 6). La matriz sigue el idioma de `tests/020_rls_matrix.sql`: bloques `BEGIN; SET LOCAL ROLE casa_clara_app; … COMMIT;`, `set_config` + `app.set_household_context`, y fallos esperados capturados con `EXCEPTION WHEN`. Prefijos de UUID: `f1*` (roble) y `f2*` (olivo) para la fixture; para lo que siembra el propio test, prefijo `fa9*`, libre en el árbol (`packages/db/tests/170_push_subscriptions.sql` ya ocupa `fa1*` y `fa2*`, así que `fa*` a secas NO es exclusivo).
 
 **Files:**
