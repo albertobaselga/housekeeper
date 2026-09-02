@@ -31,8 +31,13 @@
   let concept = $state('');
   let provider = $state('');
   // svelte-ignore state_referenced_locally -- solo es el valor inicial del campo
+  // Se busca en `selectable`, no en `accounts`: el <select> de abajo solo
+  // ofrece cuentas no-inversión, así que el valor inicial tiene que salir de
+  // esa misma lista o quedaría preseleccionando un id que no aparece como
+  // <option> (una cuenta de inversión, si «Efectivo» no existe y fuera la
+  // primera del array sin filtrar).
   let accountId = $state(
-    accounts.find((account) => account.name.toLowerCase() === 'efectivo')?.id ?? accounts[0]?.id ?? ''
+    selectable.find((account) => account.name.toLowerCase() === 'efectivo')?.id ?? selectable[0]?.id ?? ''
   );
   let categoryId = $state<string | null>(null);
   let recurrence = $state<'recurrente' | 'extraordinario' | null>(null);
