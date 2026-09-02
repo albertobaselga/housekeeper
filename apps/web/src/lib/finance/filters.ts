@@ -111,14 +111,19 @@ export function parseFilters(params: URLSearchParams, today: string): FinanceFil
   const from = params.get('from') ?? '';
   const to = params.get('to') ?? '';
   const granularity = params.get('g');
+  const eventIdParam = params.get('ev');
   return {
     from: DATE_PATTERN.test(from) ? from : fallback.from,
     to: DATE_PATTERN.test(to) ? to : fallback.to,
     granularity: (GRANULARITIES as readonly string[]).includes(granularity ?? '')
       ? (granularity as FinanceGranularity)
       : 'month',
-    accountIds: (params.get('acc') ?? '').split(',').map((piece) => piece.trim()).filter(Boolean),
-    eventId: params.get('ev') || null
+    // Cada trozo se valida por separado (mismo criterio de «descartar lo
+    // malformado» que from/to/g): un `acc` con un id que no es UUID llegaría a
+    // `tx.account_id = any($n::uuid[])` y Postgres respondería 22P02, que el
+    // catch de los loaders confunde con una avería (503 falso).
+    accountIds: (params.get('acc') ?? '').split(',').map((piece) => piece.trim()).filter(isUuid),
+    eventId: eventIdParam && isUuid(eventIdParam) ? eventIdParam : null
   };
 }
 

@@ -26,13 +26,36 @@ describe('filtros de finanzas: parseo y presets', () => {
     });
   });
 
-  it('lee from/to/g/acc/ev y descarta lo malformado', () => {
-    const params = new URLSearchParams('from=2026-02-01&to=2026-02-28&g=quarter&acc=a1,a2&ev=e9');
+  it('lee from/to/g y descarta lo malformado', () => {
+    const params = new URLSearchParams('from=2026-02-01&to=2026-02-28&g=quarter');
     expect(parseFilters(params, TODAY)).toEqual({
-      from: '2026-02-01', to: '2026-02-28', granularity: 'quarter', accountIds: ['a1', 'a2'], eventId: 'e9'
+      from: '2026-02-01', to: '2026-02-28', granularity: 'quarter', accountIds: [], eventId: null
     });
     expect(parseFilters(new URLSearchParams('g=bogus&from=ayer'), TODAY).granularity).toBe('month');
     expect(parseFilters(new URLSearchParams('g=bogus&from=ayer'), TODAY).from).toBe('2026-01-01');
+  });
+
+  // I1: `acc`/`ev` que no son UUID llegarían a `tx.account_id = any($n::uuid[])`
+  // / `te.event_id = $n` y Postgres respondería 22P02 (invalid input syntax),
+  // que el catch de los loaders confunde con una avería (503 falso). Mismo
+  // criterio de «descartar lo malformado» que ya aplica a from/to/g.
+  it('descarta acc/ev que no son UUID (antes sobrevivían y tumbaban el load con un 503 falso)', () => {
+    const params = new URLSearchParams('acc=a1,a2&ev=e9');
+    expect(parseFilters(params, TODAY).accountIds).toEqual([]);
+    expect(parseFilters(params, TODAY).eventId).toBeNull();
+  });
+
+  it('acc mezcla un UUID válido con basura: solo sobrevive el válido', () => {
+    const validUuid = '11000000-0000-4000-8000-000000000001';
+    const params = new URLSearchParams(`acc=${validUuid},a2`);
+    expect(parseFilters(params, TODAY).accountIds).toEqual([validUuid]);
+  });
+
+  it('acc/ev con UUID válido: pasan tal cual', () => {
+    const validUuid = '11000000-0000-4000-8000-000000000001';
+    const params = new URLSearchParams(`acc=${validUuid}&ev=${validUuid}`);
+    expect(parseFilters(params, TODAY).accountIds).toEqual([validUuid]);
+    expect(parseFilters(params, TODAY).eventId).toBe(validUuid);
   });
 
   it('monthRange y rangeOfMonths cierran en fin de mes real (febrero bisiesto incluido)', () => {
