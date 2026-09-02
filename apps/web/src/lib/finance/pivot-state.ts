@@ -5,6 +5,9 @@
  * doc de interfaces) para que filters.ts ya la conserve en el merge.
  */
 import type { PivotDimension } from '@housekeeper/domain/finance';
+import { normText } from '@housekeeper/domain/finance';
+
+import { formatCents } from './format';
 
 export const PIVOT_DIMENSIONS: readonly PivotDimension[] = ['cat', 'sub', 'nat', 'prov', 'concept', 'movement'];
 
@@ -242,4 +245,182 @@ export function resolveSelectionIds(
   movIdsByKey: ReadonlyMap<string, string[]>
 ): string[] {
   return [...new Set(items.flatMap((i) => (i.txId != null ? [i.txId] : (movIdsByKey.get(i.key) ?? []))))];
+}
+
+// ── Buscador con chips tipados (?q=, contrato del doc de interfaces) ─────────
+// R15: sin normalizador local reimplementado — `normalizeText` es un envoltorio
+// fino sobre `normText` del dominio (misma semántica NFKD que el servidor;
+// solo se añade `toLowerCase()` para presentación) usado a AMBOS lados de toda
+// comparación de este módulo.
+
+export type SearchChip = { type: 'prov' | 'concept' | 'event' | 'cat' | 'free'; value: string; prov?: string };
+
+const CHIP_TYPES: readonly SearchChip['type'][] = ['prov', 'concept', 'event', 'cat', 'free'];
+
+export interface SearchableRowLike {
+  cat: string;
+  sub: string | null;
+  catId: string | null;
+  prov: string;
+  concept: string;
+  event: string | null;
+}
+
+export interface SuggestGroup {
+  group: string;
+  items: { chip: SearchChip; label: string; detail: string }[];
+}
+
+/** Envoltorio de `normText` (dominio) para matching case-insensitive de presentación. */
+export function normalizeText(s: string): string {
+  return normText(s).toLowerCase();
+}
+
+export function suggestChips(
+  rows: readonly (SearchableRowLike & { totalCents: bigint; count: number })[],
+  catPathOf: (catId: string) => string,
+  query: string
+): SuggestGroup[] {
+  const q = normalizeText(query);
+  if (q.length < 2) return [];
+  const abs = (v: bigint) => (v < 0n ? -v : v);
+
+  const provMap = new Map<string, { totalCents: bigint; count: number }>();
+  const conceptMap = new Map<string, { concept: string; prov: string; count: number }>();
+  const eventMap = new Map<string, { netCents: bigint }>();
+  const catMap = new Map<string, { totalCents: bigint; count: number }>();
+
+  for (const r of rows) {
+    if (normalizeText(r.prov).includes(q)) {
+      const e = provMap.get(r.prov) ?? { totalCents: 0n, count: 0 };
+      e.totalCents += r.totalCents;
+      e.count += r.count;
+      provMap.set(r.prov, e);
+    }
+    if (normalizeText(r.concept).includes(q)) {
+      const key = `${r.concept} ${r.prov}`;
+      const e = conceptMap.get(key) ?? { concept: r.concept, prov: r.prov, count: 0 };
+      e.count += r.count;
+      conceptMap.set(key, e);
+    }
+    if (r.event && normalizeText(r.event).includes(q)) {
+      const e = eventMap.get(r.event) ?? { netCents: 0n };
+      e.netCents += r.totalCents;
+      eventMap.set(r.event, e);
+    }
+    if (r.catId !== null && normalizeText(catPathOf(r.catId)).includes(q)) {
+      const e = catMap.get(r.catId) ?? { totalCents: 0n, count: 0 };
+      e.totalCents += r.totalCents;
+      e.count += r.count;
+      catMap.set(r.catId, e);
+    }
+  }
+
+  const groups: SuggestGroup[] = [
+    {
+      group: 'Proveedores',
+      items: [...provMap.entries()]
+        .sort((a, b) => (abs(b[1].totalCents) > abs(a[1].totalCents) ? 1 : -1))
+        .map(([prov, e]) => ({
+          chip: { type: 'prov', value: prov },
+          label: prov,
+          detail: `${formatCents(e.totalCents)} · ${e.count} movs`
+        }))
+    },
+    {
+      group: 'Conceptos',
+      items: [...conceptMap.values()]
+        .sort((a, b) => b.count - a.count)
+        .map((e) => ({
+          chip: { type: 'concept', value: e.concept, prov: e.prov },
+          label: e.concept,
+          detail: `${e.prov} · ${e.count} movs`
+        }))
+    },
+    {
+      group: 'Eventos',
+      items: [...eventMap.entries()]
+        .sort((a, b) => (abs(b[1].netCents) > abs(a[1].netCents) ? 1 : -1))
+        .map(([event, e]) => ({
+          chip: { type: 'event', value: event },
+          label: event,
+          detail: `neto ${formatCents(e.netCents)}`
+        }))
+    },
+    {
+      group: 'Categorías',
+      items: [...catMap.entries()]
+        .sort((a, b) => (abs(b[1].totalCents) > abs(a[1].totalCents) ? 1 : -1))
+        .map(([catId, e]) => ({
+          chip: { type: 'cat', value: catId },
+          label: catPathOf(catId),
+          detail: `${formatCents(e.totalCents)} · ${e.count} movs`
+        }))
+    }
+  ];
+  return groups.filter((g) => g.items.length > 0);
+}
+
+function matchesChip(row: SearchableRowLike, chip: SearchChip, catPathOf: (catId: string) => string): boolean {
+  const q = normalizeText(chip.value);
+  switch (chip.type) {
+    case 'prov':
+      return normalizeText(row.prov) === q;
+    case 'concept':
+      return normalizeText(row.concept) === q && (!chip.prov || normalizeText(row.prov) === normalizeText(chip.prov));
+    case 'event':
+      return row.event != null && normalizeText(row.event) === q;
+    case 'cat':
+      return row.catId !== null && row.catId === chip.value;
+    case 'free': {
+      const fields = [row.prov, row.concept, row.event, row.cat, row.sub, row.catId !== null ? catPathOf(row.catId) : null];
+      return fields.some((f) => f != null && normalizeText(f).includes(q));
+    }
+  }
+}
+
+/** AND entre chips: la fila debe casar con todos los chips activos. */
+export function rowMatchesChips(
+  row: SearchableRowLike,
+  chips: readonly SearchChip[],
+  catPathOf: (catId: string) => string
+): boolean {
+  return chips.every((chip) => matchesChip(row, chip, catPathOf));
+}
+
+export function serializeChips(chips: readonly SearchChip[]): string {
+  return chips
+    .map((c) =>
+      c.type === 'concept' && c.prov
+        ? `concept:${encodeURIComponent(c.prov)}~~${encodeURIComponent(c.value)}`
+        : `${c.type}:${encodeURIComponent(c.value)}`
+    )
+    .join('|');
+}
+
+export function parseChips(q: string | null): SearchChip[] {
+  if (!q) return [];
+  const chips: SearchChip[] = [];
+  for (const part of q.split('|')) {
+    const idx = part.indexOf(':');
+    if (idx < 0) continue;
+    const type = part.slice(0, idx);
+    const rawValue = part.slice(idx + 1);
+    if (!(CHIP_TYPES as readonly string[]).includes(type)) continue;
+    try {
+      if (type === 'concept' && rawValue.includes('~~')) {
+        const sep = rawValue.indexOf('~~');
+        chips.push({
+          type: 'concept',
+          value: decodeURIComponent(rawValue.slice(sep + 2)),
+          prov: decodeURIComponent(rawValue.slice(0, sep))
+        });
+      } else {
+        chips.push({ type: type as SearchChip['type'], value: decodeURIComponent(rawValue) });
+      }
+    } catch {
+      continue;
+    }
+  }
+  return chips;
 }
