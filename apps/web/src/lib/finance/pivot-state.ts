@@ -301,7 +301,10 @@ export function suggestChips(
       provMap.set(r.prov, e);
     }
     if (normalizeText(r.concept).includes(q)) {
-      const key = `${r.concept} ${r.prov}`;
+      // R23: separador imposible en texto de usuario (U+0000), NO un espacio:
+      // con espacio, ('aa b', 'c') y ('aa', 'b c') colisionaban en la misma
+      // clave 'aa b c' y se fusionaban perdiendo un par entero.
+      const key = `${r.concept}\u0000${r.prov}`;
       const e = conceptMap.get(key) ?? { concept: r.concept, prov: r.prov, count: 0 };
       e.count += r.count;
       conceptMap.set(key, e);

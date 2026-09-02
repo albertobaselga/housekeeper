@@ -45,6 +45,22 @@ describe('suggestChips', () => {
     // Zeta Bar y Alpha Bar empatan a total: desempatan por etiqueta ascendente.
     expect(provs.items.map((i) => i.label)).toEqual(['Medio Bar', 'Alpha Bar', 'Zeta Bar']);
   });
+  it('R23: la clave de Conceptos no colisiona entre pares distintos (concept, prov)', () => {
+    // ('aa b', 'c') y ('aa', 'b c') producían la misma clave con el separador
+    // antiguo (`${concept} ${prov}` → 'aa b c' en ambos casos) y se fusionaban
+    // en una sola entrada perdiendo un par entero.
+    const rows = [
+      row({ concept: 'aa b', prov: 'c', count: 3 }),
+      row({ concept: 'aa', prov: 'b c', count: 5 })
+    ];
+    const groups = suggestChips(rows, catPathOf, 'aa');
+    const concepts = groups.find((g) => g.group === 'Conceptos')!;
+    expect(concepts.items).toHaveLength(2);
+    expect(concepts.items.map((i) => ({ chip: i.chip, detail: i.detail }))).toEqual([
+      { chip: { type: 'concept', value: 'aa', prov: 'b c' }, detail: 'b c · 5 movs' },
+      { chip: { type: 'concept', value: 'aa b', prov: 'c' }, detail: 'c · 3 movs' }
+    ]);
+  });
 });
 
 describe('rowMatchesChips (AND entre chips)', () => {
