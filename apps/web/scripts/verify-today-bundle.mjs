@@ -109,19 +109,28 @@ async function totalBytes(keys) {
 
 const initialBytes = await totalBytes(visited);
 
-// Mapa módulo→trozo del plugin de vite.config.ts. Si falta (construcción vieja o
-// parcial) el presupuesto sigue midiéndose; solo se pierde el diagnóstico.
-let moduleMap = null;
+// Mapa módulo→trozo del plugin de vite.config.ts. Las reglas de FORBIDDEN_*
+// de más abajo comparan contra este desglose por módulo: sin él pasarían en
+// silencio aunque Finanzas (o la matriz de capacidades) hubiera vuelto al
+// arranque de Hoy, así que un mapa ausente o corrupto es un error de la
+// build, no un aviso que se pueda ignorar.
+let moduleMap;
 try {
   moduleMap = JSON.parse(await readFile(new URL('.svelte-kit/housekeeper-module-map.json', webRoot), 'utf8'));
-} catch {
-  console.warn('Aviso: falta housekeeper-module-map.json; sin atribución por módulo en este informe.');
+} catch (cause) {
+  throw new Error(
+    'Falta (o está corrupto) .svelte-kit/housekeeper-module-map.json: sin él, las reglas de\n' +
+      '    FORBIDDEN_IN_INITIAL_GRAPH y FORBIDDEN_PREFIXES_IN_INITIAL_GRAPH pasarían en silencio\n' +
+      '    aunque Finanzas hubiera vuelto al arranque de Hoy. Ejecuta primero\n' +
+      '    `pnpm --filter @housekeeper/web build` (el plugin housekeeper:client-module-map de\n' +
+      '    vite.config.ts es quien lo escribe) y repite verify:bundle.',
+    { cause }
+  );
 }
 
 /** Módulos fuente presentes en un conjunto de trozos, con sus bytes sin minificar. */
 function modulesOf(keys) {
   const modules = new Map();
-  if (!moduleMap) return modules;
   for (const key of keys) {
     for (const [id, bytes] of Object.entries(moduleMap[manifest[key].file] ?? {})) {
       modules.set(id, (modules.get(id) ?? 0) + bytes);
