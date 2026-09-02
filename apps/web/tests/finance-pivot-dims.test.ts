@@ -59,6 +59,11 @@ describe('sortTree (recursivo, sin mutar la entrada)', () => {
     sortTree(roots, 'total', 'asc');
     expect(roots.map((n) => n.label)).toEqual(before);
   });
+  it('cuando la clave empata, desempata por etiqueta (comparador total y determinista)', () => {
+    const tied = [node('Beta', -100n), node('Alfa', -100n)];
+    expect(sortTree(tied, 'total', 'asc').map((n) => n.label)).toEqual(['Alfa', 'Beta']);
+    expect(sortTree(tied, 'total', 'desc').map((n) => n.label)).toEqual(['Beta', 'Alfa']);
+  });
 });
 
 describe('sameSortKey', () => {

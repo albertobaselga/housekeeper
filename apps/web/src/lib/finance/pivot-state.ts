@@ -79,9 +79,13 @@ function sortValue(key: PivotSortKey, item: SortableNodeLike): bigint | string {
   return item.monthly[key.month] ?? 0n;
 }
 
-function compareSortValues(a: bigint | string, b: bigint | string, dir: SortDir): number {
-  const cmp =
-    typeof a === 'string' && typeof b === 'string' ? a.localeCompare(b, 'es') : a < b ? -1 : a > b ? 1 : 0;
+/** Comparador total: clave primero, etiqueta como desempate (orden determinista aunque empate la clave). */
+function compareSortValues(a: SortableNodeLike, b: SortableNodeLike, key: PivotSortKey, dir: SortDir): number {
+  const va = sortValue(key, a);
+  const vb = sortValue(key, b);
+  const keyCmp =
+    typeof va === 'string' && typeof vb === 'string' ? va.localeCompare(vb, 'es') : va < vb ? -1 : va > vb ? 1 : 0;
+  const cmp = keyCmp !== 0 ? keyCmp : a.label.localeCompare(b.label, 'es');
   return dir === 'asc' ? cmp : -cmp;
 }
 
@@ -93,5 +97,5 @@ export function sortTree<T extends SortableNodeLike & { children: T[] }>(
 ): T[] {
   return nodes
     .map((n) => ({ ...n, children: sortTree(n.children, key, dir) }))
-    .sort((a, b) => compareSortValues(sortValue(key, a), sortValue(key, b), dir));
+    .sort((a, b) => compareSortValues(a, b, key, dir));
 }
