@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { getFinanceDashboardFixture, getFinanceMovimientosFixture } from '../src/lib/server/fixtures.server';
+
+// Ruling R19: `demoOnly()` consulta `$env/dynamic/private` en cada llamada, y
+// bajo vitest ese módulo lo sirve el plugin de SvelteKit desde `process.env`.
+// Sin fijar el entorno, quien tenga DATABASE_URL exportada en su shell (para
+// levantar la aplicación, por ejemplo) ve estos dos tests fallar en falso
+// (mismo patrón que tests/search-offline.test.ts:18).
+vi.mock('$env/dynamic/private', () => ({ env: {} }));
 
 const FILTERS = { from: '2026-01-01', to: '2026-08-31', granularity: 'month' as const, accountIds: [], eventId: null };
 
