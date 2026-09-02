@@ -938,23 +938,46 @@ async function assignConceptToEvent(
 ): Promise<{ resourceId?: UUID }> {
   const targetEventId = await resolveTargetEventId(client, householdId, payload.eventId, payload.newEventName);
   const txIds = await matchingFinanceTxIds(client, householdId, payload);
-  const providerNorm = payload.provider ? normText(payload.provider) : null;
-  const conceptNorm = payload.concept ? normText(normalizeConcept(payload.concept)) : null;
 
-  if (targetEventId === null) {
-    // Caso de borrado: cae la regla y caen TODOS los vínculos de los movimientos que casan.
-    if (payload.categoryId) {
-      await client.query(`delete from app.finance_event_rules where household_id = $1 and category_id = $2`, [
-        householdId,
-        payload.categoryId,
-      ]);
-    } else {
+  // Borrar la regla existente es el MISMO paso se desasigne (targetEventId
+  // === null) o se reasigne a otro evento: solo cambia si DESPUÉS hay un
+  // insert. Escrito una única vez por selector (categoría o proveedor) para
+  // que ambas ramas no puedan divergir en silencio sobre «qué cuenta como
+  // la misma regla» — antes se repetían las mismas cuatro sentencias.
+  if (payload.categoryId) {
+    await client.query(`delete from app.finance_event_rules where household_id = $1 and category_id = $2`, [
+      householdId,
+      payload.categoryId,
+    ]);
+    if (targetEventId !== null) {
+      await requireFinanceCategory(client, householdId, payload.categoryId);
       await client.query(
-        `delete from app.finance_event_rules
-          where household_id = $1 and provider_norm = $2 and concept_norm is not distinct from $3`,
-        [householdId, providerNorm, conceptNorm],
+        `insert into app.finance_event_rules (household_id, category_id, event_id) values ($1, $2, $3)`,
+        [householdId, payload.categoryId, targetEventId],
       );
     }
+  } else {
+    // providerNorm/conceptNorm solo se calculan (y solo tienen sentido) en
+    // el selector por proveedor, nunca en el de categoría.
+    const providerNorm = payload.provider ? normText(payload.provider) : null;
+    const conceptNorm = payload.concept ? normText(normalizeConcept(payload.concept)) : null;
+    await client.query(
+      `delete from app.finance_event_rules
+        where household_id = $1 and provider_norm = $2 and concept_norm is not distinct from $3`,
+      [householdId, providerNorm, conceptNorm],
+    );
+    if (targetEventId !== null) {
+      await client.query(
+        `insert into app.finance_event_rules (household_id, provider_norm, concept_norm, event_id)
+         values ($1, $2, $3, $4)`,
+        [householdId, providerNorm, conceptNorm, targetEventId],
+      );
+    }
+  }
+
+  if (targetEventId === null) {
+    // Caso de borrado: la regla ya cayó arriba; ahora caen TODOS los
+    // vínculos de los movimientos que casan.
     if (txIds.length > 0) {
       await client.query(
         `delete from app.finance_transaction_events where household_id = $1 and transaction_id = any($2::uuid[])`,
@@ -964,28 +987,6 @@ async function assignConceptToEvent(
     return {};
   }
 
-  if (payload.categoryId) {
-    await requireFinanceCategory(client, householdId, payload.categoryId);
-    await client.query(`delete from app.finance_event_rules where household_id = $1 and category_id = $2`, [
-      householdId,
-      payload.categoryId,
-    ]);
-    await client.query(
-      `insert into app.finance_event_rules (household_id, category_id, event_id) values ($1, $2, $3)`,
-      [householdId, payload.categoryId, targetEventId],
-    );
-  } else {
-    await client.query(
-      `delete from app.finance_event_rules
-        where household_id = $1 and provider_norm = $2 and concept_norm is not distinct from $3`,
-      [householdId, providerNorm, conceptNorm],
-    );
-    await client.query(
-      `insert into app.finance_event_rules (household_id, provider_norm, concept_norm, event_id)
-       values ($1, $2, $3, $4)`,
-      [householdId, providerNorm, conceptNorm, targetEventId],
-    );
-  }
   if (txIds.length > 0) {
     // Mover a un evento es EXCLUSIVO: el pivot agrupa por el primer evento asignado.
     await client.query(

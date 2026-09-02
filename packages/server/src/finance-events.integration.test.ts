@@ -95,6 +95,7 @@ describe.runIf(Boolean(adminUrl))("comandos de eventos y alias de proveedores de
   let appPool: pg.Pool;
   let eventId: string;
   let otherId: string;
+  let categoryEventId: string;
 
   async function run(
     principal: AuthenticatedPrincipal,
@@ -111,6 +112,16 @@ describe.runIf(Boolean(adminUrl))("comandos de eventos y alias de proveedores de
     return withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
       const loaded = await client.query(
         `select count(*)::int as n from app.finance_transaction_events where household_id = $1 and event_id = $2`,
+        [HH, id],
+      );
+      return loaded.rows[0].n as number;
+    });
+  }
+
+  async function ruleCountForEvent(id: string): Promise<number> {
+    return withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select count(*)::int as n from app.finance_event_rules where household_id = $1 and event_id = $2`,
         [HH, id],
       );
       return loaded.rows[0].n as number;
@@ -222,5 +233,72 @@ describe.runIf(Boolean(adminUrl))("comandos de eventos y alias de proveedores de
       return loaded.rowCount;
     });
     expect(tx).toBe(1);
+    // El CASCADE de 0036 sobre event_id debe haberse llevado por delante los
+    // vínculos y las reglas de este evento: lo comprobamos explícitamente en
+    // vez de confiar en que el propio nombre del test lo garantiza.
+    expect(await linkCount(eventId)).toBe(0);
+    expect(await ruleCountForEvent(eventId)).toBe(0);
+  });
+
+  it("assignConcept por categoría asigna en exclusiva y guarda la regla por category_id", async () => {
+    const catEvent = await run(ADMIN, { kind: "finance.event.create", name: "Categoria IT Eventos" });
+    expect(catEvent.status).toBe("accepted");
+    categoryEventId = catEvent.resourceId as string;
+    // FIN.tx1 y FIN.tx2 siguen ambos en FIN.category (ningún test previo les
+    // cambió la categoría): el selector por categoría debe casar los dos.
+    const ack = await run(ADMIN, {
+      kind: "finance.event.assignConcept",
+      categoryId: FIN.category,
+      eventId: categoryEventId,
+    });
+    expect(ack).toMatchObject({ status: "accepted", resourceId: categoryEventId });
+    expect(await linkCount(categoryEventId)).toBe(2);
+    const rule = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select event_id, provider_norm, concept_norm
+           from app.finance_event_rules
+          where household_id = $1 and category_id = $2`,
+        [HH, FIN.category],
+      );
+      return loaded.rows[0];
+    });
+    expect(rule).toMatchObject({ event_id: categoryEventId, provider_norm: null, concept_norm: null });
+  });
+
+  it("assignConcept con provider+concept y newEventName crea el evento implícito y guarda concept_norm", async () => {
+    // FIN.tx1 tiene concepto "VIAJES SOL IT BILLETE"; FIN.tx2 "VIAJES SOL IT
+    // HOTEL" — el filtro por concepto es una igualdad exacta tras
+    // normText(normalizeConcept(...)) (domain/finance/event-rules.ts), así
+    // que este selector debe casar SOLO tx1, aunque ambos compartan proveedor.
+    const ack = await run(ADMIN, {
+      kind: "finance.event.assignConcept",
+      provider: "VIAJES SOL IT",
+      concept: "VIAJES SOL IT BILLETE",
+      newEventName: "Evento Implicito IT",
+    });
+    expect(ack.status).toBe("accepted");
+    const newEventId = ack.resourceId as string;
+    expect(newEventId).toBeTruthy();
+    // Exclusivo: tx1 sale de categoryEventId (donde había entrado por
+    // categoría en el test anterior) y entra SOLO en el evento nuevo; tx2 no
+    // casa por concepto y se queda donde estaba.
+    expect(await linkCount(newEventId)).toBe(1);
+    expect(await linkCount(categoryEventId)).toBe(1);
+    const rule = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select event_id, concept_norm from app.finance_event_rules where household_id = $1 and provider_norm = $2`,
+        [HH, PROVIDER_NORM],
+      );
+      return loaded.rows[0];
+    });
+    expect(rule).toMatchObject({ event_id: newEventId, concept_norm: "VIAJES SOL IT BILLETE" });
+    const createdEvent = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(`select name from app.finance_events where household_id = $1 and id = $2`, [
+        HH,
+        newEventId,
+      ]);
+      return loaded.rows[0]?.name;
+    });
+    expect(createdEvent).toBe("Evento Implicito IT");
   });
 });
