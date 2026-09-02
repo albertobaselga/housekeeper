@@ -7,6 +7,7 @@ import type { FinanceFilters } from '$lib/finance/filters';
 
 import { demoOnly, fixturesAllowed } from './data-source.server';
 import type {
+  FinanceAjustesData,
   FinanceDashboardData,
   FinanceEventosData,
   FinanceImportarData,
@@ -955,4 +956,13 @@ export const getFinanceImportarFixture = demoOnly(
       }
     ]
   })
+);
+
+/**
+ * La maqueta de Ajustes es deliberadamente vacía: sin hogar real no hay
+ * cuentas que configurar, y la pantalla ya dice qué hacer.
+ */
+export const getFinanceAjustesFixture = demoOnly(
+  'finanzas/ajustes',
+  (): FinanceAjustesData => ({ accounts: [], categories: [], rules: [], providers: [] })
 );

@@ -734,3 +734,101 @@ export async function loadFinanceImportar(
     return unreadable(log, 'finance importar', cause);
   }
 }
+
+// ── Ajustes del módulo (Task 13) ─────────────────────────────────────────────
+
+export interface FinanceAjustesAccountRow {
+  id: string;
+  name: string;
+  bank: string | null;
+  kind: string;
+  ownerLabel: string;
+  bankRef: string;
+  ownerAliases: string[];
+  transferRefs: string[];
+}
+
+export interface FinanceAjustesRuleRow {
+  id: string;
+  ruleType: string;
+  pattern: string;
+  origin: string;
+  categoryName: string | null;
+}
+
+export interface FinanceAjustesProviderRow {
+  providerNorm: string;
+  provider: string;
+  alias: string | null;
+  count: number;
+  totalCents: string;
+}
+
+export interface FinanceAjustesData {
+  accounts: FinanceAjustesAccountRow[];
+  categories: FinanceCategoryDto[];
+  rules: FinanceAjustesRuleRow[];
+  providers: FinanceAjustesProviderRow[];
+}
+
+/**
+ * Cuentas, árbol de categorías, reglas y proveedores con alias del hogar.
+ *
+ * [Ajuste sobre el brief] El catch original del brief solo distinguía
+ * `AuthorizationError`. Las cinco lecturas hermanas de este mismo fichero
+ * (dashboard, movimientos, revisión, eventos, importar) capturan también
+ * `CommandRejectedError` —lo que lanza `requireFinanceAdmin` cuando quien
+ * mira no es `family_admin` o no tiene Finanzas concedido (Ruling R2)—, así
+ * que se alinea aquí con esas cinco: lo contrario habría dejado que un
+ * `family_member` autenticado sin concesión disparase un `log.error` de
+ * avería en vez de la fixture/página vacía, por cada visita a Ajustes.
+ */
+export async function loadFinanceAjustes(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceAjustesData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const accounts = await client.query<FinanceAjustesAccountRow>(
+        `select id, name, bank, kind, owner_label as "ownerLabel", bank_ref as "bankRef",
+                owner_aliases as "ownerAliases", transfer_refs as "transferRefs"
+           from app.finance_accounts
+          where household_id = $1 and archived_at is null
+          order by name`,
+        [householdId]
+      );
+      const categories = await readFinanceCategories(client, householdId);
+      const rules = await client.query<FinanceAjustesRuleRow>(
+        `select rule.id, rule.rule_type as "ruleType", rule.pattern, rule.origin,
+                cat.name as "categoryName"
+           from app.finance_rules as rule
+           left join app.finance_categories as cat
+             on cat.household_id = rule.household_id and cat.id = rule.category_id
+          where rule.household_id = $1
+          order by rule.pattern`,
+        [householdId]
+      );
+      // Tope explícito: la lista de proveedores es de trabajo, no un informe.
+      const providers = await client.query<FinanceAjustesProviderRow>(
+        `select tx.provider_norm as "providerNorm", max(tx.provider) as provider,
+                max(alias.display) as alias, count(*)::int as count,
+                sum(tx.amount_cents)::text as "totalCents"
+           from app.finance_transactions as tx
+           left join app.finance_provider_aliases as alias
+             on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
+          where tx.household_id = $1 and tx.provider_norm is not null
+          group by tx.provider_norm
+          order by count(*) desc
+          limit 500`,
+        [householdId]
+      );
+      return { accounts: accounts.rows, categories, rules: rules.rows, providers: providers.rows };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) return null;
+    return unreadable(log, 'finance ajustes', cause);
+  }
+}
