@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { seriesWindow } from "./queries.js";
+import { monthsInRange, seriesWindow } from "./queries.js";
 
 // El periodo anterior (prevRange) lo prueba la fase 2 en packages/domain: aquí
 // no se replica ni se re-testea. Este fichero cubre solo lo propio de queries.ts.
@@ -13,5 +13,18 @@ describe("seriesWindow: N cubos hacia atrás desde el final del rango", () => {
 
   it("no propaga NaN con una fecha malformada: cae a 1970-01-01 en vez de 'NaN-NaN-01'", () => {
     expect(seriesWindow("agosto", 1)).toBe("1970-01-01");
+  });
+});
+
+describe("monthsInRange: los cubos de mes del pivot, calendario completo", () => {
+  it("incluye el mes de inicio y el de fin aunque no haya movimientos", () => {
+    expect(monthsInRange("2026-01-15", "2026-04-02")).toEqual(["2026-01", "2026-02", "2026-03", "2026-04"]);
+    expect(monthsInRange("2026-03-01", "2026-03-31")).toEqual(["2026-03"]);
+  });
+  it("cruza el fin de año sin saltarse diciembre", () => {
+    expect(monthsInRange("2025-11-20", "2026-02-01")).toEqual(["2025-11", "2025-12", "2026-01", "2026-02"]);
+  });
+  it("un rango invertido no devuelve nada", () => {
+    expect(monthsInRange("2026-05-01", "2026-04-01")).toEqual([]);
   });
 });

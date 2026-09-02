@@ -4,8 +4,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthorizationError, withAuthorizedTransaction } from "../database.js";
 import {
   readFinanceAccounts,
+  readFinanceAnalytics,
+  readFinanceBreakdown,
   readFinanceCategories,
+  readFinanceEventDetail,
   readFinanceEvents,
+  readFinanceEventsSummary,
+  readFinancePivot,
+  readFinanceProviders,
+  readFinanceSeries,
+  readFinanceSummary,
   readFinanceTransactions,
   type FinanceTransactionsQuery,
 } from "./queries.js";
@@ -136,5 +144,93 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
     await expect(
       as("fixture:roble:admin", OLIVO, (client) => readFinanceAccounts(client, OLIVO)),
     ).rejects.toBeInstanceOf(AuthorizationError);
+  });
+
+  const RANGE = { from: "2020-01-01", to: "2030-12-31", accountIds: [], eventId: null, excludeEventIds: [] };
+
+  it("summary: ahorro = ingresos + gastos, con periodo anterior y pendientes", async () => {
+    const summary = await as("fixture:roble:admin", ROBLE, (client) => readFinanceSummary(client, ROBLE, RANGE));
+    expect(BigInt(summary.savingsCents)).toBe(BigInt(summary.incomeCents) + BigInt(summary.expenseCents));
+    expect(
+      BigInt(summary.recurringExpenseCents) + BigInt(summary.extraordinaryExpenseCents) + BigInt(summary.unclassifiedExpenseCents),
+    ).toBe(BigInt(summary.expenseCents));
+    expect(summary.prev).not.toBeNull();
+    expect(summary.pendingCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("series: cubos ordenados, ahorro coherente por cubo", async () => {
+    const series = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinanceSeries(client, ROBLE, RANGE, "month", 120));
+    expect(series.length).toBeGreaterThan(0);
+    for (const point of series) {
+      expect(BigInt(point.savingsCents)).toBe(BigInt(point.incomeCents) + BigInt(point.expenseCents));
+    }
+    expect([...series.map((point) => point.bucket)].sort()).toEqual(series.map((point) => point.bucket));
+  });
+
+  it("breakdown: ordenado del gasto mayor (más negativo) al menor", async () => {
+    const rows = await as("fixture:roble:admin", ROBLE, (client) => readFinanceBreakdown(client, ROBLE, RANGE));
+    const totals = rows.map((row) => BigInt(row.totalCents));
+    expect([...totals].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(totals);
+  });
+
+  it("providers: solo gasto, respeta el limit", async () => {
+    const rows = await as("fixture:roble:admin", ROBLE, (client) => readFinanceProviders(client, ROBLE, RANGE, 3));
+    expect(rows.length).toBeLessThanOrEqual(3);
+    for (const row of rows) {
+      expect(BigInt(row.totalCents)).toBeLessThan(0n);
+      expect(row.providerDisplay.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("events-summary: net = income + expense; event-detail inexistente → null", async () => {
+    const events = await as("fixture:roble:admin", ROBLE, (client) => readFinanceEventsSummary(client, ROBLE, RANGE));
+    for (const event of events) {
+      expect(BigInt(event.netCents)).toBe(BigInt(event.incomeCents) + BigInt(event.expenseCents));
+    }
+    const missing = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinanceEventDetail(client, ROBLE, "00000000-0000-4000-8000-00000000dead", RANGE));
+    expect(missing).toBeNull();
+  });
+
+  it("analytics: las tres naturalezas y, en cada mes, |recurrente| + |extraordinario| ≤ |total|", async () => {
+    const abs = (value: string): bigint => (BigInt(value) < 0n ? -BigInt(value) : BigInt(value));
+    const { rows } = await as("fixture:roble:admin", ROBLE, (client) => readFinanceAnalytics(client, ROBLE, RANGE));
+    expect(rows.map((row) => row.kind)).toEqual(["ingreso", "gasto", "inversion"]);
+    for (const row of rows) {
+      for (const [month, totals] of Object.entries(row.monthly)) {
+        expect(month).toMatch(/^\d{4}-\d{2}$/);
+        // El resto hasta el total es «sin clasificar»: nunca puede ser negativo.
+        expect(abs(totals.recCents) + abs(totals.extCents) <= abs(totals.totalCents)).toBe(true);
+      }
+    }
+  });
+
+  it("pivot: meses de calendario completos y filas con la forma de PivotSourceRow", async () => {
+    const { months, rows } = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinancePivot(client, ROBLE, { ...RANGE, from: "2026-01-01", to: "2026-03-31" }));
+    expect(months).toEqual(["2026-01", "2026-02", "2026-03"]);
+    for (const row of rows) {
+      expect(months).toContain(row.month);
+      expect(typeof row.totalCents).toBe("bigint");
+      expect(row.cat.length).toBeGreaterThan(0);
+      expect(["gasto", "ingreso", "transferencia", "inversion"]).toContain(row.kind);
+      expect(row.movs.length).toBe(row.count);
+      expect(row.movs.reduce((acc, mov) => acc + mov.cents, 0n)).toBe(row.totalCents);
+    }
+  });
+
+  it("pivot y analytics del admin de olivo sin concesión: sin filas", async () => {
+    const analytics = await as("fixture:olivo:admin", OLIVO, (client) => readFinanceAnalytics(client, OLIVO, RANGE));
+    for (const row of analytics.rows) expect(Object.keys(row.monthly)).toEqual([]);
+    const pivot = await as("fixture:olivo:admin", OLIVO, (client) => readFinancePivot(client, OLIVO, RANGE));
+    expect(pivot.rows).toEqual([]);
+  });
+
+  it("summary para el admin de olivo sin concesión: todo a cero", async () => {
+    const summary = await as("fixture:olivo:admin", OLIVO, (client) => readFinanceSummary(client, OLIVO, RANGE));
+    expect(summary.incomeCents).toBe("0");
+    expect(summary.expenseCents).toBe("0");
+    expect(summary.pendingCount).toBe(0);
   });
 });
