@@ -29,7 +29,10 @@ export function caixabankSampleXls(): Uint8Array {
       "Fecha de operación: 02-05-2026 Peluquería Ñoño", "04000174TCR"],
     ["", "2100 0000 0000 0000 1234", "", "", "12/05/2026", "", "", "55,12",
       "", "", "03", "230", "RECIBO LUZ", "",
-      "CORE IBERDROLA CLIENTES  X0001", "ES84002A82018474   X0040"],
+      // Identificador de acreedor SEPA con la FORMA del real y todo ceros: la
+      // regla de proveedor necesita el campo, pero el literal no puede parecerse
+      // a un CIF que exista.
+      "CORE IBERDROLA CLIENTES  X0001", "ES00000A00000000   X0040"],
     [],
     CAIXA_HEADER,
     ["", "2100 0000 0000 0000 5678", "", "", "20/05/2026", "20/05/2026", "25,00", "",
@@ -77,4 +80,47 @@ export function amexSampleXlsx(): Uint8Array {
 
 export function amexSampleXlsxSinHoja(): Uint8Array {
   return writeWorkbook([["Fecha", "Importe"]], "xlsx", "Otra hoja");
+}
+
+/** La hoja de Amex está, pero sin «Número de Cuenta» ni la cabecera de la tabla:
+ * ejercita la rama de error que protege la referencia de cuenta. */
+export function amexSampleXlsxSinCabecera(): Uint8Array {
+  return writeWorkbook(
+    [["Titular", "SR EJEMPLO"], ["Resumen del periodo"], ["Total", "18,99"]],
+    "xlsx",
+    AMEX_SHEET,
+  );
+}
+
+/** Fila con fecha pero sin importe: `toCents` devuelve null y el parser corta. */
+export function amexSampleXlsxSinImporte(): Uint8Array {
+  return writeWorkbook(
+    [
+      ["Titular", "SR EJEMPLO"],
+      ["Número de Cuenta"],
+      ["XXXX-XXXXX-91009"],
+      [],
+      ["Fecha", "Descripción", "Importe", "Categoría", "Referencia"],
+      ["06/05/2026", "AMAZON ES", "", "Compras", "320261250012345678"],
+    ],
+    "xlsx",
+    AMEX_SHEET,
+  );
+}
+
+/** Fila completa salvo la referencia: es la que ancla el dedup de la tarjeta, así
+ * que el parser prefiere abortar a inventarse una. */
+export function amexSampleXlsxSinReferencia(): Uint8Array {
+  return writeWorkbook(
+    [
+      ["Titular", "SR EJEMPLO"],
+      ["Número de Cuenta"],
+      ["XXXX-XXXXX-91009"],
+      [],
+      ["Fecha", "Descripción", "Importe", "Categoría", "Referencia"],
+      ["06/05/2026", "AMAZON ES", "18,99", "Compras", ""],
+    ],
+    "xlsx",
+    AMEX_SHEET,
+  );
 }

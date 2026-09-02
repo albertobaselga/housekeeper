@@ -195,11 +195,20 @@ export function detectTransferPairs(txs: FinanceTxView[], accounts: FinanceAccou
 export function reconcileAmex(txs: FinanceTxView[], accounts: FinanceAccountView[]): TransferProposal[];
 
 // investments.ts
-export function detectInvestmentContributions(txs: FinanceTxView[], accounts: FinanceAccountView[]):
-  InvestmentMirrorProposal[];
+// `opts.cashAccountId` es OBLIGATORIO y lo resuelve el servidor: el esquema no
+// admite `bank = 'efectivo'`, así que el dominio no puede deducir esa cuenta sola.
+export function detectInvestmentContributions(
+  txs: FinanceTxView[],
+  accounts: FinanceAccountView[],
+  opts: { cashAccountId: string | null },
+): InvestmentMirrorProposal[];
 
 // cash.ts
-export function detectCashMovements(txs: FinanceTxView[], accounts: FinanceAccountView[]): CashProposal[];
+export function detectCashMovements(
+  txs: FinanceTxView[],
+  accounts: FinanceAccountView[],
+  opts: { cashAccountId: string | null },
+): CashProposal[];
 
 // recurrence.ts
 export function assessRecurrence(txs: FinanceTxView[]): RecurrenceVerdict[];

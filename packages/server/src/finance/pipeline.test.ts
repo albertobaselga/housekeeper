@@ -122,6 +122,28 @@ describe("runPipelineSteps: los 8 pasos en el orden del origen", () => {
     expect(second.report.steps.map((s) => s.affected)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
+  it("el alias de PayPal se decide sobre el proveedor NORMALIZADO", () => {
+    // El origen filtraba con `provider LIKE "PAYPAL %"` en SQLite (renormalize.py:126).
+    // Aquí el filtro tiene que mirar `normText(provider)`: un separador que no sea
+    // el espacio ASCII —el NBSP que mete un exportador Windows— se colapsa antes
+    // de comparar, y el `providerNorm` que se guarda ya es `normText(provider)`.
+    const state = buildState();
+    state.txs.push(tx("ppNbsp", { provider: "PAYPAL\u00a0*NETFLIX 1234567", amountCents: -1299n, status: "confirmada", opDate: "2026-06-21" }));
+    let seq = 0;
+    const { changes } = runPipelineSteps(state, () => `id-${(seq += 1)}`);
+    expect(changes.insertedAliases).toContainEqual({
+      providerNorm: "PAYPAL *NETFLIX 1234567", display: "Netflix [PayPal]",
+    });
+  });
+
+  it("PAYPALGO no es PayPal: el filtro conserva el espacio como límite", () => {
+    const state = buildState();
+    state.txs.push(tx("ppFalso", { provider: "PAYPALGO SERVICIOS", amountCents: -500n, status: "confirmada", opDate: "2026-06-22" }));
+    let seq = 0;
+    const { changes } = runPipelineSteps(state, () => `id-${(seq += 1)}`);
+    expect(changes.insertedAliases.map((a) => a.providerNorm)).not.toContain("PAYPALGO SERVICIOS");
+  });
+
   it("un hogar sin categoría raíz de transferencia no revienta: se crea al vuelo", () => {
     // El esquema garantiza COMO MUCHO una raíz (índice parcial único), no su
     // existencia: un hogar recién activado puede llegar aquí sin ella.

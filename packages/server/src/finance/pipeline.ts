@@ -203,7 +203,11 @@ export function runPipelineSteps(
   const existingAliases = new Set(state.aliases.map((a) => a.providerNorm));
   const seenProviders = new Set<string>();
   for (const t of state.txs) {
-    if (t.provider === null || !t.provider.startsWith("PAYPAL ")) continue;
+    // Sobre el proveedor NORMALIZADO, no sobre el crudo: el origen filtraba con
+    // `provider LIKE "PAYPAL %"` en SQLite y aquí `providerNorm` ya es
+    // `normText(provider)`. El espacio final del literal es el límite de palabra
+    // que impide que «PAYPALGO» entre; sin él, `startsWith("PAYPAL")` lo cogería.
+    if (t.provider === null || !normText(t.provider).startsWith("PAYPAL ")) continue;
     const vendor = paypalVendor(t.provider);
     const pn = normText(t.provider);
     if (vendor === null || seenProviders.has(pn) || existingAliases.has(pn)) continue;
