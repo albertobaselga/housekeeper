@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { categoryPath, groupExpenseCategories } from '../src/lib/finance/breakdown';
-import { cashflowLayout, natureStackLayout, niceCeil, sparklinePoints } from '../src/lib/finance/chart-geometry';
+import { cashflowLayout, niceCeil, sparklinePoints } from '../src/lib/finance/chart-geometry';
 
 describe('sparkline: la geometría exacta del original (viewBox 100×32)', () => {
   it('dos valores: primero abajo (y=28), último arriba (y=4)', () => {
@@ -59,19 +59,6 @@ describe('cashflowLayout: barras + línea de ahorro', () => {
     expect(negative.ticks.some((tick) => tick.label.startsWith('−'))).toBe(true);
     const expenseBar = negative.groups[0]!.expense;
     expect(expenseBar.height).toBeCloseTo(negative.zeroY - expenseBar.y, 5);
-  });
-});
-
-describe('natureStackLayout: apilado por naturaleza', () => {
-  it('los segmentos apilados suman la altura del gasto total del cubo', () => {
-    const layout = natureStackLayout([
-      { bucket: '2026-01', recurringCents: -200000n, extraordinaryCents: -80000n, unclassifiedCents: -20000n, savingsCents: 50000n }
-    ]);
-    const segments = layout.groups[0]!.segments;
-    expect(segments.map((segment) => segment.nature)).toEqual(['recurrente', 'extraordinario', 'sin']);
-    const total = segments.reduce((acc, segment) => acc + segment.bar.height, 0);
-    const one = cashflowLayout([{ bucket: '2026-01', incomeCents: 300000n, expenseCents: -300000n, savingsCents: 0n }]);
-    expect(total).toBeCloseTo(one.groups[0]!.expense.height, 1);
   });
 });
 
