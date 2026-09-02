@@ -48,6 +48,13 @@ export interface ConceptTarget {
   concept?: string;
 }
 
+/**
+ * No llamar con hojas de movimiento (`item.txId != null`): una hoja se
+ * construye con `provider: ''`, que aquí saldría como `{ provider: '' }` — el
+ * servidor lo rechaza (`provider` exige `min(1)`). Una hoja va por
+ * `assignTransactionsToEvent`/`updateTransactionRecurrence`, no por un
+ * `ConceptTarget`.
+ */
 export function conceptTargetOf(item: SelectableItem): ConceptTarget {
   if (item.categoryId != null) return { categoryId: item.categoryId };
   return { provider: item.provider, ...(item.concept != null ? { concept: item.concept } : {}) };
@@ -202,6 +209,12 @@ export const COLA = 'Guardado en este dispositivo; se enviará al recuperar cone
 
 export interface SendOutcome {
   ok: boolean;
+  /**
+   * Tamaño del lote enviado a `sendAll`, NO comandos realmente confirmados:
+   * tras un corte (`ok: false`) sigue siendo `payloads.length`, aunque los
+   * posteriores al rechazo/conflicto no llegaran a enviarse. Solo sirve para
+   * distinguir el lote vacío (`sent === 0`).
+   */
   sent: number;
   queued: boolean;
   message: string;
@@ -238,18 +251,21 @@ export async function sendAll(
     if (result.outcome === 'queued') anyQueued = true;
   }
   if (anySynced) await deps.invalidate('cc:finance');
-  return { ok: true, sent: payloads.length, queued: anyQueued, message: anyQueued ? COLA : 'Guardado ✓' };
+  // Con todo `synced` (sin nada en cola) el mensaje es irrelevante: `acuse`
+  // siempre usa el `resumen` del llamador en ese camino, nunca `r.message`.
+  return { ok: true, sent: payloads.length, queued: anyQueued, message: anyQueued ? COLA : '' };
 }
 
 /**
  * Copy final para el toast/acuse de la barra de acciones: sin nada enviado
  * (`sent === 0`) manda `vacio`; un corte por rechazo/conflicto manda el
- * mensaje de ESE resultado; éxito con algo en cola manda la nota de cola;
- * éxito sin nada en cola manda el `resumen` que trae el llamador (p. ej. «3
- * movimientos actualizados»).
+ * mensaje de ESE resultado; éxito con algo en cola manda el `resumen` seguido
+ * de la nota de cola (`resumen · ${r.message}`), para no perder los avisos que
+ * el `resumen` trae (reglas conservadas, movimientos saltados…); éxito sin
+ * nada en cola manda solo el `resumen`.
  */
 export function acuse(r: SendOutcome, resumen: string, vacio = 'No hay nada que asignar'): string {
   if (r.sent === 0) return vacio;
   if (!r.ok) return r.message;
-  return r.queued ? COLA : resumen;
+  return r.queued ? `${resumen} · ${r.message}` : resumen;
 }

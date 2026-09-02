@@ -189,6 +189,25 @@ describe('plan de deshacer una recategorización', () => {
     expect(plan.reassignments).toEqual([]);
     expect(plan.bulkRestores).toEqual([]);
   });
+
+  it('mezcla de un nodo de concepto y una hoja de movimiento: el nodo revierte el concepto, la hoja (provider vacío) va por ids', () => {
+    // El nodo de concepto (provider 'P', categoría previa única t1/t2 → c1) debe
+    // ir a `reassignments`. La hoja de movimiento (provider '', igual que
+    // construye `toMovementSelectable`) tiene también categoría previa única
+    // (t3 → c2), pero la guarda `item.provider` debe impedir que acabe en
+    // `reassignments` — de lo contrario saldría `{ provider: '' }`, que el
+    // esquema del servidor rechaza, y crearía una regla por proveedor donde
+    // el usuario solo quería deshacer un movimiento suelto.
+    const movIdsByKey = new Map([['/cat:X/prov:P', ['t1', 't2']]]);
+    const items = [
+      item({ key: '/cat:X/prov:P', provider: 'P', count: 2 }),
+      item({ key: '/cat:X/mov:t3', provider: '', txId: 't3', count: 1 })
+    ];
+    const plan = planCategoryUndo(items, movIdsByKey, txCat);
+    expect(plan.reassignments).toEqual([{ provider: 'P', concept: null, categoryId: 'c1' }]);
+    expect(plan.bulkRestores).toEqual([{ transactionIds: ['t3'], categoryId: 'c2' }]);
+    expect(plan.skipped).toBe(0);
+  });
 });
 
 describe('sendFinanceCommand envía el envelope de Finanzas por la cola (R6)', () => {
@@ -236,6 +255,21 @@ describe('sendAll y acuse (R14): plan de envío en cadena de la barra de accione
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it('todo synced (sin nada en cola) no lleva mensaje propio: acuse usa el resumen del llamador', async () => {
+    const invalidated: string[] = [];
+    const send = vi.fn().mockResolvedValue({ outcome: 'synced', message: 'Guardado ✓' });
+
+    const result = await sendAll('h1', PAYLOADS.slice(0, 2), {
+      send,
+      invalidate: async (token: string) => {
+        invalidated.push(token);
+      }
+    });
+
+    expect(result).toEqual({ ok: true, sent: 2, queued: false, message: '' });
+    expect(invalidated).toEqual(['cc:finance']);
+  });
+
   it('un rechazo en el segundo comando corta la cadena y no invalida', async () => {
     const invalidated: string[] = [];
     const send = vi
@@ -253,6 +287,25 @@ describe('sendAll y acuse (R14): plan de envío en cadena de la barra de accione
     expect(result).toEqual({ ok: false, sent: 3, queued: false, message: 'No se pudo guardar el cambio.' });
     expect(invalidated).toEqual([]);
     // Cortó: el tercer comando de la lista no llegó a enviarse.
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('un conflicto en el segundo comando corta la cadena igual que un rechazo, y no invalida', async () => {
+    const invalidated: string[] = [];
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ outcome: 'synced', message: 'Guardado ✓' })
+      .mockResolvedValueOnce({ outcome: 'conflict', message: 'El movimiento cambió en otro sitio.' });
+
+    const result = await sendAll('h1', PAYLOADS, {
+      send,
+      invalidate: async (token: string) => {
+        invalidated.push(token);
+      }
+    });
+
+    expect(result).toEqual({ ok: false, sent: 3, queued: false, message: 'El movimiento cambió en otro sitio.' });
+    expect(invalidated).toEqual([]);
     expect(send).toHaveBeenCalledTimes(2);
   });
 
@@ -275,12 +328,15 @@ describe('sendAll y acuse (R14): plan de envío en cadena de la barra de accione
     expect(acuse(result, '3 movimientos actualizados', 'Nada seleccionado')).toBe('Nada seleccionado');
   });
 
-  it('acuse: éxito sin cola usa el resumen; con cola, la nota; con rechazo, el mensaje del resultado', () => {
-    const ok: SendOutcome = { ok: true, sent: 2, queued: false, message: 'Guardado ✓' };
+  it('acuse: éxito sin cola usa solo el resumen; con cola, el resumen seguido de la nota; con rechazo, el mensaje del resultado', () => {
+    const ok: SendOutcome = { ok: true, sent: 2, queued: false, message: '' };
     expect(acuse(ok, '2 movimientos recategorizados')).toBe('2 movimientos recategorizados');
 
+    // El usuario sin conexión no debe perder lo que trae el `resumen` (avisos
+    // de reglas conservadas, movimientos saltados…): `acuse` lo antepone a la
+    // nota de cola en vez de sustituirlo por ella.
     const queued: SendOutcome = { ok: true, sent: 2, queued: true, message: COLA };
-    expect(acuse(queued, '2 movimientos recategorizados')).toBe(COLA);
+    expect(acuse(queued, '2 movimientos recategorizados')).toBe(`2 movimientos recategorizados · ${COLA}`);
 
     const rejected: SendOutcome = { ok: false, sent: 2, queued: false, message: 'No se pudo guardar el cambio.' };
     expect(acuse(rejected, '2 movimientos recategorizados')).toBe('No se pudo guardar el cambio.');
