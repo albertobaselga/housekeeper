@@ -5,10 +5,13 @@ Migración ÚNICA de `/home/abf/github/home-finance/backend/data/finanzas.db`
 `packages/db/scripts/migrar-home-finance.mjs`. El guion lee la SQLite en solo
 lectura, escribe por conexión directa (5432) con rol propietario en UNA sola
 transacción, y aborta si el hogar destino ya tiene datos de finanzas. Toda
-ejecución imprime y guarda un informe de verificación —también las que abortan,
-con una sección `## Aborto` y el motivo—; sin `Resultado: OK` no hay migración
-válida. La retirada del sistema antiguo es de la fase 7 y NO se ejecuta desde
-este runbook.
+ejecución que llega a arrancar (salidas 0 y 1) imprime y guarda un informe de
+verificación —también las que abortan, con una sección `## Aborto` y el
+motivo—; sin `Resultado: OK` no hay migración válida. Los errores de uso
+(salida 2: falta una flag, `--dry-run`/`--verify-only` a la vez, o
+`--backup-dir` dentro de un repo git) se detectan antes de arrancar y no
+dejan informe — no lo busques si el guion sale con código 2. La retirada del
+sistema antiguo es de la fase 7 y NO se ejecuta desde este runbook.
 
 **Contrato de invocación (cópialo tal cual; no hay atajos):**
 
@@ -92,31 +95,45 @@ docker exec -i casaclara-it-pg psql -U ci_admin -d casaclara_ensayo -c \
    INSERT INTO app.households (slug, display_name) VALUES ('hogar-ensayo', 'Hogar del ensayo');"
 ```
 
-4. ETL en seco, luego real, luego verificación. **Ejecuta con `node` directo,
-   no con `pnpm --filter @housekeeper/db migrar:home-finance -- …`**: con
-   pnpm 10.17.1 (el fijado en `packageManager`) ese `--` no se descarta, se
-   reenvía tal cual al guion, que lo rechaza como argumento desconocido y sale
-   con código 2 antes de tocar nada — comprobado al ensayar este runbook.
-   Ejecuta siempre desde la raíz del repo:
+4. ETL en seco, luego real, luego verificación. Pasa siempre
+   `--backup-dir ~/copias-ensayo-home-finance` (un directorio SOLO para el
+   ensayo, distinto de `~/copias-home-finance` del Paso 0): si lo omites, el
+   guion usa por omisión `~/copias-home-finance` y cada ejecución del ensayo
+   deja ahí una copia de la base SINTÉTICA con el mismo patrón de nombre
+   (`finanzas-<fecha>.db`) que las copias reales del Paso 0 — invalida el
+   contraste de sha256 del Paso 0 y, peor, hace que «ensayar con datos reales»
+   (más abajo) pueda coger por error una de estas copias sintéticas en vez de
+   la real. **Ejecuta con `node` directo, no con `pnpm --filter
+   @housekeeper/db migrar:home-finance -- …`**: con pnpm 10.17.1 (el fijado
+   en `packageManager`) ese `--` no se descarta, se reenvía tal cual al
+   guion, que lo rechaza como argumento desconocido y sale con código 2 antes
+   de tocar nada — comprobado al ensayar este runbook. (Lo que rompe es el
+   separador `--`, no `pnpm`: `pnpm --filter @housekeeper/db
+   migrar:home-finance --sqlite …` sin `--` sí reenvía los argumentos y
+   funciona igual que la forma con `node`.) Ejecuta siempre desde la raíz del
+   repo:
 
 ```bash
 node packages/db/scripts/migrar-home-finance.mjs \
   --sqlite ~/copias-home-finance/finanzas-sintetica.db \
-  --database-url "$DATABASE_URL" --household hogar-ensayo --dry-run
+  --database-url "$DATABASE_URL" --household hogar-ensayo \
+  --backup-dir ~/copias-ensayo-home-finance --dry-run
 node packages/db/scripts/migrar-home-finance.mjs \
   --sqlite ~/copias-home-finance/finanzas-sintetica.db \
-  --database-url "$DATABASE_URL" --household hogar-ensayo
+  --database-url "$DATABASE_URL" --household hogar-ensayo \
+  --backup-dir ~/copias-ensayo-home-finance
 node packages/db/scripts/migrar-home-finance.mjs \
   --sqlite ~/copias-home-finance/finanzas-sintetica.db \
-  --database-url "$DATABASE_URL" --household hogar-ensayo --verify-only
+  --database-url "$DATABASE_URL" --household hogar-ensayo \
+  --backup-dir ~/copias-ensayo-home-finance --verify-only
 ```
 
 Las tres ejecuciones deben terminar en `Resultado: OK` (códigos de salida 0).
 El `--dry-run` migra dentro de una transacción y hace `ROLLBACK` al final (no
 se salta ningún paso), así que el hogar sigue vacío para la ejecución real que
 va después. El informe queda en
-`~/copias-home-finance/informe-migracion-<fecha>.md`. Conserva el del ensayo
-real: es el contraste del smoke.
+`~/copias-ensayo-home-finance/informe-migracion-<fecha>.md`. Conserva el del
+ensayo real: es el contraste del smoke.
 
 5. Smoke de la UI (cuando existan las pantallas de las fases 4–6): montar la
    web contra este `DATABASE_URL` según
@@ -127,15 +144,20 @@ real: es el contraste del smoke.
 6. Limpieza: se borra **la base del ensayo**, nunca el contenedor.
    `casaclara-it-pg` es el clúster compartido de pruebas de esta máquina (lo
    usan `test:db`, `test:rls`, `test:import` y los dbe2e): un `docker rm -f`
-   ahí se llevaría por delante trabajo ajeno.
+   ahí se llevaría por delante trabajo ajeno. `~/copias-ensayo-home-finance`
+   (las copias sintéticas y los informes del ensayo) se puede borrar entero
+   cuando termines; `~/copias-home-finance` no se toca en este paso — es la
+   copia de seguridad real del Paso 0.
 
 ```bash
 docker exec casaclara-it-pg dropdb -U ci_admin --if-exists casaclara_ensayo
 ```
 
 Para ensayar con los datos reales: repite 1–6 con
-`--sqlite ~/copias-home-finance/finanzas-<fecha>.db` (la copia del Paso 0) y
-contrasta además con `backend/data/informe-semestre1-2026.md` del repo viejo.
+`--sqlite ~/copias-home-finance/finanzas-<fecha>.db` (la copia del Paso 0),
+manteniendo `--backup-dir ~/copias-ensayo-home-finance` en el paso 4 para no
+mezclar las copias del ensayo con la copia real del Paso 0, y contrasta
+además con `backend/data/informe-semestre1-2026.md` del repo viejo.
 
 ## Producción (Supabase) — SOLO con confirmación explícita de Alberto
 
@@ -149,9 +171,11 @@ ensayo local completo (con datos reales) tiene que haber terminado en
    `BACKUP_DATABASE_URL=<conexión directa 5432 del propietario> pnpm backup:full`
    (ver `docs/runbooks/backup-restore.md`).
 3. `pnpm db:migrate` contra Supabase con la conexión DIRECTA 5432 del
-   propietario y `sslmode=verify-full` explícito (ver
-   `docs/despliegue/supabase-esquema.md` y `docs/despliegue/runbook-despliegue.md`;
-   nunca por el pooler, porque el runner toma `pg_advisory_lock` de sesión).
+   propietario (ver `docs/despliegue/supabase-esquema.md` y
+   `docs/despliegue/runbook-despliegue.md`) y `sslmode=verify-full` explícito
+   —el patrón exacto de esta cadena está en
+   `docs/despliegue/puesta-en-produccion-eg112.md`—; nunca por el pooler,
+   porque el runner toma `pg_advisory_lock` de sesión.
 4. ETL con `--dry-run` contra producción, con esa misma conexión directa;
    revisar el informe completo.
 5. ETL real; el informe debe decir `Resultado: OK`; después `--verify-only`.
