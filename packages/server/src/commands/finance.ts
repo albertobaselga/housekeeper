@@ -202,20 +202,6 @@ async function requireFinanceCategory(
   return row;
 }
 
-// Helper interno para las tareas 3-5 de esta cadena (mismo fichero); ningún
-// `case` de esta tarea lo llama todavía, pero manual.create/invest/transfers.link sí lo harán.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function transferCategoryId(client: PoolClient, householdId: UUID): Promise<UUID> {
-  const result = await client.query<{ id: string }>(
-    `select id from app.finance_categories
-      where household_id = $1 and kind = 'transferencia' and parent_id is null`,
-    [householdId],
-  );
-  const row = result.rows[0];
-  if (!row) throw new CommandRejectedError("finance_category_not_found", "El hogar no tiene categoría de transferencia");
-  return row.id;
-}
-
 /**
  * Movimientos NO vinculados a transferencia que casan con el selector del
  * pivot/las páginas de revisión: por categoría (la propia o sus hijas
@@ -226,6 +212,17 @@ async function transferCategoryId(client: PoolClient, householdId: UUID): Promis
  * `finance_event_rules` la tiene), así que el afinado final por concepto se
  * hace en memoria sobre el conjunto YA acotado por SQL, nunca sobre el hogar
  * entero.
+ *
+ * Espejo SQL de `matchByProvider`/`matchByCategory` en
+ * `domain/finance/event-rules.ts`: misma semántica escrita dos veces (SQL
+ * aquí, en memoria allí); si cambia una, cambia la otra.
+ *
+ * El filtro de proveedor compara `tx.provider_norm`, la columna ALMACENADA
+ * (NULLABLE, sin trigger que la mantenga) — no la recalcula con `normText`
+ * como hace el gemelo de dominio. Si un comando futuro
+ * (`finance.transaction.manual.create`) inserta sin rellenarla, esas filas
+ * desaparecen en silencio de este selector: quien escriba ese comando debe
+ * poblar `provider_norm` a mano.
  */
 async function matchingFinanceTxIds(
   client: PoolClient,
@@ -298,10 +295,13 @@ async function replaceTransactionEvents(
     `delete from app.finance_transaction_events where household_id = $1 and transaction_id = $2`,
     [householdId, transactionId],
   );
-  for (const eventId of wanted) {
+  if (wanted.length > 0) {
+    // Una sola sentencia por conjuntos: el `delete` de arriba ya garantiza que
+    // no hay conflicto con el UNIQUE (household_id, transaction_id, event_id).
     await client.query(
-      `insert into app.finance_transaction_events (household_id, transaction_id, event_id) values ($1, $2, $3)`,
-      [householdId, transactionId, eventId],
+      `insert into app.finance_transaction_events (household_id, transaction_id, event_id)
+       select $1, $2, unnest($3::uuid[])`,
+      [householdId, transactionId, wanted],
     );
   }
 }
@@ -377,6 +377,12 @@ async function bulkUpdateFinanceTransactions(
       throw new CommandRejectedError("finance_category_is_transfer", "No se puede recategorizar a transferencia");
     }
   }
+  // Todo o nada: si algún id de la selección no existe en este hogar (ya
+  // borrado, o de otro hogar), el comando entero se rechaza en vez de aplicar
+  // el cambio a un subconjunto sin decírselo al cliente. Se compara contra
+  // ids DISTINTOS (no la longitud cruda) para no penalizar duplicados en la
+  // selección. El throw revierte la transacción completa (withAuthorizedTransaction).
+  const distinctIds = new Set(payload.transactionIds);
   const result = await client.query(
     `update app.finance_transactions as tx
         set status = coalesce($3, tx.status), category_id = coalesce($4::uuid, tx.category_id)
@@ -384,8 +390,13 @@ async function bulkUpdateFinanceTransactions(
       where tx.household_id = $1 and tx.id = ids.id`,
     [householdId, payload.transactionIds, payload.status ?? null, payload.categoryId ?? null],
   );
-  if ((result.rowCount ?? 0) === 0) {
-    throw new CommandRejectedError("finance_transaction_not_found", "Ningún movimiento de la selección existe");
+  if ((result.rowCount ?? 0) !== distinctIds.size) {
+    throw new CommandRejectedError(
+      "finance_transaction_not_found",
+      (result.rowCount ?? 0) === 0
+        ? "Ningún movimiento de la selección existe"
+        : "Algún movimiento de la selección no existe en este hogar",
+    );
   }
   return {};
 }
@@ -426,7 +437,13 @@ async function assignConceptRecurrence(
  *      lógica real, uno a uno, sin tocar la exhaustividad.
  */
 export const financeCommandHandler: CommandHandler = async (client, membership, envelope) => {
-  const rawKind = (envelope.payload as { kind?: unknown } | null)?.kind;
+  // Estrechado real (sin `as`, R7): `envelope.payload` es `unknown`; solo se
+  // lee `kind` cuando el valor es de verdad un objeto con esa clave.
+  const rawPayload = envelope.payload;
+  const rawKind =
+    typeof rawPayload === "object" && rawPayload !== null && "kind" in rawPayload
+      ? rawPayload.kind
+      : undefined;
   if (rawKind === "finance.grant.write" || rawKind === "finance.revoke.write") {
     return handleFinanceGrantCommand(client, membership, envelope);
   }

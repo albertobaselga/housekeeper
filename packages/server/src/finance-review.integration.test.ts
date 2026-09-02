@@ -81,6 +81,12 @@ INSERT INTO app.finance_transactions
 INSERT INTO app.finance_events (household_id, id, name) VALUES
   ('${HH}', '${FIN.event}', 'Evento IT Revision');
 
+-- Alias del proveedor de las dos transacciones fixture: casa por display
+-- normalizado, no por provider_norm — ejercita la rama de alias de
+-- matchingFinanceTxIds (Issue #2 de la revisión ronda 1).
+INSERT INTO app.finance_provider_aliases (household_id, provider_norm, display) VALUES
+  ('${HH}', 'ACME LUZ IT', 'Acme Luz [alias]');
+
 COMMIT;
 `;
 
@@ -220,6 +226,21 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
     expect(ack).toMatchObject({ status: "rejected", errorCode: "finance_category_is_transfer" });
   });
 
+  it("en bloque rechaza si algún id de la selección no existe (todo o nada)", async () => {
+    // Un id con formato válido pero que no existe en ningún hogar: el
+    // comando entero se rechaza en vez de aplicar el cambio solo a txPend2.
+    const missingId = "ab300000-0000-4000-8000-0000000000ff";
+    const ack = await run(ADMIN, {
+      kind: "finance.transactions.bulk",
+      transactionIds: [FIN.txPend2, missingId],
+      categoryId: FIN.catSub,
+    });
+    expect(ack).toMatchObject({ status: "rejected", errorCode: "finance_transaction_not_found" });
+    // La categoría de txPend2 (fijada por el caso anterior) no cambió: no hay
+    // aplicación parcial.
+    expect((await txRow(FIN.txPend2)).category_id).toBe(FIN.catRoot);
+  });
+
   it("fija la naturaleza en bloque por proveedor y marca el override manual", async () => {
     const ack = await run(ADMIN, {
       kind: "finance.transactions.assignConceptRecurrence",
@@ -230,6 +251,61 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
     const row = await txRow(FIN.txPend1);
     expect(row.recurrence).toBe("recurrente");
     expect(row.recurrence_manual).toBe(true);
+    // El proveedor coincide en las dos transacciones fixture (sin categoría
+    // ni concepto en el selector): a las dos les toca el cambio.
+    expect((await txRow(FIN.txPend2)).recurrence).toBe("recurrente");
+  });
+
+  // Las siguientes cuatro pruebas cierran el Issue #2 de la ronda 1: las tres
+  // ramas de matchingFinanceTxIds sin cubrir (categoría, alias, afinado por
+  // concepto en memoria) y el rechazo por selector vacío. En este punto de la
+  // secuencia txPend1 está en catSub y txPend2 en catRoot (fijado por los
+  // casos de arriba), así que catRoot cubre a las dos por la rama de hijas
+  // directas.
+
+  it("selecciona por categoría: la raíz incluye a sus hijas directas", async () => {
+    const ack = await run(ADMIN, {
+      kind: "finance.transactions.assignConceptRecurrence",
+      categoryId: FIN.catRoot,
+      recurrence: "extraordinario",
+    });
+    expect(ack.status).toBe("accepted");
+    expect((await txRow(FIN.txPend1)).recurrence).toBe("extraordinario"); // vía catSub, hija de catRoot
+    expect((await txRow(FIN.txPend2)).recurrence).toBe("extraordinario"); // vía catRoot directamente
+  });
+
+  it("acepta el proveedor por su alias, no solo por el texto literal", async () => {
+    const ack = await run(ADMIN, {
+      kind: "finance.transactions.assignConceptRecurrence",
+      provider: "Acme Luz [alias]",
+      recurrence: "recurrente",
+    });
+    expect(ack.status).toBe("accepted");
+    // Si el alias no casara, el selector no encontraría nada y el valor
+    // seguiría en "extraordinario" (fijado por el caso anterior).
+    expect((await txRow(FIN.txPend1)).recurrence).toBe("recurrente");
+    expect((await txRow(FIN.txPend2)).recurrence).toBe("recurrente");
+  });
+
+  it("afina por concepto en memoria tras el filtro de proveedor en SQL", async () => {
+    const ack = await run(ADMIN, {
+      kind: "finance.transactions.assignConceptRecurrence",
+      provider: "ACME LUZ IT",
+      concept: "recibo acme luz it julio", // solo el concepto de txPend1 (minúsculas: prueba la normalización)
+      recurrence: "extraordinario",
+    });
+    expect(ack.status).toBe("accepted");
+    expect((await txRow(FIN.txPend1)).recurrence).toBe("extraordinario");
+    // txPend2 comparte proveedor pero no concepto: el afinado en memoria lo deja fuera.
+    expect((await txRow(FIN.txPend2)).recurrence).toBe("recurrente");
+  });
+
+  it("rechaza el selector vacío: ni proveedor ni categoría", async () => {
+    const ack = await run(ADMIN, {
+      kind: "finance.transactions.assignConceptRecurrence",
+      recurrence: "recurrente",
+    });
+    expect(ack).toMatchObject({ status: "rejected", errorCode: "finance_selector_required" });
   });
 
   it("asigna eventos por sustitución completa", async () => {
