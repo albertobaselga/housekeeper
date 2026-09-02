@@ -34,7 +34,7 @@ INSERT INTO app.finance_categories (id, household_id, parent_id, name, kind) VAL
 
 INSERT INTO app.finance_rules (id, household_id, rule_type, pattern, category_id, priority, origin) VALUES
   ('f1b00000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-   'proveedor_exacto', 'mercado ejemplo', 'f1c00000-0000-4000-8000-000000000002', 10, 'manual');
+   'proveedor_exacto', 'MERCADO EJEMPLO', 'f1c00000-0000-4000-8000-000000000002', 10, 'manual');
 
 INSERT INTO app.finance_import_batches (id, household_id, filename, bank, new_count, dup_count) VALUES
   ('f1800000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
@@ -48,13 +48,13 @@ INSERT INTO app.finance_transactions (
   ('f1e00000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
    'f1a00000-0000-4000-8000-000000000001', 'f1800000-0000-4000-8000-000000000001',
    '2026-01-10', '2026-01-10', 'COMPRA MERCADO EJEMPLO',
-   'Mercado Ejemplo', 'mercado ejemplo', -2350, 100000,
+   'Mercado Ejemplo', 'MERCADO EJEMPLO', -2350, 100000,
    'f1c00000-0000-4000-8000-000000000002', 'confirmada',
    'fixture-roble-tx-0001', '{"concepto": "COMPRA MERCADO EJEMPLO"}'),
   ('f1e00000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000001',
    'f1a00000-0000-4000-8000-000000000001', 'f1800000-0000-4000-8000-000000000001',
    '2026-01-25', '2026-01-25', 'NOMINA EMPRESA FIXTURE',
-   'Empresa Fixture', 'empresa fixture', 180000, 280000,
+   'Empresa Fixture', 'EMPRESA FIXTURE', 180000, 280000,
    NULL, 'pendiente',
    'fixture-roble-tx-0002', '{"concepto": "NOMINA EMPRESA FIXTURE"}'),
   ('f2e00000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001',
@@ -66,7 +66,7 @@ INSERT INTO app.finance_transactions (
 
 INSERT INTO app.finance_provider_aliases (id, household_id, provider_norm, display) VALUES
   ('f1d00000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-   'mercado ejemplo', 'Mercado Ejemplo');
+   'MERCADO EJEMPLO', 'Mercado Ejemplo');
 
 INSERT INTO app.finance_events (id, household_id, name) VALUES
   ('f1f00000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
@@ -78,6 +78,6 @@ INSERT INTO app.finance_transaction_events (id, household_id, transaction_id, ev
 
 INSERT INTO app.finance_event_rules (id, household_id, event_id, provider_norm, concept_norm, category_id) VALUES
   ('f1f20000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001',
-   'f1f00000-0000-4000-8000-000000000001', 'mercado ejemplo', NULL, NULL);
+   'f1f00000-0000-4000-8000-000000000001', 'MERCADO EJEMPLO', NULL, NULL);
 
 COMMIT;
