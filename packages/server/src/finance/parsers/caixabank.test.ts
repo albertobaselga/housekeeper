@@ -2,7 +2,27 @@ import { describe, expect, it } from "vitest";
 
 import { FinanceParserError } from "./shared.js";
 import { parseCaixabank } from "./caixabank.js";
-import { caixabankSampleXls, deutscheSampleXls } from "./synthetic-samples.js";
+import { caixabankSampleXls, deutscheSampleXls, writeWorkbook } from "./synthetic-samples.js";
+
+/** Cabecera mínima de CaixaBank para libros construidos ad-hoc en este fichero
+ * (solo lo que `parseCaixabank` inspecciona: col 1 debe ser exactamente
+ * «Número de cuenta»; el resto de nombres son ilustrativos, no se aserta `raw` aquí). */
+const HEADER_ROW = [
+  "",
+  "Número de cuenta",
+  "Oficina",
+  "Referencia",
+  "Fecha operación",
+  "Fecha valor",
+  "Ingreso (+)",
+  "Gasto (-)",
+  "Saldo (+)",
+  "Saldo (-)",
+  "Código común",
+  "Código propio",
+  "Concepto común",
+  "Concepto propio",
+];
 
 describe("parseCaixabank (muestra sintética, sin skip)", () => {
   const rows = parseCaixabank(caixabankSampleXls());
@@ -37,5 +57,36 @@ describe("parseCaixabank (muestra sintética, sin skip)", () => {
 
   it("un fichero sin tabla CaixaBank lanza FinanceParserError", () => {
     expect(() => parseCaixabank(deutscheSampleXls())).toThrow(FinanceParserError);
+  });
+});
+
+describe("parseCaixabank (rama Saldo (−) y errores propios sin ejercitar en la muestra)", () => {
+  it("Saldo (−) con Saldo (+) vacío invierte el signo", () => {
+    const grid: string[][] = [
+      HEADER_ROW,
+      ["", "2100 0000 0000 0000 9999", "", "", "04/05/2026", "", "", "10,00", "", "37,50"],
+    ];
+    const [row] = parseCaixabank(writeWorkbook(grid, "biff8", "Movimientos"));
+    expect(row).toMatchObject({ balanceCents: -3750n });
+  });
+
+  it("CCC no numérico (tras quitar espacios) lanza FinanceParserError", () => {
+    const grid: string[][] = [
+      HEADER_ROW,
+      ["", "2100 ABC", "", "", "04/05/2026", "", "10,00", "", "100,00", ""],
+    ];
+    expect(() => parseCaixabank(writeWorkbook(grid, "biff8", "Movimientos"))).toThrow(
+      FinanceParserError,
+    );
+  });
+
+  it("sin importe de ingreso ni de gasto lanza FinanceParserError", () => {
+    const grid: string[][] = [
+      HEADER_ROW,
+      ["", "2100 0000 0000 0000 9999", "", "", "04/05/2026", "", "", "", "100,00", ""],
+    ];
+    expect(() => parseCaixabank(writeWorkbook(grid, "biff8", "Movimientos"))).toThrow(
+      FinanceParserError,
+    );
   });
 });
