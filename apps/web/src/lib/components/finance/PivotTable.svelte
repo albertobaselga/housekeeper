@@ -377,6 +377,52 @@
   let dragging = $state<DragPayload | null>(null);
   let newEventDrop = $state<DragPayload | null>(null);
   let newEventName = $state('');
+  let newEventInput = $state<HTMLInputElement | null>(null);
+  let popoverPos = $state<{ left: number; top: number } | null>(null);
+
+  /**
+   * T13-M6: `.pivot-scroll` tiene `overflow-x: auto`, y por regla de CSS eso
+   * convierte también `overflow-y` en `auto`: un popover posicionado DENTRO de
+   * la tabla se recorta siempre que se salga de su caja. Con `position: fixed`
+   * y las coordenadas del rectángulo de la banda queda fuera del recorte.
+   * `POPOVER_H` es una estimación del alto (campo + botones + relleno): solo
+   * decide si abre hacia abajo o hacia arriba, y evita medir en dos pasadas.
+   */
+  const POPOVER_H = 56;
+  function posicionaPopover(fila: HTMLElement): { left: number; top: number } {
+    const r = fila.getBoundingClientRect();
+    return { left: r.left, top: r.bottom + POPOVER_H <= window.innerHeight ? r.bottom : r.top - POPOVER_H };
+  }
+
+  function cancelNewEventDrop(): void {
+    newEventDrop = null;
+    newEventName = '';
+    popoverPos = null;
+  }
+
+  // T13-M2: el popover no tomaba el foco —el atributo que lo pedía era inerte,
+  // nadie lo leía— así que Escape solo cerraba estando ya dentro del campo y
+  // con teclado no había manera de llegar sin tabular a ciegas por la tabla.
+  $effect(() => {
+    if (newEventDrop !== null) newEventInput?.focus();
+  });
+
+  /**
+   * Escape a nivel del popover: se engancha a los TRES controles que contiene
+   * (campo, «Crear y asignar», «Cancelar»), que son los únicos focalizables de
+   * dentro, en vez de al `<form>` — un `<form>` con manejador de teclado es un
+   * elemento no interactivo con escucha de teclado (aviso a11y de Svelte) y
+   * `svelte-check` corre con cero avisos.
+   */
+  function onPopoverKeydown(e: KeyboardEvent): void {
+    if (e.key !== 'Escape') return;
+    e.stopPropagation();
+    cancelNewEventDrop();
+  }
+
+  /** T13-M4: soltar una fila sobre sí misma no es un gesto; hoy mandaba comando. */
+  const sueltaSobreSiMisma = (e: DragEvent, destinoKey: string): boolean =>
+    e.dataTransfer?.getData('text/plain') === destinoKey;
 
   function onDragStart(e: DragEvent, node: PivotNodeLike, nodeDims: readonly PivotDimension[]): void {
     const self = toAnySelectable(node, nodeDims);
@@ -405,33 +451,48 @@
   // Los tres drops delegan en los aplicadores compartidos de la tarea 12: mismo
   // reparto conceptos/ids, mismos payloads, mismo acuse y mismo Deshacer que la
   // barra de acciones. Aquí solo se resuelve el gesto.
-  function onDropCategory(categoryId: string): Promise<void> {
+  // T13-M5: un drop aplicado limpia la selección, como ya hace cada `action*`
+  // de la barra: si no, la barra sigue en pie con los mismos ítems y el
+  // siguiente gesto los reenvía.
+  function onDropCategory(e: DragEvent, categoryId: string, destinoKey: string): Promise<void> {
     const payload = dragging;
     dragging = null;
-    if (!payload || payload.items.length === 0) return Promise.resolve();
-    return run(() => applyCategoryAssignment(payload.items, categoryId, payload.omitted));
+    if (!payload || payload.items.length === 0 || sueltaSobreSiMisma(e, destinoKey)) return Promise.resolve();
+    return run(async () => {
+      await applyCategoryAssignment(payload.items, categoryId, payload.omitted);
+      clearSelection();
+    });
   }
 
-  function onDropEvent(eventId: string, eventName: string): Promise<void> {
+  function onDropEvent(e: DragEvent, eventId: string, eventName: string, destinoKey: string): Promise<void> {
     const payload = dragging;
     dragging = null;
-    if (!payload || payload.items.length === 0) return Promise.resolve();
-    return run(() => applyEventAssignment(payload.items, eventId, eventName, payload.omitted));
+    if (!payload || payload.items.length === 0 || sueltaSobreSiMisma(e, destinoKey)) return Promise.resolve();
+    return run(async () => {
+      await applyEventAssignment(payload.items, eventId, eventName, payload.omitted);
+      clearSelection();
+    });
   }
 
-  function onDropNewEvent(): void {
+  function onDropNewEvent(e: DragEvent): void {
     const payload = dragging;
     dragging = null;
     if (!payload || payload.items.length === 0) return;
+    popoverPos = e.currentTarget instanceof HTMLElement ? posicionaPopover(e.currentTarget) : null;
     newEventDrop = payload;
     newEventName = '';
   }
   function confirmNewEventDrop(): Promise<void> {
     const payload = newEventDrop;
     const name = newEventName.trim();
-    newEventDrop = null;
+    // T13-M1: sin nombre no se cierra el popover ni se traga el arrastre — el
+    // botón está deshabilitado, así que esto solo cubre un submit por Enter.
     if (!payload || !name) return Promise.resolve();
-    return run(() => applyNewEventAssignment(payload.items, name, payload.omitted));
+    cancelNewEventDrop();
+    return run(async () => {
+      await applyNewEventAssignment(payload.items, name, payload.omitted);
+      clearSelection();
+    });
   }
 
   // ── Acciones de la barra (delegan en los aplicadores) ──────────────────────
@@ -520,7 +581,7 @@
     class:dnd-target={dragging !== null && dropCatId !== null} class:dnd-dimmed={dragging !== null && dropCatId === null}
     onclick={() => hasChildren && toggle(node.key)}
     ondragover={dropCatId !== null ? (e) => e.preventDefault() : undefined}
-    ondrop={dropCatId !== null ? (e) => { e.preventDefault(); void onDropCategory(dropCatId); } : undefined}>
+    ondrop={dropCatId !== null ? (e) => { e.preventDefault(); void onDropCategory(e, dropCatId, node.key); } : undefined}>
     <td class="arbol" style={`padding-left: calc(var(--space-3) + ${node.depth} * var(--space-4));`}>
       <!-- El disparador de expansión es un BOTÓN: con teclado y lector de
            pantalla el árbol tiene que ser operable (spec §8, axe 0 serious).
@@ -623,15 +684,22 @@
           {@render subtotalRow('Subtotal gastos', tree.subtotales.gastos, '', '')}
         {/if}
         <tr class="banda" class:dnd-target={dragging !== null} data-testid="pivot-banda-eventos"
-          ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); onDropNewEvent(); }}>
+          ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); onDropNewEvent(e); }}>
           <td colspan={colSpan} class="banda-eventos">
             EVENTOS (soltar aquí = + nuevo evento · ☑ por evento = verlo en gastos/ingresos)
-            {#if newEventDrop}
-              <form class="popover-evento" onsubmit={(e) => { e.preventDefault(); void confirmNewEventDrop(); }}>
-                <input type="text" placeholder="＋ nuevo evento…" bind:value={newEventName} data-autofocus
-                  aria-label="Nombre del evento nuevo"
-                  onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); newEventDrop = null; } }} />
-                <button type="submit">Crear y asignar</button>
+            {#if newEventDrop && popoverPos}
+              <!-- T13-M2: Escape cierra desde CUALQUIER control del popover
+                   (ver `onPopoverKeydown`), no solo estando dentro del campo. -->
+              <form class="popover-evento" style:left={`${popoverPos.left}px`} style:top={`${popoverPos.top}px`}
+                onsubmit={(e) => { e.preventDefault(); void confirmNewEventDrop(); }}>
+                <input type="text" placeholder="＋ nuevo evento…" bind:value={newEventName} bind:this={newEventInput}
+                  aria-label="Nombre del evento nuevo" onkeydown={onPopoverKeydown} />
+                <!-- T13-M1: con el nombre vacío el submit se tragaba el
+                     arrastre en silencio. Ahora no hay submit que tragar. -->
+                <button type="submit" disabled={newEventName.trim().length === 0}
+                  onkeydown={onPopoverKeydown}>Crear y asignar</button>
+                <button type="button" class="cancelar" onclick={cancelNewEventDrop}
+                  onkeydown={onPopoverKeydown}>Cancelar</button>
               </form>
             {/if}
           </td>
@@ -640,7 +708,8 @@
           {@const key = `event/${event.eventId}`}
           {@const evExpanded = forceExpand || expanded.has(key)}
           <tr class="clicable" class:dnd-target={dragging !== null} onclick={() => event.children.length > 0 && toggle(key)}
-            ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); void onDropEvent(event.eventId, event.name); }}>
+            ondragover={(e) => e.preventDefault()}
+            ondrop={(e) => { e.preventDefault(); void onDropEvent(e, event.eventId, event.name, key); }}>
             <td class="arbol">
               {#if event.children.length > 0}
                 <button type="button" class="flecha" aria-expanded={evExpanded}
@@ -735,10 +804,15 @@
   .asa { cursor: grab; color: var(--ink-faint); margin-right: var(--space-1); }
   tr.dnd-target { outline: 2px solid var(--primary); outline-offset: -2px; }
   tr.dnd-dimmed { opacity: .45; }
-  .banda-eventos { position: relative; }
-  .popover-evento { position: absolute; z-index: 30; top: 100%; left: var(--space-3); display: flex; gap: var(--space-1); background: var(--surface-strong); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-over); padding: var(--space-2); }
+  /* T13-M6: `fixed`, no `absolute`. `.pivot-scroll` lleva `overflow-x: auto` y
+     eso vuelve `auto` también el eje Y, así que un popover dentro de la tabla
+     se recorta siempre. Las coordenadas las pone el gesto (`posicionaPopover`),
+     que además lo abre hacia arriba cuando no cabe por debajo. */
+  .popover-evento { position: fixed; z-index: 30; display: flex; gap: var(--space-1); background: var(--surface-strong); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-over); padding: var(--space-2); }
   .popover-evento input { border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--space-1); font-size: max(1em, 1rem); }
   .popover-evento button { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--primary); color: var(--ink-on-primary); cursor: pointer; padding: var(--space-1) var(--space-2); }
+  .popover-evento button.cancelar { background: var(--surface); color: var(--ink); }
+  .popover-evento button:disabled { opacity: .45; cursor: default; }
   :global(.pivot-drag-ghost) { position: fixed; top: -1000px; left: -1000px; padding: var(--space-1) var(--space-3); border-radius: var(--r-full); background: var(--primary); color: var(--ink-on-primary); font-size: var(--text-micro); white-space: nowrap; pointer-events: none; }
 
   /* Presupuesto de la spec §8: nada de movimiento para quien pide reducirlo.

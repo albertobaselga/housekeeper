@@ -36,7 +36,11 @@
   }
 </script>
 
-<div class="barra" role="toolbar" aria-label="Acciones sobre la selección" aria-busy={enviando} data-testid="pivot-actionbar">
+<!-- F6-M5: sin el rol de barra de herramientas. El patrón APG exige navegación
+     por flechas y tabindex itinerante, y esto no los implementa: un grupo de
+     controles con etiqueta es lo que de verdad es, y así el lector no anuncia
+     una navegación que no existe. -->
+<div class="barra" aria-label="Acciones sobre la selección" aria-busy={enviando} data-testid="pivot-actionbar">
   <span class="cifra resumen">{concepts} concepto{concepts === 1 ? '' : 's'} · {movs} mov{movs === 1 ? '' : 's'}</span>
 
   <details>

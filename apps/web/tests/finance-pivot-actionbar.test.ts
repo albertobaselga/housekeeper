@@ -17,8 +17,11 @@ beforeAll(async () => {
 });
 
 describe('PivotActionBar: barra accesible con alternativa táctil/teclado al dnd', () => {
-  it('es un toolbar identificable, con el resumen de la selección', () => {
-    expect(bar).toContain('role="toolbar"');
+  it('F6-M5: grupo identificable por su etiqueta, sin prometer el patrón toolbar de APG', () => {
+    // `role="toolbar"` exige navegación por flechas y tabindex itinerante; sin
+    // ellos el rol miente al lector de pantalla.
+    expect(bar).not.toContain('role="toolbar"');
+    expect(bar).toContain('aria-label="Acciones sobre la selección"');
     expect(bar).toContain('data-testid="pivot-actionbar"');
     expect(bar).toContain('{concepts} concepto');
   });
@@ -59,14 +62,13 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
     expect(table).toMatch(/catch \{\s*toast = \{ message: 'No se pudo guardar el cambio\.' \};/);
     expect(table).toMatch(/if \(enviando\) return;/);
     expect(table).toMatch(/finally \{\s*enviando = false;/);
-    // Ninguna acción ni drop llama al aplicador por fuera del envoltorio.
-    for (const gesto of [
-      'applyCategoryAssignment(payload.items, categoryId, payload.omitted)',
-      'applyEventAssignment(payload.items, eventId, eventName, payload.omitted)',
-      'applyNewEventAssignment(payload.items, name, payload.omitted)'
-    ]) {
-      expect(table).toContain(`run(() => ${gesto})`);
-    }
+    // Ninguna acción ni drop llama a un aplicador por fuera del envoltorio.
+    const aplicadores = table.match(/\bapply(Event|NewEvent|Category)\w*\(/g) ?? [];
+    const dentroDeRun = table.match(/run\(async \(\) => \{\s*await apply\w+\(/g) ?? [];
+    // 3 declaraciones + 1 reenvío interno (applyNewEvent → applyEvent) + 6
+    // llamadas, todas dentro de `run`.
+    expect(aplicadores.length).toBe(10);
+    expect(dentroDeRun.length).toBe(6);
     expect(table).toMatch(/<PivotActionBar[\s\S]*\{enviando\}/);
   });
 
@@ -81,6 +83,34 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
     expect(table).toContain('clearSelection();');
     expect(table).toMatch(/vistoRows !== rows \|\| vistoClave !== clave/);
     expect(table).toMatch(/\[\.\.\.expanded\]\.filter\(\(k\) => expandableKeys\.has\(k\)\)/);
+  });
+
+  it('T13-M1/T13-M2: el popover de evento nuevo exige nombre, toma el foco, tiene Cancelar y Escape propio', () => {
+    expect(table).toContain('disabled={newEventName.trim().length === 0}');
+    expect(table).toMatch(/\$effect\(\(\) => \{\s*if \(newEventDrop !== null\) newEventInput\?\.focus\(\);/);
+    expect(table).toContain('>Cancelar<');
+    // Escape desde CUALQUIER control del popover (campo y los dos botones), no
+    // solo desde dentro del <input>, que era justo donde el foco no estaba.
+    const escapes = table.match(/onkeydown=\{onPopoverKeydown\}/g) ?? [];
+    expect(escapes.length).toBe(3);
+    expect(table).toMatch(/function onPopoverKeydown[\s\S]*?cancelNewEventDrop\(\);/);
+    // El atributo inerte que pedía el foco («data-» + «autofocus») ya no está.
+    expect(table).not.toMatch(/<input[^>]*data-autofocus/);
+  });
+
+  it('T13-M4/T13-M5: soltar una fila sobre sí misma no hace nada, y un drop aplicado limpia la selección', () => {
+    expect(table).toMatch(/sueltaSobreSiMisma\(e, destinoKey\)/);
+    expect(table).toMatch(/e\.dataTransfer\?\.getData\('text\/plain'\) === destinoKey/);
+    const drops = table.match(/await apply\w+\(payload\.items[\s\S]{0,120}?clearSelection\(\);/g) ?? [];
+    expect(drops.length).toBe(3);
+  });
+
+  it('T13-M6: el popover se posiciona con `fixed` y coordenadas, y se abre hacia arriba si no cabe', () => {
+    // `.pivot-scroll` lleva overflow-x:auto, que vuelve auto también el eje Y:
+    // dentro de la tabla el popover se recortaba SIEMPRE.
+    expect(table).toMatch(/\.popover-evento \{ position: fixed;/);
+    expect(table).toMatch(/r\.bottom \+ POPOVER_H <= window\.innerHeight \? r\.bottom : r\.top - POPOVER_H/);
+    expect(table).toContain('style:left={`${popoverPos.left}px`}');
   });
 
   it('F6-M3: al cerrar el aviso el foco vuelve a un ancla estable, no al <body>', () => {
