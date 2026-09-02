@@ -20,12 +20,24 @@ describe("normalizeBankProvider (port de provider_norm.py)", () => {
     expect(
       normalizeBankProvider({
         provider: "CORE IBERDROLA CLIENTES",
-        concept: "RECIBO LUZ | CORE IBERDROLA CLIENTES  X0001 | ES84002A82018474   X0040",
+        concept: "RECIBO LUZ | CORE IBERDROLA CLIENTES  X0001 | ES00000X00000000   X0040",
         codeCommon: "03",
         codeOwn: "230",
         bank: "caixabank",
       }),
     ).toBe("IBERDROLA CLIENTES");
+  });
+
+  it("recibo SEPA: conserva CORE si NINGUNA celda trae identificador de acreedor", () => {
+    expect(
+      normalizeBankProvider({
+        provider: "CORE IBERDROLA CLIENTES",
+        concept: "RECIBO LUZ | CORE IBERDROLA CLIENTES  X0001",
+        codeCommon: "03",
+        codeOwn: "230",
+        bank: "caixabank",
+      }),
+    ).toBe("CORE IBERDROLA CLIENTES");
   });
 
   it("transferencia 04/073 a empresa: prefiere el destinatario con forma societaria", () => {
@@ -39,6 +51,30 @@ describe("normalizeBankProvider (port de provider_norm.py)", () => {
         bank: "caixabank",
       }),
     ).toBe("IVI Madrid S.L.");
+  });
+
+  it("transferencia 04/073 sin celda con el nombre completo: se queda con el truncado", () => {
+    expect(
+      normalizeBankProvider({
+        provider: "ORDENANTE UNO",
+        concept: "TRANSFERENCIAS | 2860 56 0001234                    IVI MAD | ORDENANTE UNO",
+        codeCommon: "04",
+        codeOwn: "073",
+        bank: "caixabank",
+      }),
+    ).toBe("IVI MAD"); // la regla 5 no dispara: ninguna celda tiene forma societaria
+  });
+
+  it("transferencia: la celda de la referencia 2860 56 nunca se toma como empresa", () => {
+    expect(
+      normalizeBankProvider({
+        provider: "ORDENANTE UNO",
+        concept: "TRANSFERENCIAS | 2860 56 0001234                    NUBE SL | ORDENANTE UNO",
+        codeCommon: "99",
+        codeOwn: "001",
+        bank: "caixabank",
+      }),
+    ).toBe("ORDENANTE UNO");
   });
 
   it("bizum: la persona NOMBRE;APELLIDO;APELLIDO pasa a espacios", () => {
@@ -83,6 +119,10 @@ describe("paypalVendor", () => {
     expect(paypalVendor("PAYPAL *STEAM GAMES 4029357733")).toBe("Steam Games");
     expect(paypalVendor("PAYPAL *KOBO BOOKS")).toBe("Kobo Books");
     expect(paypalVendor("AMAZON ES")).toBeNull();
+  });
+
+  it("sin palabras antes del número no hay vendor", () => {
+    expect(paypalVendor("PAYPAL *4029357733")).toBeNull();
   });
 });
 

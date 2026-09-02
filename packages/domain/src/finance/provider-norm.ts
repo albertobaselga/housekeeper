@@ -1,7 +1,8 @@
 import { normText } from "./text.js";
 import type { FinanceBank } from "./types.js";
 
-/** Regex portadas 1:1 de provider_norm.py (no cambiar sin cambiar el origen). */
+/** Regex portadas de provider_norm.py (no cambiar sin cambiar el origen); `\w`/`\d`
+ * quedan restringidos a ASCII (sin flag `u`), que es lo que estos campos admiten. */
 export const CARD_PREFIX_RX = /Fecha de operaci[oó]n:\s*\d{2}-\d{2}-\d{4}\s*/;
 const SEPA_PREFIX_RX = /^(CORE|B2B)/;
 const SEPA_CREDITOR_RX = /^ES\d{2}\w+$/;
@@ -32,12 +33,16 @@ export function normalizeBankProvider(input: {
     .map((p) => p.trim())
     .filter((p) => p.length > 0);
   if (bank === "caixabank") {
-    const cardPart = parts.find((p) => CARD_PREFIX_RX.test(p));
-    if (cardPart !== undefined) {
-      // (1) tarjeta: el comercio es lo que sigue al prefijo EN ESA celda.
-      const m = CARD_PREFIX_RX.exec(cardPart) as RegExpExecArray;
-      provider = cardPart.slice(m.index + m[0].length);
-    } else {
+    let cardMatch: RegExpExecArray | null = null;
+    for (const p of parts) {
+      cardMatch = CARD_PREFIX_RX.exec(p);
+      if (cardMatch !== null) {
+        // (1) tarjeta: el comercio es lo que sigue al prefijo EN ESA celda.
+        provider = p.slice(cardMatch.index + cardMatch[0].length);
+        break;
+      }
+    }
+    if (cardMatch === null) {
       // (2) recibos SEPA: quitar CORE/B2B solo si hay celda hermana con acreedor SEPA.
       if (
         SEPA_PREFIX_RX.test(provider) &&
@@ -47,9 +52,10 @@ export function normalizeBankProvider(input: {
       }
       // (3) transferencia emitida 04/073: beneficiario truncado → nombre completo.
       if (codeCommon === "04" && codeOwn === "073") {
-        const refIdx = parts.findIndex((p) => TRANSFER_REF_RX.test(p));
-        if (refIdx !== -1) {
-          const pieces = (parts[refIdx] as string).split(/\s{2,}/);
+        const refPart = parts.find((p) => TRANSFER_REF_RX.test(p));
+        if (refPart !== undefined) {
+          const refIdx = parts.indexOf(refPart);
+          const pieces = refPart.split(/\s{2,}/);
           const truncated = pieces[1];
           if (pieces.length > 1 && truncated) {
             const full = parts.find((p, i) => i !== refIdx && p.startsWith(truncated));
