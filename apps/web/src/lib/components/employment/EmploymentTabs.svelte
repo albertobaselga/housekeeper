@@ -1,6 +1,7 @@
 <script lang="ts">
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
+  import { employmentTabHref } from '$lib/employment/model';
 
   let {
     householdId,
@@ -13,35 +14,34 @@
   } = $props();
 
   const context = useAppContext();
-  const base = $derived(`/h/${householdId}/employment`);
-  // La empleada elegida viaja con cada pestaña: cambiar de pestaña nunca
-  // cambia de persona. Vacaciones y el contrato reciben el parámetro aunque
-  // pinten a todas, para que el enlace de vuelta tampoco la pierda.
-  const query = $derived(empleada ? `?empleada=${encodeURIComponent(empleada)}` : '');
 
   // La quinta plaza tiene dos caras: quien pacta ve «Contrato» (el acuerdo);
   // quien solo lee ve «Condiciones». Nadie ve las dos.
   const contractTab = $derived(
     can(context.role, 'agreement.write')
-      ? { href: `${base}/acuerdo`, label: 'Contrato' }
+      ? { tab: 'acuerdo' as const, label: 'Contrato' }
       : can(context.role, 'agreement.read')
-        ? { href: `${base}/condiciones`, label: 'Condiciones' }
+        ? { tab: 'condiciones' as const, label: 'Condiciones' }
         : null
   );
 
+  // La empleada elegida viaja con cada pestaña: cambiar de pestaña nunca
+  // cambia de persona. Vacaciones y el contrato reciben el parámetro aunque
+  // pinten a todas, para que el enlace de vuelta tampoco la pierda. La cadena
+  // la escribe el constructor único; aquí no se compone ninguna URL a mano.
   const tabs = $derived(
     [
-      { key: 'resumen', href: base, label: 'Resumen', show: true },
-      { key: 'conceptos', href: `${base}/conceptos`, label: 'Conceptos', show: true },
+      { key: 'resumen', tab: 'resumen' as const, label: 'Resumen', show: true },
+      { key: 'conceptos', tab: 'conceptos' as const, label: 'Conceptos', show: true },
       {
         key: 'vacaciones',
-        href: `${base}/vacaciones`,
+        tab: 'vacaciones' as const,
         label: 'Vacaciones',
         show: can(context.role, 'agreement.read')
       },
-      { key: 'pagos', href: `${base}/pagos`, label: 'Pagos', show: true },
+      { key: 'pagos', tab: 'pagos' as const, label: 'Pagos', show: true },
       ...(contractTab
-        ? [{ key: 'contrato', href: contractTab.href, label: contractTab.label, show: true }]
+        ? [{ key: 'contrato', tab: contractTab.tab, label: contractTab.label, show: true }]
         : [])
     ].filter((tab) => tab.show)
   );
@@ -58,7 +58,7 @@
          deja el titular y la barra fuera de la vista. El noscroll es para los
          chips de persona, que re-renderizan la misma página. -->
     <a
-      href={`${tab.href}${query}`}
+      href={employmentTabHref(householdId, tab.tab, empleada)}
       class:active={tab.key === current}
       aria-current={tab.key === current ? 'page' : undefined}
     >{tab.label}</a>

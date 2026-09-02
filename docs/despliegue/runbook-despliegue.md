@@ -584,8 +584,11 @@ Una vez creado el hogar:
       ninguna otra parte.
 - [ ] **El recibo llega hasta el final.** Cerrar la cuenta de un mes y
       comprobar, en la pestaña Pagos del Contrato y antes de cinco minutos, que
-      aparece «Recibo archivado (PDF)» y que se descarga. Es la prueba de que la
-      cola, el almacén y el registro de la 0035 están los tres puestos.
+      aparece «Recibo archivado (PDF)» y que se descarga. Está **dentro del
+      pliegue del mes**: hay que desplegar su fila para verlo (el «PDF» que se
+      ve sin desplegar es el documento de pago, que es otro fichero). Es la
+      prueba de que la cola, el almacén y el registro de la 0035 están los tres
+      puestos.
 - [ ] **Los avisos, solo si se quieren.** `/h/<hogar>/account`: si dice «Esta
       instalación no manda avisos al móvil», faltan las tres VAPID (o el `sub`
       no pasa la validación). Si ofrece el interruptor, encenderlo **en un

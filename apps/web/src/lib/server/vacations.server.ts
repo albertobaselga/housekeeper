@@ -9,7 +9,14 @@ import {
   type VacationHistoryPeriodRow,
   type VacationPersonView
 } from '$lib/employment/vacation-history';
-import { currentLocalDate, vacationRangeLabel } from '$lib/employment/model';
+import {
+  buildVacationCarryoverDecisions,
+  buildVacationCarryoverProposals,
+  currentLocalDate,
+  vacationRangeLabel,
+  type VacationCarryoverDecisionView,
+  type VacationCarryoverProposalView
+} from '$lib/employment/model';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:vacations');
@@ -56,6 +63,14 @@ export interface VacationOverview {
   people: VacationPersonView[];
   /** Novedades de la persona que mira, si es la empleada del contrato. */
   news: VacationNewsView | null;
+  /**
+   * Años de contrato cerrados con días sin disfrutar y sin decisión. Se
+   * calculan al leer y no existen como fila hasta que alguien decide. Vacío
+   * para quien no ve lo pactado: sin el derecho no hay nada que proponer.
+   */
+  carryoverProposals: VacationCarryoverProposalView[];
+  /** Lo que ya se decidió, para enseñarlo como línea aparte del derecho. */
+  carryoverDecisions: VacationCarryoverDecisionView[];
 }
 
 interface PeriodRow extends VacationHistoryPeriodRow {
@@ -150,21 +165,34 @@ export async function loadVacationOverview(
           [householdId]
         );
         if (agreements.rows.length === 0) {
-          return { householdId, today, people: [], news: null } satisfies VacationOverview;
+          return {
+            householdId,
+            today,
+            people: [],
+            news: null,
+            carryoverProposals: [],
+            carryoverDecisions: []
+          } satisfies VacationOverview;
         }
         const agreementIds = agreements.rows.map((row) => row.id);
 
-        // Solo las dos columnas que hacen falta para el derecho de cada año. El
-        // salario y las tarifas no pintan nada en una pantalla de vacaciones y
-        // viajarían dentro del JSON de la página.
+        // Sólo lo que hace falta para el derecho de cada año y para valorar un
+        // arrastre. El salario y las tarifas de la jornada extra no pintan nada
+        // en una pantalla de vacaciones y viajarían dentro del JSON de la
+        // página; el precio del día no disfrutado sí, porque de él depende que
+        // se pueda ofrecer compensar o haya que decir que falta pactarlo.
         const versions = await client.query<{
           agreementId: string;
           effectiveFrom: string;
           annualVacationDays: number;
+          unusedVacationDayRateCents: string | null;
+          terms: unknown;
         }>(
           `select agreement_id as "agreementId",
                   effective_from::text as "effectiveFrom",
-                  annual_vacation_days as "annualVacationDays"
+                  annual_vacation_days as "annualVacationDays",
+                  unused_vacation_day_rate_cents::text as "unusedVacationDayRateCents",
+                  terms
              from app.agreement_versions
             where household_id = $1 and agreement_id = any($2::uuid[])
             order by agreement_id, version_number`,
@@ -228,6 +256,57 @@ export async function loadVacationOverview(
             voidedAt: row.voidedAt?.toISOString() ?? null
           }));
 
+        // Lo que ya se decidió sobre los días de años cerrados. La RLS de la
+        // 0037 sólo se lo devuelve a quien administra y a la propia empleada:
+        // la fila lleva importe, y los importes no llegan a la familia no
+        // administradora.
+        const carryovers = await client.query<{
+          id: string;
+          agreementId: string;
+          sourceYearIndex: number;
+          status: VacationCarryoverDecisionView['status'];
+          unusedDays: number;
+          deadlineOn: string | null;
+          compensationCents: string | null;
+          compensationBasis: string | null;
+          decisionReason: string | null;
+        }>(
+          `select id,
+                  agreement_id as "agreementId",
+                  source_year_index as "sourceYearIndex",
+                  status::text as "status",
+                  unused_days as "unusedDays",
+                  deadline_on::text as "deadlineOn",
+                  compensation_cents::text as "compensationCents",
+                  compensation_basis as "compensationBasis",
+                  decision_reason as "decisionReason"
+             from app.vacation_carryovers
+            where household_id = $1 and agreement_id = any($2::uuid[])
+            order by agreement_id, source_year_index`,
+          [householdId, agreementIds]
+        );
+
+        const employeeLabelFor = (agreementId: string): string =>
+          agreements.rows.find((row) => row.id === agreementId)?.employeeName?.trim() ||
+          'Empleada del hogar';
+
+        const carryoverProposals = agreements.rows.flatMap((agreement) =>
+          buildVacationCarryoverProposals({
+            agreementId: agreement.id,
+            employeeLabel: employeeLabelFor(agreement.id),
+            today,
+            agreementStartsOn: agreement.startsOn,
+            agreementEndsOn: agreement.endsOn,
+            versions: versions.rows.filter((row) => row.agreementId === agreement.id),
+            periods: periods.rows.filter(
+              (row) => row.agreementId === agreement.id && row.status === 'recorded'
+            ),
+            decidedYearIndexes: carryovers.rows
+              .filter((row) => row.agreementId === agreement.id)
+              .map((row) => row.sourceYearIndex)
+          })
+        );
+
         return {
           householdId,
           today,
@@ -235,7 +314,9 @@ export async function loadVacationOverview(
           news: buildVacationNews(
             ownPeriods,
             mark.rows[0]?.seenThrough.toISOString() ?? null
-          )
+          ),
+          carryoverProposals,
+          carryoverDecisions: buildVacationCarryoverDecisions(carryovers.rows, employeeLabelFor)
         } satisfies VacationOverview;
       }
     );

@@ -2,7 +2,8 @@ import { building } from '$app/environment';
 import { error, redirect, type Handle } from '@sveltejs/kit';
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 
-import { belongsToHousehold } from '$lib/auth/membership';
+import { can } from '$lib/auth/capabilities';
+import { belongsToHousehold, membershipIn } from '$lib/auth/membership';
 import { guardForPath } from '$lib/auth/routing';
 import { resolveAppUser } from '$lib/server/app-user.server';
 import { getAuth } from '$lib/server/auth.server';
@@ -100,15 +101,52 @@ export const handle: Handle = async ({ event, resolve }) => {
     if (event.locals.user.mustChangePassword && guard.module !== 'account') {
       redirect(303, `/h/${encodeURIComponent(guard.householdId)}/account`);
     }
-    // El 403 por capacidad NO se lanza aquí: un error en el hook renderiza la
-    // página de fallo cruda de SvelteKit. La misma comprobación vive en el
-    // layout del hogar (+layout.server.ts), donde el error aterriza en
-    // +error.svelte con un mensaje amable y un enlace de vuelta a Hoy.
+    /*
+     * LA LLAVE DE LA RUTA GOBIERNA TAMBIÉN LO QUE ESCRIBE, Y ESO TIENE QUE
+     * PASAR AQUÍ. No es una duplicación del layout: es la mitad que el layout
+     * no puede cubrir.
+     *
+     * En SvelteKit 2.70.2, ante un POST a una *form action* el servidor ejecuta
+     * la acción ANTES que cualquier `load`, layouts incluidos
+     * (`runtime/server/page/index.js`: la acción en las líneas 70-77, los `load`
+     * en la 193). Y el único `error(403)` por capacidad de esta aplicación vive
+     * en el `load` del layout del hogar. O sea: un POST a
+     * `/h/<casa>/employment/alta?/hire` atravesaba `guard.known` y
+     * `belongsToHousehold` —pertenecer a la casa CON CUALQUIER PAPEL— y llegaba
+     * a la acción sin que `access.manage` se hubiera consultado ni una vez.
+     *
+     * Hoy no se puede explotar porque cada acción revalida el papel dentro de
+     * su transacción y, por debajo, la RLS rechaza. Pero eso es la segunda reja;
+     * la invariante que esta tabla de rutas promete es la primera, y sin esto
+     * estaba mal contada: el día que alguien escriba una acción confiando en
+     * «la llave ya la comprobó la ruta» se convierte en un agujero de verdad.
+     *
+     * NO SE PUEDE «LIMPIAR» LLEVÁNDOLO AL LAYOUT. Ahí llega tarde por
+     * construcción, y llegaría tarde igual aunque el layout lo comprobase dos
+     * veces. Se queda en el hook, y sólo para lo que no es GET: la navegación
+     * normal sigue recibiendo el 403 amable de `+layout.server.ts`, que aterriza
+     * en `+error.svelte` con lenguaje de casa y un camino de vuelta a Hoy, en
+     * vez de la página de fallo cruda que renderiza un error lanzado aquí.
+     */
+    if (event.request.method !== 'GET' && guard.capability) {
+      const membership = membershipIn(event.locals.user, guard.householdId);
+      if (!can(membership?.role, guard.capability)) {
+        error(403, 'Esta parte la lleva la familia.');
+      }
+    }
   }
 
   const response = await resolve(event);
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'same-origin');
   response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // Una respuesta a algo que no es GET puede llevar dentro algo que se enseña
+  // UNA sola vez: la contraseña provisional del alta viaja así, en el resultado
+  // de la acción. Por semántica HTTP esa respuesta ya no es cacheable sin
+  // frescura declarada, así que esto es cinturón sobre tirantes; en un
+  // dispositivo compartido —el ordenador de la cocina— cuesta una línea. Los
+  // GET no se tocan: ahí el service worker tiene que poder guardar lo que
+  // guarda.
+  if (event.request.method !== 'GET') response.headers.set('Cache-Control', 'no-store');
   return response;
 };

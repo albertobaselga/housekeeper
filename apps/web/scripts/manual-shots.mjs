@@ -86,6 +86,12 @@ const DEVICES = {
 
 const hogar = (ruta) => `/h/${HOUSEHOLD}${ruta}`;
 
+// El acuerdo de Ana en la fixture. Contrato va en pestañas y, con dos empleadas
+// en la casa, `/employment` a secas es la PORTADA: hay que decir de quién es el
+// expediente o las capturas de dentro no llegan a existir.
+const ANA = '12000000-0000-4000-8000-000000000001';
+const expediente = (pestana = '') => hogar(`/employment${pestana}?empleada=${ANA}`);
+
 // ── Utilidades de puesta en escena ─────────────────────────────────────────
 
 /**
@@ -115,19 +121,18 @@ async function desplegar(page, texto) {
 }
 
 /**
- * Abre el editor «Versión nueva» del contrato de una persona concreta. Se busca
- * por nombre y no «el primero»: el hogar tiene varios contratos vivos y el alta
- * de la captura de Personal mete uno más por delante.
+ * Abre el editor de condiciones. La pestaña enseña ya a UNA sola persona —la
+ * que dice `?empleada=`—, así que aquí no hay que buscar ficha de nadie: el
+ * editor es el único `<details>` llamado «Cambiar las condiciones». Sus
+ * apartados son `<legend>`, no encabezados: los `<h3>` de esta pantalla son los
+ * de «Lo que rige hoy», que es justo lo que estas capturas NO quieren retratar.
  */
-async function abrirEditorDeVersion(page, persona = 'Ana') {
-  const ficha = page.locator('article', { has: page.getByText(persona, { exact: true }) }).first();
-  const boton = ficha.getByRole('button', { name: 'Cambiar las condiciones' }).first();
-  await boton.waitFor({ state: 'visible', timeout: 15_000 });
-  if ((await boton.getAttribute('aria-expanded')) !== 'true') await boton.click();
-  await ficha.locator('h3:has-text("Versión nueva")').first().waitFor({ timeout: 15_000 });
+async function abrirEditorDeVersion(page) {
+  await desplegar(page, 'Cambiar las condiciones');
+  await page.locator('legend:has-text("Lo básico")').first().waitFor({ timeout: 15_000 });
   // El horario es lo que la captura de «Horario» tiene que enseñar entero: si
   // el borrador nace sin declararlo, no hay tabla de siete días que retratar.
-  const declara = ficha.locator('input[name="schedule.declared"]').first();
+  const declara = page.locator('input[name="schedule.declared"]').first();
   if ((await declara.count()) > 0 && !(await declara.isChecked())) await declara.check();
   await page.waitForTimeout(400);
 }
@@ -302,40 +307,47 @@ const CAPTURAS = [
   },
 
   // ── Contrato (familia) ───────────────────────────────────────────────────
-  { nombre: 'familia-contrato', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/employment') },
+  { nombre: 'familia-contrato', cuenta: 'alberto', aparato: 'escritorio', ruta: expediente() },
   {
+    // La elección de persona ya no es una tira de chips dentro del expediente:
+    // es la portada del hogar, que es por donde se entra a Contrato.
     nombre: 'familia-contrato-empleadas',
     cuenta: 'alberto',
     aparato: 'escritorio',
     ruta: hogar('/employment'),
-    foco: 'nav[aria-label="Elegir de quién es el expediente"]'
+    foco: 'h2:has-text("El expediente de cada una")'
   },
   {
     nombre: 'familia-contrato-cuenta',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
+    ruta: expediente(),
     foco: 'h2:has-text("Lo que va sumando")'
   },
   {
+    // Las versiones se mudaron a la pestaña del contrato, donde se pactan, y
+    // dentro de ella al historial plegado del final.
     nombre: 'familia-contrato-versiones',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
-    foco: 'h2:has-text("Versiones y cambios de salario")'
+    ruta: expediente('/acuerdo'),
+    async preparar(page) {
+      await desplegar(page, 'El contrato, versión a versión');
+    },
+    foco: 'summary:has-text("El contrato, versión a versión")'
   },
   {
     nombre: 'familia-contrato-historial',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
+    ruta: expediente('/pagos'),
     foco: 'h2:has-text("Historial con pagos")'
   },
   {
     nombre: 'familia-vacaciones',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment'),
+    ruta: expediente('/vacaciones'),
     foco: 'h2:has-text("Días disfrutados")'
   },
   {
@@ -346,36 +358,38 @@ const CAPTURAS = [
   },
 
   // ── El acuerdo (solo quien administra) ───────────────────────────────────
-  { nombre: 'familia-acuerdo', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/employment/acuerdo') },
+  // La pestaña enseña a UNA persona: sin decir cuál se retrataría a quien
+  // encabece la lista, que cambia en cuanto el alta de más abajo mete a Elena.
+  { nombre: 'familia-acuerdo', cuenta: 'alberto', aparato: 'escritorio', ruta: expediente('/acuerdo') },
   {
     nombre: 'familia-acuerdo-version',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment/acuerdo'),
+    ruta: expediente('/acuerdo'),
     async preparar(page) {
       await abrirEditorDeVersion(page);
     },
-    foco: 'h3:has-text("Trabajo extra"), h2:has-text("Trabajo extra")'
+    foco: 'legend:has-text("Trabajo extra")'
   },
   {
     nombre: 'familia-acuerdo-horario',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment/acuerdo'),
+    ruta: expediente('/acuerdo'),
     async preparar(page) {
       await abrirEditorDeVersion(page);
     },
-    foco: 'h3:has-text("Horario"), h2:has-text("Horario")'
+    foco: 'legend:has-text("Horario")'
   },
   {
     nombre: 'familia-acuerdo-complementos',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/employment/acuerdo'),
+    ruta: expediente('/acuerdo'),
     async preparar(page) {
       await abrirEditorDeVersion(page);
     },
-    foco: 'h3:has-text("Complementos"), h2:has-text("Complementos")'
+    foco: 'legend:has-text("Complementos")'
   },
 
   // ── Calendario, contactos y emergencias ──────────────────────────────────
@@ -435,19 +449,24 @@ const CAPTURAS = [
   },
   { nombre: 'familia-personal', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/personal') },
   {
+    // El alta salió de Personal —allí solo queda el enlace— y vive en su propia
+    // ruta, en dos etapas: primero quién entra, después sus condiciones. La
+    // captura recorre las dos y retrata la tercera pantalla, la de la entrega.
     nombre: 'familia-personal-alta',
     cuenta: 'alberto',
     aparato: 'escritorio',
-    ruta: hogar('/personal'),
+    ruta: hogar('/employment/alta'),
     async preparar(page, estado) {
-      const hoy = new Date().toISOString().slice(0, 10);
+      // Etapa 1: quién es. No escribe nada todavía.
       await page.locator('input[name="displayName"]').first().fill('Elena');
       await page.locator('input[name="username"]').first().fill('elena');
       await page.locator('input[name="email"]').first().fill('elena@casaroble.invalid');
-      await page.locator('input[name="startsOn"]').first().fill(hoy);
+      await page.getByRole('button', { name: 'Seguir con sus condiciones' }).first().click();
+      await page.waitForLoadState('domcontentloaded');
+      // Etapa 2: sus condiciones. La fecha, la jornada, los días de vacaciones
+      // y el motivo vienen ya puestos; el salario es lo único que falta.
       await page.locator('input[name="monthlySalary"]').first().fill('1.400,00');
-      await page.locator('input[name="reason"]').first().fill('Alta del contrato');
-      await page.getByRole('button', { name: 'Crear la cuenta' }).first().click();
+      await page.getByRole('button', { name: 'Dar de alta con su contrato' }).first().click();
       await page.waitForLoadState('domcontentloaded');
       await asentar(page);
       // La contraseña provisional se enseña UNA sola vez: se apunta aquí para
@@ -462,12 +481,15 @@ const CAPTURAS = [
         console.error('  (el alta no entregó usuario y contraseña)');
       }
     },
-    foco: 'h2:has-text("Entra alguien nuevo en la casa")'
+    foco: 'h2:has-text("ya puede entrar")'
   },
   { nombre: 'familia-cuenta', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/account') },
 
   // ── Miembro de la familia y apoyo ────────────────────────────────────────
-  { nombre: 'miembro-contrato', cuenta: 'marta', aparato: 'escritorio', ruta: hogar('/employment') },
+  // Lo que la familia no administradora ve DE VERDAD son las jornadas y los
+  // gastos pendientes, que viven en Conceptos desde el rediseño en pestañas:
+  // en `/employment` a secas aterriza ahora en la portada del hogar.
+  { nombre: 'miembro-contrato', cuenta: 'marta', aparato: 'escritorio', ruta: hogar('/employment/conceptos') },
   { nombre: 'apoyo-sin-acceso', cuenta: 'lucia', aparato: 'escritorio', ruta: hogar('/employment') },
 
   // ── La interna, en el ordenador ──────────────────────────────────────────
@@ -546,14 +568,14 @@ const CAPTURAS = [
     nombre: 'interna-jornada-movil',
     cuenta: 'ana',
     aparato: 'movil',
-    ruta: hogar('/employment'),
+    ruta: hogar('/employment/conceptos'),
     foco: 'h3:has-text("Registrar jornada extra")'
   },
   {
     nombre: 'interna-gasto-foto-movil',
     cuenta: 'ana',
     aparato: 'movil',
-    ruta: hogar('/employment'),
+    ruta: hogar('/employment/conceptos'),
     foco: 'text=Hacer la foto ahora'
   },
   {

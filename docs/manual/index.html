@@ -1298,24 +1298,51 @@ thead th { border-top: 0; }
     final, para que nadie busque aquí un botón que vive en otro sitio.
   </p>
 
-  <h4>Dar de alta a alguien: la cuenta y su contraseña, en un paso</h4>
+  <h4>Dar de alta a alguien: dos pasos y una contraseña que se dicta</h4>
   <p>
-    Arriba está <span class="ui">Entra alguien nuevo en la casa</span>. Se rellena una
-    vez y sale de ahí con acceso y, si quieres, con el contrato ya registrado.
+    El alta no se hace aquí dentro: añadir a una persona es una operación de la casa, no
+    de este expediente. Vive en <span class="ui">Contrato</span>, en la lista de personas,
+    bajo <span class="ui">Añadir una persona</span> —y esta pantalla lleva el mismo botón
+    para no obligar a dar el rodeo—. Son dos pasos: primero quién entra, después sus
+    condiciones.
   </p>
   <ol class="pasos">
-    <li><span class="ui">Nombre visible</span>: cómo se la llamará en toda la casa.</li>
-    <li><span class="ui">Nombre de usuario (con esto entra)</span>: lo que teclea para entrar.</li>
-    <li><span class="ui">Correo</span>: solo identifica la cuenta. La pantalla lo dice para que nadie se preocupe: <strong>«a nadie se le escribe nunca»</strong>. Si esa persona no tiene correo, vale algo como <span class="ui">nombre@casa.local</span>.</li>
-    <li><span class="ui">Qué es en la casa</span>: <span class="ui">Empleada interna</span> o <span class="ui">Apoyo del hogar</span>.</li>
-    <li><span class="ui">Registrar ahora su contrato</span>, marcada de serie: debajo aparecen la fecha de inicio, el salario mensual, la jornada semanal, los días de vacaciones al año y el motivo. Si la desmarcas se crea solo el acceso y las condiciones se pactan cuando toque.</li>
-    <li><span class="ui">Crear la cuenta</span>.</li>
+    <li>
+      <strong>Paso 1, <span class="ui">Quién entra en la casa</span>.</strong>
+      <span class="ui">Nombre visible</span> (cómo se la llamará en toda la casa),
+      <span class="ui">Nombre de usuario (con esto entra)</span>,
+      <span class="ui">Correo</span> —solo identifica la cuenta, y la pantalla lo dice para
+      que nadie se preocupe: <strong>«a nadie se le escribe nunca»</strong>; si esa persona
+      no tiene, vale algo como <span class="ui">nombre@casa.local</span>— y
+      <span class="ui">Qué es en la casa</span>: <span class="ui">Empleada interna</span> o
+      <span class="ui">Apoyo del hogar</span>. El apoyo del hogar <strong>no genera
+      contrato</strong> ni línea en la lista de personas empleadas: se le crea el acceso y
+      nada más. <span class="ui">Seguir con sus condiciones</span> pasa al segundo paso, y
+      hasta ahí no se ha guardado nada.
+    </li>
+    <li>
+      <strong>Paso 2, <span class="ui">Sus condiciones</span>.</strong> La fecha en que
+      <span class="ui">El contrato empieza el</span>, el
+      <span class="ui">Salario mensual</span>, la
+      <span class="ui">Jornada semanal (minutos)</span>, los
+      <span class="ui">Días de vacaciones al año</span> y
+      <span class="ui">Por qué se pacta así</span>. Plegado debajo va lo que casi nunca se
+      sabe el primer día —el <span class="ui">Precio del día de vacaciones no
+      disfrutado</span> y qué pasa con los días arrastrados—: se puede dejar vacío y
+      pactarlo más adelante.
+    </li>
+    <li>
+      <span class="ui">Dar de alta con su contrato</span> cierra el alta entera. Si todavía
+      no hay condiciones que pactar, <span class="ui">Sólo el acceso, las condiciones más
+      tarde</span> crea la cuenta y deja a esa persona esperando en la lista de Contrato,
+      bajo <span class="ui">Ya están en la casa y falta pactarlo</span>.
+    </li>
   </ol>
   <figure class="captura">
     <div class="ventana">
-      <div class="ventana-barra"><i></i><i></i><i></i><span>Personal · Casa Roble</span></div>
+      <div class="ventana-barra"><i></i><i></i><i></i><span>Añadir una persona · Casa Roble</span></div>
       <img src="capturas/familia-personal-alta.png" loading="lazy" width="2560" height="1600"
-           alt="Formulario «Entra alguien nuevo en la casa» con los campos Nombre visible, Nombre de usuario, Correo y Qué es en la casa, la casilla marcada Registrar ahora su contrato con las condiciones iniciales, y encima el recuadro de entrega: «Ya puede entrar», con el usuario y la contraseña provisional en letra grande y el aviso de que no vuelve a mostrarse.">
+           alt="Pantalla «Añadir una persona a la casa» con el alta ya hecha: el recuadro «Elena ya puede entrar» con el usuario y la contraseña provisional en letra grande, el aviso de que esa contraseña no vuelve a mostrarse ni se guarda en ninguna parte, la nota de que el trabajo extra y los complementos se pactan luego en «Cambiar las condiciones», y los botones Abrir su expediente y Volver a la lista de personas.">
     </div>
     <figcaption>
       La contraseña sale en pantalla, grande y en letra de máquina, porque hay que
@@ -1342,47 +1369,63 @@ thead th { border-top: 0; }
   <h3 id="fa-contrato">Contrato: lo pactado, la nómina y los gastos</h3>
   <p>
     <span class="ui">Contrato</span> reúne todo lo económico de la relación laboral con
-    la empleada: el contrato y sus versiones, las jornadas extra,
-    los gastos, las <strong>vacaciones</strong>, la <strong>cuenta de cada mes</strong>
-    y los pagos. Arriba, la tira de resumen:
-    <span class="ui">Mes en curso</span>, <span class="ui">Total salarial</span>,
-    <span class="ui">Reembolsos</span> y <span class="ui">Total previsto</span>. Y en
-    medio de la página, dos enlaces que llevan a sus pantallas propias:
-    <span class="ui">Administrar el contrato</span> (solo la administración) y
-    <span class="ui">Ver mis condiciones</span> (solo la empleada, sobre su contrato).
+    quien trabaja en la casa: lo pactado y sus versiones, las jornadas extra, los gastos,
+    las <strong>vacaciones</strong>, la <strong>cuenta de cada mes</strong> y los pagos.
+    Se entra por la <strong>lista de personas de la casa</strong> —quién trabaja aquí, lo
+    que se le debe a cada una y el total pendiente de pago—, y desde ahí
+    <span class="ui">Abrir su expediente</span> lleva al de una persona.
+    <span class="ui">Añadir una persona</span> es lo que hay al lado, para cuando entra
+    alguien nuevo.
+  </p>
+  <p>
+    El expediente va en cinco pestañas, y arriba una barra dice siempre de quién es lo que
+    estás mirando, con <span class="ui">Cambiar</span> para volver a la lista:
+    <span class="ui">Resumen</span> (lo que va sumando el mes y la última cuenta),
+    <span class="ui">Conceptos</span> (jornadas extra, gastos e importes sueltos que
+    esperan una decisión), <span class="ui">Vacaciones</span>,
+    <span class="ui">Pagos</span> (la cuenta de cada mes con sus pagos y su documento) y
+    <span class="ui">Contrato</span>, que es donde viven las condiciones.
   </p>
   <figure class="captura">
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
       <img src="capturas/familia-contrato.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla Contrato de Alberto: cabecera con el campo Vencimiento y el botón Empezar la cuenta de agosto 2026, tira de resumen con Total previsto 1.430 euros, tarjeta Pendientes de acordar o compensar con botones Decidir compensación y Aceptar, y a la derecha los saldos Tiempo y compensación con el descanso compensatorio como crédito permanente sin caducidad y el anticipo pendiente de 200 de 400 euros.">
+           alt="Resumen del expediente de Ana: la barra que dice de quién es con el botón Cambiar, la barra de pestañas Resumen, Conceptos, Vacaciones, Pagos y Contrato, la tira con el mes en curso y el total previsto de 1.430 euros, la tarjeta «Lo que va sumando agosto 2026» con sus líneas y su total, la tarjeta de la última cuenta con lo que queda por pagar, y a la derecha los saldos Tiempo y compensación con el descanso compensatorio como crédito permanente sin caducidad y el anticipo pendiente de 200 de 400 euros.">
     </div>
     <figcaption>
-      Las decisiones, arriba. A la derecha, los saldos: el descanso compensatorio es un
+      El Resumen de una persona: la cuenta del mes con cada importe diciendo de dónde
+      sale. A la derecha, los saldos: el descanso compensatorio es un
       <strong>crédito permanente, sin caducidad</strong>, y el anticipo muestra lo que
       queda por devolver.
     </figcaption>
   </figure>
   <div class="fila">
     <div class="texto">
-      <h4>Si trabaja más de una persona en la casa</h4>
+      <h4>La lista de personas: por dónde se entra</h4>
       <p>
-        Cuando hay <strong>varios contratos</strong>, arriba aparece una tira de nombres
-        para elegir de quién es el expediente que estás mirando. Se toca uno y toda la
-        pantalla —las decisiones, la cuenta del mes, las versiones, las vacaciones— pasa
-        a ser la suya. Los epígrafes lo dicen para que no haya dudas:
-        <span class="ui">Contrato de Ana</span>, <span class="ui">Contrato de
-        Rocío</span>. Con una sola persona esa tira no aparece: no hay nada que elegir.
+        Arriba, dos cifras: lo que la casa <strong>va sumando este mes</strong> y lo que
+        está <strong>pendiente de pago</strong>, que son dos preguntas distintas —el mes en
+        curso es una previsión; lo pendiente es una deuda de cuentas ya cerradas—. Cuando
+        no se debe nada, ahí pone <span class="ui">Al día</span>, no «0,00 €».
+      </p>
+      <p>
+        Debajo, una línea por persona: lo que se le debe y desde cuándo, lo que va sumando
+        su mes, y <span class="ui">Abrir su expediente</span>. Si hay una cuenta vencida, la
+        línea lo dice con su distintivo y ofrece <span class="ui">Registrar pago</span>
+        directamente. La lista aparece <strong>siempre</strong>, también en una casa con una
+        sola persona empleada: es el sitio donde está la casa entera.
       </p>
       <p>
         Los contratos ya terminados siguen ahí, marcados <span class="ui">(acuerdo
-        terminado)</span>: el historial de quien trabajó antes no se va de la casa
-        cuando se va la persona.
+        terminado)</span>: el historial de quien trabajó antes no se va de la casa cuando se
+        va la persona. Y quien tiene acceso pero todavía ningún contrato aparece aparte,
+        bajo <span class="ui">Ya están en la casa y falta pactarlo</span>.
       </p>
       <p>
-        <strong>La empleada nunca ve esa tira.</strong> A su móvil no llega más contrato
-        que el suyo, así que no hay nada entre lo que elegir ni nada que se le pueda
-        colar de otra compañera.
+        <strong>La empleada nunca ve esta lista.</strong> A su móvil no llega más contrato
+        que el suyo, así que entra directa a su expediente y no hay nada que se le pueda
+        colar de otra compañera. La familia que no administra sí ve la lista y el camino a
+        cada expediente, pero sin una sola cifra.
       </p>
     </div>
   </div>
@@ -1390,14 +1433,23 @@ thead th { border-top: 0; }
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
       <img src="capturas/familia-contrato-empleadas.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla Contrato con dos empleadas: bajo la cabecera, una tira de nombres para elegir de quién es el expediente, con el primero marcado como activo, y debajo la pantalla entera referida a esa persona.">
+           alt="Lista de personas de Contrato: arriba, lo que la casa va sumando este mes y lo que está pendiente de pago; debajo, el bloque «El expediente de cada una» con una línea por empleada —lo que se le debe o «Al día», lo que va sumando su mes y el botón Abrir su expediente— y, al final, la tarjeta para añadir una persona a la casa.">
     </div>
-    <figcaption>Una tira de nombres arriba, y la pantalla entera cambia de persona.</figcaption>
+    <figcaption>
+      Primero la casa, después la persona: lo que se debe arriba y una línea por cada
+      expediente debajo.
+    </figcaption>
   </figure>
+  <p>
+    Lo que se decide y lo que se paga vive en dos pestañas del expediente:
+    <span class="ui">Conceptos</span> para lo que espera una decisión y
+    <span class="ui">Pagos</span> para la cuenta de cada mes.
+  </p>
   <ol class="pasos">
-    <li><strong>Jornada extra solicitada:</strong> <span class="ui">Aceptar</span> deja constancia del contrato previo. Cuando ya está trabajada, <span class="ui">Decidir compensación</span>: eliges <span class="ui">Pagarla</span> o <span class="ui">Darle descanso</span>, escribes el <span class="ui">Motivo</span> y pulsas <span class="ui">Confirmar la decisión</span>. La tarifa se congela con la versión del contrato vigente el día que se trabajó.</li>
-    <li><strong>Gastos:</strong> cada gasto adelantado por la empleada se abre con <span class="ui">Revisar</span> y se decide con <span class="ui">Aprobar</span> o <span class="ui">Rechazar</span>, con su motivo. Los aprobados entran como reembolso en la cuenta del mes. Si traen foto, <span class="ui">Ver el justificante</span> la abre: en el propio gasto pendiente —para poder mirarla <em>antes</em> de decidir— y también después, en la línea de la cuenta del mes.</li>
-    <li><strong>La cuenta del mes:</strong> <span class="ui">Empezar la cuenta de agosto 2026</span> (eliges antes el <span class="ui">Vencimiento</span>), después <span class="ui">Cerrar el mes</span> —«al cerrar el mes se calculan las líneas y los importes quedan fijados: ya no cambian aunque cambie el contrato»— y por último <span class="ui">Registrar pago</span> (<span class="ui">Transferencia</span>, <span class="ui">Efectivo</span>, <span class="ui">Bizum</span>, <span class="ui">Mixto</span> u <span class="ui">Otro</span>), con el atajo <span class="ui">Pagar todo</span>.</li>
+    <li><strong>Jornada extra solicitada</strong> (en <span class="ui">Conceptos</span>):
+      <span class="ui">Aceptar</span> deja constancia del contrato previo. Cuando ya está trabajada, <span class="ui">Decidir compensación</span>: eliges <span class="ui">Pagarla</span> o <span class="ui">Darle descanso</span>, escribes el <span class="ui">Motivo</span> y pulsas <span class="ui">Confirmar la decisión</span>. La tarifa se congela con la versión del contrato vigente el día que se trabajó.</li>
+    <li><strong>Gastos</strong> (en <span class="ui">Conceptos</span>): cada gasto adelantado por la empleada se abre con <span class="ui">Revisar</span> y se decide con <span class="ui">Aprobar</span> o <span class="ui">Rechazar</span>, con su motivo. Los aprobados entran como reembolso en la cuenta del mes. Si traen foto, <span class="ui">Ver el justificante</span> la abre: en el propio gasto pendiente —para poder mirarla <em>antes</em> de decidir— y también después, en la línea de la cuenta del mes.</li>
+    <li><strong>La cuenta del mes</strong> (en <span class="ui">Pagos</span>): <span class="ui">Empezar la cuenta de agosto 2026</span> (eliges antes el <span class="ui">Vencimiento</span>), después <span class="ui">Cerrar el mes</span> —«al cerrar el mes se calculan las líneas y los importes quedan fijados: ya no cambian aunque cambie el contrato»— y por último <span class="ui">Registrar pago</span> (<span class="ui">Transferencia</span>, <span class="ui">Efectivo</span>, <span class="ui">Bizum</span>, <span class="ui">Mixto</span> u <span class="ui">Otro</span>), con el atajo <span class="ui">Pagar todo</span>.</li>
   </ol>
   <figure class="captura">
     <div class="ventana">
@@ -1427,69 +1479,80 @@ thead th { border-top: 0; }
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
       <img src="capturas/familia-contrato-versiones.png" loading="lazy" width="2560" height="1600"
-           alt="Tarjeta «Versiones y cambios de salario» con la v1 (desde el 3 feb 2025, 1.400 euros, Histórica) y la v2 (desde el 1 abr 2025, 1.500 euros, Vigente, +100 euros), cada una resumiendo sus días de vacaciones, sus tarifas de trabajo extra y sus complementos; encima, el botón Administrar el contrato.">
+           alt="El bloque «El contrato, versión a versión» desplegado: la v1 desde el 3 feb 2025 con 1.400 euros y la v2 desde el 1 abr 2025 con 1.500 euros, cada una con su motivo y resumiendo sus días de vacaciones, hasta cuándo duran los días arrastrados, el precio del día no disfrutado, sus tarifas de trabajo extra y sus complementos.">
     </div>
     <figcaption>
-      Cada versión del contrato, con su fecha, su motivo, sus tarifas y sus
-      complementos. La diferencia de salario aparece calculada
-      (<span class="ui">+100,00 €</span>).
+      El historial va plegado al final de la pestaña: cada versión del contrato con su
+      fecha, su motivo, sus tarifas y sus complementos. La diferencia de salario aparece
+      calculada (<span class="ui">+100,00 €</span>).
     </figcaption>
   </figure>
   <figure class="captura">
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Contrato · Casa Roble</span></div>
       <img src="capturas/familia-contrato-historial.png" loading="lazy" width="2560" height="1600"
-           alt="Historial con pagos y confirmación: la cuenta de marzo 2025 con el chip Pagada y cobro confirmado, desglosada en salario base, domingo trabajado, dos horas extra, descanso compensado, cuota del anticipo, dos reembolsos y el pago por transferencia.">
+           alt="Historial con pagos y confirmación: una fila plegada por mes, cada una con el nombre del mes, su importe, su chip de estado y el botón PDF; el mes desplegado enseña su desglose línea a línea —salario base, domingo trabajado, dos horas extra, descanso compensado, cuota del anticipo y dos reembolsos—, el pago por transferencia y lo que queda pendiente.">
     </div>
     <figcaption>
-      <span class="ui">Historial con pagos y confirmación</span>: cada mes cerrado con
-      su chip (<span class="chip exito">Pagada y cobro confirmado</span>,
-      <span class="chip alerta">Pendiente de pago</span>…), línea a línea, y cada línea
-      enlazada con el hecho que la originó.
+      <span class="ui">Historial con pagos y confirmación</span>: <strong>una fila por
+      mes</strong>, plegada. En la fila cerrada, lo que se viene a mirar —el mes, el
+      importe, el estado (<span class="chip exito">Pagada y cobro confirmado</span>,
+      <span class="chip alerta">Pendiente de pago</span>…) y el botón
+      <span class="ui">PDF</span> del documento de pago, que no obliga a desplegar
+      nada—. Al tocar el mes se abre su detalle: cada línea con el hecho que la
+      originó, los pagos registrados y lo que queda pendiente. Se pueden tener dos
+      meses abiertos a la vez, que es lo que se hace al comparar una discrepancia.
     </figcaption>
   </figure>
   <div class="tarjeta">
-    <h4>Confirmación independiente</h4>
+    <h4>Pagar y confirmar el cobro son dos hechos distintos</h4>
     <p>
       Registrar una transferencia no confirma por sí solo que la otra parte la haya
-      recibido: el cobro lo confirma la empleada por separado. Las dos huellas quedan
-      registradas.
+      recibido: el cobro lo confirma la empleada por su cuenta, desde su expediente.
+      Las dos huellas quedan registradas y con su fecha. No es una pantalla aparte:
+      cada cuenta de <span class="ui">Pagos</span> lo dice sobre su mes —«La empleada
+      aún no ha confirmado el cobro» o el chip
+      <span class="chip exito">Pagada y cobro confirmado</span>—, que es donde se
+      registra el pago y donde ella confirma.
     </p>
   </div>
 
   <h3 id="fa-acuerdo">Condiciones del contrato: lo que se pacta, y cómo se cambia</h3>
   <p>
-    Desde <span class="ui">Contrato</span> → <span class="ui">Administrar el contrato</span>
-    se da de alta y se edita lo pactado con la empleada. Es la pantalla donde vive el
-    salario, la jornada, los días de vacaciones y —lo más importante— <strong>qué
-    trabajo de más admite este contrato y a cuánto se paga cada cosa</strong>. Su
-    subtítulo lo resume: <em>«Cada cambio crea una versión nueva. Lo ya pactado no se
-    reescribe nunca.»</em>
+    Es la última pestaña del expediente y enseña <strong>lo que rige hoy</strong> para esa
+    persona: el salario al mes, la jornada, los días de vacaciones al año, el precio del
+    día de vacaciones no disfrutado y hasta cuándo duran los días arrastrados. Debajo, el
+    horario pactado, los complementos y —lo más importante— <strong>qué trabajo de más
+    admite este contrato y a cuánto se paga cada cosa</strong>.
+  </p>
+  <p>
+    Se cambia por un único camino, <span class="ui">Cambiar las condiciones</span>, que
+    dice en una frase lo que va a pasar: <em>«Las condiciones no se corrigen: se apilan. Lo
+    que pactes aquí entra en vigor en la fecha que indiques y lo anterior queda como
+    histórico consultable, porque es lo que se aplicó a lo ya trabajado.»</em> Al final,
+    plegado, <span class="ui">El contrato, versión a versión</span>.
   </p>
   <figure class="captura">
     <div class="ventana">
       <div class="ventana-barra"><i></i><i></i><i></i><span>Condiciones del contrato · Casa Roble</span></div>
       <img src="capturas/familia-acuerdo.png" loading="lazy" width="2560" height="1600"
-           alt="Pantalla Condiciones del contrato con el contrato de Ana desde el 3 feb 2025 marcado como Activo: la v2 vigente de 1.500 euros resumiendo su catálogo (Hora extraordinaria desactivado · no lo ve, Festivo o descanso trabajado 80 euros por jornada, Jornada extra 50 euros por jornada, Noche de guardia 50 euros cada vez, Acompañamiento a médico sin tarifa · no la ve, Complemento de antigüedad 30 euros al mes que suma al pago, Seguro médico privado 45 euros al mes que paga la casa, Plus de transporte retirado), la v1 histórica de 1.400 euros, el botón Cambiar las condiciones y la tarjeta Nuevo contrato.">
+           alt="Pantalla Condiciones del contrato de Ana: la barra que dice de quién es el expediente con el botón Cambiar, la barra de pestañas, y la tarjeta «Lo que rige hoy» —vigente desde su fecha, con el chip Contrato activo— que lista el salario al mes de 1.500 euros, la jornada, los 30 días de vacaciones al año, el día de vacaciones no disfrutado y hasta cuándo duran los días arrastrados; debajo, el horario pactado, el trabajo extra con su tarifa concepto a concepto diciendo cuál ve la empleada y cuál no, y los complementos; al final, plegados, «Cambiar las condiciones» y «El contrato, versión a versión».">
     </div>
     <figcaption>
-      Cada versión, con todo su catálogo escrito en plata: qué está activo, qué está
-      desactivado, qué no tiene tarifa y qué complementos hay. Junto a cada concepto,
-      la app dice si la empleada lo ve o no.
+      Lo que rige hoy, con aire entre cada condición. El catálogo escrito en plata: qué
+      está activo, qué está desactivado, qué no tiene tarifa y qué complementos hay. Junto
+      a cada concepto, la app dice si la empleada lo ve o no.
     </figcaption>
   </figure>
-  <h4>Dar de alta el contrato</h4>
+  <h4>Pactar el contrato de quien ya está en la casa</h4>
   <p>
-    Si el hogar todavía no tiene contrato con esa persona,
-    <span class="ui">Nuevo contrato</span> → <span class="ui">Dar de alta un contrato</span>
-    pide la <span class="ui">Empleada</span>, la fecha en que
-    <span class="ui">El contrato empieza</span>, desde cuándo rige
-    <span class="ui">La primera versión</span>, el <span class="ui">Salario mensual</span>,
-    la <span class="ui">Jornada semanal (minutos)</span>, las
-    <span class="ui">Vacaciones al año (días naturales)</span> y un
-    <span class="ui">Motivo</span>. Debajo, los mismos catálogos que se explican aquí.
-    Cuando ya hay un contrato activo para todo el mundo, la tarjeta lo dice: «No hay
-    ninguna empleada interna sin contrato activo.»
+    Una persona puede tener acceso y no tener contrato: acaba de llegar, o vuelve después
+    de que el anterior terminara. En la lista de personas de
+    <span class="ui">Contrato</span> aparece bajo <span class="ui">Ya están en la casa y
+    falta pactarlo</span>, con una línea que distingue las dos historias, porque no se
+    deciden igual. <span class="ui">Pactar su contrato</span> lleva directamente al segundo
+    paso del alta —sólo las condiciones, porque el acceso ya existe— y al guardarlo esa
+    persona pasa a tener su expediente como el resto.
   </p>
   <h4>Tipos de trabajo extra</h4>
   <p>
@@ -1755,16 +1818,29 @@ thead th { border-top: 0; }
   <div class="tarjeta">
     <h4>Anular, no borrar</h4>
     <p>
-      Un concepto mal apuntado se <span class="ui">Anular</span> con su motivo y
-      <strong>se queda en la lista</strong>, con quién lo anuló y por qué, sin contar en
-      ningún total. Lo que ya entró en una cuenta <strong>cerrada</strong> no se puede
-      anular: para corregirlo se apunta el concepto contrario en un mes abierto, y la
-      aplicación lo dice así cuando lo intentas.
+      Un concepto mal apuntado se <span class="ui">Anular</span> con su motivo. No se
+      borra: <strong>queda en el expediente</strong> con quién lo anuló y por qué —sale
+      así en la copia del expediente—, deja de contar en cualquier total y sale de esta
+      lista, porque ya no hay nada que decidir sobre él. Lo que ya entró en una cuenta
+      <strong>cerrada</strong> no se puede anular: para corregirlo se apunta el concepto
+      contrario en un mes abierto, y la aplicación lo dice así cuando lo intentas.
+    </p>
+  </div>
+  <div class="tarjeta">
+    <h4>Esta lista es una bandeja, no un archivo</h4>
+    <p>
+      Aquí solo está lo que <strong>todavía</strong> espera algo: lo apuntado en los
+      últimos tres meses que ninguna cuenta cerrada ha aplicado aún, y lo imputado a un
+      mes que aún no ha llegado. En cuanto una cuenta se cierra, sus conceptos pasan a
+      leerse <strong>dentro de esa cuenta</strong>, en <span class="ui">Pagos</span>,
+      que es donde viven para siempre con el resto del mes. Un adelanto de agosto ya
+      descontado en la nómina de agosto no es un concepto de septiembre, y tenerlo
+      delante cada mes solo obliga a descartarlo otra vez.
     </p>
   </div>
   <p>
     Los conceptos los apunta y los anula <strong>quien administra</strong>. La empleada
-    <strong>los ve todos</strong> —en la lista y en la cuenta de su mes, con su etiqueta
+    <strong>ve los suyos</strong> —en la lista y en la cuenta de su mes, con su etiqueta
     y su motivo—, incluidos los que solo constan. Enterarse de que se ha decidido algo
     sobre su dinero no es un detalle: es el motivo por el que esto existe.
   </p>
@@ -2180,8 +2256,8 @@ thead th { border-top: 0; }
 
   <h3 id="in-condiciones">Mis condiciones: lo que está pactado, en plata</h3>
   <p>
-    Desde <span class="ui">Contrato</span> → <span class="ui">Ver mis condiciones</span>,
-    Ana tiene su contrato explicado en lenguaje llano: <em>«Lo que está pactado ahora
+    Desde <span class="ui">Contrato</span> → <span class="ui">Condiciones</span>, que es la
+    última pestaña de su expediente, Ana tiene su contrato explicado en lenguaje llano: <em>«Lo que está pactado ahora
     mismo, tal y como se aplica a tu pago.»</em> Arriba, <span class="ui">Lo básico</span>
     —salario al mes, jornada y vacaciones al año— con la versión y la fecha desde la que
     rige.
@@ -2738,11 +2814,12 @@ thead th { border-top: 0; }
     <dt>Entra alguien nuevo a trabajar. ¿Por dónde empiezo?</dt>
     <dd>
       <p>
-        <span class="ui">Ajustes del hogar</span> → <span class="ui">Ver el
-        personal</span> → <span class="ui">Entra alguien nuevo en la casa</span>. Con un
-        solo formulario se crea el acceso y, si dejas marcada la casilla
-        <span class="ui">Registrar ahora su contrato</span>, también sus condiciones
-        iniciales.
+        <span class="ui">Contrato</span> → <span class="ui">Añadir una persona</span>, en la
+        lista de personas de la casa. Son dos pasos: primero quién entra —nombre, usuario,
+        correo y qué es en la casa— y después sus condiciones —cuándo empieza el contrato,
+        salario, jornada y días de vacaciones—. Si todavía no hay condiciones que pactar,
+        <span class="ui">Sólo el acceso, las condiciones más tarde</span> crea la cuenta y
+        la deja esperando en esa misma lista.
       </p>
       <p>
         Al terminar, la pantalla te da <strong>el usuario y una contraseña</strong>:
@@ -2822,8 +2899,9 @@ thead th { border-top: 0; }
     <dt>Hay que subirle el sueldo. ¿Dónde se cambia?</dt>
     <dd>
       <p>
-        En <span class="ui">Contrato</span> → <span class="ui">Administrar el contrato</span>
-        → <span class="ui">Cambiar las condiciones</span>. El formulario ya viene
+        En <span class="ui">Contrato</span> → su expediente → la pestaña
+        <span class="ui">Contrato</span> → <span class="ui">Cambiar las condiciones</span>.
+        El formulario ya viene
         relleno con lo que rige hoy: cambias el importe, pones la fecha en
         <span class="ui">Entra en vigor el</span>, escribes el motivo y pulsas
         <span class="ui">Guardar como versión nueva</span>. La versión anterior no se
@@ -2838,7 +2916,8 @@ thead th { border-top: 0; }
         tarifa. La aplicación solo enseña lo que te aplica y tiene precio, para que nadie
         cuente con un cobro que no existe. Si crees que debería estar, es una
         conversación con la familia: se añade desde
-        <span class="ui">Administrar el contrato</span> y nace como versión nueva.
+        <span class="ui">Cambiar las condiciones</span>, en la pestaña del contrato, y nace
+        como versión nueva.
       </p>
     </dd>
 

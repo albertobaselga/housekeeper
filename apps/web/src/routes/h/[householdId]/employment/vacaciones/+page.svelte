@@ -2,6 +2,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import EmploymentPersonBar from '$lib/components/employment/EmploymentPersonBar.svelte';
   import EmploymentTabs from '$lib/components/employment/EmploymentTabs.svelte';
+  import VacationCarryoverCard from '$lib/components/employment/VacationCarryoverCard.svelte';
   import VacationsCard from '$lib/components/employment/VacationsCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
@@ -26,16 +27,31 @@
   const canRecordVacation = $derived(
     employmentAgreement !== null && can(context.role, 'leave.approve')
   );
+  const canDecideCarryover = $derived(can(context.role, 'leave.approve'));
 
-  // Con `?empleada=`, su historial va primero; el resto conserva el orden del
-  // servidor (la propia primero para la empleada).
+  // La pestaña es el expediente de UNA persona: con `?empleada=` sólo se pinta
+  // la suya (historial y días de años cerrados), porque la barra de arriba dice
+  // «Expediente de X» y enseñar debajo a las demás desmentía esa frase. Sin
+  // `?empleada=` —la empleada mirando lo suyo, o un enlace viejo— se ve lo que
+  // el servidor deja ver, la propia primero.
+  const scoped = $derived(
+    Boolean(data.empleada) && (overview?.people.some((p) => p.agreementId === data.empleada) ?? false)
+  );
   const people = $derived(
     overview
-      ? [...overview.people].sort(
-          (a, b) =>
-            Number(b.agreementId === data.empleada) - Number(a.agreementId === data.empleada)
-        )
+      ? scoped
+        ? overview.people.filter((p) => p.agreementId === data.empleada)
+        : [...overview.people].sort(
+            (a, b) =>
+              Number(b.agreementId === data.empleada) - Number(a.agreementId === data.empleada)
+          )
       : []
+  );
+  const carryoverProposals = $derived(
+    overview ? (scoped ? overview.carryoverProposals.filter((p) => p.agreementId === data.empleada) : overview.carryoverProposals) : []
+  );
+  const carryoverDecisions = $derived(
+    overview ? (scoped ? overview.carryoverDecisions.filter((d) => d.agreementId === data.empleada) : overview.carryoverDecisions) : []
   );
 
   /**
@@ -72,7 +88,10 @@
       : 'El historial de cada persona, año a año, con lo anulado a la vista.'}
   />
 
-  {#if data.employment && data.employment.agreements.length > 1 && employmentAgreement}
+  <!-- La barra de persona aparece SIEMPRE que haya un contrato en pantalla, no
+       sólo con dos o más: la portada de Contrato existe también en la casa de
+       una sola empleada, y sin esta barra no había vuelta a ella. -->
+  {#if data.employment && employmentAgreement}
     <EmploymentPersonBar
       householdId={data.householdId}
       employeeLabel={data.employment.agreements.find((option) => option.id === employmentAgreement?.id)?.employeeLabel ?? 'la empleada'}
@@ -122,6 +141,17 @@
       />
     {/if}
 
+    <!-- Los años ya cerrados con días sin disfrutar: lo que todavía hay que
+         decidir, arriba del historial de lo que ya pasó. -->
+    <VacationCarryoverCard
+      householdId={data.householdId}
+      today={overview.today}
+      proposals={carryoverProposals}
+      decisions={carryoverDecisions}
+      canDecide={canDecideCarryover}
+      showPerson={!scoped && overview.people.length > 1}
+    />
+
     {#each people as person (person.agreementId)}
       <article class="card">
         <div class="section-heading">
@@ -139,10 +169,24 @@
           <p class="audit-note">{person.entitlementNote}</p>
         {/if}
 
-        {#each person.years as year (year.year)}
+        {#each person.years as year (year.index)}
           <section class="vacation-year">
-            <h3>{year.year}{year.current ? ' · este año' : ''}</h3>
+            <h3>{year.label}{year.current ? ' · en curso' : ''}</h3>
             <p class="vacation-headline">{year.headline}</p>
+            <!-- «Cuántos le tocan este año» y «cuántos lleva ganados a día de
+                 hoy» son dos cifras distintas y las dos son ciertas. La segunda
+                 es la que se pregunta quien está a mitad de año decidiendo si
+                 puede dar unos días, y lleva SIEMPRE la fecha: sin ella el
+                 número no significa nada. -->
+            {#if year.accruedNote}
+              <p class="audit-note">{year.accruedNote}</p>
+            {/if}
+            <!-- Disfrutar días por adelantado es normal y legítimo —se dan en
+                 agosto aunque el año de contrato acabe en marzo—, así que se
+                 dice como lo que es y sólo cuando ocurre. No es una alarma. -->
+            {#if year.advanceNote}
+              <p class="audit-note">{year.advanceNote}</p>
+            {/if}
             {#if year.excessNote}
               <p class="audit-note" role="status">{year.excessNote}</p>
             {/if}
@@ -168,8 +212,8 @@
               {:else}
                 <div>
                   <span>
-                    <strong>Sin días apuntados en {year.year}</strong>
-                    <small>No consta ningún periodo de vacaciones ese año.</small>
+                    <strong>Sin días apuntados</strong>
+                    <small>No consta ningún periodo de vacaciones en este año de contrato.</small>
                   </span>
                 </div>
               {/each}

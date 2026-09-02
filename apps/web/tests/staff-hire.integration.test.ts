@@ -175,6 +175,11 @@ describe.runIf(Boolean(adminUrl))('alta de personal desde la aplicación', () =>
             monthlySalaryCents: '145000',
             contractedWeeklyMinutes: 2400,
             annualVacationDays: 30,
+            // El alta no pacta el precio del día de vacaciones no disfrutado:
+            // null dice «no se pactó», que es la verdad. Un cero dejaría escrito
+            // en una fila inmutable que se acordó pagar cero euros por día.
+            unusedVacationDayRateCents: null,
+            vacationCarryoverExpiry: { mode: 'months', months: 6 },
             reason: 'Alta desde la aplicación',
             extraWorkTypes: [],
             supplements: [],

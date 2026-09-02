@@ -11,6 +11,27 @@ test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm te
 
 const phrase = (page: import('@playwright/test').Page) => page.locator('.cadence-phrase');
 
+// La «próxima vez» de una rutina tiene que estar en el futuro cuando corra la
+// prueba, o la lista dirá «vencía el …» con toda la razón. Una fecha escrita a
+// mano caduca sin avisar (esta prueba estuvo un día entera en rojo por eso), así
+// que se calcula desde el hoy de Madrid: el día 1 del mes que viene, para que la
+// frase siga diciendo «el día 1». El nombre del día y del mes salen del mismo
+// Intl en castellano que ya usan los demás e2e, en minúscula y sin coma, igual
+// que `spanishDateLabel` del dominio.
+const TODAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' }).format(new Date());
+const PROXIMA_DIA_1 = (() => {
+  const date = new Date(`${TODAY}T00:00:00Z`);
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + 1);
+  return date.toISOString().slice(0, 10);
+})();
+const PROXIMA_LABEL = (() => {
+  const date = new Date(`${PROXIMA_DIA_1}T00:00:00Z`);
+  const weekday = new Intl.DateTimeFormat('es-ES', { weekday: 'long', timeZone: 'UTC' }).format(date);
+  const month = new Intl.DateTimeFormat('es-ES', { month: 'long', timeZone: 'UTC' }).format(date);
+  return `${weekday} 1 de ${month}`;
+})();
+
 test('el caso real de la casa: «limpieza a fondo de la cocina los lunes y los jueves»', async ({ page }) => {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/routines`);
@@ -89,15 +110,15 @@ test('«Cada cierto tiempo» pregunta la próxima vez y ya no habla de trimestre
 
   await unidad.selectOption('months');
   await page.getByLabel('Se repite cada cuántas').fill('3');
-  await page.getByLabel('¿Cuándo toca la próxima vez?').fill('2026-09-01');
+  await page.getByLabel('¿Cuándo toca la próxima vez?').fill(PROXIMA_DIA_1);
   await expect(phrase(page)).toHaveText(
-    'Toca cada 3 meses, el día 1. La próxima, el martes 1 de septiembre.'
+    `Toca cada 3 meses, el día 1. La próxima, el ${PROXIMA_LABEL}.`
   );
 
   await page.getByRole('button', { name: 'Crear rutina' }).click();
   await expect(page.locator('.status-banner')).toHaveCount(0);
   const fila = page.locator('li').filter({ hasText: 'Revisión de la caldera (E2E)' });
-  await expect(fila.locator('small').first()).toContainText('la próxima, el martes 1 de septiembre');
+  await expect(fila.locator('small').first()).toContainText(`la próxima, el ${PROXIMA_LABEL}`);
 });
 
 test('«Por temporada» habla de estaciones, no de «cada 2 trimestres»', async ({ page }) => {

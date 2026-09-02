@@ -13,7 +13,10 @@ import type {
   SettlementClosePayloadV1,
   SettlementOpenPayloadV1,
   SettlementReceiptConfirmPayloadV1,
+  VacationCarryOverPayloadV1,
+  VacationCompensateCarryoverPayloadV1,
   VacationRecordPayloadV1,
+  VacationRejectCarryoverPayloadV1,
   VacationVoidPayloadV1
 } from '@housekeeper/contracts';
 
@@ -329,6 +332,85 @@ export function voidVacation(
       reason: input.reason.trim()
     } satisfies VacationVoidPayloadV1
   }) as CommandEnvelopeV1<VacationVoidPayloadV1>;
+}
+
+/**
+ * Las tres salidas de un año de contrato que se cerró con días sin disfrutar.
+ *
+ * Ninguna manda los días ni el importe: el servidor los recalcula al decidir y
+ * los congela en la fila. Aquí sólo viaja QUÉ año y QUÉ se decide, que es lo
+ * único que pone la persona.
+ *
+ * `aggregateId` es el acuerdo y no el arrastre, porque el arrastre todavía no
+ * existe: la fila se escribe justo al decidir.
+ */
+export function carryOverVacationDays(
+  input: { householdId: string; agreementId: string; sourceYearIndex: number },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<VacationCarryOverPayloadV1> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'leave_request',
+    aggregateId: input.agreementId,
+    payload: {
+      action: 'carry_over',
+      agreementId: input.agreementId,
+      sourceYearIndex: input.sourceYearIndex
+    } satisfies VacationCarryOverPayloadV1
+  }) as CommandEnvelopeV1<VacationCarryOverPayloadV1>;
+}
+
+/**
+ * Pagar los días. `period` es el mes que se PIDE; si ya está cerrado, el
+ * servidor imputa el concepto al primer mes abierto y lo deja dicho en la fila,
+ * igual que cualquier concepto. Aquí no se adivina, porque el navegador no sabe
+ * (ni puede saber sin carreras) qué meses están cerrados en este instante.
+ */
+export function compensateVacationCarryover(
+  input: {
+    householdId: string;
+    agreementId: string;
+    sourceYearIndex: number;
+    period: string;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<VacationCompensateCarryoverPayloadV1> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'leave_request',
+    aggregateId: input.agreementId,
+    payload: {
+      action: 'compensate_carryover',
+      agreementId: input.agreementId,
+      sourceYearIndex: input.sourceYearIndex,
+      period: input.period
+    } satisfies VacationCompensateCarryoverPayloadV1
+  }) as CommandEnvelopeV1<VacationCompensateCarryoverPayloadV1>;
+}
+
+export function rejectVacationCarryover(
+  input: {
+    householdId: string;
+    agreementId: string;
+    sourceYearIndex: number;
+    reason: string;
+  },
+  options: EnvelopeOptions = {}
+): CommandEnvelopeV1<VacationRejectCarryoverPayloadV1> {
+  return createCommandEnvelope({
+    ...options,
+    householdId: input.householdId,
+    aggregateType: 'leave_request',
+    aggregateId: input.agreementId,
+    payload: {
+      action: 'reject_carryover',
+      agreementId: input.agreementId,
+      sourceYearIndex: input.sourceYearIndex,
+      reason: input.reason.trim()
+    } satisfies VacationRejectCarryoverPayloadV1
+  }) as CommandEnvelopeV1<VacationRejectCarryoverPayloadV1>;
 }
 
 /**

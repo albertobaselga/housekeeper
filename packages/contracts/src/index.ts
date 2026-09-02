@@ -307,6 +307,20 @@ export interface AgreementScheduleInputV1 {
 }
 
 /**
+ * Qué pasa con los días de vacaciones que quedan sin disfrutar al cerrar un año
+ * de contrato (apartado 4.2 del diseño). Es política PACTADA, así que viaja en
+ * los términos de la versión y cambia apilando otra, como todo lo demás.
+ *
+ * `months` es el margen desde el fin del año de contrato; `never` dice que esos
+ * días no caducan nunca y entonces no hay fecha límite ni aviso. Ausente en una
+ * versión ya firmada significa seis meses, que es lo que de hecho se les venía
+ * aplicando: por eso ningún contrato existente necesita tocarse.
+ */
+export type VacationCarryoverExpiryV1 =
+  | { mode: "months"; months: number }
+  | { mode: "never" };
+
+/**
  * Términos completos de UNA versión. Nunca se editan: cada cambio apila una
  * versión nueva con su catálogo entero, y el historial enseña las dos.
  */
@@ -315,6 +329,14 @@ export interface AgreementTermsInputV1 {
   monthlySalaryCents: MoneyCents;
   contractedWeeklyMinutes: number;
   annualVacationDays: number;
+  /**
+   * Importe por día de vacaciones NO disfrutado (apartado 4.4). null = no se
+   * pactó, y entonces no hay compensación: la aplicación no estima un precio ni
+   * escribe un cero, porque la fila es inmutable y ese cero diría para siempre
+   * que se acordó pagar cero euros por día.
+   */
+  unusedVacationDayRateCents: MoneyCents | null;
+  vacationCarryoverExpiry: VacationCarryoverExpiryV1;
   reason: string;
   extraWorkTypes: ExtraWorkTypeInputV1[];
   supplements: RecurringSupplementInputV1[];
@@ -355,6 +377,48 @@ export interface VacationRecordPayloadV1 {
 export interface VacationVoidPayloadV1 {
   action: "void";
   vacationPeriodId: UUID;
+  reason: string;
+}
+
+/**
+ * `aggregateType: "leave_request"` — qué se hace con los días que quedaron sin
+ * disfrutar al cerrarse un año de CONTRATO (migración 0037).
+ *
+ * Las tres salidas nombran el año por su ordinal y nada más: los días, la
+ * versión del acuerdo y el importe los recalcula el servidor al decidir y los
+ * congela en la fila. Mandarlos desde el cliente sería dejar que quien fabrique
+ * la petición elija cuánto se le paga.
+ */
+export interface VacationCarryOverPayloadV1 {
+  action: "carry_over";
+  agreementId: UUID;
+  /** Año de contrato que se cierra: 1 el primero. No es un año natural. */
+  sourceYearIndex: number;
+}
+
+/**
+ * `aggregateType: "leave_request"` — pagar los días sin disfrutar. Crea, en la
+ * MISMA transacción, el concepto a mano que los materializa, con el importe y
+ * la frase congelados. Sin tarifa pactada en el contrato no hay compensación
+ * posible y el comando lo rechaza diciéndolo: no se estima ningún importe.
+ */
+export interface VacationCompensateCarryoverPayloadV1 {
+  action: "compensate_carryover";
+  agreementId: UUID;
+  sourceYearIndex: number;
+  /** Mes al que se pide imputar el concepto, `YYYY-MM`. */
+  period: string;
+}
+
+/**
+ * `aggregateType: "leave_request"` — los días se pierden, y queda escrito quién
+ * lo decidió y por qué. El motivo es obligatorio: perder días en silencio es
+ * exactamente lo que esta tabla existe para impedir.
+ */
+export interface VacationRejectCarryoverPayloadV1 {
+  action: "reject_carryover";
+  agreementId: UUID;
+  sourceYearIndex: number;
   reason: string;
 }
 

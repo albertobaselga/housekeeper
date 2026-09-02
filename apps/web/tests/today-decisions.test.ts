@@ -93,6 +93,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
     ],
     overdueRoutineCount: 2,
     vacationNews: null,
+    vacationCarryovers: [],
     ...overrides
   };
 }
@@ -153,9 +154,13 @@ describe('buildTodayDecisions por rol', () => {
     expect(items[0]!.title).toContain('comida del 7 ago 2026');
   });
 
-  it('family_member: gastos y huecos como el admin, pero sin jornadas ni liquidaciones', () => {
+  it('family_member: los huecos del menú y nada más; los gastos llevan importe', () => {
+    // Con la migración 0038 la RLS ya no le devuelve ni un gasto, así que en la
+    // práctica `pendingExpenses` llega vacío. Se le pasan igualmente para fijar
+    // aquí la otra mitad de la regla: aunque una consulta futura se los trajera,
+    // esta lista no los pinta. El detalle de un gasto es su importe.
     const items = buildTodayDecisions(baseFacts({ role: 'family_member' }));
-    expect(items.map((item) => item.key)).toEqual(['gasto-g-1', 'menu-unconfirmed']);
+    expect(items.map((item) => item.key)).toEqual(['menu-unconfirmed']);
   });
 
   it('empleada: su jornada aceptada, el cobro confirmable y UNA fila por lo atrasado', () => {

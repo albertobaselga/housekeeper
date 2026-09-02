@@ -129,7 +129,7 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
     expect(kinds).toEqual(['base_salary', 'supplement', 'advance_deduction']);
   });
 
-  it('la empleada ve su saldo de vacaciones del año en curso, con lo anulado listado pero sin contar', async () => {
+  it('la empleada ve su saldo del año de CONTRATO en curso, con lo anulado listado pero sin contar', async () => {
     const admin = new pg.Client({ connectionString: adminUrl });
     await admin.connect();
     try {
@@ -143,7 +143,9 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
             'Quincena de agosto', $4),
            ('ea100000-0000-4000-8000-000000000002', $1, $2, $3, '2026-04-06', '2026-04-10',
             'Apuntado por error', $4),
-           -- A caballo del fin de año: solo sus ocho días de 2026 cuentan aquí.
+           -- Navidad entera: el año de contrato de este acuerdo va del 3 de
+           -- febrero al 2 de febrero, así que estos trece días caen dentro y no
+           -- se reparten con nadie. Con el año natural se partían en 8 y 5.
            ('ea100000-0000-4000-8000-000000000003', $1, $2, $3, '2026-12-24', '2027-01-05',
             'Navidad', $4)`,
         [
@@ -173,14 +175,16 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
 
     const vacations = overview!.vacations;
     expect(vacations).not.toBeNull();
-    expect(vacations!.year).toBe(2026);
-    // El acuerdo empezó en 2025, así que 2026 va entero: sin prorrateo.
+    // El contrato empezó el 3 de febrero de 2025: en agosto de 2026 se está en
+    // su segundo año, y el año se dice con sus fechas.
+    expect(vacations!.yearLabel).toBe('Segundo año · 3 feb 2026 – 2 feb 2027');
+    // El acuerdo sigue vivo, así que el año va entero: sin prorrateo.
     expect(vacations!.prorated).toBe(false);
     expect(vacations!.entitledDays).toBe(30);
-    // 15 de agosto + 8 de la Navidad que caen en 2026; los 5 anulados, no.
-    expect(vacations!.takenDays).toBe(23);
-    expect(vacations!.remainingDays).toBe(7);
-    expect(vacations!.summaryLabel).toBe('23 de 30 días disfrutados · quedan 7');
+    // 15 de agosto + los 13 de Navidad, que ya no se parten; los 5 anulados, no.
+    expect(vacations!.takenDays).toBe(28);
+    expect(vacations!.remainingDays).toBe(2);
+    expect(vacations!.summaryLabel).toBe('28 de 30 días disfrutados · quedan 2');
 
     // Los tres periodos se listan, el anulado con su motivo, del más reciente
     // al más antiguo.
@@ -265,24 +269,29 @@ describe.runIf(Boolean(adminUrl))('expediente laboral desde Postgres bajo RLS', 
       }
     ]);
 
-    // La lista los trae todos, anulado incluido, con su mes y su explicación.
-    expect(overview!.manualAdjustments.map((row) => row.id)).toEqual([
+    // Ella ve los suyos con su mes y su explicación, incluido el que se aplazó
+    // desde un mes cerrado. El anulado NO está: ninguna nómina lo llegó a
+    // aplicar y ya no hay nada que decidir sobre él, así que deja de ocupar
+    // sitio en una pantalla que solo enseña lo que sigue vivo. Su rastro sigue
+    // entero en la base: la tabla es append-only y nada se ha borrado.
+    // Se comparan ordenados y se busca cada uno por su id: los cuatro se
+    // apuntaron en el mismo mes y en la misma sentencia, así que comparten
+    // `recorded_at` al microsegundo y entre ellos no hay orden que exigir.
+    const suyos = overview!.manualAdjustments;
+    expect(suyos.map((row) => row.id).sort()).toEqual([
       'eb100000-0000-4000-8000-000000000001',
       'eb100000-0000-4000-8000-000000000002',
-      'eb100000-0000-4000-8000-000000000003',
-      'eb100000-0000-4000-8000-000000000004'
+      'eb100000-0000-4000-8000-000000000003'
     ]);
-    expect(overview!.manualAdjustments[0]).toMatchObject({
+    const porId = (id: string) => suyos.find((row) => row.id.endsWith(id))!;
+    expect(porId('001')).toMatchObject({
       periodLabel: 'Agosto 2026',
       transferLabel: 'Se suma a la transferencia',
       voided: false
     });
-    expect(overview!.manualAdjustments[1]!.transferLabel).toBe('Consta, no se transfiere');
-    expect(overview!.manualAdjustments[2]!.deferralNote).toContain('ya estaba cerrada');
-    expect(overview!.manualAdjustments[3]).toMatchObject({
-      voided: true,
-      voidReason: 'Se apuntó dos veces'
-    });
+    expect(porId('002').transferLabel).toBe('Consta, no se transfiere');
+    expect(porId('003').deferralNote).toContain('ya estaba cerrada');
+    expect(suyos.some((row) => row.voided)).toBe(false);
 
     // Y a quien no le corresponde verlos, RLS no le devuelve ninguno.
     const member = await loadEmploymentOverview(

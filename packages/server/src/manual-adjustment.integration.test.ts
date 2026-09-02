@@ -21,6 +21,11 @@ const ROBLE_HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
 const ROBLE_AGREEMENT = "12000000-0000-4000-8000-000000000001";
 const ROBLE_EMPLOYEE_MEMBERSHIP = "11000000-0000-4000-8000-000000000003";
 const ROBLE_ADMIN_MEMBERSHIP = "11000000-0000-4000-8000-000000000001";
+// La segunda empleada del roble, para el par arrastre/concepto: sembrar sobre
+// el primer acuerdo movería los totales que compara el resto del fichero.
+const SECOND_AGREEMENT = "12000000-0000-4000-8000-000000000002";
+const SECOND_EMPLOYEE_MEMBERSHIP = "11000000-0000-4000-8000-000000000006";
+const SECOND_AGREEMENT_V1 = "12100000-0000-4000-8000-000000000003";
 const APP_LOGIN = "it_housekeeper_app_login";
 
 const ADMIN: AuthenticatedPrincipal = { userId: "fixture:roble:admin" };
@@ -506,5 +511,79 @@ describe.runIf(Boolean(adminUrl))("conceptos apuntados a mano sobre Postgres rea
       status: "rejected",
       errorCode: "agreement_not_found",
     });
+  });
+
+  it("un concepto nacido de un arrastre lo dice, y anularlo no puede soltar ese hilo", async () => {
+    // La 0037 abre un hueco nuevo: `vacation_carryover_id`. El disparador de
+    // 0022 enumera columna a columna lo que la anulación no puede tocar, así
+    // que si alguien añade una columna y se olvida de la lista, la anulación se
+    // convierte en una puerta para reescribirla — y con ella, para mover un
+    // pago de vacaciones de un año a otro sin dejar rastro.
+    //
+    // El par se siembra sobre la SEGUNDA empleada del roble para no pisar el
+    // acuerdo cuyos totales comprueba el resto de este fichero.
+    const carryoverId = randomUUID();
+    const adjustmentId = randomUUID();
+    await adminPool.query("begin");
+    await adminPool.query("set local row_security = off");
+    await adminPool.query(
+      `insert into app.vacation_carryovers
+         (id, household_id, agreement_id, employee_membership_id, source_year_index,
+          source_year_starts_on, source_year_ends_on, entitled_days, taken_days,
+          unused_days, agreement_version_id, status, decided_by_membership_id, decided_at)
+       values ($1, $2, $3, $4, 1, '2025-01-07', '2026-01-06', 30, 12, 18, $5,
+               'carried', $6, now())`,
+      [
+        carryoverId,
+        ROBLE_HOUSEHOLD,
+        SECOND_AGREEMENT,
+        SECOND_EMPLOYEE_MEMBERSHIP,
+        SECOND_AGREEMENT_V1,
+        ROBLE_ADMIN_MEMBERSHIP,
+      ],
+    );
+    await adminPool.query(
+      `insert into app.manual_adjustments
+         (id, household_id, agreement_id, employee_membership_id, period_month,
+          requested_period_month, label, reason, amount_cents, adds_to_pay,
+          vacation_carryover_id, recorded_by_membership_id)
+       values ($1, $2, $3, $4, '2028-11-01', '2028-11-01',
+               'Vacaciones del primer año no disfrutadas',
+               '18 días sin disfrutar × 46,15 € por día = 830,70 €', 83070, true, $5, $6)`,
+      [
+        adjustmentId,
+        ROBLE_HOUSEHOLD,
+        SECOND_AGREEMENT,
+        SECOND_EMPLOYEE_MEMBERSHIP,
+        carryoverId,
+        ROBLE_ADMIN_MEMBERSHIP,
+      ],
+    );
+    await adminPool.query("commit");
+
+    // Anular por el camino normal sí se puede, y el enlace SIGUE ahí: el
+    // expediente conserva de dónde venía el importe aunque deje de contar.
+    const voided = await run(
+      ADMIN,
+      envelope("manual_adjustment", {
+        action: "void",
+        manualAdjustmentId: adjustmentId,
+        reason: "El mes que tocaba era otro",
+      }),
+    );
+    expect(voided).toMatchObject({ status: "accepted", resourceId: adjustmentId });
+    const kept = await adminPool.query<{ status: string; vacation_carryover_id: string | null }>(
+      "select status, vacation_carryover_id from app.manual_adjustments where id = $1",
+      [adjustmentId],
+    );
+    expect(kept.rows[0]).toEqual({ status: "voided", vacation_carryover_id: carryoverId });
+
+    // Y soltar el hilo a mano, con o sin anulación de por medio, lo rechaza la
+    // base: es lo que la 0037 tuvo que reescribir en el disparador de 0022.
+    await expect(
+      adminPool.query("update app.manual_adjustments set vacation_carryover_id = null where id = $1", [
+        adjustmentId,
+      ]),
+    ).rejects.toMatchObject({ code: "55000" });
   });
 });

@@ -101,19 +101,32 @@ test('Alberto cambia una tarifa y una hora, y nace una versión nueva: la anteri
   await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo`);
   await expect(page.getByRole('heading', { name: 'Condiciones del contrato' })).toBeVisible();
 
-  // Quien administra sí ve lo que a ella se le oculta: sin verlo no podría
-  // volver a activarlo.
-  const agreementCard = page.locator('article.card').filter({ hasText: 'Fixture Empleada Roble' });
-  await expect(agreementCard).toContainText('Hora extraordinaria: desactivado · no lo ve');
-  await expect(agreementCard).toContainText('Acompañamiento a médico: sin tarifa · no la ve');
-  await expect(agreementCard).toContainText('Seguro médico privado: 45,00 € al mes (lo paga la casa)');
-  // El horario de cada versión, con la frase que de verdad lee la empleada.
-  await expect(agreementCard).toContainText('Horario: De 8:00 a 16:30');
-  // La v1 no declara ninguno, y quien administra tiene que saberlo.
-  await expect(agreementCard).toContainText('Horario: sin declarar');
+  // La pestaña es de UNA persona, y la barra de contexto dice de quién.
+  await expect(page.locator('.person-bar')).toContainText('Fixture Empleada Roble');
 
-  await agreementCard.getByRole('button', { name: 'Cambiar las condiciones' }).click();
-  const form = agreementCard.locator('form.action-form');
+  // Lo que rige hoy, aireado y sin el churro de antes. La tarifa del día de
+  // vacaciones no disfrutado no está pactada en la fixture, y se dice con esas
+  // palabras: nunca «0,00 €».
+  const vigente = page.locator('article.card').filter({ hasText: 'Lo que rige hoy' });
+  await expect(vigente).toContainText('Sin pactar');
+  await expect(vigente).toContainText('6 meses de margen');
+
+  // El historial, plegado. Quien administra sí ve ahí lo que a ella se le
+  // oculta: sin verlo no podría volver a activarlo.
+  const historial = page.locator('details.card').filter({ hasText: 'El contrato, versión a versión' });
+  await historial.locator('summary').click();
+  await expect(historial).toContainText('Hora extraordinaria: desactivado · no lo ve');
+  await expect(historial).toContainText('Acompañamiento a médico: sin tarifa · no la ve');
+  await expect(historial).toContainText('Seguro médico privado: 45,00 € al mes (lo paga la casa)');
+  // El horario de cada versión, con la frase que de verdad lee la empleada.
+  await expect(historial).toContainText('Horario: De 8:00 a 16:30');
+  // La v1 no declara ninguno, y quien administra tiene que saberlo.
+  await expect(historial).toContainText('Horario: sin declarar');
+
+  // El único camino de cambio, y es un `<details>`: se abre sin JavaScript.
+  const editor = page.locator('details.card').filter({ hasText: 'Cambiar las condiciones' });
+  await editor.locator('summary').click();
+  const form = editor.locator('form.action-form');
 
   const today = new Date().toISOString().slice(0, 10);
   await form.getByLabel('Entra en vigor el').fill(today);
@@ -144,7 +157,8 @@ test('Alberto cambia una tarifa y una hora, y nace una versión nueva: la anteri
 
   await expect(page.getByText('Versión nueva añadida. La anterior sigue en el historial.')).toBeVisible();
 
-  const versions = page.locator('article.card').filter({ hasText: 'Fixture Empleada Roble' }).locator('.ledger-list > div');
+  await historial.locator('summary').click();
+  const versions = historial.locator('.ledger-list > div');
   // La v3 rige y la v2 queda como histórica CON SU TARIFA Y SU HORARIO DE
   // ENTONCES: lo ya trabajado bajo ella no se revaloriza ni se reescribe.
   await expect(versions.filter({ hasText: 'v3' })).toContainText('Jornada extra: 60,00 € por jornada');
@@ -168,12 +182,12 @@ test('Alberto cambia una tarifa y una hora, y nace una versión nueva: la anteri
 
   // Y una versión no puede entrar en vigor antes que la última: lo pactado no
   // se reescribe hacia atrás.
-  await agreementCard.getByRole('button', { name: 'Cambiar las condiciones' }).click();
-  const retro = agreementCard.locator('form.action-form');
+  await editor.locator('summary').click();
+  const retro = editor.locator('form.action-form');
   await retro.getByLabel('Entra en vigor el').fill('2025-01-01');
   await retro.getByLabel('Motivo del cambio').fill('Intento retroactivo E2E');
   await retro.getByRole('button', { name: 'Guardar como versión nueva' }).click();
-  await expect(agreementCard.locator('.form-error')).toContainText('lo ya pactado no se reescribe');
+  await expect(page.locator('.form-error').first()).toContainText('lo ya pactado no se reescribe');
 });
 
 test('Ana ve la tarifa y el horario nuevos, y sigue sin ver ninguna tarifa horaria', async ({ page }) => {
@@ -192,4 +206,49 @@ test('Ana ve la tarifa y el horario nuevos, y sigue sin ver ninguna tarifa horar
   const html = await page.content();
   expect(html).not.toContain('per_hour');
   expect(html).not.toContain('Hora extraordinaria');
+});
+
+/*
+ * El alta deja el contrato a medias A PROPÓSITO —pide inicio, salario, jornada y
+ * días de vacaciones, y nada más—, y el aplazamiento sólo vale si la pantalla lo
+ * dice. La segunda empleada de las fixtures tiene catálogo de trabajo extra pero
+ * NO declara horario, que es exactamente el estado en que queda un contrato
+ * recién dado de alta.
+ */
+const AGREEMENT_SEGUNDA = '12000000-0000-4000-8000-000000000002';
+
+test('un contrato sin horario lo dice arriba, no enterrado en su sección', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo?empleada=${AGREEMENT_SEGUNDA}`);
+  await expect(page.locator('.person-bar')).toContainText('Fixture Segunda Empleada Roble');
+
+  const aviso = page.locator('.a-medias');
+  await expect(aviso).toBeVisible();
+  await expect(aviso).toContainText('Este contrato está a medias');
+  await expect(aviso).toContainText('el horario');
+  await expect(aviso).toContainText('no ve ninguna sección de horario');
+  // Su catálogo sí está pactado, así que del trabajo extra no se avisa.
+  await expect(aviso).not.toContainText('no puede registrar ninguna jornada');
+
+  // Y el aviso desaparece cuando no falta nada: el contrato de Ana declara
+  // horario y catálogo, así que ahí no hay nada que anunciar.
+  await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo`);
+  await expect(page.locator('.person-bar')).toContainText('Fixture Empleada Roble');
+  await expect(page.locator('.a-medias')).toHaveCount(0);
+});
+
+test('los meses de margen se pueden volver a pactar sin JavaScript', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/employment/acuerdo`);
+  const editor = page.locator('details.card').filter({ hasText: 'Cambiar las condiciones' });
+  await editor.locator('summary').click();
+
+  // El campo se sirve SIEMPRE, también cuando rige «nunca expiran». Pintarlo
+  // sólo con el modo en «meses» dejaba el HTML de un contrato que pactó «nunca»
+  // sin este campo: elegir «caducan pasados unos meses» mandaba el select y nada
+  // más, y salía NaN.
+  const meses = editor.getByLabel('Meses de margen (si caducan)');
+  await expect(meses).toHaveAttribute('required', '');
+  await editor.getByLabel('Los días arrastrados').selectOption('never');
+  await expect(meses).toBeVisible();
 });

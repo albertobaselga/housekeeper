@@ -129,6 +129,12 @@ test('Alberto ve el justificante del gasto reembolsado en la cuenta de marzo ya 
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/employment/pagos`);
 
+  // Pagos es una tabla plegada por meses: el detalle de una cuenta antigua
+  // espera dentro de su fila. Se despliega el mes que lleva el gasto, que es lo
+  // que haría quien viene a mirar un justificante de marzo.
+  await page.locator('details.mes').filter({ hasText: 'Fixture pharmacy reimbursement' })
+    .locator('summary').first().click();
+
   const pharmacyLine = page.locator('.ledger-list > div').filter({ hasText: 'Fixture pharmacy reimbursement' });
   await expect(pharmacyLine).toBeVisible();
   const link = pharmacyLine.getByRole('link', { name: 'Ver el justificante' });

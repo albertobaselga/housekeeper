@@ -133,11 +133,14 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
   expect(dueOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   await openForm.getByRole('button', { name: /Empezar la cuenta de/ }).click();
 
-  // La liquidación nueva aparece abierta, con su vencimiento y botón de cierre.
+  // La cuenta nueva aparece como una fila más de la tabla, plegada: el
+  // vencimiento se lee SIN desplegarla, y el botón de cierre espera dentro.
+  const settlementsCard = page.locator('article.card').filter({ hasText: 'Historial con pagos' });
+  await expect(settlementsCard).toContainText(`Vence el ${dueDateLabel(dueOn)}`);
+  await expect(openForm).toHaveCount(0);
+  await settlementsCard.locator('details.mes > summary').first().click();
   const closeButton = page.getByRole('button', { name: 'Cerrar el mes' });
   await expect(closeButton).toBeVisible();
-  await expect(page.locator('article.card').filter({ hasText: 'Historial con pagos' })).toContainText(`vence el ${dueDateLabel(dueOn)}`);
-  await expect(openForm).toHaveCount(0);
 
   // 2) Cerrar: el servidor materializa las líneas desde los hechos del mes.
   await closeButton.click();
@@ -158,7 +161,6 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
 
   const remainingCents = totalCents - 100000n;
   const remainingLabel = `${centsToEuroInput(remainingCents)} €`;
-  const settlementsCard = page.locator('article.card').filter({ hasText: 'Historial con pagos' });
   await expect(settlementsCard).toContainText(remainingLabel);
 
   // 4) El resto: tras el pago parcial el campo vuelve a proponer exactamente el
@@ -170,8 +172,9 @@ test('Alberto abre la liquidación del mes en curso con vencimiento, la cierra y
   await expect(page.locator('.status-chip').filter({ hasText: 'Pagada · cobro sin confirmar' })).toBeVisible();
 
   // Y cada cuenta ofrece su documento de pago en PDF, generado bajo la sesión
-  // de quien lo pide.
-  const documentLink = settlementsCard.getByRole('link', { name: 'Descargar el documento de pago (PDF)' }).first();
+  // de quien lo pide. En la fila sólo cabe «PDF»; el nombre accesible lleva el
+  // mes, así que se busca por lo que no cambia.
+  const documentLink = settlementsCard.getByRole('link', { name: /Descargar el documento de pago/ }).first();
   await expect(documentLink).toBeVisible();
   const href = await documentLink.getAttribute('href');
   const response = await page.request.get(href!);
@@ -231,11 +234,16 @@ test('Alberto cambia de empleada por la portada y el expediente entero es el de 
   await expect(personBar).toContainText('Fixture Empleada Roble');
   await personBar.getByRole('link', { name: 'Cambiar' }).click();
 
-  // La portada: la cuenta total de la casa y una tarjeta por empleada con su
-  // gasto del mes.
-  await expect(page.locator('.summary-strip')).toContainText('Total de la casa');
+  // La portada: lo que se DEBE en la celda destacada —no lo que va sumando el
+  // mes, que es previsión— y una línea por empleada. Sin deuda dice «Al día»,
+  // que es la respuesta y no un «0,00 €».
+  const tira = page.locator('.summary-strip');
+  await expect(tira).toContainText('Va sumando este mes');
+  await expect(tira).toContainText('Pendiente de pago');
   const tarjetas = page.locator('[data-lista="principal"] > div');
   await expect(tarjetas).toHaveCount(2);
+  // Y el alta sale de aquí, que es de donde el propietario pidió que saliera.
+  await expect(page.getByRole('link', { name: 'Añadir una persona' })).toBeVisible();
   await tarjetas
     .filter({ hasText: 'Fixture Segunda Empleada Roble' })
     .getByRole('link', { name: 'Abrir su expediente' })

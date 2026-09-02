@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { parseEuroInput } from '../src/lib/employment/commands';
 import {
+  anchoredSourceType,
   buildAccrual,
   buildPortadaView,
   centsToEuroInput,
@@ -19,13 +20,16 @@ import {
   annualVacationDaysInForce,
   currentLocalDate,
   currentPeriod,
-  currentVacationYear,
+  employmentTabHref,
   formatCents,
   formatMinutes,
+  lastMeaningfulSettlement,
   parseCents,
   periodLabel,
+  readVacationCarryoverExpiry,
   scheduleMismatchLabel,
   sourceAnchor,
+  vacationCarryoverExpiryLabel,
   vacationRangeLabel,
   type AgreementVersionRow,
   type ManualAdjustmentRow,
@@ -263,7 +267,7 @@ describe('horario del contrato', () => {
   });
 });
 
-describe('vacaciones del año en curso', () => {
+describe('vacaciones del año de contrato en curso', () => {
   const PERIODS = [
     {
       id: 'p1',
@@ -272,8 +276,7 @@ describe('vacaciones del año en curso', () => {
       calendarDays: 15,
       note: 'Quincena de agosto',
       status: 'recorded' as const,
-      voidReason: null,
-      settledPeriod: null
+      voidReason: null
     },
     {
       id: 'p2',
@@ -282,14 +285,13 @@ describe('vacaciones del año en curso', () => {
       calendarDays: 5,
       note: 'Apuntado por error',
       status: 'voided' as const,
-      voidReason: 'Las fechas eran otras',
-      settledPeriod: null
+      voidReason: 'Las fechas eran otras'
     }
   ];
 
   it('resume el saldo en lenguaje llano y no cuenta lo anulado', () => {
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2020-01-01',
       agreementEndsOn: null,
@@ -298,6 +300,9 @@ describe('vacaciones del año en curso', () => {
     expect(view.takenDays).toBe(15);
     expect(view.remainingDays).toBe(15);
     expect(view.summaryLabel).toBe('15 de 30 días disfrutados · quedan 15');
+    // El año se dice con sus fechas: un contrato de 2020 tiene su séptimo año
+    // en 2026, y sin las fechas el ordinal no le diría nada a nadie.
+    expect(view.yearLabel).toBe('Séptimo año · 1 ene 2026 – 31 dic 2026');
     expect(view.prorationNote).toBeNull();
     // Lo anulado se LISTA (para entender por qué el saldo es el que es) pero
     // no suma.
@@ -307,7 +312,7 @@ describe('vacaciones del año en curso', () => {
 
   it('ordena del más reciente al más antiguo y nombra bien un solo día', () => {
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2020-01-01',
       agreementEndsOn: null,
@@ -320,8 +325,7 @@ describe('vacaciones del año en curso', () => {
           calendarDays: 1,
           note: '',
           status: 'recorded' as const,
-          voidReason: null,
-          settledPeriod: null
+          voidReason: null
         }
       ]
     });
@@ -342,7 +346,7 @@ describe('vacaciones del año en curso', () => {
 
   it('el exceso se dice, no se esconde', () => {
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2020-01-01',
       agreementEndsOn: null,
@@ -362,23 +366,43 @@ describe('vacaciones del año en curso', () => {
     expect(view.summaryLabel).toBe('35 de 30 días disfrutados · 5 días de más');
   });
 
-  it('explica el prorrateo del primer año en vez de enseñar 30 a secas', () => {
+  it('el primer año ya no se prorratea: empieza el día del contrato', () => {
+    // Antes, con el año natural, un contrato de febrero enseñaba 28 de 30 días
+    // en su primer año. Con el año de contrato eso desaparece por construcción:
+    // los doce meses empiezan el 3 de febrero, así que se devenga entero.
     const view = buildVacationView({
-      year: 2026,
+      today: '2026-08-20',
       annualVacationDays: 30,
       agreementStartsOn: '2026-02-03',
       agreementEndsOn: null,
       periods: []
     });
+    expect(view.yearLabel).toBe('Primer año · 3 feb 2026 – 2 feb 2027');
+    expect(view.prorated).toBe(false);
+    expect(view.entitledDays).toBe(30);
+    expect(view.prorationNote).toBeNull();
+  });
+
+  it('el que sí se prorratea es el último, cuando el contrato termina a media anualidad', () => {
+    const view = buildVacationView({
+      today: '2026-08-20',
+      annualVacationDays: 30,
+      agreementStartsOn: '2026-02-03',
+      agreementEndsOn: '2026-12-31',
+      periods: []
+    });
     expect(view.prorated).toBe(true);
+    // Los días parciales se redondean hacia arriba: la duda favorece a quien
+    // descansa, no a quien paga.
     expect(view.entitledDays).toBe(28);
     expect(view.summaryLabel).toBe('0 de 28 días disfrutados · quedan 28');
     expect(view.prorationNote).toBe(
-      'El acuerdo cubre 332 días de 2026, así que de los 30 días del año le tocan 28 en 2026.'
+      'El contrato termina el 31 dic 2026 y cubre 332 días de los 365 de este año, ' +
+        'así que de los 30 días pactados le tocan 28.'
     );
   });
 
-  it('un periodo a caballo del fin de año solo gasta sus días de este año', () => {
+  it('un periodo a caballo del aniversario solo gasta sus días de este año', () => {
     const periods = [
       {
         id: 'p1',
@@ -387,13 +411,14 @@ describe('vacaciones del año en curso', () => {
         calendarDays: 13,
         note: '',
         status: 'recorded' as const,
-        voidReason: null,
-        settledPeriod: null
+        voidReason: null
       }
     ];
+    // El contrato empezó un 1 de enero, así que su año de contrato coincide con
+    // el natural: el corte sigue cayendo el 31 de diciembre.
     expect(
       buildVacationView({
-        year: 2026,
+        today: '2026-12-28',
         annualVacationDays: 30,
         agreementStartsOn: '2020-01-01',
         agreementEndsOn: null,
@@ -402,7 +427,7 @@ describe('vacaciones del año en curso', () => {
     ).toBe(8);
     expect(
       buildVacationView({
-        year: 2027,
+        today: '2027-01-03',
         annualVacationDays: 30,
         agreementStartsOn: '2020-01-01',
         agreementEndsOn: null,
@@ -411,11 +436,11 @@ describe('vacaciones del año en curso', () => {
     ).toBe(5);
   });
 
-  it('el año natural se lee en la zona del hogar, no en la del proceso', () => {
-    // 31 de diciembre a las 23:30 UTC ya es 1 de enero en Madrid.
-    expect(currentVacationYear(new Date('2026-12-31T23:30:00Z'))).toBe(2027);
+  it('la fecha de hoy se lee en la zona del hogar, no en la del proceso', () => {
+    // 31 de diciembre a las 23:30 UTC ya es 1 de enero en Madrid, y de esa
+    // fecha sale en qué año de contrato se está.
     expect(currentLocalDate(new Date('2026-12-31T23:30:00Z'))).toBe('2027-01-01');
-    expect(currentVacationYear(new Date('2026-06-15T10:00:00Z'))).toBe(2026);
+    expect(currentLocalDate(new Date('2026-06-15T10:00:00Z'))).toBe('2026-06-15');
   });
 });
 
@@ -616,6 +641,30 @@ describe('liquidaciones y saldos', () => {
     expect(unconfirmed.paymentStateLabel).toBe('Pagada · cobro sin confirmar');
   });
 
+  it('un mes cerrado sin importe no anuncia un pago pendiente que no existe', () => {
+    const vacia = buildSettlementViews(
+      [
+        {
+          ...settlement,
+          salaryTotalCents: '0',
+          reimbursementTotalCents: '0',
+          transferTotalCents: '0',
+          paidCents: '0',
+          pendingCents: '0',
+          receiptConfirmedAt: null,
+          receiptNote: null
+        }
+      ],
+      [],
+      []
+    )[0]!;
+    // `fullyPaid` sigue siendo false a propósito: una cuenta sin un euro no se
+    // ha «pagado». Lo que no puede es leerse como una deuda, y desde que Pagos
+    // pliega cada mes en una fila esta frase es lo único que se ve del estado.
+    expect(vacia.fullyPaid).toBe(false);
+    expect(vacia.paymentStateLabel).toBe('Cerrada · nada que pagar');
+  });
+
   it('presenta el crédito de descanso como permanente y el anticipo con su pendiente', () => {
     const compensation = buildCompensationBalanceViews([
       { accountId: 'c1', balanceType: 'worked_rest_day', balanceMinutes: '1440' }
@@ -633,7 +682,20 @@ describe('liquidaciones y saldos', () => {
 
   it('solo genera anclas para orígenes conocidos', () => {
     expect(sourceAnchor('agreement-version', 'x')).toBe('#version-x');
-    expect(sourceAnchor('desconocido', 'x')).toBeNull();
+  });
+
+  it('la puerta de la unión deja fuera las erratas y los orígenes sin pantalla', () => {
+    // Que el tipo sea una unión es lo que hace que una errata al escribir
+    // «ajustes-aplicados» no compile en vez de borrar el enlace en silencio.
+    // Aquí se prueba la ÚNICA puerta por la que entra una cadena suelta: la de
+    // las líneas del motor de dominio.
+    expect(anchoredSourceType('ajustes-aplicados')).toBe('ajustes-aplicados');
+    expect(anchoredSourceType('ajustes-aplicaods')).toBeNull();
+    // Orígenes que el motor SÍ emite y que ninguna pestaña pinta: no tienen
+    // enlace porque no tienen destino, no porque nadie se acordara de ellos.
+    expect(anchoredSourceType('complementos')).toBeNull();
+    expect(anchoredSourceType('pagas-extra')).toBeNull();
+    expect(anchoredSourceType('ausencias')).toBeNull();
   });
 
   it('con bases, cada origen enlaza a la pestaña donde vive', () => {
@@ -645,6 +707,7 @@ describe('liquidaciones y saldos', () => {
     const bases = {
       conceptos: '/h/H/employment/conceptos',
       resumen: '/h/H/employment',
+      pagos: '/h/H/employment/pagos',
       contrato: '/h/H/employment/acuerdo'
     };
     expect(sourceAnchor('jornadas-extra', 'e1', bases)).toBe('/h/H/employment#extra-e1');
@@ -652,7 +715,6 @@ describe('liquidaciones y saldos', () => {
     expect(sourceAnchor('ajustes', 'c1', bases)).toBe('/h/H/employment/conceptos#concepto-c1');
     expect(sourceAnchor('anticipos', 'a1', bases)).toBe('/h/H/employment#anticipo-a1');
     expect(sourceAnchor('agreement-version', 'v1', bases)).toBe('/h/H/employment/acuerdo#version-v1');
-    expect(sourceAnchor('desconocido', 'x', bases)).toBeNull();
   });
 });
 
@@ -668,8 +730,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: true,
       deferralNote: '',
       status: 'recorded',
-      voidReason: null,
-      settledPeriod: null
+      voidReason: null
     },
     {
       id: 'c2',
@@ -681,8 +742,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: false,
       deferralNote: '',
       status: 'recorded',
-      voidReason: null,
-      settledPeriod: null
+      voidReason: null
     },
     {
       id: 'c3',
@@ -694,8 +754,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
       addsToPay: true,
       deferralNote: '',
       status: 'voided',
-      voidReason: 'Se apuntó dos veces',
-      settledPeriod: null
+      voidReason: 'Se apuntó dos veces'
     }
   ];
 
@@ -757,8 +816,7 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
         deferralNote:
           'Se pidió para agosto de 2026, pero esa cuenta ya estaba cerrada: se imputa a septiembre de 2026.',
         status: 'recorded',
-        voidReason: null,
-        settledPeriod: null
+        voidReason: null
       }
     ]);
     expect(views.map((view) => view.id)).toEqual(['c4', 'c3']);
@@ -766,7 +824,9 @@ describe('conceptos apuntados a mano en la cuenta del mes', () => {
     expect(views[0]!.amountLabel).toBe('−50,00 €');
     expect(views[0]!.transferLabel).toBe('Se suma a la transferencia');
     expect(views[0]!.deferralNote).toContain('ya estaba cerrada');
-    // El anulado se queda en la lista: la corrección es parte del rastro.
+    // Un anulado se proyecta con su marca y su motivo, aunque a la página ya no
+    // llegue ninguno: quién entra en la lista lo decide la consulta del
+    // servidor, no esta función, que se limita a dar forma a lo que recibe.
     expect(views[1]!.voided).toBe(true);
     expect(views[1]!.voidReason).toBe('Se apuntó dos veces');
   });
@@ -841,11 +901,121 @@ describe('trabajo y gastos pendientes de acción', () => {
   });
 
   it('presenta los gastos pendientes con importe en céntimos formateado', () => {
-    const views = buildPendingExpenseViews([
-      { id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850', employeeMembershipId: 'm1' }
-    ]);
+    const views = buildPendingExpenseViews(
+      [
+        { id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850', employeeMembershipId: 'm1' }
+      ],
+      true
+    );
     expect(views[0]!.amountLabel).toBe('18,50 €');
+    expect(views[0]!.amountCents).toBe('1850');
     expect(views[0]!.incurredOnLabel).toBe('5 ago 2026');
+  });
+
+  it('a quien no ve importes no le viaja la cifra, ni siquiera en crudo', () => {
+    // Defensa en profundidad: la RLS de 0038 ya no le devuelve la fila a la
+    // familia no administradora. Si por lo que sea llegara, la ausencia por
+    // permiso se serializa como ausencia y no como número que alguien pinte.
+    const views = buildPendingExpenseViews(
+      [
+        { id: 'g1', incurredOn: '2026-08-05', description: 'Farmacia', amountCents: '1850', employeeMembershipId: 'm1' }
+      ],
+      false
+    );
+    expect(views[0]!.amountLabel).toBeNull();
+    expect(views[0]!.amountCents).toBeNull();
+    expect(JSON.stringify(views)).not.toContain('1850');
+    // El gasto se sigue pudiendo mirar: la fecha y la descripción son las que
+    // la BASE decide enseñar, y ese corte no se duplica aquí arriba.
+    expect(views[0]!.incurredOnLabel).toBe('5 ago 2026');
+    expect(views[0]!.description).toBe('Farmacia');
+  });
+});
+
+describe('la caducidad de los días de vacaciones arrastrados', () => {
+  it('ausente son seis meses, que es lo que se les venía aplicando', () => {
+    // Todas las versiones anteriores a la 0036 tienen `terms` en `{}`: leerlas
+    // como seis meses es lo que hace que la migración no tenga que tocar ni una
+    // fila ya firmada.
+    expect(readVacationCarryoverExpiry({})).toEqual({ mode: 'months', months: 6 });
+    expect(readVacationCarryoverExpiry(null)).toEqual({ mode: 'months', months: 6 });
+    expect(vacationCarryoverExpiryLabel(readVacationCarryoverExpiry({}))).toBe('6 meses de margen');
+  });
+
+  it('lee las dos formas pactadas y las dice en castellano', () => {
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: 'never' } })
+    ).toEqual({ mode: 'never' });
+    expect(vacationCarryoverExpiryLabel({ mode: 'never' })).toBe('Nunca expiran');
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: 'months', months: 12 } })
+    ).toEqual({ mode: 'months', months: 12 });
+    expect(vacationCarryoverExpiryLabel({ mode: 'months', months: 1 })).toBe('1 mes de margen');
+  });
+
+  it('lo que no sea una de las dos formas cae en el defecto, no revienta la pantalla', () => {
+    // La CHECK de la 0036 impide escribir basura ahí, pero una fila anterior a
+    // la restricción tiene que seguir dando una respuesta: la política por
+    // omisión, que es la que de hecho se le aplicaba.
+    expect(readVacationCarryoverExpiry({ vacationCarryoverExpiry: 'seis meses' })).toEqual({
+      mode: 'months',
+      months: 6
+    });
+    expect(
+      readVacationCarryoverExpiry({ vacationCarryoverExpiry: { mode: 'months', months: 0 } })
+    ).toEqual({ mode: 'months', months: 6 });
+  });
+});
+
+describe('la última cuenta que dice algo', () => {
+  /** Cuenta abierta del mes: sin cerrar, el total vale siempre cero. */
+  const abiertaDeSeptiembre: SettlementRow = {
+    id: 's-sep',
+    periodStart: '2026-09-01',
+    periodEnd: '2026-09-30',
+    dueOn: '2026-09-30',
+    status: 'open',
+    salaryTotalCents: '0',
+    reimbursementTotalCents: '0',
+    transferTotalCents: '0',
+    paidCents: '0',
+    pendingCents: '0',
+    receiptConfirmedAt: null,
+    receiptNote: null
+  };
+  /** Agosto cerrada y sin pagar: 1.200 € que la casa debe. */
+  const agostoSinPagar: SettlementRow = {
+    id: 's-ago',
+    periodStart: '2026-08-01',
+    periodEnd: '2026-08-31',
+    dueOn: '2026-08-31',
+    status: 'closed',
+    salaryTotalCents: '120000',
+    reimbursementTotalCents: '0',
+    transferTotalCents: '120000',
+    paidCents: '0',
+    pendingCents: '120000',
+    receiptConfirmedAt: null,
+    receiptNote: null
+  };
+
+  it('abrir la cuenta del mes NO apaga la deuda del mes anterior', () => {
+    // El montaje exacto del fallo: agosto cerrada con 1.200 € pendientes, y se
+    // empieza septiembre. Antes se elegía la más reciente no anulada —la de
+    // septiembre— y sólo DESPUÉS se le aplicaba la guarda de «abierta y sin
+    // importe», así que devolvía null y la tarjeta desaparecía. El acto más
+    // rutinario del mes escondía una deuda vencida.
+    const views = buildSettlementViews([abiertaDeSeptiembre, agostoSinPagar], [], []);
+    const elegida = lastMeaningfulSettlement(views);
+    expect(elegida?.id).toBe('s-ago');
+    expect(elegida?.pendingLabel).toBe('1.200,00 €');
+  });
+
+  it('salta las anuladas y calla cuando de verdad no hay nada que contar', () => {
+    const anulada: SettlementRow = { ...agostoSinPagar, id: 's-void', status: 'void' };
+    const views = buildSettlementViews([abiertaDeSeptiembre, anulada], [], []);
+    expect(lastMeaningfulSettlement(views)).toBeNull();
+    expect(lastMeaningfulSettlement([])).toBeNull();
   });
 });
 
@@ -860,6 +1030,7 @@ describe('la portada del hogar', () => {
     });
     const portada = buildPortadaView({
       period: '2026-08',
+      seesAmounts: true,
       employees: [
         { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual, pendingCount: 2 },
         // Su contrato aún no está en vigor este mes: buildAccrual devuelve null
@@ -869,10 +1040,9 @@ describe('la portada del hogar', () => {
     });
 
     expect(portada.periodLabel).toBe('Agosto 2026');
-    expect(portada.salaryLabel).toBe('1.500,00 €');
-    expect(portada.reimbursementLabel).toBe('18,50 €');
+    // 1.500,00 € de salario y 18,50 € de reembolso: el encabezado dice la suma
+    // y es EXACTAMENTE la de la fila de abajo, que es la única que se pinta.
     expect(portada.totalLabel).toBe('1.518,50 €');
-    expect(portada.withReimbursements).toBe(true);
     expect(portada.seesAmounts).toBe(true);
 
     expect(portada.employees[0]).toMatchObject({
@@ -882,62 +1052,230 @@ describe('la portada del hogar', () => {
     });
     expect(portada.employees[1]).toMatchObject({
       employeeLabel: 'Bea',
-      monthTotalCents: null,
       monthTotalLabel: null,
       pendingLabel: 'Nada pendiente'
     });
   });
 
-  it('sin ninguna cifra visible (familia no administradora), lo dice con seesAmounts', () => {
-    const portada = buildPortadaView({
+  it('seesAmounts es una entrada, no una deducción de que llegara alguna cifra', () => {
+    // Quien administra una casa cuyos contratos empiezan el mes que viene no
+    // tiene NINGÚN devengo, y aun así ve importes: deducirlo de los datos le
+    // echaba la culpa a un permiso que sí tiene.
+    const administra = buildPortadaView({
       period: '2026-08',
+      seesAmounts: true,
       employees: [
         { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 1 }
       ]
     });
-    expect(portada.seesAmounts).toBe(false);
-    expect(portada.totalCents).toBe('0');
-    expect(portada.employees[0]!.pendingLabel).toBe('1 asunto por decidir');
+    expect(administra.seesAmounts).toBe(true);
+    expect(administra.employees[0]!.monthTotalLabel).toBeNull();
+
+    const familia = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: false,
+      employees: [
+        { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 1 }
+      ]
+    });
+    expect(familia.seesAmounts).toBe(false);
+    expect(familia.totalLabel).toBe('0,00 €');
+    expect(familia.employees[0]!.pendingLabel).toBe('1 asunto por decidir');
+  });
+
+  it('«pendiente» es la deuda de las cuentas cerradas, y sin deuda no hay cifra', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        {
+          agreementId: 'a1',
+          employeeLabel: 'Ana',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          // Dos cuentas cerradas sin pagar del todo, una de ellas vencida.
+          owed: {
+            pendingCents: '145330',
+            earliestDueOn: '2026-07-05',
+            overdueCount: 1
+          }
+        },
+        // Sin deuda: null en la etiqueta, para que nadie pinte «0,00 €».
+        { agreementId: 'a2', employeeLabel: 'Bea', active: true, accrual: null, pendingCount: 0 }
+      ]
+    });
+
+    expect(portada.owedTotalLabel).toBe('1.453,30 €');
+    expect(portada.employees[0]).toMatchObject({
+      owedLabel: '1.453,30 €',
+      owedDueLabel: 'Venció el 5 jul 2026',
+      overdue: true
+    });
+    expect(portada.employees[1]).toMatchObject({
+      owedLabel: null,
+      owedDueLabel: null,
+      overdue: false
+    });
+  });
+
+  it('la vista no puede decir «Al día» y «Vencida» a la vez', () => {
+    // La consulta de hoy filtra `pending_cents > 0` y no puede producir esto,
+    // pero la función está exportada y se prueba suelta: con una entrada
+    // incoherente el distintivo se encendía por su cuenta, al margen del
+    // importe que gobierna la etiqueta. Se normaliza en vez de reventar: esto
+    // construye una pantalla, y una fila rara la deja coherente, no rota.
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        {
+          agreementId: 'a1',
+          employeeLabel: 'Ana',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          owed: { pendingCents: '0', earliestDueOn: '2026-07-05', overdueCount: 2 }
+        }
+      ]
+    });
+    expect(portada.owedTotalLabel).toBeNull();
+    expect(portada.employees[0]).toMatchObject({
+      owedLabel: null,
+      owedDueLabel: null,
+      overdue: false
+    });
+  });
+
+  it('sin deuda ninguna, el total no es «0,00 €» sino la ausencia de cifra', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        { agreementId: 'a1', employeeLabel: 'Ana', active: true, accrual: null, pendingCount: 0 }
+      ]
+    });
+    // La pantalla dice «Al día» justamente porque aquí no hay etiqueta.
+    expect(portada.owedTotalLabel).toBeNull();
+    expect(portada.employees[0]!.overdue).toBe(false);
+  });
+
+  it('suma la deuda de varias personas en BigInt, por encima de 2^53', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [
+        {
+          agreementId: 'a1',
+          employeeLabel: 'Ana',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          owed: { pendingCents: '9007199254740993', earliestDueOn: '2026-09-05', overdueCount: 0 }
+        },
+        {
+          agreementId: 'a2',
+          employeeLabel: 'Bea',
+          active: true,
+          accrual: null,
+          pendingCount: 0,
+          owed: { pendingCents: '1', earliestDueOn: '2026-09-05', overdueCount: 0 }
+        }
+      ]
+    });
+    // 9007199254740993 + 1 en Number daría 9.007.199.254.740.992: la etiqueta
+    // es ahora la única prueba de que la suma va en BigInt, y basta.
+    expect(portada.owedTotalLabel).toBe('90.071.992.547.409,94 €');
+    expect(portada.employees[0]!.owedDueLabel).toBe('Vence el 5 sep 2026');
+  });
+
+  it('la que vuelve a la casa no es la que acaba de llegar', () => {
+    const portada = buildPortadaView({
+      period: '2026-08',
+      seesAmounts: true,
+      employees: [],
+      candidates: [
+        { membershipId: 'm1', name: 'Ana', previousEndedOn: '2026-06-30', returning: true },
+        { membershipId: 'm2', name: 'Bea', previousEndedOn: null, returning: false }
+      ]
+    });
+    expect(portada.candidates[0]!.detailLabel).toBe(
+      'Volvió a la casa · su contrato anterior terminó el 30 jun 2026'
+    );
+    expect(portada.candidates[1]!.detailLabel).toBe(
+      'Acaba de llegar · todavía no se ha pactado ningún contrato'
+    );
   });
 });
 
-describe('conceptos ya aplicados en una nómina', () => {
-  it('marca settled con la nómina que lo materializó, y lo demás queda pendiente', () => {
-    const views = buildManualAdjustmentViews([
-      {
-        id: 'c-ap',
-        period: '2026-08',
-        requestedPeriod: '2026-08',
-        label: 'Adelanto entregado',
-        reason: 'Entregado a cuenta',
-        amountCents: '-15000',
-        addsToPay: true,
-        deferralNote: '',
-        status: 'recorded',
-        voidReason: null,
-        // La nómina de agosto ya lo materializó como línea: no puede volver a
-        // ofrecerse como pendiente en septiembre.
-        settledPeriod: '2026-08'
-      },
-      {
-        id: 'c-pe',
-        period: '2026-09',
-        requestedPeriod: '2026-09',
-        label: 'Gratificación de verano',
-        reason: 'Acordada al volver',
-        amountCents: '5000',
-        addsToPay: true,
-        deferralNote: '',
-        status: 'recorded',
-        voidReason: null,
-        settledPeriod: null
-      }
-    ]);
-    const aplicado = views.find((view) => view.id === 'c-ap')!;
-    expect(aplicado.settled).toBe(true);
-    expect(aplicado.settledLabel).toBe('Aplicado en la nómina de agosto 2026');
-    const pendiente = views.find((view) => view.id === 'c-pe')!;
-    expect(pendiente.settled).toBe(false);
-    expect(pendiente.settledLabel).toBeNull();
+describe('el destino de cada pestaña', () => {
+  it('escribe la persona elegida siempre igual, y la escapa', () => {
+    expect(employmentTabHref('H', 'resumen')).toBe('/h/H/employment');
+    expect(employmentTabHref('H', 'conceptos', 'a 1')).toBe(
+      '/h/H/employment/conceptos?empleada=a%201'
+    );
+    expect(employmentTabHref('H', 'pagos', 'a1', 'cuenta-s1')).toBe(
+      '/h/H/employment/pagos?empleada=a1#cuenta-s1'
+    );
+    // Sin persona no hay pregunta: el hogar de una sola empleada no arrastra
+    // una cadena vacía detrás de cada enlace.
+    expect(employmentTabHref('H', 'vacaciones', null)).toBe('/h/H/employment/vacaciones');
+    expect(employmentTabHref('H', 'acuerdo', 'a1')).toBe('/h/H/employment/acuerdo?empleada=a1');
+  });
+
+  it('el origen de un concepto ya aplicado lleva a su mes de Pagos', () => {
+    // Entre cerrar la cuenta del mes en curso y que cambie el mes, el concepto
+    // sigue en el devengo pero ya no está en Conceptos. Enlazarlo allí sería
+    // mandar al lector a una página que no lo tiene.
+    const bases = {
+      conceptos: '/h/H/employment/conceptos',
+      resumen: '/h/H/employment',
+      pagos: '/h/H/employment/pagos?empleada=a1',
+      contrato: '/h/H/employment/acuerdo'
+    };
+    const accrual = buildAccrual({
+      period: '2026-08',
+      versions: VERSIONS,
+      extras: [],
+      advances: [],
+      expenses: [],
+      adjustments: [
+        {
+          id: 'c-ap',
+          period: '2026-08',
+          requestedPeriod: '2026-08',
+          label: 'Adelanto entregado',
+          reason: 'Entregado a cuenta',
+          amountCents: '-15000',
+          addsToPay: true,
+          deferralNote: '',
+          status: 'recorded',
+          voidReason: null,
+          settledSettlementId: 's1'
+        },
+        {
+          id: 'c-pe',
+          period: '2026-08',
+          requestedPeriod: '2026-08',
+          label: 'Gratificación de verano',
+          reason: 'Acordada al volver',
+          amountCents: '5000',
+          addsToPay: true,
+          deferralNote: '',
+          status: 'recorded',
+          voidReason: null
+        }
+      ],
+      hrefBases: bases
+    });
+    // Los dos siguen contando en el total: la nómina cerrada del propio mes ya
+    // pagó el adelanto, y descontarlo del devengo lo haría decir de más.
+    expect(accrual!.lines.filter((line) => line.kind === 'adjustment')).toHaveLength(2);
+    expect(accrual!.lines.find((line) => line.sourceId === 'c-ap')!.href).toBe(
+      '/h/H/employment/pagos?empleada=a1#cuenta-s1'
+    );
+    expect(accrual!.lines.find((line) => line.sourceId === 'c-pe')!.href).toBe(
+      '/h/H/employment/conceptos#concepto-c-pe'
+    );
   });
 });

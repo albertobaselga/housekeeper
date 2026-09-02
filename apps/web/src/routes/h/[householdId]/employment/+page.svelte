@@ -5,6 +5,8 @@
   import OutboxTriageCard from '$lib/components/employment/OutboxTriageCard.svelte';
   import { can } from '$lib/auth/capabilities';
   import { useAppContext } from '$lib/auth/context';
+  import { employmentTabHref, lastMeaningfulSettlement, parseCents } from '$lib/employment/model';
+  import { closedWithNothingToPay } from '$lib/employment/pagos';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -39,15 +41,18 @@
     can(context.role, 'settlement.close') || can(context.role, 'payment.confirm.self')
   );
 
-  // El enlace a Conceptos conserva a la persona elegida, como las pestañas, y
-  // con el MISMO escapado: tres productores de la misma URL no pueden
-  // discrepar en cómo la escriben.
+  // Los destinos los escribe el constructor único de `model.ts`: la persona
+  // elegida viaja siempre, y siempre escapada igual. Escribir la cadena a mano
+  // en cada sitio era la vía por la que un enlace acababa en el expediente de
+  // otra persona.
   const conceptosHref = $derived(
-    overview
-      ? `/h/${overview.householdId}/employment/conceptos${agreement ? `?empleada=${encodeURIComponent(agreement.id)}` : ''}`
-      : ''
+    overview ? employmentTabHref(overview.householdId, 'conceptos', agreement?.id) : ''
   );
-  const lastSettlement = $derived(overview?.settlements[0] ?? null);
+
+  // La regla vive en el modelo, donde se puede probar: la que había aquí no
+  // saltaba las cuentas mudas, paraba en ellas, y abrir la cuenta del mes
+  // apagaba el aviso de una deuda vencida.
+  const lastSettlement = $derived(lastMeaningfulSettlement(overview?.settlements ?? []));
 </script>
 
 <div class="page-wrap">
@@ -66,13 +71,17 @@
     />
 
     {#if portada.seesAmounts}
-      <section class="summary-strip" class:dos={!portada.withReimbursements} aria-label="La cuenta de la casa este mes">
-        <div><span>Mes en curso</span><strong>{portada.periodLabel}</strong></div>
-        {#if portada.withReimbursements}
-          <div><span>Salarios</span><strong>{portada.salaryLabel}</strong></div>
-          <div><span>Reembolsos</span><strong>{portada.reimbursementLabel}</strong></div>
-        {/if}
-        <div class="total"><span>Total de la casa</span><strong>{portada.totalLabel}</strong></div>
+      <!-- La celda destacada es lo que se DEBE, no lo que va sumando. Son dos
+           preguntas distintas y sólo una es una obligación: el devengo del mes
+           en curso es una previsión de un mes que aún no ha terminado. Sin
+           deuda la celda dice «Al día», nunca «0,00 €»: un cero se lee como una
+           cifra y esto es la ausencia de cifra. -->
+      <section class="summary-strip dos" aria-label="La cuenta de la casa este mes">
+        <div><span>Va sumando este mes</span><strong>{portada.totalLabel}</strong></div>
+        <div class="total">
+          <span>Pendiente de pago</span>
+          <strong>{portada.owedTotalLabel ?? 'Al día'}</strong>
+        </div>
       </section>
     {:else}
       <!-- Ausencia por permiso, no por falta de datos: la RLS no enseña
@@ -91,36 +100,100 @@
       <div class="section-heading">
         <div><p class="eyebrow">Personas empleadas</p><h2>El expediente de cada una</h2></div>
       </div>
-      <div class="ledger-list" data-lista="principal">
-        {#each portada.employees as employee (employee.agreementId)}
-          <div>
-            <span>
-              <strong>{employee.employeeLabel}{employee.active ? '' : ' (acuerdo terminado)'}</strong>
-              <small>
-                {#if employee.monthTotalLabel}
-                  Este mes va sumando {employee.monthTotalLabel}
-                {:else if portada.seesAmounts}
-                  Su contrato no está en vigor este mes
+      {#if portada.employees.length === 0}
+        <p class="audit-note">
+          Todavía no trabaja nadie en esta casa. En cuanto se dé de alta a alguien con su
+          contrato, aparecerá aquí con su expediente.
+        </p>
+      {:else}
+        <div class="ledger-list" data-lista="principal">
+          {#each portada.employees as employee (employee.agreementId)}
+            <div>
+              <span>
+                <strong>{employee.employeeLabel}{employee.active ? '' : ' (acuerdo terminado)'}</strong>
+                {#if portada.seesAmounts}
+                  <!-- Primero la deuda, que es la pregunta que trae aquí; el
+                       devengo del mes va después y nunca se suma con ella. -->
+                  <small>
+                    {#if employee.owedLabel}
+                      Le debes {employee.owedLabel}{employee.owedDueLabel ? ` · ${employee.owedDueLabel}` : ''}
+                    {:else}
+                      Al día
+                    {/if}
+                    &nbsp;·
+                    {#if employee.monthTotalLabel}
+                      este mes va sumando {employee.monthTotalLabel}
+                    {:else}
+                      su contrato no está en vigor este mes
+                    {/if}
+                    &nbsp;· {employee.pendingLabel}
+                  </small>
                 {:else}
-                  Importes reservados
+                  <small>Importes reservados&nbsp;· {employee.pendingLabel}</small>
                 {/if}
-                &nbsp;· {employee.pendingLabel}
-              </small>
-            </span>
-            <span class="inline-actions">
-              {#if employee.monthTotalLabel}
-                <strong class="cifra pequena">{employee.monthTotalLabel}</strong>
-              {/if}
+              </span>
+              <span class="inline-actions">
+                {#if employee.owedLabel}
+                  <strong class="cifra pequena">{employee.owedLabel}</strong>
+                  <span class="status-chip warning">{employee.overdue ? 'Vencida' : 'Por pagar'}</span>
+                {/if}
+                <a
+                  class="button secondary small-button"
+                  href={employmentTabHref(context.household.id, 'resumen', employee.agreementId)}
+                >Abrir su expediente</a>
+                {#if employee.owedLabel}
+                  <a
+                    class="button secondary small-button"
+                    href={employmentTabHref(context.household.id, 'pagos', employee.agreementId)}
+                  >Registrar pago</a>
+                {/if}
+              </span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </article>
+
+    <!-- Tiene acceso y no tiene contrato en vigor. Pactar el primer contrato de
+         alguien que ya está en la casa NO es dar de alta a una persona, y la
+         línea dice cuál de las dos historias es: volver a la casa y llegar por
+         primera vez no se deciden igual. -->
+    {#if portada.candidates.length > 0}
+      <article class="card">
+        <div class="section-heading">
+          <div><p class="eyebrow">Sin contrato</p><h2>Ya están en la casa y falta pactarlo</h2></div>
+        </div>
+        <div class="ledger-list">
+          {#each portada.candidates as candidate (candidate.membershipId)}
+            <div>
+              <span><strong>{candidate.name}</strong><small>{candidate.detailLabel}</small></span>
               <a
                 class="button secondary small-button"
-                href={`?empleada=${encodeURIComponent(employee.agreementId)}`}
-                data-sveltekit-noscroll
-              >Abrir su expediente</a>
-            </span>
-          </div>
-        {/each}
-      </div>
-    </article>
+                href={`/h/${context.household.id}/employment/alta?persona=${encodeURIComponent(candidate.membershipId)}`}
+              >Pactar su contrato</a>
+            </div>
+          {/each}
+        </div>
+      </article>
+    {/if}
+
+    <!-- El alta vive aquí y en ningún otro sitio. La raíz de la sección sólo
+         exige `settlement.read`, así que la portada también la ven la familia no
+         administradora y la empleada: sin esta llave no se ofrece un camino
+         imposible. -->
+    {#if can(context.role, 'access.manage')}
+      <article class="card">
+        <div class="section-heading">
+          <div><p class="eyebrow">Personal</p><h2>Añadir una persona a la casa</h2></div>
+        </div>
+        <p>Primero sus datos y su acceso; después, sus condiciones.</p>
+        <div class="action-row">
+          <a class="button primary" href={`/h/${context.household.id}/employment/alta`}>
+            Añadir una persona
+          </a>
+        </div>
+      </article>
+    {/if}
   {:else}
   <PageHeader
     eyebrow="Condiciones, nómina y gastos"
@@ -128,7 +201,10 @@
     description="Importes claros, confirmaciones separadas y un historial que se entiende."
   />
 
-  {#if overview && overview.agreements.length > 1 && selectedOption}
+  <!-- El mismo predicado que decide la portada, no el recuento de acuerdos: si
+       aquí siguiera contando filas, en la casa de una sola persona la portada
+       existiría y ninguna pestaña ofrecería el camino de vuelta a ella. -->
+  {#if overview && context.role !== 'employee_live_in' && selectedOption}
     <EmploymentPersonBar
       householdId={overview.householdId}
       employeeLabel={selectedOption.employeeLabel}
@@ -260,13 +336,67 @@
             <!-- La última cuenta, en una línea: el historial entero, con sus
                  pagos y su documento, vive en la pestaña Pagos. -->
             {#if lastSettlement}
+              <!-- Un mes cerrado sin nada que transferir no es una deuda a cero:
+                   es un mes resuelto. El mismo predicado que usa la pestaña
+                   Pagos, no otro escrito aquí: con dos, un día dirían cosas
+                   distintas del mismo mes. Antes esta tarjeta se contradecía
+                   tres veces a la vez —distintivo ámbar «Pendiente de pago»,
+                   texto «Pagada» y una cifra de 0,00 €—. -->
+              {@const nadaQuePagar = closedWithNothingToPay(lastSettlement)}
+              {@const pendiente = !nadaQuePagar && parseCents(lastSettlement.pendingCents) > 0n}
               <article class="card">
                 <div class="section-heading">
                   <div><p class="eyebrow">Última cuenta</p><h2>{lastSettlement.periodLabel}</h2></div>
-                  <span class="status-chip {lastSettlement.fullyPaid && lastSettlement.receiptConfirmed ? 'success' : 'warning'}">{lastSettlement.paymentStateLabel}</span>
+                  {#if nadaQuePagar}
+                    <!-- Ni ámbar (aquí no espera nada) ni verde (no hubo cobro
+                         que celebrar): el distintivo neutro dice lo que pasó. -->
+                    <span class="status-chip">Cerrada · nada que pagar</span>
+                  {:else}
+                    <span class="status-chip {lastSettlement.fullyPaid && lastSettlement.receiptConfirmed ? 'success' : 'warning'}">{lastSettlement.paymentStateLabel}</span>
+                  {/if}
+                </div>
+                <!-- Con su cifra: quien mira la última cuenta quiere saber
+                     cuánto queda por pagar o, si ya se pagó, de quién es la
+                     pelota. El estado a secas no contesta ninguna de las dos. -->
+                <div class="ledger-list">
+                  <div>
+                    <span>
+                      <strong>{nadaQuePagar ? 'Cerrada' : pendiente ? 'Queda por pagar' : 'Pagada'}</strong>
+                      <small>
+                        {#if nadaQuePagar}
+                          No hubo nada que transferir este mes: todo quedó compensado. La cuenta
+                          está cerrada y no espera a nadie.
+                        {:else if pendiente}
+                          De {lastSettlement.transferTotalLabel} · vence el {lastSettlement.dueOnLabel}
+                        {:else if lastSettlement.receiptConfirmed}
+                          Cobro confirmado: la cuenta queda cerrada del todo.
+                        {:else if isOwnAgreement}
+                          Falta que confirmes el cobro. Se hace en Pagos.
+                        {:else}
+                          Falta que ella confirme el cobro, que lo hace por su cuenta. De tu parte
+                          no queda nada.
+                        {/if}
+                      </small>
+                    </span>
+                    <!-- Sin cifra cuando no hubo nada que transferir: un
+                         «0,00 €» se lee como un importe, y aquí no hubo ninguno. -->
+                    {#if !nadaQuePagar}
+                      <strong class="cifra pequena">
+                        {pendiente ? lastSettlement.pendingLabel : lastSettlement.transferTotalLabel}
+                      </strong>
+                    {/if}
+                  </div>
                 </div>
                 <div class="action-row">
-                  <a class="button secondary small-button" href={`/h/${overview.householdId}/employment/pagos${agreement ? `?empleada=${encodeURIComponent(agreement.id)}` : ''}`}>Ver los pagos</a>
+                  <a
+                    class="button secondary small-button"
+                    href={employmentTabHref(
+                      overview.householdId,
+                      'pagos',
+                      agreement?.id,
+                      `cuenta-${lastSettlement.id}`
+                    )}
+                  >Ver los pagos</a>
                 </div>
               </article>
             {/if}
@@ -328,13 +458,11 @@
               </a>
             </article>
           {/if}
-          {#if seesAmounts}
-            <article class="card quiet-card">
-              <span class="card-icon" aria-hidden="true">✓</span>
-              <h2>Confirmación independiente</h2>
-              <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
-            </article>
-          {/if}
+          <!-- Aquí vivía «Confirmación independiente»: el rótulo que quedó
+               huérfano cuando se borró su botón, enunciando una regla en
+               abstracto y ocupando un tercio de la columna. Lo que explicaba se
+               dice ahora donde se actúa —junto al formulario de pago, en
+               Pagos— y sobre una cuenta concreta, no sobre la idea de una. -->
         </aside>
       </div>
     {/if}
@@ -366,11 +494,6 @@
               <div><span><strong>{item.label}</strong><small>{item.detail}</small></span><strong>{item.value}</strong></div>
             {/each}
           </div>
-        </article>
-        <article class="card quiet-card">
-          <span class="card-icon" aria-hidden="true">✓</span>
-          <h2>Confirmación independiente</h2>
-          <p>Registrar una transferencia no confirma por sí solo que la otra parte la haya recibido.</p>
         </article>
       </aside>
     </div>

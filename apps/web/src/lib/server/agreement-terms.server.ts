@@ -10,6 +10,8 @@ import {
   currentLocalDate,
   dateLabel,
   formatCents,
+  readVacationCarryoverExpiry,
+  vacationCarryoverExpiryLabel,
   weeklyHoursLabel,
   type ExtraWorkTypeRow,
   type ExtraWorkTypeView,
@@ -17,7 +19,8 @@ import {
   type ScheduleDayRow,
   type ScheduleRow,
   type ScheduleView,
-  type SupplementView
+  type SupplementView,
+  type VacationCarryoverExpiry
 } from '$lib/employment/model';
 import { unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -51,6 +54,15 @@ export interface AgreementVersionAdminView {
   weeklyMinutes: number;
   weeklyLabel: string;
   annualVacationDays: number;
+  /**
+   * Crudo y nullable: null significa «no se pactó», y la pantalla lo dice con
+   * esas palabras. Un 0 aquí sería un precio acordado de cero euros por día.
+   */
+  unusedVacationDayRateCents: string | null;
+  /** null cuando no se pactó. Nunca «0,00 €». */
+  unusedVacationDayRateLabel: string | null;
+  vacationCarryoverExpiry: VacationCarryoverExpiry;
+  vacationCarryoverExpiryLabel: string;
   reason: string;
   /** vigente hoy / entra en vigor más adelante / histórica. */
   state: 'vigente' | 'futura' | 'historica';
@@ -71,9 +83,19 @@ export interface AgreementAdminView {
   versions: AgreementVersionAdminView[];
 }
 
+/**
+ * Alguien con acceso a la casa y sin contrato en vigor. Son dos historias
+ * distintas y no se deciden igual: la que se dio de alta sin pactar contrato
+ * ACABA DE LLEGAR, y aquella cuyo contrato terminó VUELVE a la casa. Por eso la
+ * fila lleva la distinción y no sólo el nombre.
+ */
 export interface EmployeeCandidateView {
   membershipId: string;
   name: string;
+  /** Fin del último contrato en esta casa, o null si nunca tuvo ninguno. */
+  previousEndedOn: string | null;
+  /** true = vuelve a la casa; false = acaba de llegar. */
+  returning: boolean;
 }
 
 export interface AgreementAdminOverview {
@@ -101,12 +123,93 @@ interface VersionRow {
   monthlySalaryCents: string;
   contractedWeeklyMinutes: number;
   annualVacationDays: number;
+  unusedVacationDayRateCents: string | null;
+  terms: unknown;
   reason: string;
 }
 
 type CatalogueRow = ExtraWorkTypeRow & { agreementId: string };
 type SupplementCatalogueRow = RecurringSupplementRow & { agreementId: string };
 type ScheduleCatalogueRow = ScheduleRow & { agreementId: string };
+
+/**
+ * Empleadas internas sin acuerdo activo. El modelo admite varios acuerdos vivos
+ * en el mismo hogar —uno por persona—, así que esta lista puede tener más de un
+ * nombre a la vez.
+ *
+ * Vive suelta y no dentro de `loadAgreementAdmin` porque la piden TRES sitios:
+ * la portada del hogar (que las lista para pactar su contrato), el alta (que
+ * entra directa en la etapa del contrato cuando la persona ya existe) y la
+ * propia vista de administración. Tenerla escrita tres veces garantizaba que un
+ * día se afinara en una y no en las otras.
+ *
+ * El LATERAL con agregados devuelve siempre una fila, así que `total` nunca
+ * llega nulo.
+ */
+export async function readEmployeeCandidates(
+  client: PoolClient,
+  householdId: string
+): Promise<EmployeeCandidateView[]> {
+  const result = await client.query<{
+    membershipId: string;
+    name: string | null;
+    previousCount: string;
+    previousEndedOn: string | null;
+  }>(
+    `select membership.id as "membershipId",
+            profile.display_name as "name",
+            previo.total::text as "previousCount",
+            previo.ended_on::text as "previousEndedOn"
+       from app.household_memberships as membership
+       left join app.user_profiles as profile on profile.user_id = membership.user_id
+       left join lateral (
+         select count(*) as total, max(agreement.ends_on) as ended_on
+           from app.employment_agreements as agreement
+          where agreement.household_id = membership.household_id
+            and agreement.employee_membership_id = membership.id
+       ) as previo on true
+      where membership.household_id = $1
+        and membership.role = 'employee_live_in'
+        and membership.revoked_at is null
+        and not exists (
+          select 1 from app.employment_agreements as agreement
+           where agreement.household_id = membership.household_id
+             and agreement.employee_membership_id = membership.id
+             and agreement.status = 'active'
+        )
+      order by profile.display_name nulls last, membership.id`,
+    [householdId]
+  );
+  return result.rows.map((row) => ({
+    membershipId: row.membershipId,
+    name: row.name ?? 'Empleada sin nombre en el perfil',
+    previousEndedOn: row.previousEndedOn,
+    returning: Number(row.previousCount) > 0
+  }));
+}
+
+/**
+ * Lo mínimo que necesita la pantalla del alta: la fecha de hoy para las fechas
+ * por omisión y las personas que ya están en la casa sin contrato. No trae los
+ * acuerdos ni sus versiones porque el alta no los pinta.
+ */
+export async function loadHireContext(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool(),
+  now: Date = new Date()
+): Promise<{ today: string; candidates: EmployeeCandidateView[] } | null> {
+  if (!pool) return null;
+  const today = currentLocalDate(now);
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      if (membership.role !== 'family_admin') return null;
+      return { today, candidates: await readEmployeeCandidates(client, householdId) };
+    });
+  } catch (cause) {
+    return unreadable(log, 'hire context', cause);
+  }
+}
 
 async function readAgreements(client: PoolClient, householdId: string): Promise<AgreementRow[]> {
   const result = await client.query<AgreementRow>(
@@ -160,6 +263,8 @@ export async function loadAgreementAdmin(
                     monthly_salary_cents::text as "monthlySalaryCents",
                     contracted_weekly_minutes as "contractedWeeklyMinutes",
                     annual_vacation_days as "annualVacationDays",
+                    unused_vacation_day_rate_cents::text as "unusedVacationDayRateCents",
+                    terms,
                     reason
                from app.agreement_versions
               where household_id = $1 and agreement_id = any($2::uuid[])
@@ -239,25 +344,7 @@ export async function loadAgreementAdmin(
           )
         : empty;
 
-      // Empleadas internas sin acuerdo activo. El modelo admite varios acuerdos
-      // vivos en el mismo hogar —uno por persona—, así que esta lista puede
-      // tener más de un nombre a la vez.
-      const candidates = await client.query<{ membershipId: string; name: string | null }>(
-        `select membership.id as "membershipId", profile.display_name as "name"
-           from app.household_memberships as membership
-           left join app.user_profiles as profile on profile.user_id = membership.user_id
-          where membership.household_id = $1
-            and membership.role = 'employee_live_in'
-            and membership.revoked_at is null
-            and not exists (
-              select 1 from app.employment_agreements as agreement
-               where agreement.household_id = membership.household_id
-                 and agreement.employee_membership_id = membership.id
-                 and agreement.status = 'active'
-            )
-          order by profile.display_name nulls last, membership.id`,
-        [householdId]
-      );
+      const candidates = await readEmployeeCandidates(client, householdId);
 
       const byAgreement = new Map<string, AgreementVersionAdminView[]>();
       for (const version of versions.rows) {
@@ -269,6 +356,9 @@ export async function loadAgreementAdmin(
         );
         const state: AgreementVersionAdminView['state'] =
           version.effectiveFrom > today ? 'futura' : later.length > 0 ? 'historica' : 'vigente';
+        // Ausente en `terms` son seis meses: las versiones anteriores a la 0036
+        // no la pactaron y esa es la política que se les venía aplicando.
+        const carryoverExpiry = readVacationCarryoverExpiry(version.terms);
         const list = byAgreement.get(version.agreementId) ?? [];
         list.push({
           id: version.id,
@@ -280,6 +370,14 @@ export async function loadAgreementAdmin(
           weeklyMinutes: version.contractedWeeklyMinutes,
           weeklyLabel: weeklyHoursLabel(version.contractedWeeklyMinutes),
           annualVacationDays: version.annualVacationDays,
+          unusedVacationDayRateCents: version.unusedVacationDayRateCents,
+          // null y no «0,00 €»: no se pactó no es lo mismo que se pactó cero.
+          unusedVacationDayRateLabel:
+            version.unusedVacationDayRateCents === null
+              ? null
+              : formatCents(version.unusedVacationDayRateCents),
+          vacationCarryoverExpiry: carryoverExpiry,
+          vacationCarryoverExpiryLabel: vacationCarryoverExpiryLabel(carryoverExpiry),
           reason: version.reason,
           state,
           extraWorkTypes: types.rows
@@ -317,10 +415,7 @@ export async function loadAgreementAdmin(
           endsOn: row.endsOn,
           versions: byAgreement.get(row.id) ?? []
         })),
-        candidates: candidates.rows.map((row) => ({
-          membershipId: row.membershipId,
-          name: row.name ?? 'Empleada sin nombre en el perfil'
-        }))
+        candidates
       } satisfies AgreementAdminOverview;
     });
   } catch (cause) {
@@ -361,8 +456,15 @@ async function insertVersion(
     `insert into app.agreement_versions
        (household_id, agreement_id, version_number, effective_from, monthly_salary_cents,
         overtime_hourly_rate_cents, worked_rest_day_rate_cents, worked_rest_day_credit_minutes,
-        contracted_weekly_minutes, annual_vacation_days, reason, created_by_membership_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        contracted_weekly_minutes, annual_vacation_days, unused_vacation_day_rate_cents,
+        terms, reason, created_by_membership_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+             coalesce((select previa.terms
+                         from app.agreement_versions as previa
+                        where previa.household_id = $1 and previa.agreement_id = $2
+                        order by previa.version_number desc
+                        limit 1), '{}'::jsonb) || $12::jsonb,
+             $13, $14)
      returning id`,
     [
       householdId,
@@ -375,6 +477,21 @@ async function insertVersion(
       creditMinutes,
       terms.contractedWeeklyMinutes,
       terms.annualVacationDays,
+      // null de verdad, nunca '0': la columna de la 0036 es NULLABLE porque
+      // «no se pactó» y «se pactó cero» son cosas distintas y la fila es
+      // inmutable, así que un cero por omisión no se podría corregir jamás.
+      terms.unusedVacationDayRateCents,
+      // `terms` deja de ser el `{}` que nadie escribía: aquí entra la política
+      // de caducidad de los días arrastrados, con la forma que la CHECK de la
+      // 0036 admite y el esquema zod valida.
+      //
+      // Se MEZCLA sobre los términos de la versión anterior (el `||` de arriba),
+      // no se reemplaza el jsonb entero. Hoy da igual porque sólo hay una clave,
+      // pero el día que entre una segunda —vacaciones tiene tarea abierta— un
+      // escritor que reemplace la borraría al apilar, y la fila es inmutable: se
+      // perdería sin poder corregirse. La regla es conservar lo que no se
+      // escribe, que es la que ya sigue el comando de vacaciones.
+      JSON.stringify({ vacationCarryoverExpiry: terms.vacationCarryoverExpiry }),
       terms.reason,
       actorMembershipId
     ]
@@ -490,6 +607,48 @@ async function insertVersion(
 }
 
 /**
+ * Traduce el rechazo del esquema a algo que una persona pueda corregir, EN
+ * CASTELLANO.
+ *
+ * Devolver `issue.message` en crudo escribía «Invalid input: expected number,
+ * received NaN» en una pantalla que está en castellano hasta el último
+ * `aria-label`, y además no decía qué campo ni qué hacer. Se traduce por el
+ * primer tramo de la ruta, que es el nombre del campo: la regla la sigue
+ * decidiendo zod, aquí sólo se le pone nombre, igual que `explain` hace con los
+ * códigos de Postgres.
+ */
+export function explainTermsIssue(issue: { path: PropertyKey[] } | undefined): string {
+  switch (issue?.path[0]) {
+    case 'effectiveFrom':
+      return 'La fecha de entrada en vigor no es una fecha válida.';
+    case 'monthlySalaryCents':
+      return 'El salario mensual no es un importe válido.';
+    case 'contractedWeeklyMinutes':
+      return 'La jornada semanal tiene que ser un número de minutos entre 1 y 10.080.';
+    case 'annualVacationDays':
+      return 'Los días de vacaciones al año tienen que ser un número entre 0 y 365.';
+    case 'unusedVacationDayRateCents':
+      return 'El precio del día de vacaciones no disfrutado no es un importe válido.';
+    case 'vacationCarryoverExpiry':
+      return 'Di qué pasa con los días arrastrados: o caducan pasados unos meses (entre 1 y 120), o no expiran nunca.';
+    case 'reason':
+      return 'Escribe por qué se pacta así: el motivo es obligatorio y queda en el historial.';
+    case 'extraWorkTypes':
+      return 'Revisa el catálogo de trabajo extra: cada concepto necesita código, nombre y, si se paga por jornada, de cuántos minutos es.';
+    case 'supplements':
+      return 'Revisa los complementos: cada uno necesita código, nombre y quién lo cobra, y su vigencia no puede acabar antes de empezar.';
+    case 'schedule':
+      return 'Revisa el horario: la jornada no puede terminar antes de empezar y el descanso tiene que caber dentro.';
+    case 'employeeMembershipId':
+      return 'No hemos entendido de quién es este contrato. Vuelve a la lista de personas y elígela otra vez.';
+    case 'startsOn':
+      return 'La fecha de inicio del contrato no es una fecha válida.';
+    default:
+      return 'Hay algún dato de las condiciones que no es válido. Revísalos e inténtalo otra vez.';
+  }
+}
+
+/**
  * Traduce el fallo de Postgres a algo que una persona pueda corregir. Los
  * códigos vienen de los disparadores y CHECK de 0002, 0021 y 0025, que son
  * quienes mandan: aquí no se duplica ninguna regla, solo se le pone nombre.
@@ -561,6 +720,38 @@ export async function createAgreement(
         return {
           ok: false,
           message: 'La primera versión no puede entrar en vigor antes del inicio del acuerdo.'
+        };
+      }
+      /*
+       * UN CONTRATO SÓLO EXISTE SOBRE UNA EMPLEADA INTERNA. No lo impedía nada
+       * —ni una CHECK, ni la RLS, ni este código—, así que un identificador de
+       * membresía de apoyo del hogar o de visor colado en un campo oculto creaba
+       * un acuerdo de pleno derecho, y con él una línea en la lista de personas
+       * empleadas. El diseño dice literalmente que el apoyo del hogar «no genera
+       * contrato ni línea en esta lista», y esto es lo que lo cumple.
+       *
+       * La comprobación va aquí, en el único sitio por el que pasan las dos
+       * puertas, y no en la pantalla: la pantalla ya lo dice con palabras, pero
+       * las palabras no son una reja.
+       */
+      const empleada = await client.query<{ role: string }>(
+        `select role::text as "role"
+           from app.household_memberships
+          where household_id = $1 and id = $2 and revoked_at is null`,
+        [householdId, input.employeeMembershipId]
+      );
+      const role = empleada.rows[0]?.role;
+      if (role === undefined) {
+        return {
+          ok: false,
+          message: 'Esa persona no está dada de alta en este hogar, o ya no tiene acceso.'
+        };
+      }
+      if (role !== 'employee_live_in') {
+        return {
+          ok: false,
+          message:
+            'Sólo una empleada interna tiene contrato. El apoyo del hogar no genera contrato ni aparece en la lista de personas empleadas.'
         };
       }
       const { agreementId, versionId } = await insertAgreementWithFirstVersion(

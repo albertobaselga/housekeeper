@@ -151,6 +151,12 @@ export const expenseResolvePayloadSchema = z.object({
 });
 
 /**
+ * Un mes natural, `YYYY-MM`: la unidad de la cuenta. Lo usan los conceptos
+ * apuntados a mano y la compensación de vacaciones, que crea uno de ellos.
+ */
+export const periodMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+/**
  * Vacaciones. Los días son NATURALES (es la unidad del contrato) y el año se
  * acota a un rango con sentido para un hogar: fuera de él lo que hay es un
  * dedazo en el teclado, no un periodo.
@@ -182,14 +188,58 @@ export const vacationVoidPayloadSchema = z.object({
 });
 
 /**
+ * Las tres salidas del arrastre de un año de contrato que se cierra con días
+ * sin disfrutar (migración 0037, apartado 4.3 del diseño).
+ *
+ * Ninguna lleva los días ni el importe: los recalcula el servidor al decidir,
+ * desde los periodos y la versión vigente del acuerdo, y los CONGELA en la
+ * fila. Si el cliente los mandara, quien fabricara la petición a mano elegiría
+ * cuánto se le paga.
+ *
+ * El año se identifica por su ORDINAL de contrato —1 el primero— y no por sus
+ * fechas: las fechas salen del acuerdo, y dejar que las mande el cliente sería
+ * dejarle mover el corte del año.
+ */
+const carryoverTargetShape = {
+  agreementId: uuidSchema,
+  sourceYearIndex: z.number().int().min(1).max(200),
+} as const;
+
+export const vacationCarryOverPayloadSchema = z.object({
+  action: z.literal("carry_over"),
+  ...carryoverTargetShape,
+});
+
+export const vacationCompensateCarryoverPayloadSchema = z.object({
+  action: z.literal("compensate_carryover"),
+  ...carryoverTargetShape,
+  /**
+   * Mes al que se pide imputar el concepto. Como cualquier concepto: si ese mes
+   * ya está cerrado, el servidor lo aplaza al primer mes abierto y lo deja
+   * dicho en la fila.
+   */
+  period: periodMonthSchema,
+});
+
+export const vacationRejectCarryoverPayloadSchema = z.object({
+  action: z.literal("reject_carryover"),
+  ...carryoverTargetShape,
+  /** Obligatorio: perder días sin decir por qué es lo que hay que impedir. */
+  reason: z.string().trim().min(1).max(500),
+});
+
+/**
  * Unión sin `discriminatedUnion` a propósito: `vacationRecordPayloadSchema`
  * lleva `.refine`, y un ZodEffects no puede ser miembro de una unión
- * discriminada. La unión normal prueba las dos ramas y devuelve el error de la
- * que más encaje, que aquí basta porque solo hay dos acciones.
+ * discriminada. La unión normal prueba las ramas y devuelve el error de la que
+ * más encaje.
  */
 export const vacationCommandPayloadSchema = z.union([
   vacationRecordPayloadSchema,
   vacationVoidPayloadSchema,
+  vacationCarryOverPayloadSchema,
+  vacationCompensateCarryoverPayloadSchema,
+  vacationRejectCarryoverPayloadSchema,
 ]);
 
 /**
@@ -199,8 +249,6 @@ export const vacationCommandPayloadSchema = z.union([
  * corta a propósito —es un título de línea, no una carta— y el motivo tiene
  * sitio para explicarse.
  */
-export const periodMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-
 export const manualAdjustmentRecordPayloadSchema = z
   .object({
     action: z.literal("record"),
@@ -374,11 +422,33 @@ export const agreementScheduleInputSchema = z
   });
 
 /**
+ * Qué pasa con los días de vacaciones sin disfrutar al cerrar un año de
+ * contrato (apartado 4.2 del diseño). Viaja en `agreement_versions.terms`, no
+ * en una columna: es política pactada con forma propia, y `terms` es
+ * exactamente para eso.
+ *
+ * `never` no lleva número: decir «nunca expiran, a los 6 meses» sería dos
+ * respuestas a la vez, y la CHECK de la 0036 tampoco lo admitiría.
+ */
+export const vacationCarryoverExpirySchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("months"), months: z.number().int().min(1).max(120) }),
+  z.object({ mode: z.literal("never") }),
+]);
+
+/** Ausente = seis meses. Ningún contrato ya firmado necesita tocarse. */
+export const DEFAULT_VACATION_CARRYOVER_EXPIRY = { mode: "months", months: 6 } as const;
+
+/**
  * Términos completos de una versión: nunca se editan, siempre se apilan.
  *
  * `schedule` es nullable Y opcional a propósito: un contrato puede no declarar
  * horario, y entonces a la empleada no se le enseña una sección vacía. Ese
  * «null» no es un hueco por rellenar, es una respuesta.
+ *
+ * `unusedVacationDayRateCents` es nullable por el mismo motivo y por uno más:
+ * la columna de la 0036 es NULLABLE a propósito, porque un cero por omisión
+ * dejaría escrito en una tabla inmutable que se acordó pagar cero euros por
+ * día de vacaciones no disfrutado. Vacío dice la verdad: no se pactó.
  */
 export const agreementTermsInputSchema = z.object({
   effectiveFrom: isoDateSchema,
@@ -388,6 +458,15 @@ export const agreementTermsInputSchema = z.object({
   ),
   contractedWeeklyMinutes: z.number().int().min(1).max(7 * 24 * 60),
   annualVacationDays: z.number().int().min(0).max(365),
+  unusedVacationDayRateCents: moneyCentsSchema
+    .nullable()
+    .default(null)
+    .refine((value) => value === null || BigInt(value) >= 0n, {
+      message: "El día de vacaciones no disfrutado no puede tener precio negativo",
+    }),
+  vacationCarryoverExpiry: vacationCarryoverExpirySchema.default(
+    DEFAULT_VACATION_CARRYOVER_EXPIRY,
+  ),
   reason: z.string().trim().min(1).max(500),
   extraWorkTypes: z.array(extraWorkTypeInputSchema).max(30),
   supplements: z.array(recurringSupplementInputSchema).max(30),

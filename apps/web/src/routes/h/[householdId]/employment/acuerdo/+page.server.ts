@@ -8,21 +8,31 @@ import type {
   ScheduleDayInputV1,
   WeekdayV1
 } from '@housekeeper/contracts';
-import { agreementCreateInputSchema, agreementTermsInputSchema } from '@housekeeper/contracts/schemas';
+import { agreementTermsInputSchema } from '@housekeeper/contracts/schemas';
 
 import { parseEuroInput } from '$lib/employment/commands';
 import { PAYER_CHOICES } from '$lib/employment/payer';
 import {
-  createAgreement,
+  explainTermsIssue,
   loadAgreementAdmin,
   stackAgreementVersion
 } from '$lib/server/agreement-terms.server';
-import { getAuth } from '$lib/server/auth.server';
-import { hireFromForm } from '$lib/server/staff-hire.server';
 import type { Actions, PageServerLoad } from './$types';
 
 /**
- * Administración del acuerdo: alta y edición de las condiciones.
+ * Las condiciones de UNA persona: lo que rige hoy, cómo se cambia y el
+ * historial. Nada más.
+ *
+ * Antes esta pestaña enseñaba los contratos de TODO el hogar dentro del
+ * expediente de una, más el alta de contrato de una tercera, más el alta de una
+ * persona que aún no existía. El parámetro `empleada` viajaba pero no mandaba, y
+ * por eso no se entendía de quién era lo que se estaba mirando. Ahora manda:
+ * elegir no es una reja —la RLS ya filtra y pedir el acuerdo de otra cae en el
+ * primero visible—, es decir de quién es la pantalla.
+ *
+ * El alta de personas se fue a `employment/alta`, en dos etapas y desde la
+ * portada del hogar: dar de alta a alguien no es una operación dentro del
+ * expediente de otra persona.
  *
  * Form actions, no cola offline. Pactar condiciones laborales es un acto
  * deliberado que se hace contra el servidor o no se hace, igual que el cambio
@@ -35,16 +45,19 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
   const admin = locals.user
     ? await loadAgreementAdmin({ id: locals.user.id }, params.householdId)
     : null;
+  const empleada = url.searchParams.get('empleada');
+  const agreement =
+    admin?.agreements.find((candidate) => candidate.id === empleada) ??
+    admin?.agreements[0] ??
+    null;
   // `admin === null` significa las dos cosas a la vez —sin base de datos o sin
   // ser quien administra— y la página dice esa verdad sin distinguirlas.
   return {
-    admin,
+    agreement,
+    today: admin?.today ?? '',
+    hayAdministracion: admin !== null,
     householdId: params.householdId,
-    empleada: url.searchParams.get('empleada'),
-    // Sin identidad real no hay cuentas que crear: la página calla el
-    // formulario de alta en vez de ofrecer una imposible (mismo criterio que
-    // Personal).
-    canHire: Boolean(getAuth())
+    empleada
   };
 };
 
@@ -210,11 +223,30 @@ function readTerms(form: FormData): AgreementTermsInputV1 | { message: string } 
   const schedule = readSchedule(form);
   if (schedule !== null && 'message' in schedule) return schedule;
 
+  // Las dos condiciones de vacaciones que estrenó la 0036. Aquí SIEMPRE se
+  // preguntan, porque cambiar las condiciones es el acto en el que se sabe todo;
+  // en el alta son opcionales. La tarifa vacía se guarda como null —«no se
+  // pactó»— y nunca como cero: la fila es inmutable y ese cero diría para
+  // siempre que se acordó pagar cero euros por día.
+  const unusedVacationDayRateCents = optionalCents(form, 'unusedVacationDayRate');
+  if (unusedVacationDayRateCents === undefined) {
+    return { message: 'El precio del día de vacaciones no disfrutado no es un importe válido.' };
+  }
+  const expiryMode = text(form, 'carryoverExpiryMode');
+  const vacationCarryoverExpiry =
+    expiryMode === 'never'
+      ? { mode: 'never' }
+      : expiryMode === 'months'
+        ? { mode: 'months', months: integer(form, 'carryoverExpiryMonths') }
+        : undefined;
+
   const candidate = {
     effectiveFrom: text(form, 'effectiveFrom'),
     monthlySalaryCents: salary,
     contractedWeeklyMinutes: integer(form, 'contractedWeeklyMinutes'),
     annualVacationDays: integer(form, 'annualVacationDays'),
+    unusedVacationDayRateCents,
+    vacationCarryoverExpiry,
     reason: text(form, 'reason'),
     extraWorkTypes: types,
     supplements,
@@ -222,37 +254,13 @@ function readTerms(form: FormData): AgreementTermsInputV1 | { message: string } 
   };
   const parsed = agreementTermsInputSchema.safeParse(candidate);
   if (!parsed.success) {
-    return { message: parsed.error.issues[0]?.message ?? 'Revisa las condiciones.' };
+    // En castellano y diciendo qué campo: ver `explainTermsIssue`.
+    return { message: explainTermsIssue(parsed.error.issues[0]) };
   }
   return parsed.data as AgreementTermsInputV1;
 }
 
 export const actions: Actions = {
-  /** Alta del acuerdo con su primera versión. */
-  create: async ({ locals, params, request }) => {
-    if (!locals.user) error(401, 'Necesitas haber entrado');
-    const form = await request.formData();
-    const terms = readTerms(form);
-    if ('message' in terms) return fail(400, { createError: terms.message });
-
-    const parsed = agreementCreateInputSchema.safeParse({
-      employeeMembershipId: text(form, 'employeeMembershipId'),
-      startsOn: text(form, 'startsOn'),
-      terms
-    });
-    if (!parsed.success) {
-      return fail(400, { createError: parsed.error.issues[0]?.message ?? 'Revisa los datos del alta.' });
-    }
-
-    const result = await createAgreement(
-      { id: locals.user.id },
-      params.householdId,
-      parsed.data as never
-    );
-    if (!result.ok) return fail(400, { createError: result.message });
-    return { created: true };
-  },
-
   /**
    * Nueva versión sobre un acuerdo existente. Nunca edita la vigente: el
    * nombre de la acción es literal, se apila.
@@ -272,25 +280,5 @@ export const actions: Actions = {
     );
     if (!result.ok) return fail(400, { stackError: result.message, agreementId });
     return { stacked: true, agreementId };
-  },
-
-  /**
-   * Alta de una persona nueva SIN salir del contrato: la MISMA lectura de
-   * formulario y el mismo camino de servidor que Personal (`hireFromForm` →
-   * `hireHouseholdMember`: identidad + acceso + contrato en un acto, con
-   * contraseña provisional). Compartido, no calcado: un campo nuevo se lee una
-   * vez o en ninguna pantalla. La ruta ya exige `agreement.write` y el
-   * servidor vuelve a comprobar la membresía real bajo RLS.
-   */
-  hire: async ({ locals, params, request }) => {
-    if (!locals.user) error(401, 'Necesitas haber entrado');
-    const result = await hireFromForm(
-      { id: locals.user.id },
-      params.householdId,
-      await request.formData(),
-      request.headers
-    );
-    if (!result.ok) return fail(400, { hireError: result.message, draft: result.draft });
-    return { hired: result.hired };
   }
 };

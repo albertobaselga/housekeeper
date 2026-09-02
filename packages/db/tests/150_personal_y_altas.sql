@@ -9,6 +9,9 @@
 --      única vía.
 --   2. Que ese permiso sea SOLO de quien administra. Una empleada no crea
 --      perfiles ni membresías, y no puede darse a sí misma un papel mejor.
+--   2 bis. Que quien administra tampoco pueda crear a OTRA administradora desde
+--      la aplicación (migración 0038). Es una puerta distinta de la anterior:
+--      aquí el permiso existe y lo que se limita es el papel que se concede.
 --   3. Que la obligación de cambiar la contraseña provisional no se pueda
 --      quitar sola: la enciende quien administra, la apaga la propia persona y
 --      nadie más, ni siquiera quien la encendió.
@@ -109,6 +112,57 @@ BEGIN
   END IF;
 END
 $assert_alta$;
+
+ROLLBACK;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Ni siquiera quien administra crea otra administradora DESDE LA APLICACIÓN
+-- (migración 0038). Hasta entonces `memberships_admin_insert` sólo miraba quién
+-- escribía, nunca el papel que se concedía, y la promesa «esta puerta no crea
+-- administradoras» vivía entera en una comparación de cadenas de TypeScript
+-- (`HIREABLE_ROLES`). Se comprobó contra el banco real que por el rol
+-- `casa_clara_app` se podía insertar una membresía `family_admin`.
+--
+-- Administrar se sigue concediendo con guion, que corre con el rol PROPIETARIO
+-- de las migraciones y por tanto no está sometido a estas políticas.
+-- ─────────────────────────────────────────────────────────────────────────────
+BEGIN;
+SET LOCAL ROLE casa_clara_app;
+SELECT set_config('app.user_id', 'fixture:roble:admin', true);
+SELECT app.set_household_context(
+  '10000000-0000-4000-8000-000000000001',
+  '11000000-0000-4000-8000-000000000001'
+);
+
+DO $assert_admin_cannot_crown$
+BEGIN
+  INSERT INTO app.user_profiles (user_id, display_name)
+  VALUES ('alta:roble:corona', 'Alta Corona Sintética');
+
+  BEGIN
+    INSERT INTO app.household_memberships (id, household_id, user_id, role)
+    VALUES (
+      'df000000-0000-4000-8000-000000000003',
+      '10000000-0000-4000-8000-000000000001',
+      'alta:roble:corona',
+      'family_admin'
+    );
+    RAISE EXCEPTION 'the application unexpectedly created a family_admin membership';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+
+  -- Y los papeles que el alta SÍ concede siguen entrando: la política
+  -- restrictiva no puede haber cerrado la puerta entera.
+  INSERT INTO app.household_memberships (id, household_id, user_id, role)
+  VALUES (
+    'df000000-0000-4000-8000-000000000004',
+    '10000000-0000-4000-8000-000000000001',
+    'alta:roble:corona',
+    'helper'
+  );
+END
+$assert_admin_cannot_crown$;
 
 ROLLBACK;
 

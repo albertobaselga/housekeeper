@@ -1,10 +1,17 @@
 import {
   calculateSettlement,
+  contractYear,
+  contractYearName,
+  contractYearOn,
   describeSchedule,
+  moneyCents,
+  readVacationCarryoverExpiry,
   resolveWeek,
   scheduleCoherence,
   spokenDuration,
   spokenTime,
+  vacationCarryoverDeadline,
+  vacationCompensation,
   vacationYearBalance,
   weekdayName,
   type AgreementSchedule,
@@ -13,8 +20,14 @@ import {
   type ScheduleDay as DomainScheduleDay,
   type SettledExtraWork,
   type SettlementLine,
+  type VacationCarryoverExpiry,
   type Weekday
 } from '@housekeeper/domain';
+
+// La etiqueta del año de contrato la escribe el módulo del historial, que es
+// donde vive el lenguaje de las vacaciones. Decirlo aquí a mano dejaría dos
+// redacciones del mismo año, y tarde o temprano dirían cosas distintas.
+import { contractYearLabel } from './vacation-history';
 
 /**
  * Modelo de lectura del expediente laboral. Todas las funciones son puras y
@@ -209,13 +222,16 @@ export interface ManualAdjustmentRow {
   status: 'recorded' | 'voided';
   voidReason: string | null;
   /**
-   * Mes de la nómina que YA lo materializó como línea (`settlement_lines.
-   * manual_adjustment_id`, 0022), o null si sigue pendiente de aplicarse. Es
-   * la verdad que separa «cuenta en el mes que toque» de «ya contó»: sin
-   * ella, un adelanto de agosto seguía ofreciéndose en septiembre como si
-   * nadie lo hubiera pagado.
+   * Nómina cerrada que YA lo materializó como línea (`settlement_lines.
+   * manual_adjustment_id`, 0022), o null si sigue pendiente de aplicarse.
+   *
+   * Solo lo pide la consulta que alimenta el devengo del mes en curso, y solo
+   * para una cosa: saber a dónde enlazar su origen. Lo ya aplicado no está en
+   * Conceptos —esa pestaña lista lo que queda por resolver— sino en su mes de
+   * Pagos, y el enlace tiene que llevar ahí. La lista de la página ni siquiera
+   * trae estas filas: las descarta Postgres.
    */
-  settledPeriod: string | null;
+  settledSettlementId?: string | null;
 }
 
 /**
@@ -576,10 +592,6 @@ export interface ManualAdjustmentView {
   deferralNote: string;
   voided: boolean;
   voidReason: string | null;
-  /** true = ya materializado como línea de una nómina cerrada. */
-  settled: boolean;
-  /** «Aplicado en la nómina de agosto 2026», o null si sigue pendiente. */
-  settledLabel: string | null;
 }
 
 export interface SettlementLineView {
@@ -672,7 +684,12 @@ export interface VacationPeriodView {
 }
 
 export interface VacationView {
-  year: number;
+  /**
+   * «Segundo año · 5 mar 2026 – 4 mar 2027». El año de vacaciones es el del
+   * CONTRATO, no el natural, así que el ordinal a secas no le diría nada a
+   * quien lo lee: sin las fechas nadie sabe de qué doce meses se habla.
+   */
+  yearLabel: string;
   /** Derecho de este año, ya prorrateado si el acuerdo no lo cubre entero. */
   entitledDays: number;
   /** Derecho anual completo pactado, para poder explicar el prorrateo. */
@@ -731,8 +748,12 @@ export interface PendingExpenseView {
   incurredOn: string;
   incurredOnLabel: string;
   description: string;
-  amountCents: string;
-  amountLabel: string;
+  /**
+   * null cuando quien mira no ve importes: la ausencia por permiso se serializa
+   * como ausencia y no como cifra, para que nada pueda pintarla por descuido.
+   */
+  amountCents: string | null;
+  amountLabel: string | null;
   employeeMembershipId: string;
   hasReceipt: boolean;
 }
@@ -808,31 +829,74 @@ export interface PortadaEmployeeView {
   agreementId: string;
   employeeLabel: string;
   active: boolean;
-  monthTotalCents: string | null;
   monthTotalLabel: string | null;
   pendingCount: number;
   /** «Nada pendiente» / «1 asunto por decidir» / «N asuntos por decidir». */
   pendingLabel: string;
+  /**
+   * La deuda REAL, que no es el devengo: cuentas CERRADAS con importe sin
+   * pagar. null cuando no se debe nada, para que nadie pinte un «0,00 €».
+   */
+  owedLabel: string | null;
+  /** «Vence el 5 sep 2026» / «Venció el 5 ago 2026». null sin deuda. */
+  owedDueLabel: string | null;
+  overdue: boolean;
 }
 
 /**
- * La portada de Contrato cuando el hogar emplea a varias personas: la cuenta
- * total de la casa este mes y una tarjeta por empleada. `seesAmounts` es
- * false cuando NINGUNA cifra llegó (familia no administradora): la portada
- * enseña entonces a las personas y dice que los importes están reservados.
+ * Deuda de una persona tal y como la cuenta la base: sólo cuentas cerradas con
+ * pendiente. El importe viaja como cadena de céntimos porque el dinero nunca
+ * pasa por Number; los RECUENTOS sí son números, que es lo que son.
+ */
+export interface PortadaOwedInput {
+  pendingCents: string;
+  earliestDueOn: string | null;
+  overdueCount: number;
+}
+
+/**
+ * Alguien que ya tiene acceso a la casa y todavía no tiene contrato en vigor:
+ * la que se dio de alta sin pactarlo y aquella cuyo contrato terminó. **No son
+ * lo mismo y la portada no las trata igual**: volver a la casa y llegar por
+ * primera vez son dos historias distintas, y quien administra decide diferente
+ * según cuál sea.
+ */
+export interface PortadaCandidateView {
+  membershipId: string;
+  name: string;
+  /** Fin del último contrato en esta casa, o null si nunca tuvo ninguno. */
+  previousEndedOn: string | null;
+  /** true = vuelve a la casa; false = acaba de llegar. */
+  returning: boolean;
+  detailLabel: string;
+}
+
+/**
+ * La portada de Contrato: la cuenta de la casa este mes, lo que se debe de
+ * verdad y una línea por persona. `seesAmounts` es una ENTRADA explícita, no
+ * una deducción de que haya llegado alguna cifra: la ausencia por permiso y la
+ * ausencia por calendario son verdades distintas, y deducirla hacía que a quien
+ * administra una casa cuyos contratos empiezan el mes que viene se le culpara
+ * de un permiso que sí tiene.
  */
 export interface EmploymentPortadaView {
   period: string;
   periodLabel: string;
   seesAmounts: boolean;
-  totalCents: string;
+  /**
+   * Lo que va costando la casa este mes, ya formateado. El desglose en salario
+   * y reembolsos vive en el Resumen de cada persona, que sí lo pinta desde su
+   * propio devengo: aquí no lo leía nadie.
+   */
   totalLabel: string;
-  salaryCents: string;
-  salaryLabel: string;
-  reimbursementCents: string;
-  reimbursementLabel: string;
-  withReimbursements: boolean;
+  /**
+   * Deuda de la casa entera. null cuando no se debe nada: el encabezado dice
+   * «Al día», no «0,00 €». Solo la etiqueta: los céntimos en crudo no los
+   * pintaba nadie y mandarlos era peso en el arranque y superficie a la vez.
+   */
+  owedTotalLabel: string | null;
   employees: PortadaEmployeeView[];
+  candidates: PortadaCandidateView[];
 }
 
 /**
@@ -840,32 +904,54 @@ export interface EmploymentPortadaView {
  * `buildAccrual`. El dinero se suma en BigInt, nunca en Number, y un acuerdo
  * sin devengo (contrato aún no en vigor, o términos que la RLS ocultó) suma
  * cero y lo dice con un null, no con un 0,00 € inventado.
+ *
+ * El devengo del mes en curso NO se suma nunca a la deuda: son dos preguntas
+ * distintas —«¿cuánto va costando?» y «¿qué debo?»— y mezclarlas haría que la
+ * cuenta mintiera.
  */
 export function buildPortadaView(input: {
   period: string;
+  /** Quién puede ver importes. Se decide por el papel, no por los datos. */
+  seesAmounts: boolean;
   employees: readonly {
     agreementId: string;
     employeeLabel: string;
     active: boolean;
     accrual: AccrualView | null;
     pendingCount: number;
+    owed?: PortadaOwedInput | null;
+  }[];
+  candidates?: readonly {
+    membershipId: string;
+    name: string;
+    previousEndedOn: string | null;
+    returning: boolean;
   }[];
 }): EmploymentPortadaView {
-  let salary = 0n;
-  let reimbursement = 0n;
-  let anyAmount = false;
+  // La cuenta de la casa es la SUMA DE LAS FILAS que se enseñan debajo, no otra
+  // cuenta paralela: el total de cada devengo es el mismo número que pinta su
+  // línea, así que el encabezado no puede discrepar de lo que se lee al lado.
+  let total = 0n;
+  let owedTotal = 0n;
   const employees: PortadaEmployeeView[] = input.employees.map((employee) => {
     const accrual = employee.accrual;
-    if (accrual) {
-      anyAmount = true;
-      salary += BigInt(accrual.salaryCents);
-      reimbursement += BigInt(accrual.reimbursementCents);
-    }
+    if (accrual) total += parseCents(accrual.transferTotalCents);
+    const owed = employee.owed ?? null;
+    const owedCents = owed ? parseCents(owed.pendingCents) : 0n;
+    owedTotal += owedCents;
+    // El distintivo cuelga del MISMO predicado que la cifra, no de su propio
+    // recuento: sin importe pendiente no hay deuda que pueda estar vencida. La
+    // consulta de hoy filtra `pending_cents > 0` y no puede producir la
+    // incoherencia, pero esta función está exportada y se prueba suelta, y con
+    // una entrada incoherente decía «Al día» y «Vencida» a la vez. Se normaliza
+    // en vez de rechazarla: esto construye una vista, y una fila rara de la
+    // base tiene que dejar la pantalla coherente, no tirarla abajo.
+    const owedAnything = owedCents > 0n;
+    const overdue = owedAnything && (owed?.overdueCount ?? 0) > 0;
     return {
       agreementId: employee.agreementId,
       employeeLabel: employee.employeeLabel,
       active: employee.active,
-      monthTotalCents: accrual ? accrual.transferTotalCents : null,
       monthTotalLabel: accrual ? accrual.transferTotalLabel : null,
       pendingCount: employee.pendingCount,
       pendingLabel:
@@ -873,22 +959,33 @@ export function buildPortadaView(input: {
           ? 'Nada pendiente'
           : employee.pendingCount === 1
             ? '1 asunto por decidir'
-            : `${employee.pendingCount} asuntos por decidir`
+            : `${employee.pendingCount} asuntos por decidir`,
+      owedLabel: owedAnything ? formatCents(owedCents.toString()) : null,
+      owedDueLabel:
+        owedAnything && owed?.earliestDueOn
+          ? `${overdue ? 'Venció' : 'Vence'} el ${dateLabel(owed.earliestDueOn)}`
+          : null,
+      overdue
     };
   });
-  const total = salary + reimbursement;
   return {
     period: input.period,
     periodLabel: periodLabel(input.period),
-    seesAmounts: anyAmount,
-    totalCents: total.toString(),
+    seesAmounts: input.seesAmounts,
     totalLabel: formatCents(total.toString()),
-    salaryCents: salary.toString(),
-    salaryLabel: formatCents(salary.toString()),
-    reimbursementCents: reimbursement.toString(),
-    reimbursementLabel: formatCents(reimbursement.toString()),
-    withReimbursements: reimbursement !== 0n,
-    employees
+    owedTotalLabel: owedTotal > 0n ? formatCents(owedTotal.toString()) : null,
+    employees,
+    candidates: (input.candidates ?? []).map((candidate) => ({
+      membershipId: candidate.membershipId,
+      name: candidate.name,
+      previousEndedOn: candidate.previousEndedOn,
+      returning: candidate.returning,
+      detailLabel: candidate.returning
+        ? candidate.previousEndedOn
+          ? `Volvió a la casa · su contrato anterior terminó el ${dateLabel(candidate.previousEndedOn)}`
+          : 'Volvió a la casa · su contrato anterior ya no está en vigor'
+        : 'Acaba de llegar · todavía no se ha pactado ningún contrato'
+    }))
   };
 }
 
@@ -950,8 +1047,75 @@ export interface SourceHrefBases {
   conceptos: string;
   /** Ruta del Resumen: los anticipos viven en sus saldos. */
   resumen: string;
+  /** Ruta de Pagos: la casa de todo lo que ya cerró una nómina. */
+  pagos: string;
   /** Donde quien mira lee las versiones del contrato. */
   contrato: string;
+}
+
+/** Las pestañas del expediente, con el nombre que tienen en la ruta. */
+export type EmploymentTab =
+  | 'resumen'
+  | 'conceptos'
+  | 'vacaciones'
+  | 'pagos'
+  | 'acuerdo'
+  | 'condiciones';
+
+const EMPLOYMENT_TAB_PATHS: Record<EmploymentTab, string> = {
+  resumen: '',
+  conceptos: '/conceptos',
+  vacaciones: '/vacaciones',
+  pagos: '/pagos',
+  acuerdo: '/acuerdo',
+  condiciones: '/condiciones'
+};
+
+/**
+ * El destino de una pestaña del expediente, con la persona elegida y, si hace
+ * falta, el ancla. Un único constructor porque la cadena `?empleada=` se
+ * escribía a mano en cuatro sitios: basta con que uno escape distinto —o se
+ * olvide de escapar— para que el enlace aterrice en el expediente de otra
+ * persona, o en ninguno.
+ */
+export function employmentTabHref(
+  householdId: string,
+  tab: EmploymentTab,
+  empleada?: string | null,
+  anchor?: string | null
+): string {
+  const query = empleada ? `?empleada=${encodeURIComponent(empleada)}` : '';
+  return `/h/${householdId}/employment${EMPLOYMENT_TAB_PATHS[tab]}${query}${anchor ? `#${anchor}` : ''}`;
+}
+
+/**
+ * Los orígenes que tienen una pantalla a la que llevar. Se escriben a mano en
+ * varios sitios y una errata NO rompía nada visible: `sourceAnchor` caía en su
+ * `default` y devolvía null, o sea, borraba en silencio el enlace que lleva al
+ * origen de un importe. Siendo una unión, la errata la caza el compilador.
+ */
+const ANCHORED_SOURCE_TYPES = [
+  'agreement-version',
+  'jornadas-extra',
+  'anticipos',
+  'gastos',
+  'ajustes',
+  'ajustes-aplicados'
+] as const;
+
+export type AnchoredSourceType = (typeof ANCHORED_SOURCE_TYPES)[number];
+
+/**
+ * El origen de una línea del dominio, si es de los que tienen destino. El motor
+ * de liquidación calcula dinero y emite orígenes que ninguna pestaña pinta
+ * —`complementos`, `pagas-extra`, `ausencias`—: esos no son erratas, son líneas
+ * sin sitio al que ir, y se quedan sin enlace a propósito. Esta es la ÚNICA
+ * puerta por la que una cadena suelta entra en la unión.
+ */
+export function anchoredSourceType(sourceType: string): AnchoredSourceType | null {
+  return (ANCHORED_SOURCE_TYPES as readonly string[]).includes(sourceType)
+    ? (sourceType as AnchoredSourceType)
+    : null;
 }
 
 /**
@@ -959,12 +1123,15 @@ export interface SourceHrefBases {
  * la misma página (lo que era cuando todo vivía en una); con `bases`, la ruta
  * de la pestaña donde la entidad está pintada, con el ancla detrás. Hueco
  * conocido: aún no existen rutas de detalle por entidad.
+ *
+ * Devuelve siempre una cadena: todo miembro de la unión tiene destino, y quien
+ * traiga un origen de fuera lo pasa antes por `anchoredSourceType`.
  */
 export function sourceAnchor(
-  sourceType: string,
+  sourceType: AnchoredSourceType,
   sourceId: string,
   bases?: SourceHrefBases
-): string | null {
+): string {
   switch (sourceType) {
     case 'agreement-version':
       return `${bases?.contrato ?? ''}#version-${sourceId}`;
@@ -978,12 +1145,16 @@ export function sourceAnchor(
       return `${bases?.resumen ?? ''}#anticipo-${sourceId}`;
     case 'gastos':
       return `${bases?.resumen ?? ''}#gasto-${sourceId}`;
-    // Los conceptos a mano sí viven enteros en Conceptos: la tarjeta lista
-    // también los ya apuntados, con su ancla `concepto-…`.
+    // Conceptos lista los que aún no ha aplicado ninguna nómina, con su ancla
+    // `concepto-…`; lo aplicado se lee en su nómina, en Pagos.
     case 'ajustes':
       return `${bases?.conceptos ?? ''}#concepto-${sourceId}`;
-    default:
-      return null;
+    // Un concepto que una nómina cerrada ya materializó no está en Conceptos:
+    // esa pestaña es la bandeja de lo que queda por resolver. Su sitio pasa a
+    // ser el mes de Pagos donde se pagó, así que el ancla es la CUENTA, no el
+    // concepto, y `sourceId` es el id de la liquidación.
+    case 'ajustes-aplicados':
+      return `${bases?.pagos ?? ''}#cuenta-${sourceId}`;
   }
 }
 
@@ -1346,9 +1517,12 @@ export interface AccrualFacts {
   /** Complementos de la versión vigente el primer día del periodo. */
   supplements?: readonly RecurringSupplementRow[];
   /**
-   * Conceptos apuntados a mano IMPUTADOS a este mes y sin anular. Se filtran
-   * por el mes que decidió quien los apuntó, no por ninguna fecha de hecho:
-   * eso es exactamente lo que significa «que se contabilicen el mes que toque».
+   * Conceptos apuntados a mano IMPUTADOS a este mes. Se filtran por el mes que
+   * decidió quien los apuntó, no por ninguna fecha de hecho: eso es exactamente
+   * lo que significa «que se contabilicen el mes que toque». Vienen TODOS los
+   * del mes, también los que una nómina cerrada ya materializó: descartarlos
+   * haría que el total previsto dijera más de lo que se pagó de verdad. Lo
+   * anulado lo descarta este mismo cálculo, que solo cuenta lo `recorded`.
    */
   adjustments?: readonly ManualAdjustmentRow[];
   /** Sin bases, los orígenes enlazan como fragmento en la misma página. */
@@ -1435,6 +1609,16 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
   // calcula dinero y no tiene por qué saber quién apuntó la jornada.
   const originByExtraId = new Map(facts.extras.map((row) => [row.id, row.origin]));
 
+  // La cuenta que ya materializó cada concepto, si alguna lo hizo. Pasa entre
+  // cerrar la nómina del mes en curso y que el mes cambie: durante esos días
+  // el concepto sigue en el devengo (se pagó, y el total tiene que decirlo)
+  // pero ya no está en Conceptos, así que su enlace tiene que llevar a Pagos.
+  const settlementByAdjustmentId = new Map(
+    (facts.adjustments ?? [])
+      .filter((row) => row.settledSettlementId)
+      .map((row) => [row.id, row.settledSettlementId as string])
+  );
+
   const lines: AccrualLineView[] = projection.lines.map((line) => {
     const anchorId =
       line.sourceType === 'jornadas-extra'
@@ -1446,6 +1630,12 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
             : null;
     const origin =
       line.sourceType === 'jornadas-extra' ? originByExtraId.get(line.sourceId) : undefined;
+    const settledIn =
+      line.sourceType === 'ajustes' ? settlementByAdjustmentId.get(line.sourceId) : undefined;
+    // El origen llega como cadena desde el motor de dominio, que también emite
+    // los que no tienen pantalla (complementos, pagas extra, ausencias): pasa
+    // por la puerta antes de tocar el constructor de anclas.
+    const anchored = anchoredSourceType(line.sourceType);
     return {
       id: line.id,
       anchorId,
@@ -1456,7 +1646,11 @@ export function buildAccrual(facts: AccrualFacts): AccrualView | null {
       amountLabel: formatCents(line.amountCents, { signed: line.kind !== 'base_salary' }),
       sourceType: line.sourceType,
       sourceId: line.sourceId,
-      href: sourceAnchor(line.sourceType, line.sourceId, facts.hrefBases),
+      href: settledIn
+        ? sourceAnchor('ajustes-aplicados', settledIn, facts.hrefBases)
+        : anchored
+          ? sourceAnchor(anchored, line.sourceId, facts.hrefBases)
+          : null,
       originLabel: origin === undefined ? null : extraWorkOriginLabel(origin)
     };
   });
@@ -1494,9 +1688,11 @@ const TRANSFER_LABELS = {
 
 /**
  * Lista de conceptos apuntados a mano, del mes más reciente al más antiguo.
- * Los anulados vienen dentro, no fuera: la corrección es parte del rastro y
- * esconderla convertiría la lista en un resumen, que es justo lo contrario de
- * lo que un expediente append-only promete.
+ * Lo que llega aquí es, por construcción, lo que queda por resolver: quien
+ * decide qué entra es la consulta del servidor, que deja fuera lo anulado y lo
+ * que una nómina cerrada ya materializó. El expediente no pierde nada —sigue
+ * siendo append-only y lo aplicado se lee en su mes, en Pagos—; lo que cambia
+ * es que esta lista es una bandeja de decisiones y no un archivo.
  */
 export function buildManualAdjustmentViews(
   rows: readonly ManualAdjustmentRow[]
@@ -1515,12 +1711,7 @@ export function buildManualAdjustmentViews(
       transferLabel: row.addsToPay ? TRANSFER_LABELS.adds : TRANSFER_LABELS.noted,
       deferralNote: row.deferralNote,
       voided: row.status === 'voided',
-      voidReason: row.voidReason,
-      settled: row.settledPeriod !== null,
-      settledLabel:
-        row.settledPeriod === null
-          ? null
-          : `Aplicado en la nómina de ${periodLabel(row.settledPeriod).toLocaleLowerCase('es')}`
+      voidReason: row.voidReason
     }));
 }
 
@@ -1536,10 +1727,44 @@ export function settlementLineHref(
 function paymentStateLabel(row: SettlementRow, fullyPaid: boolean, anyPayment: boolean): string {
   if (row.status === 'void') return 'Anulada';
   if (row.status === 'open') return 'Periodo abierto';
+  // Un mes cerrado sin un solo euro que transferir no está «pendiente de pago»:
+  // no hay nada que pagar. `fullyPaid` no lo cubre a propósito —exige un
+  // importe mayor que cero para no llamar «pagada» a una cuenta vacía—, y desde
+  // que Pagos es una tabla plegada esta frase es el distintivo de la fila del
+  // mes: anunciaría una deuda que no existe.
+  if (parseCents(row.transferTotalCents) === 0n) return 'Cerrada · nada que pagar';
   if (fullyPaid && row.receiptConfirmedAt) return 'Pagada y cobro confirmado';
   if (fullyPaid) return 'Pagada · cobro sin confirmar';
   if (anyPayment) return 'Pago parcial registrado';
   return 'Pendiente de pago';
+}
+
+/**
+ * La última cuenta que de verdad dice algo, para la tarjeta del Resumen.
+ *
+ * Se SALTAN, sin parar en ellas, dos clases de fila: las anuladas —el día que
+ * exista anular una cuenta, la anulada taparía la última real— y la cuenta
+ * recién abierta sin un solo importe, que repite lo que el devengo del mes ya
+ * cuenta mejor y con su desglose entero.
+ *
+ * Saltar y no parar es todo el asunto. Elegir la más reciente no anulada y
+ * DESPUÉS aplicarle la guarda apagaba la tarjeta entera al abrir la cuenta del
+ * mes: una cuenta abierta vale siempre cero, porque el total se calcula al
+ * cerrar. Agosto cerrado con 1.200 € sin pagar dejaba de verse en cuanto se
+ * empezaba septiembre, y empezar el mes es el acto más rutinario que hay.
+ *
+ * La lista llega ya ordenada de la más reciente a la más antigua.
+ */
+export function lastMeaningfulSettlement(
+  settlements: readonly SettlementView[]
+): SettlementView | null {
+  return (
+    settlements.find(
+      (row) =>
+        row.status !== 'void' &&
+        !(row.status === 'open' && parseCents(row.transferTotalCents) === 0n)
+    ) ?? null
+  );
 }
 
 export function buildSettlementViews(
@@ -1645,16 +1870,27 @@ export function buildPendingExtraViews(
   }));
 }
 
+/**
+ * Los gastos que esperan decisión. El importe solo viaja si quien mira puede
+ * verlo, y `seesAmounts` es una ENTRADA explícita decidida por el papel, igual
+ * que en la portada: es defensa en profundidad, porque la fuga de verdad ya la
+ * corta la RLS de 0038 —a la familia no administradora no le llega ni la fila—.
+ *
+ * Solo el importe: la descripción y el justificante son igual de sensibles y
+ * por eso se cortan en la BASE. Repetir aquí esa decisión crearía dos sitios
+ * donde mantenerla, que es justo como se acaba enseñando lo que no se debe.
+ */
 export function buildPendingExpenseViews(
-  rows: readonly PendingExpenseRow[]
+  rows: readonly PendingExpenseRow[],
+  seesAmounts: boolean
 ): PendingExpenseView[] {
   return rows.map((row) => ({
     id: row.id,
     incurredOn: row.incurredOn,
     incurredOnLabel: dateLabel(row.incurredOn),
     description: row.description,
-    amountCents: row.amountCents,
-    amountLabel: formatCents(row.amountCents),
+    amountCents: seesAmounts ? row.amountCents : null,
+    amountLabel: seesAmounts ? formatCents(row.amountCents) : null,
     employeeMembershipId: row.employeeMembershipId,
     hasReceipt: row.hasReceipt === true
   }));
@@ -1672,14 +1908,6 @@ export function buildCompensationBalanceViews(
     permanent: true,
     detail: 'Crédito permanente · sin caducidad'
   }));
-}
-
-/** Año natural en curso en la zona horaria del hogar. */
-export function currentVacationYear(now = new Date(), timeZone = 'Europe/Madrid'): number {
-  const year = new Intl.DateTimeFormat('es-ES', { timeZone, year: 'numeric' })
-    .formatToParts(now)
-    .find((part) => part.type === 'year')?.value;
-  return Number(year ?? now.getUTCFullYear());
 }
 
 /** Fecha de hoy `YYYY-MM-DD` en la zona horaria del hogar, no en la del proceso. */
@@ -1709,6 +1937,29 @@ export function annualVacationDaysInForce(
   const ordered = [...rows].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
   const inForce = ordered.filter((row) => row.effectiveFrom <= onDate).at(-1);
   return (inForce ?? ordered[0])?.annualVacationDays ?? 0;
+}
+
+/**
+ * La política de caducidad de los días arrastrados, leída de
+ * `agreement_versions.terms` (migración 0036, apartado 4.2 del diseño).
+ *
+ * La implementación vive en el dominio, no aquí: la necesitan también los
+ * comandos del servidor, que son quienes calculan la fecha límite CONGELADA de
+ * un arrastre. Dos lecturas de la misma clave acabarían dando dos caducidades
+ * distintas del mismo contrato. Se reexporta para no obligar a media aplicación
+ * a cambiar de sitio la importación.
+ */
+export {
+  DEFAULT_VACATION_CARRYOVER_MONTHS,
+  readVacationCarryoverExpiry,
+  vacationCarryoverDeadline
+} from '@housekeeper/domain';
+export type { VacationCarryoverExpiry };
+
+/** «Nunca expiran» / «6 meses de margen», para leerlo sin traducir nada. */
+export function vacationCarryoverExpiryLabel(policy: VacationCarryoverExpiry): string {
+  if (policy.mode === 'never') return 'Nunca expiran';
+  return `${policy.months} ${policy.months === 1 ? 'mes' : 'meses'} de margen`;
 }
 
 function dayCountLabel(days: number): string {
@@ -1744,27 +1995,36 @@ export function vacationRangeLabel(startsOn: string, endsOn: string): string {
 }
 
 /**
- * Bloque de vacaciones del año natural en curso.
+ * Bloque de vacaciones del año de CONTRATO en curso: los doce meses que van
+ * desde el día en que empezó el acuerdo, no del 1 de enero al 31 de diciembre.
  *
  * El saldo lo calcula el motor puro del dominio (`vacationYearBalance`), que es
- * quien sabe prorratear el primer año y repartir un periodo que cruza el 31 de
- * diciembre. Aquí solo se ponen las palabras.
+ * quien sabe dónde empieza y acaba cada año, prorratear el último cuando el
+ * contrato termina a media anualidad y repartir un periodo que cruza el
+ * aniversario. Aquí solo se ponen las palabras.
  *
  * Los periodos ANULADOS se listan pero no cuentan: verlos tachados es lo que
  * convierte «me faltan días» en «ah, aquello se anuló el martes».
  */
 export function buildVacationView(input: {
-  year: number;
+  /** Hoy en la zona del hogar: decide en qué año de contrato se está. */
+  today: string;
   annualVacationDays: number;
   agreementStartsOn: string;
   agreementEndsOn: string | null;
   periods: readonly VacationPeriodRow[];
 }): VacationView {
+  // Un contrato que aún no ha empezado no tiene año en curso: se enseña el
+  // primero, que es el que va a regir, en vez de no enseñar nada.
+  const year =
+    contractYearOn(input.agreementStartsOn, input.today) ??
+    contractYear(input.agreementStartsOn, 1);
   const balance = vacationYearBalance({
-    year: input.year,
+    contractYearIndex: year.index,
     annualVacationDays: input.annualVacationDays,
     agreementStartsOn: input.agreementStartsOn,
     agreementEndsOn: input.agreementEndsOn,
+    asOf: input.today,
     periods: input.periods
       .filter((row) => row.status === 'recorded')
       .map((row) => ({ startsOn: row.startsOn, endsOn: row.endsOn }))
@@ -1779,16 +2039,19 @@ export function buildVacationView(input: {
       : `quedan ${balance.remainingDays}`;
 
   return {
-    year: balance.year,
+    yearLabel: contractYearLabel(balance.contractYear),
     entitledDays: balance.entitledDays,
     annualVacationDays: balance.annualVacationDays,
     takenDays: balance.takenDays,
     remainingDays: balance.remainingDays,
     prorated: balance.prorated,
     summaryLabel: `${balance.takenDays} de ${balance.entitledDays} días disfrutados · ${remaining}`,
+    // El prorrateo ya solo puede ser el del ÚLTIMO año: el año de contrato
+    // empieza el día del contrato, así que por arriba nunca recorta.
     prorationNote: balance.prorated
-      ? `El acuerdo cubre ${dayCountLabel(balance.coveredDays)} de ${input.year}, así que de los ` +
-        `${balance.annualVacationDays} días del año le tocan ${balance.entitledDays} en ${input.year}.`
+      ? `El contrato termina el ${dateLabel(balance.coveredThrough)} y cubre ` +
+        `${dayCountLabel(balance.coveredDays)} de los ${balance.daysInContractYear} de este año, ` +
+        `así que de los ${balance.annualVacationDays} días pactados le tocan ${balance.entitledDays}.`
       : null,
     periods: [...input.periods]
       .sort((left, right) => right.startsOn.localeCompare(left.startsOn))
@@ -1804,6 +2067,219 @@ export function buildVacationView(input: {
         voidReason: row.voidReason
       }))
   };
+}
+
+// ─── El salto de año: días sin disfrutar y qué se decidió con ellos ──────────
+
+/** Una versión del acuerdo, con lo que hace falta para valorar un arrastre. */
+export interface VacationCarryoverVersionRow {
+  effectiveFrom: string;
+  annualVacationDays: number;
+  /** null = la versión no pacta el precio del día no disfrutado. */
+  unusedVacationDayRateCents: string | null;
+  terms: unknown;
+}
+
+/**
+ * Un año de contrato ya cerrado con días sin disfrutar y sin decisión todavía.
+ *
+ * NO existe como fila: se calcula al leer desde los periodos apuntados, que sí
+ * son append-only, y sólo se escribe cuando alguien decide. Por eso no hay ni
+ * trabajo periódico ni disparador por calendario, que en esta casa no existen.
+ */
+export interface VacationCarryoverProposalView {
+  agreementId: string;
+  employeeLabel: string;
+  sourceYearIndex: number;
+  /** «Segundo año · 5 mar 2026 – 4 mar 2027». */
+  sourceYearLabel: string;
+  sourceYearEndsOn: string;
+  entitledDays: number;
+  takenDays: number;
+  unusedDays: number;
+  /** null = la política pactada dice que nunca expiran. */
+  deadlineOn: string | null;
+  /** Céntimos, o null si el contrato no pacta el precio del día. */
+  compensationCents: string | null;
+  /** «830,70 €», o null cuando no hay tarifa: nunca un cero. */
+  compensationLabel: string | null;
+  /** La frase que explica el importe, o null. */
+  compensationBasis: string | null;
+  /** Título ya escrito: lo usan la tarjeta y la línea de decisión de Hoy. */
+  headline: string;
+  /** Segunda línea, con el margen y las salidas que de verdad hay. */
+  detail: string;
+}
+
+/** Una decisión ya tomada, para enseñarla como línea aparte del derecho. */
+export interface VacationCarryoverDecisionView {
+  id: string;
+  agreementId: string;
+  employeeLabel: string;
+  sourceYearIndex: number;
+  status: 'proposed' | 'carried' | 'compensated' | 'rejected' | 'expired';
+  /** «18 días arrastrados del segundo año, hasta el 4 sep 2027». */
+  summary: string;
+  /** El motivo del rechazo o la frase del importe. null si no hay nada más. */
+  detail: string | null;
+}
+
+interface CarryoverRowInput {
+  id: string;
+  agreementId: string;
+  sourceYearIndex: number;
+  status: VacationCarryoverDecisionView['status'];
+  unusedDays: number;
+  deadlineOn: string | null;
+  compensationCents: string | null;
+  compensationBasis: string | null;
+  decisionReason: string | null;
+}
+
+/**
+ * Las propuestas vivas de un contrato: un año de contrato CERRADO, con días sin
+ * disfrutar y sin decisión.
+ *
+ * Se miran todos los años cerrados y no sólo el último, por la misma razón por
+ * la que Conceptos dejó de tener ventana de historial: un pendiente que se cae
+ * de la única pantalla donde vive no aparece en ninguna otra, y es exactamente
+ * así como se deja de pagar dinero que sí se debía.
+ */
+export function buildVacationCarryoverProposals(input: {
+  agreementId: string;
+  employeeLabel: string;
+  /** Hoy en la zona del hogar: decide qué años de contrato están cerrados. */
+  today: string;
+  agreementStartsOn: string;
+  agreementEndsOn: string | null;
+  /** Ordenadas por `effectiveFrom`. Vacío = quien mira no ve lo pactado. */
+  versions: readonly VacationCarryoverVersionRow[];
+  /** Periodos VIGENTES; los anulados no cuentan. */
+  periods: readonly { startsOn: string; endsOn: string }[];
+  /** Años de contrato que ya tienen decisión: no se vuelven a proponer. */
+  decidedYearIndexes: readonly number[];
+}): VacationCarryoverProposalView[] {
+  if (input.versions.length === 0) return [];
+  const current = contractYearOn(input.agreementStartsOn, input.today);
+  if (current === null) return [];
+
+  // El último año que puede estar cerrado: el anterior al que corre, y nunca
+  // más allá del final del contrato.
+  let lastClosed = current.index - 1;
+  if (input.agreementEndsOn !== null) {
+    const closing = contractYearOn(input.agreementStartsOn, input.agreementEndsOn);
+    if (closing !== null) lastClosed = Math.min(lastClosed, closing.index);
+  }
+
+  const decided = new Set(input.decidedYearIndexes);
+  const ordered = [...input.versions].sort((left, right) =>
+    left.effectiveFrom.localeCompare(right.effectiveFrom)
+  );
+  const versionOn = (onDate: string): VacationCarryoverVersionRow =>
+    ordered.filter((version) => version.effectiveFrom <= onDate).at(-1) ?? ordered[0]!;
+  const pricing = versionOn(input.today);
+
+  const proposals: VacationCarryoverProposalView[] = [];
+  for (let index = 1; index <= lastClosed; index += 1) {
+    if (decided.has(index)) continue;
+    const year = contractYear(input.agreementStartsOn, index);
+    if (year.endsOn >= input.today) continue;
+    // El derecho del año que se cierra lo fijó la versión vigente al terminarlo:
+    // subir hoy los días pactados no reescribe un año ya vivido. La política de
+    // caducidad viaja con él, porque el margen es de esos días.
+    const entitlement = versionOn(year.endsOn);
+    const balance = vacationYearBalance({
+      contractYearIndex: index,
+      annualVacationDays: entitlement.annualVacationDays,
+      agreementStartsOn: input.agreementStartsOn,
+      agreementEndsOn: input.agreementEndsOn,
+      periods: input.periods,
+      asOf: input.today
+    });
+    if (balance.remainingDays <= 0) continue;
+
+    const deadlineOn = vacationCarryoverDeadline(
+      year.endsOn,
+      readVacationCarryoverExpiry(entitlement.terms)
+    );
+    // El PRECIO sale de la versión vigente hoy, no de la del año que cierra: el
+    // dinero es del mes en que se paga. Sin tarifa pactada no hay importe que
+    // ofrecer, y se dice — nunca un cero ni una estimación.
+    const compensation = vacationCompensation({
+      dayRateCents:
+        pricing.unusedVacationDayRateCents === null
+          ? null
+          : moneyCents(parseCents(pricing.unusedVacationDayRateCents)),
+      rateEffectiveFrom: pricing.effectiveFrom,
+      unusedDays: balance.remainingDays
+    });
+
+    const yearName = contractYearName(index);
+    const margin =
+      deadlineOn === null
+        ? 'Se pueden arrastrar sin fecha límite'
+        : `Se pueden arrastrar hasta el ${dateLabel(deadlineOn)}`;
+    const money =
+      compensation === null
+        ? '. Para pagarlos hay que pactar antes el precio del día en las condiciones.'
+        : `, pagar ${formatCents(compensation.compensationCents)} o darlos por perdidos.`;
+    proposals.push({
+      agreementId: input.agreementId,
+      employeeLabel: input.employeeLabel,
+      sourceYearIndex: index,
+      sourceYearLabel: contractYearLabel(year),
+      sourceYearEndsOn: year.endsOn,
+      entitledDays: balance.entitledDays,
+      takenDays: balance.takenDays,
+      unusedDays: balance.remainingDays,
+      deadlineOn,
+      compensationCents: compensation === null ? null : compensation.compensationCents.toString(),
+      compensationLabel: compensation === null ? null : formatCents(compensation.compensationCents),
+      compensationBasis: compensation?.basis ?? null,
+      headline: `${dayCountLabel(balance.remainingDays)} de vacaciones sin disfrutar del ${yearName}`,
+      detail:
+        `El ${yearName} terminó el ${dateLabel(year.endsOn)}. ${margin}` +
+        (compensation === null ? ' o darlos por perdidos' : '') +
+        money
+    });
+  }
+  return proposals;
+}
+
+/** Las decisiones ya tomadas, dichas como lo que son. */
+export function buildVacationCarryoverDecisions(
+  rows: readonly CarryoverRowInput[],
+  employeeLabelFor: (agreementId: string) => string
+): VacationCarryoverDecisionView[] {
+  return rows.map((row) => {
+    const yearName = contractYearName(row.sourceYearIndex);
+    const days = dayCountLabel(row.unusedDays);
+    const until =
+      row.deadlineOn === null ? ', sin fecha límite' : `, hasta el ${dateLabel(row.deadlineOn)}`;
+    const summary =
+      row.status === 'carried'
+        ? `${days} arrastrados del ${yearName}${until}`
+        : row.status === 'compensated'
+          ? `${days} del ${yearName} pagados${
+              row.compensationCents === null ? '' : `: ${formatCents(row.compensationCents)}`
+            }`
+          : row.status === 'rejected'
+            ? `${days} del ${yearName} no se arrastraron`
+            : row.status === 'expired'
+              ? `${days} arrastrados del ${yearName} vencieron${until.replace(', hasta el', ' el')}`
+              : `${days} del ${yearName} pendientes de decidir`;
+    return {
+      id: row.id,
+      agreementId: row.agreementId,
+      employeeLabel: employeeLabelFor(row.agreementId),
+      sourceYearIndex: row.sourceYearIndex,
+      status: row.status,
+      summary,
+      // El motivo del rechazo importa más que el importe: es lo único que
+      // explica por qué unos días se perdieron.
+      detail: row.status === 'rejected' ? row.decisionReason : row.compensationBasis
+    };
+  });
 }
 
 export function buildAdvanceBalanceViews(rows: readonly AdvanceRow[]): AdvanceBalanceView[] {

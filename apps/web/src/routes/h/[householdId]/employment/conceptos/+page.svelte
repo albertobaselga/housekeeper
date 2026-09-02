@@ -58,7 +58,10 @@
     description="Jornadas extra, gastos, adelantos y ausencias: aquí se apuntan y aquí se deciden."
   />
 
-  {#if overview && overview.agreements.length > 1 && selectedOption}
+  <!-- El mismo predicado que decide la portada, no el recuento de acuerdos: la
+       portada ya existe siempre, y contar filas dejaba a la casa de una sola
+       empleada con esta pestaña y ningún camino de vuelta a ella. -->
+  {#if overview && context.role !== 'employee_live_in' && selectedOption}
     <EmploymentPersonBar
       householdId={overview.householdId}
       employeeLabel={selectedOption.employeeLabel}

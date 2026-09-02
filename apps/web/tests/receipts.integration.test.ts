@@ -89,8 +89,8 @@ describe.runIf(Boolean(adminUrl))('justificante visible en la cuenta del mes cer
     await appPool?.end();
   });
 
-  it('la familia y la empleada llegan al justificante del gasto reembolsado', async () => {
-    for (const user of [ADMIN_USER, FAMILY_USER, EMPLOYEE_USER]) {
+  it('quien administra y la empleada llegan al justificante del gasto reembolsado', async () => {
+    for (const user of [ADMIN_USER, EMPLOYEE_USER]) {
       const receipt = await loadExpenseReceipt(user, FIXTURE_HOUSEHOLD, EXPENSE_WITH_RECEIPT, appPool);
       expect(receipt, user.id).not.toBeNull();
       expect(receipt!).toMatchObject({
@@ -103,7 +103,12 @@ describe.runIf(Boolean(adminUrl))('justificante visible en la cuenta del mes cer
   });
 
   it('quien no ve la cuenta tampoco ve el justificante', async () => {
-    for (const user of [HELPER_USER, VIEWER_USER, { id: 'fixture:otro:usuario' }]) {
+    // `FAMILY_USER` está en esta lista desde la migración 0038, no en la de
+    // arriba. Un justificante es la foto de una compra con su importe encima, y
+    // la familia no administradora no ve importes. La consulta parte de
+    // `app.expenses`, así que la puerta se cierra sola: `expenses_read` ya no la
+    // incluye y el join no encuentra fila de la que colgar el documento.
+    for (const user of [FAMILY_USER, HELPER_USER, VIEWER_USER, { id: 'fixture:otro:usuario' }]) {
       expect(
         await loadExpenseReceipt(user, FIXTURE_HOUSEHOLD, EXPENSE_WITH_RECEIPT, appPool),
         user.id

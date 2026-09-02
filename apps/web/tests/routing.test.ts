@@ -87,6 +87,18 @@ describe('household route contract', () => {
       capability: 'settlement.read',
       known: true
     });
+    // Dar de alta a una persona crea un ACCESO a la casa, y por eso pide la
+    // misma llave que Personal y Ajustes. Sin declararla aquí, `guardForPath`
+    // falla cerrado y la pantalla del alta no existiría para nadie.
+    expect(guardForPath('/h/casa-roble/employment/alta')).toEqual({
+      householdId: 'casa-roble',
+      module: 'employment',
+      capability: 'access.manage',
+      known: true
+    });
+    expect(can('family_admin', 'access.manage')).toBe(true);
+    expect(can('family_member', 'access.manage')).toBe(false);
+    expect(can('employee_live_in', 'access.manage')).toBe(false);
     // Ninguna hija hereda `settlement.read` por colgar del padre: las que la
     // tienen la declaran.
     expect(MODULE_CAPABILITY.employment).toBe('settlement.read');

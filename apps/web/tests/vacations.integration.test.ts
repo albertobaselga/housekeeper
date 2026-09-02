@@ -25,7 +25,9 @@ const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
 const HELPER_USER = { id: 'fixture:roble:helper' };
 
 // Reloj fijo de la suite: agosto de 2026, con el contrato de la empleada vivo
-// desde febrero de 2025. Así hay dos años que enseñar y uno de ellos prorrateado.
+// desde el 3 de febrero de 2025. Así hay dos años de contrato que enseñar —el
+// primero cerrado, el segundo en curso— y el corte entre ambos cae en febrero,
+// no en enero, que es justo lo que este cambio tenía que demostrar.
 const NOW = new Date('2026-08-11T09:00:00Z');
 
 const VACATION_SEED = `
@@ -127,20 +129,28 @@ describe.runIf(Boolean(adminUrl))('vacaciones completas desde Postgres bajo RLS'
     expect(overview!.people).toHaveLength(1);
     const mine = overview!.people[0]!;
     expect(mine.own).toBe(true);
-    expect(mine.years.map((year) => year.year)).toEqual([2026, 2025]);
+    // El año se dice con sus fechas, y el año es el del CONTRATO: los doce
+    // meses desde el 3 de febrero, no del 1 de enero al 31 de diciembre.
+    expect(mine.years.map((year) => year.label)).toEqual([
+      'Segundo año · 3 feb 2026 – 2 feb 2027',
+      'Primer año · 3 feb 2025 – 2 feb 2026'
+    ]);
 
-    const twentySix = mine.years[0]!;
-    expect(twentySix.takenDays).toBe(15);
-    expect(twentySix.headline).toContain('te tocan');
-    const voided = twentySix.periods.find((period) => period.state === 'voided');
+    const enCurso = mine.years[0]!;
+    expect(enCurso.current).toBe(true);
+    expect(enCurso.takenDays).toBe(15);
+    expect(enCurso.headline).toContain('te tocan');
+    const voided = enCurso.periods.find((period) => period.state === 'voided');
     expect(voided?.detail).toContain('Anuladas: Las fechas eran otras');
     expect(voided?.daysLabel).toBe('—');
 
-    // 2025 va prorrateado: el contrato empezó el 3 de febrero.
-    const twentyFive = mine.years[1]!;
-    expect(twentyFive.prorationNote).toContain('El contrato cubre 332 días de 2025');
-    expect(twentyFive.entitledDays).toBe(28);
-    expect(twentyFive.takenDays).toBe(14);
+    // El primer año ya NO va prorrateado: empieza el día del contrato, así que
+    // se devenga entero. Antes, con el año natural, aquí se enseñaban 28 de 30
+    // y una frase explicando que el contrato solo cubría 332 días de 2025.
+    const primero = mine.years[1]!;
+    expect(primero.prorationNote).toBeNull();
+    expect(primero.entitledDays).toBe(30);
+    expect(primero.takenDays).toBe(14);
   });
 
   it('quien administra ve a las dos empleadas del hogar, no solo a la primera', async () => {
@@ -245,5 +255,130 @@ describe.runIf(Boolean(adminUrl))('vacaciones completas desde Postgres bajo RLS'
       await client.query('rollback').catch(() => undefined);
       client.release();
     }
+  });
+
+  // ── El salto de año ────────────────────────────────────────────────────────
+  // El contrato de la empleada empezó el 3 de febrero de 2025, así que su primer
+  // año de contrato se cerró el 2 de febrero de 2026 con 14 días disfrutados de
+  // 30. Al reloj de esta suite —11 de agosto de 2026— eso son 16 días que
+  // alguien tiene que decidir.
+
+  it('la propuesta del año cerrado se calcula al leer, con la fecha inyectada', async () => {
+    const overview = await loadVacationOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    const propuesta = overview!.carryoverProposals.find(
+      (item) => item.agreementId === AGREEMENT
+    );
+    expect(propuesta).toMatchObject({
+      sourceYearIndex: 1,
+      sourceYearEndsOn: '2026-02-02',
+      entitledDays: 30,
+      takenDays: 14,
+      unusedDays: 16,
+      // Seis meses por omisión desde el fin del año de contrato.
+      deadlineOn: '2026-08-02'
+    });
+    expect(propuesta?.headline).toBe('16 días de vacaciones sin disfrutar del primer año');
+
+    // Y NO se ha escrito nada: la fila sólo nace cuando alguien decide.
+    const filas = await appPool.query<{ total: string }>(
+      'select count(*)::text as total from app.vacation_carryovers'
+    );
+    expect(filas.rows[0]?.total).toBe('0');
+
+    // Con el reloj puesto dentro de ese mismo año todavía no hay nada que
+    // decidir: los días se pueden seguir cogiendo hasta que el año termine.
+    const antes = await loadVacationOverview(
+      ADMIN_USER,
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      new Date('2025-12-01T09:00:00Z')
+    );
+    expect(antes!.carryoverProposals).toEqual([]);
+  });
+
+  it('sin tarifa pactada se ofrece arrastrar o perder, nunca un importe', async () => {
+    const overview = await loadVacationOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    const propuesta = overview!.carryoverProposals.find((item) => item.agreementId === AGREEMENT);
+    expect(propuesta?.compensationCents).toBeNull();
+    expect(propuesta?.compensationLabel).toBeNull();
+    expect(propuesta?.detail).toContain('pactar antes el precio del día');
+    // Ni un cero por ninguna parte: la ausencia de tarifa se dice, no se rellena.
+    expect(propuesta?.detail).not.toContain('0,00');
+  });
+
+  it('la familia no administradora no ve ni propuestas ni decisiones', async () => {
+    const overview = await loadVacationOverview(
+      { id: 'fixture:roble:family' },
+      FIXTURE_HOUSEHOLD,
+      appPool,
+      NOW
+    );
+    // Sin las versiones del acuerdo no hay derecho que comparar, y la fila del
+    // arrastre lleva importe: la RLS no se la devuelve.
+    expect(overview!.carryoverProposals).toEqual([]);
+    expect(overview!.carryoverDecisions).toEqual([]);
+  });
+
+  it('en Hoy es una línea más de la lista, y sólo para quien administra', async () => {
+    const admin = await loadTodayOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    const linea = admin!.decisions.find(
+      (item) => item.key === `vacaciones-arrastre-${AGREEMENT}-1`
+    );
+    expect(linea).toMatchObject({
+      title: '16 días de vacaciones sin disfrutar del primer año',
+      cta: 'Decidir',
+      href: `/h/${FIXTURE_HOUSEHOLD}/employment/vacaciones?empleada=${AGREEMENT}`
+    });
+    // Hay algo que decidir, así que NO es una novedad: el título del bloque
+    // tiene que poder decir «decisión».
+    expect(linea?.kind).toBeUndefined();
+
+    const empleada = await loadTodayOverview(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    expect(
+      empleada!.decisions.some((item) => item.key.startsWith('vacaciones-arrastre-'))
+    ).toBe(false);
+  });
+
+  it('al decidir, la propuesta deja su sitio a la decisión y no vuelve', async () => {
+    const admin = new pg.Client({ connectionString: vacationsUrlFor(adminUrl as string) });
+    await admin.connect();
+    try {
+      await admin.query(`
+        BEGIN;
+        SET LOCAL row_security = off;
+        INSERT INTO app.vacation_carryovers
+          (household_id, agreement_id, employee_membership_id, source_year_index,
+           source_year_starts_on, source_year_ends_on, entitled_days, taken_days,
+           unused_days, agreement_version_id, deadline_on, status,
+           decided_by_membership_id, decided_at)
+        VALUES
+          ('${FIXTURE_HOUSEHOLD}', '${AGREEMENT}', '${EMPLOYEE_MEMBERSHIP}', 1,
+           '2025-02-03', '2026-02-02', 30, 14, 16,
+           '12100000-0000-4000-8000-000000000002', '2026-08-02', 'carried',
+           '${ADMIN_MEMBERSHIP}', '2026-02-05T09:00:00Z');
+        COMMIT;
+      `);
+    } finally {
+      await admin.end();
+    }
+
+    const overview = await loadVacationOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    expect(
+      overview!.carryoverProposals.some((item) => item.agreementId === AGREEMENT)
+    ).toBe(false);
+    // Los días arrastrados se dicen como LÍNEA APARTE, con su fecha límite: no
+    // se suman al derecho del año siguiente, porque un «46» se leería como un
+    // error de la aplicación.
+    const decision = overview!.carryoverDecisions.find((item) => item.agreementId === AGREEMENT);
+    expect(decision?.summary).toBe('16 días arrastrados del primer año, hasta el 2 ago 2026');
+
+    const hoy = await loadTodayOverview(ADMIN_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    expect(hoy!.decisions.some((item) => item.key === `vacaciones-arrastre-${AGREEMENT}-1`)).toBe(
+      false
+    );
+
+    // La empleada la ve, en solo lectura: es su expediente.
+    const suyo = await loadVacationOverview(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, appPool, NOW);
+    expect(suyo!.carryoverDecisions).toHaveLength(1);
   });
 });

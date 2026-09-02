@@ -1,9 +1,5 @@
-import { error, fail } from '@sveltejs/kit';
-
-import { getAuth } from '$lib/server/auth.server';
-import { hireFromForm } from '$lib/server/staff-hire.server';
 import { loadStaffOverview } from '$lib/server/staff.server';
-import type { Actions, PageServerLoad } from './$types';
+import type { PageServerLoad } from './$types';
 
 /**
  * Personal de la casa. La ruta ya exige `access.manage` (routing.ts), así que
@@ -20,33 +16,13 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const staff = locals.user
     ? await loadStaffOverview({ id: locals.user.id }, params.householdId)
     : null;
-  return {
-    staff,
-    // Sin identidad real no hay cuentas que crear: la página enseña el
-    // personal y calla el formulario, en vez de ofrecer un alta imposible.
-    canHire: Boolean(getAuth())
-  };
+  return { staff };
 };
 
-/**
- * El alta es una `form action`, no un comando de la cola offline. Dar acceso a
- * una persona es un acto deliberado que se hace contra el servidor o no se
- * hace: no puede quedarse esperando red y aplicarse media hora más tarde sobre
- * un hogar distinto. Es la misma decisión que tomaron el cambio de contraseña
- * y el pacto de condiciones. La lectura del formulario vive con
- * `hireHouseholdMember` (`hireFromForm`), compartida con la pestaña Contrato:
- * un campo nuevo se lee una vez o no se lee en ninguna parte.
+/*
+ * Aquí vivía la action `hire`, y con ella el segundo formulario de alta de la
+ * aplicación. Se va entera: el alta tiene ahora un solo sitio (`employment/alta`,
+ * en dos etapas) y una acción de escritura sin ninguna pantalla que la use es un
+ * camino abierto que nadie recuerda cerrar. Personal enseña el expediente del
+ * personal y enlaza al alta; no la ejecuta.
  */
-export const actions: Actions = {
-  hire: async ({ locals, params, request }) => {
-    if (!locals.user) error(401, 'Necesitas haber entrado');
-    const result = await hireFromForm(
-      { id: locals.user.id },
-      params.householdId,
-      await request.formData(),
-      request.headers
-    );
-    if (!result.ok) return fail(400, { hireError: result.message, draft: result.draft });
-    return { hired: result.hired };
-  }
-};

@@ -121,11 +121,17 @@
 
 <article class="card">
   <div class="section-heading">
-    <div><p class="eyebrow">Vacaciones {vacations.year}</p><h2>Días disfrutados y días que quedan</h2></div>
+    <div><p class="eyebrow">Vacaciones</p><h2>Días disfrutados y días que quedan</h2></div>
     <span class="status-chip {vacations.remainingDays < 0 ? 'warning' : 'success'}">
       {vacations.summaryLabel}
     </span>
   </div>
+
+  <!-- El año va debajo del título y no en el epígrafe: el año de vacaciones es
+       el del contrato, y sus fechas son justo lo que hace falta para entender
+       de qué doce meses se habla. Por debajo de 600 px el epígrafe no se pinta,
+       así que ahí se perderían. -->
+  <p class="audit-note">{vacations.yearLabel}</p>
 
   {#if vacations.remainingDays < 0}
     <p class="audit-note" role="status">
@@ -200,7 +206,7 @@
       {#if pendingDrafts.length === 0}
         <div>
           <span>
-            <strong>Todavía no hay vacaciones apuntadas en {vacations.year}</strong>
+            <strong>Todavía no hay vacaciones apuntadas en este año de contrato</strong>
             <p class="audit-note">Cuando disfrute días, se apuntan aquí y el saldo se ajusta solo.</p>
           </span>
         </div>

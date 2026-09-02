@@ -250,6 +250,73 @@ describe("contratos públicos", () => {
     expect(agreementTermsInputSchema.parse(terms).schedule).toBeNull();
   });
 
+  it("el día de vacaciones no disfrutado se pacta o no se pacta, pero nunca vale cero por omisión", () => {
+    const terms = {
+      effectiveFrom: "2026-09-01",
+      monthlySalaryCents: "150000",
+      contractedWeeklyMinutes: 2400,
+      annualVacationDays: 30,
+      reason: "Subida pactada en agosto",
+      extraWorkTypes: [],
+      supplements: [],
+    };
+    // Ausente = no se pactó. Es null y NO cero: la fila es inmutable, y un cero
+    // por omisión dejaría escrito para siempre que se acordó pagar cero euros
+    // por día, que es falso y que sólo se podría tapar apilando otra versión.
+    expect(agreementTermsInputSchema.parse(terms).unusedVacationDayRateCents).toBeNull();
+    expect(
+      agreementTermsInputSchema.parse({ ...terms, unusedVacationDayRateCents: "4615" })
+        .unusedVacationDayRateCents,
+    ).toBe("4615");
+    // Un precio negativo por día no es un precio.
+    expect(
+      agreementTermsInputSchema.safeParse({ ...terms, unusedVacationDayRateCents: "-1" }).success,
+    ).toBe(false);
+  });
+
+  it("la caducidad de los días arrastrados son seis meses, otro número o nunca", () => {
+    const terms = {
+      effectiveFrom: "2026-09-01",
+      monthlySalaryCents: "150000",
+      contractedWeeklyMinutes: 2400,
+      annualVacationDays: 30,
+      reason: "Subida pactada en agosto",
+      extraWorkTypes: [],
+      supplements: [],
+    };
+    // Ausente son seis meses, y por eso ningún contrato ya firmado se toca.
+    expect(agreementTermsInputSchema.parse(terms).vacationCarryoverExpiry).toEqual({
+      mode: "months",
+      months: 6,
+    });
+    expect(
+      agreementTermsInputSchema.parse({
+        ...terms,
+        vacationCarryoverExpiry: { mode: "months", months: 12 },
+      }).vacationCarryoverExpiry,
+    ).toEqual({ mode: "months", months: 12 });
+    expect(
+      agreementTermsInputSchema.parse({ ...terms, vacationCarryoverExpiry: { mode: "never" } })
+        .vacationCarryoverExpiry,
+    ).toEqual({ mode: "never" });
+    // «Nunca expiran, a los seis meses» son dos respuestas a la vez: la unión
+    // discriminada no admite el número en la rama que no lo tiene.
+    expect(
+      agreementTermsInputSchema.safeParse({
+        ...terms,
+        vacationCarryoverExpiry: { mode: "siempre", months: 6 },
+      }).success,
+    ).toBe(false);
+    // Cero meses de margen no es una política: es «caducan al terminar», y eso
+    // se dice sin arrastre.
+    expect(
+      agreementTermsInputSchema.safeParse({
+        ...terms,
+        vacationCarryoverExpiry: { mode: "months", months: 0 },
+      }).success,
+    ).toBe(false);
+  });
+
   it("el horario declara la jornada tipo y solo los días que se desvían", () => {
     const schedule = {
       startsAt: "08:00",

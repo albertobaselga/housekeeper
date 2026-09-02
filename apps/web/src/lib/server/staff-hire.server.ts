@@ -8,7 +8,11 @@ import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction 
 
 import { parseEuroInput } from '$lib/employment/commands';
 
-import { explain, insertAgreementWithFirstVersion } from './agreement-terms.server';
+import {
+  explain,
+  explainTermsIssue,
+  insertAgreementWithFirstVersion
+} from './agreement-terms.server';
 import { AUTH_MEMBER_ROLE, type AuthInstance } from './auth-core';
 import { getAuth } from './auth.server';
 import { getDatabasePool } from './db.server';
@@ -69,7 +73,21 @@ export type HireResult =
     }
   | { ok: false; message: string };
 
-/** Contraseña fuerte y dictable: 4 grupos de 5, ~98 bits de entropía. */
+/**
+ * Contraseña fuerte y dictable: 4 grupos de 5, 96,6 bits de MIN-entropía.
+ *
+ * La cifra no es log2(31)×20 = 99,1. `byte % 31` tiene sesgo de módulo: 256 =
+ * 8×31 + 8, así que ocho de los treinta y un símbolos salen con probabilidad
+ * 9/256 y los otros veintitrés con 8/256. Lo que mide la resistencia a que
+ * alguien adivine es el símbolo MÁS probable: −log2(9/256) × 20 = 96,6.
+ *
+ * A esta magnitud la diferencia no significa nada —los dos números están a
+ * decenas de órdenes de cualquier ataque imaginable— y por eso el sesgo se
+ * acepta en vez de corregirse con rechazo de muestra. Lo que no se acepta es
+ * que el comentario prometa de más: aquí ponía «~98 bits», y un número que
+ * nadie ha comprobado en el sitio donde se explica la criptografía es
+ * exactamente el tipo de cosa que luego se cita como si fuera un hecho.
+ */
 export function generateInitialPassword(): string {
   const bytes = randomBytes(20);
   const chars = Array.from(bytes, (byte) => DICTABLE[byte % DICTABLE.length]);
@@ -94,6 +112,16 @@ export function validateHireInput(input: HireInput): string | null {
   }
   if (!(HIREABLE_ROLES as readonly string[]).includes(input.role)) {
     return 'Elige si entra como empleada interna o como apoyo del hogar.';
+  }
+  /*
+   * EL APOYO DEL HOGAR NO GENERA CONTRATO. Lo dice el diseño con esas palabras,
+   * y hasta aquí sólo lo decía la pantalla: los dos botones de la etapa 2 eran
+   * igual de pulsables con cualquier papel, y «Dar de alta con su contrato»
+   * sobre un apoyo creaba el acuerdo y la línea en la lista de personas
+   * empleadas. Se cierra en el servidor, que es donde una regla es una regla.
+   */
+  if (input.agreement && input.role !== 'employee_live_in') {
+    return 'El apoyo del hogar no tiene contrato: créale sólo el acceso, o dala de alta como empleada interna.';
   }
   if (input.agreement) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.agreement.startsOn)) {
@@ -156,11 +184,18 @@ export async function hireHouseholdMember(
     createdUserId = created.user.id;
   } catch (cause) {
     const code = (cause as { body?: { code?: string } }).body?.code;
-    if (code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
-      return { ok: false, message: 'Ya hay una cuenta con ese correo.' };
-    }
-    if (code === 'USERNAME_IS_ALREADY_TAKEN') {
-      return { ok: false, message: 'Ese nombre de usuario ya está cogido. Prueba con otro.' };
+    // UN SOLO MENSAJE PARA LOS DOS CHOQUES, y no por pereza. Better Auth no
+    // está particionado por hogar: si aquí se dijera cuál de los dos ha
+    // chocado, quien administra ESTA casa podría preguntar por un correo
+    // cualquiera y averiguar si tiene cuenta en CUALQUIER otra casa del
+    // despliegue. El radio es pequeño —una instalación familiar— pero el
+    // oráculo es gratis de cerrar y sigue siendo útil a quien da de alta:
+    // cambia uno de los dos, o los dos, y sigue.
+    if (code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL' || code === 'USERNAME_IS_ALREADY_TAKEN') {
+      return {
+        ok: false,
+        message: 'Ese correo o ese nombre de usuario ya están en uso. Prueba con otros.'
+      };
     }
     log.error('identity creation failed', { code: errorCode(cause) });
     return {
@@ -253,8 +288,92 @@ export interface HireFormDraft {
 }
 
 export type HireFromFormResult =
-  | { ok: true; hired: { name: string; username: string; password: string; withAgreement: boolean } }
+  | {
+      ok: true;
+      hired: {
+        name: string;
+        username: string;
+        password: string;
+        withAgreement: boolean;
+        /**
+         * El expediente recién creado, para poder entrar en él nada más
+         * terminar. null cuando el alta dio sólo el acceso. No se redirige: la
+         * contraseña provisional se enseña UNA vez y una redirección la
+         * perdería o —peor— obligaría a meterla en la URL.
+         */
+        agreementId: string | null;
+      };
+    }
   | { ok: false; message: string; draft: HireFormDraft };
+
+/**
+ * Las condiciones que un alta pacta, leídas del formulario. Lo básico y nada
+ * más: el catálogo de trabajo extra y los complementos se pactan después
+ * apilando una versión, porque al dar de alta no se sabe todo.
+ *
+ * Por el mismo motivo, la tarifa del día de vacaciones no disfrutado y la
+ * política de caducidad de los días arrastrados son OPCIONALES aquí. Vacía, la
+ * tarifa se guarda como null —«no se pactó»— y nunca como cero: la fila es
+ * inmutable y ese cero diría para siempre que se acordó pagar cero euros por
+ * día. La caducidad ausente son seis meses, el defecto del esquema.
+ *
+ * Existe suelta y exportada porque la etapa del contrato tiene DOS entradas —la
+ * persona nueva y la que ya está en la casa sin contrato— y las dos enseñan los
+ * mismos campos. Si cada una los leyera por su cuenta, un campo nuevo entraría
+ * por una puerta y se perdería por la otra.
+ */
+export function readHireAgreementTerms(
+  form: FormData,
+  startsOn: string
+): { ok: true; terms: AgreementCreateInputV1['terms'] } | { ok: false; message: string } {
+  const text = (name: string): string => String(form.get(name) ?? '').trim();
+
+  const salary = parseEuroInput(text('monthlySalary'));
+  if (salary === null) return { ok: false, message: 'El salario mensual no es un importe válido.' };
+
+  const rateRaw = text('unusedVacationDayRate');
+  let unusedVacationDayRateCents: string | null = null;
+  if (rateRaw !== '') {
+    const parsedRate = parseEuroInput(rateRaw);
+    if (parsedRate === null) {
+      return {
+        ok: false,
+        message: 'El precio del día de vacaciones no disfrutado no es un importe válido.'
+      };
+    }
+    unusedVacationDayRateCents = parsedRate;
+  }
+
+  const mode = text('carryoverExpiryMode');
+  const vacationCarryoverExpiry =
+    mode === 'never'
+      ? { mode: 'never' }
+      : mode === 'months'
+        ? { mode: 'months', months: Number.parseInt(text('carryoverExpiryMonths'), 10) }
+        : undefined;
+
+  const parsed = agreementTermsInputSchema.safeParse({
+    // La primera versión entra en vigor el día que empieza el contrato: en un
+    // alta no hay historia previa que respetar, y pedir dos fechas para decir lo
+    // mismo solo invita a teclear una mal.
+    effectiveFrom: startsOn,
+    monthlySalaryCents: salary,
+    contractedWeeklyMinutes: Number.parseInt(text('contractedWeeklyMinutes'), 10),
+    annualVacationDays: Number.parseInt(text('annualVacationDays'), 10),
+    unusedVacationDayRateCents,
+    vacationCarryoverExpiry,
+    reason: text('reason') || 'Alta desde la aplicación',
+    extraWorkTypes: [],
+    supplements: []
+  });
+  if (!parsed.success) {
+    // En castellano y diciendo qué campo: el mensaje crudo de zod es
+    // «Invalid input: expected number, received NaN», que no es de esta casa ni
+    // le dice a quien administra qué tiene que arreglar.
+    return { ok: false, message: explainTermsIssue(parsed.error.issues[0]) };
+  }
+  return { ok: true, terms: parsed.data as AgreementCreateInputV1['terms'] };
+}
 
 export async function hireFromForm(
   user: { id: string },
@@ -273,33 +392,10 @@ export async function hireFromForm(
 
   let agreement: HireInput['agreement'] = null;
   if (form.get('withAgreement') === 'on') {
-    const salary = parseEuroInput(text('monthlySalary'));
-    if (salary === null) {
-      return { ok: false, message: 'El salario mensual no es un importe válido.', draft };
-    }
     const startsOn = text('startsOn');
-    const parsed = agreementTermsInputSchema.safeParse({
-      // La primera versión entra en vigor el día que empieza el contrato: en
-      // un alta no hay historia previa que respetar, y pedir dos fechas para
-      // decir lo mismo solo invita a teclear una mal.
-      effectiveFrom: startsOn,
-      monthlySalaryCents: salary,
-      contractedWeeklyMinutes: Number.parseInt(text('contractedWeeklyMinutes'), 10),
-      annualVacationDays: Number.parseInt(text('annualVacationDays'), 10),
-      reason: text('reason') || 'Alta desde la aplicación',
-      // El catálogo de trabajo extra y los complementos se pactan después, en
-      // el acuerdo, apilando una versión. Aquí se registra lo básico.
-      extraWorkTypes: [],
-      supplements: []
-    });
-    if (!parsed.success) {
-      return {
-        ok: false,
-        message: parsed.error.issues[0]?.message ?? 'Revisa las condiciones del contrato.',
-        draft
-      };
-    }
-    agreement = { startsOn, terms: parsed.data as never };
+    const terms = readHireAgreementTerms(form, startsOn);
+    if (!terms.ok) return { ok: false, message: terms.message, draft };
+    agreement = { startsOn, terms: terms.terms };
   }
 
   const result = await hireHouseholdMember(
@@ -319,7 +415,8 @@ export async function hireFromForm(
       name: result.name,
       username: result.username,
       password: result.password,
-      withAgreement: result.agreementId !== null
+      withAgreement: result.agreementId !== null,
+      agreementId: result.agreementId
     }
   };
 }
