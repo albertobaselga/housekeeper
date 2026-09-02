@@ -284,6 +284,9 @@ export function suggestChips(
   const q = normalizeText(query);
   if (q.length < 2) return [];
   const abs = (v: bigint) => (v < 0n ? -v : v);
+  /** R19: comparador total (total desc), con etiqueta asc como desempate — orden determinista aunque empate el total. */
+  const byAbsTotalDesc = (a: bigint, b: bigint, labelA: string, labelB: string): number =>
+    a === b ? labelA.localeCompare(labelB, 'es') : a > b ? -1 : 1;
 
   const provMap = new Map<string, { totalCents: bigint; count: number }>();
   const conceptMap = new Map<string, { concept: string; prov: string; count: number }>();
@@ -320,7 +323,7 @@ export function suggestChips(
     {
       group: 'Proveedores',
       items: [...provMap.entries()]
-        .sort((a, b) => (abs(b[1].totalCents) > abs(a[1].totalCents) ? 1 : -1))
+        .sort((a, b) => byAbsTotalDesc(abs(a[1].totalCents), abs(b[1].totalCents), a[0], b[0]))
         .map(([prov, e]) => ({
           chip: { type: 'prov', value: prov },
           label: prov,
@@ -330,7 +333,7 @@ export function suggestChips(
     {
       group: 'Conceptos',
       items: [...conceptMap.values()]
-        .sort((a, b) => b.count - a.count)
+        .sort((a, b) => (b.count !== a.count ? b.count - a.count : a.concept.localeCompare(b.concept, 'es')))
         .map((e) => ({
           chip: { type: 'concept', value: e.concept, prov: e.prov },
           label: e.concept,
@@ -340,7 +343,7 @@ export function suggestChips(
     {
       group: 'Eventos',
       items: [...eventMap.entries()]
-        .sort((a, b) => (abs(b[1].netCents) > abs(a[1].netCents) ? 1 : -1))
+        .sort((a, b) => byAbsTotalDesc(abs(a[1].netCents), abs(b[1].netCents), a[0], b[0]))
         .map(([event, e]) => ({
           chip: { type: 'event', value: event },
           label: event,
@@ -350,7 +353,7 @@ export function suggestChips(
     {
       group: 'Categorías',
       items: [...catMap.entries()]
-        .sort((a, b) => (abs(b[1].totalCents) > abs(a[1].totalCents) ? 1 : -1))
+        .sort((a, b) => byAbsTotalDesc(abs(a[1].totalCents), abs(b[1].totalCents), catPathOf(a[0]), catPathOf(b[0])))
         .map(([catId, e]) => ({
           chip: { type: 'cat', value: catId },
           label: catPathOf(catId),

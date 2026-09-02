@@ -33,6 +33,18 @@ describe('suggestChips', () => {
     expect(cats.items[0].chip).toEqual({ type: 'cat', value: 'c1' });
     expect(cats.items[0].label).toBe('Ocio › Bares');
   });
+  it('R19: comparador total desc y, si empata el total, etiqueta asc (determinista con dos empates)', () => {
+    const rows = [
+      row({ prov: 'Zeta Bar', totalCents: -500n, count: 1 }),
+      row({ prov: 'Alpha Bar', totalCents: -500n, count: 1 }),
+      row({ prov: 'Medio Bar', totalCents: -900n, count: 1 })
+    ];
+    const groups = suggestChips(rows, catPathOf, 'bar');
+    const provs = groups.find((g) => g.group === 'Proveedores')!;
+    // Medio Bar tiene el mayor total en valor absoluto: va primero.
+    // Zeta Bar y Alpha Bar empatan a total: desempatan por etiqueta ascendente.
+    expect(provs.items.map((i) => i.label)).toEqual(['Medio Bar', 'Alpha Bar', 'Zeta Bar']);
+  });
 });
 
 describe('rowMatchesChips (AND entre chips)', () => {
