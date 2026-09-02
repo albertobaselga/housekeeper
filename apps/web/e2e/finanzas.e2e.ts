@@ -62,19 +62,6 @@ test('admin en modo fixture: el Dashboard de Finanzas pinta KPIs, flujo de caja 
   await expect(providersCard).toContainText('−980,00 €'); // provider Encina, totalCents '-98000'
 });
 
-test('la empleada no alcanza Finanzas: 403 en ruta declarada sin capacidad', async ({ page }) => {
-  await loginAs(page, 'employee');
-  const response = await page.goto(`/h/${HOUSEHOLD}/finanzas`);
-  expect(response?.status()).toBe(403);
-  await expect(page.locator('body')).toContainText('no está incluida en tu acceso');
-});
-
-test('una ruta hija inventada de Finanzas sí es 404', async ({ page }) => {
-  await loginAs(page, 'admin');
-  const response = await page.goto(`/h/${HOUSEHOLD}/finanzas/inventada`);
-  expect(response?.status()).toBe(404);
-});
-
 test('admin en modo fixture: Movimientos lista el ledger y abre el panel con «Datos del origen»', async ({ page }) => {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
@@ -290,4 +277,40 @@ test('admin en modo fixture: una categoría sobre otra categoría no se mueve, y
   const toast = page.locator('[data-testid="pivot-toast"]');
   await expect(toast).toContainText('las categorías no pueden soltarse sobre otra categoría');
   await expect(page.getByRole('button', { name: 'Deshacer' })).toHaveCount(0);
+});
+
+const SCREENS = [
+  'finanzas',
+  'finanzas/analitica',
+  'finanzas/movimientos',
+  'finanzas/revision',
+  'finanzas/eventos',
+  'finanzas/importar',
+  'finanzas/ajustes'
+] as const;
+
+test('la administración con concesión recorre las siete pantallas de Finanzas', async ({ page }) => {
+  await loginAs(page, 'admin');
+  for (const screen of SCREENS) {
+    const response = await page.goto(`/h/${HOUSEHOLD}/${screen}`);
+    expect(response?.status(), `${screen} debería responder 200`).toBe(200);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  }
+});
+
+for (const account of ['family', 'employee', 'helper', 'viewer'] as const) {
+  test(`la cuenta ${account} no alcanza Finanzas por URL directa`, async ({ page }) => {
+    await loginAs(page, account);
+    const module = await page.goto(`/h/${HOUSEHOLD}/finanzas`);
+    expect(module?.status()).toBe(403);
+    await expect(page.locator('body')).toContainText('no está incluida en tu acceso');
+    const child = await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
+    expect(child?.status()).toBe(403);
+  });
+}
+
+test('una ruta hija de Finanzas no declarada falla cerrada con 404', async ({ page }) => {
+  await loginAs(page, 'admin');
+  const response = await page.goto(`/h/${HOUSEHOLD}/finanzas/privado`);
+  expect(response?.status()).toBe(404);
 });
