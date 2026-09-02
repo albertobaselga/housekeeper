@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import pg from 'pg';
 
+import { E2E_APP_LOGIN, E2E_APP_PASSWORD } from '../playwright.db.config';
 import { HOUSEHOLD, loginAs } from './helpers';
 
 /**
@@ -385,4 +386,115 @@ test.describe('la tarjeta de concesiones no miente · móvil de 390', () => {
   // pintada solo por debajo de 500 px no se le escapa a esta mitad.
   test.use({ viewport: { width: 390, height: 844 } });
   casos();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// T3′ (fase 7, endurecimiento): los cuatro casos de arriba miran la FILA —que
+// no mienta mientras el comando viaja—. Este mira un paso más allá: que
+// conceder/revocar cambie de verdad lo que la administración puede ABRIR, no
+// solo lo que la tarjeta dice de sí misma.
+//
+// Se revoca/concede la fila de ADMIN2 y no la de Alberto (el admin de esta
+// batería) a propósito: quitarse Finanzas A SÍ MISMO exige el diálogo
+// «Quitarme Finanzas ahora» (askFinance/confirmingFinanceId, arriba en este
+// mismo fichero) y la concesión de Alberto la dan por sentada TODAS las specs
+// de Finanzas que corren después en esta misma base compartida y con un solo
+// worker (finanzas-revision.dbe2e, finanzas-importar.dbe2e, mobile-densidad
+// visitando las siete rutas «como esta administración»). La fila de ADMIN2 no
+// es «propia» desde la sesión de Alberto: el botón concede/revoca sin pasar
+// por ese diálogo, y el `beforeEach` de arriba ya la deja apagada antes de
+// cada test.
+//
+// Lo que NO se hace, y por qué: ADMIN2 no tiene cuenta en el selector de
+// cuentas demo con el que arranca esta batería (`HOUSEKEEPER_FIXTURE_LOGIN`) —
+// vive solo en la base (alta hecha por SQL en el `beforeAll` de arriba), no en
+// la lista fija de `$lib/server/fixtures.server.ts` (comprobado leyendo ese
+// fichero: `listDemoUsers`/`getDemoUser` solo conocen las cinco cuentas de
+// `ACCOUNT_EMAILS`). No hay, por tanto, una pestaña en la que «entrar como
+// ADMIN2» para leer un 200/403 de su navegación de verdad — y dar de alta una
+// sexta cuenta demo solo para esta prueba sería tocar producción para una
+// tarea que pide SOLO añadir un test a este fichero.
+//
+// Se comprueba en su lugar el mismo cerrojo que consulta el layout del hogar
+// antes de decidir esos 200/403 y antes de construir las capacidades de las
+// que sale la entrada de navegación (`[householdId]/+layout.server.ts`:
+// `financeGranted` decide las dos cosas a la vez) — `app.finance_enabled()`,
+// bajo RLS real y con el MISMO login de aplicación sin privilegios con el que
+// corre el servidor bajo prueba (`e2e_housekeeper_web`, `nobypassrls`). No es
+// una prueba escrita aparte que pueda divergir del cerrojo real: son las
+// mismas tres llamadas que hace `financeAccessGranted()`
+// (`finance-access.server.ts`) — fijar `app.user_id`, resolver la membresía
+// viva y fijar el contexto del hogar — reproducidas aquí en SQL porque ese
+// módulo vive en `$lib/server` y no es código de prueba.
+
+/** El login de aplicación (sin privilegios), igual que usa el servidor bajo prueba — no el admin del `onDatabase` de arriba, que se salta la RLS a propósito. */
+function appConnectionString(): string {
+  const url = new URL(process.env.E2E_DATABASE_URL ?? '');
+  url.username = E2E_APP_LOGIN;
+  url.password = E2E_APP_PASSWORD;
+  return url.toString();
+}
+
+/**
+ * ¿Ve `userId` el módulo de Finanzas ahora mismo? Mismos tres pasos que
+ * `withAuthorizedTransaction` (`packages/server/src/database.ts`), que es lo
+ * que `financeAccessGranted()` llama de verdad en el servidor: fijar la
+ * identidad, resolver la membresía viva del hogar y fijar su contexto — y
+ * solo entonces preguntarle al cerrojo. Bajo RLS real: sin este contexto,
+ * `finance_module_grants` no le enseña ni una fila a nadie.
+ */
+async function financeEnabledFor(userId: string): Promise<boolean> {
+  const client = new pg.Client({ connectionString: appConnectionString() });
+  await client.connect();
+  try {
+    await client.query('begin');
+    await client.query("select set_config('app.user_id', $1, true)", [userId]);
+    const membership = await client.query<{ id: string; household_id: string }>(
+      `select id, household_id from app.household_memberships
+        where user_id = $1 and household_id = $2
+          and starts_at <= now() and revoked_at is null
+          and (expires_at is null or expires_at > now())
+        limit 1`,
+      [userId, HOUSEHOLD]
+    );
+    const row = membership.rows[0];
+    if (!row) throw new Error(`Sin membresía viva de ${userId} en ${HOUSEHOLD}`);
+    await client.query('select app.set_household_context($1, $2)', [row.household_id, row.id]);
+    const result = await client.query<{ enabled: boolean }>('select app.finance_enabled() as enabled');
+    await client.query('commit');
+    return Boolean(result.rows[0]?.enabled);
+  } catch (cause) {
+    await client.query('rollback');
+    throw cause;
+  } finally {
+    await client.end();
+  }
+}
+
+test('la concesión cambia lo visible', async ({ page }) => {
+  const row = await gotoSettings(page);
+
+  // Apagada de partida (el `beforeEach` de arriba lo garantiza): ni la fila lo
+  // dice ni el cerrojo real se lo concede — lo que ADMIN2 encontraría al abrir
+  // /h/<id>/finanzas si pudiera entrar con su propia cuenta.
+  await expect(row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true })).toBeVisible();
+  expect(await financeEnabledFor(ADMIN2_USER)).toBe(false);
+
+  // Conceder desde SU fila (no la de Alberto): sin diálogo de por medio.
+  await row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
+  await expect(page.locator(TARJETA).locator('.success-message')).toContainText('Guardado ✓', {
+    timeout: 15_000
+  });
+  // El acuse no es de adorno: el mismo cerrojo que le abriría la navegación y
+  // la entrada de menú a ADMIN2 ya dice que sí.
+  await expect(row.getByRole('button', { name: `Desactivar Finanzas a ${ADMIN2_NAME}`, exact: true })).toBeVisible();
+  expect(await financeEnabledFor(ADMIN2_USER)).toBe(true);
+
+  // Revocar: vuelve a lo de antes, tanto en la tarjeta como en el cerrojo real.
+  await row.getByRole('button', { name: `Desactivar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
+  await expect(page.locator(TARJETA).locator('.success-message')).toContainText('Guardado ✓', {
+    timeout: 15_000
+  });
+  await expect(row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true })).toBeVisible();
+  expect(await financeEnabledFor(ADMIN2_USER)).toBe(false);
 });
