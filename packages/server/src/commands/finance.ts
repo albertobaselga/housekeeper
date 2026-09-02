@@ -162,6 +162,12 @@ type FinanceManualDeletePayload = Extract<FinanceWritePayload, { kind: "finance.
 type FinanceTransactionInvestPayload = Extract<FinanceWritePayload, { kind: "finance.transaction.invest" }>;
 type FinanceTransfersLinkPayload = Extract<FinanceWritePayload, { kind: "finance.transfers.link" }>;
 type FinanceTransfersUnlinkPayload = Extract<FinanceWritePayload, { kind: "finance.transfers.unlink" }>;
+type FinanceEventAssignTransactionsPayload = Extract<
+  FinanceWritePayload,
+  { kind: "finance.event.assignTransactions" }
+>;
+type FinanceEventAssignConceptPayload = Extract<FinanceWritePayload, { kind: "finance.event.assignConcept" }>;
+type FinanceAliasUpdatePayload = Extract<FinanceWritePayload, { kind: "finance.alias.update" }>;
 
 interface FinanceTxRow {
   id: UUID;
@@ -790,6 +796,244 @@ async function unlinkTransfers(
 }
 
 /**
+ * Rechaza un nombre de evento que ya use otro evento del hogar (comparación
+ * case-insensitive, como pide la fixture). `excludeId` deja pasar el propio
+ * evento al renombrarlo (o al reintentar `create` con el mismo `id`, R21) sin
+ * que choque consigo mismo.
+ */
+async function cleanEventName(
+  client: PoolClient,
+  householdId: UUID,
+  name: string,
+  excludeId: UUID | null,
+): Promise<string> {
+  const trimmed = name.trim();
+  const clash = await client.query(
+    `select 1 from app.finance_events
+      where household_id = $1 and lower(name) = lower($2) and ($3::uuid is null or id <> $3)`,
+    [householdId, trimmed, excludeId],
+  );
+  if ((clash.rowCount ?? 0) > 0) {
+    throw new CommandRejectedError("finance_event_name_taken", `Ya existe un evento llamado «${trimmed}»`);
+  }
+  return trimmed;
+}
+
+async function requireFinanceEvent(client: PoolClient, householdId: UUID, eventId: UUID): Promise<UUID> {
+  const result = await client.query(`select id from app.finance_events where household_id = $1 and id = $2`, [
+    householdId,
+    eventId,
+  ]);
+  if ((result.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError("finance_event_not_found", "El evento no existe en este hogar");
+  }
+  return eventId;
+}
+
+/**
+ * R21: `id` es opcional en el payload — la cola de sync puede reintentar el
+ * mismo comando tras perder el ack, así que el `insert` es
+ * `on conflict (household_id, id) do nothing` (la clave real de la tabla,
+ * NUNCA `id` a secas: 0036 la declara `PRIMARY KEY (household_id, id)`)
+ * seguido de un `select` que devuelve la misma fila si el conflicto saltó.
+ * El choque de `name` se sigue comprobando ANTES del insert, excluyendo el
+ * propio `id` objetivo: un reintento con el mismo id y el mismo nombre no es
+ * una colisión.
+ */
+async function createFinanceEvent(
+  client: PoolClient,
+  householdId: UUID,
+  payload: { id?: UUID | undefined; name: string },
+): Promise<{ resourceId: UUID }> {
+  const id = (payload.id ?? randomUUID()) as UUID;
+  const clean = await cleanEventName(client, householdId, payload.name, id);
+  await client.query(
+    `insert into app.finance_events (id, household_id, name) values ($1, $2, $3)
+       on conflict (household_id, id) do nothing`,
+    [id, householdId, clean],
+  );
+  const result = await client.query<{ id: string }>(
+    `select id from app.finance_events where household_id = $1 and id = $2`,
+    [householdId, id],
+  );
+  const resourceId = result.rows[0]?.id;
+  if (!resourceId) throw new Error("La inserción del evento no devolvió identificador");
+  return { resourceId: resourceId as UUID };
+}
+
+async function deleteFinanceEvent(client: PoolClient, householdId: UUID, eventId: UUID): Promise<Record<string, never>> {
+  await requireFinanceEvent(client, householdId, eventId);
+  // Desvincula, no borra movimientos; las reglas de evento que lo apuntaban caen con él.
+  await client.query(`delete from app.finance_transaction_events where household_id = $1 and event_id = $2`, [
+    householdId,
+    eventId,
+  ]);
+  await client.query(`delete from app.finance_event_rules where household_id = $1 and event_id = $2`, [
+    householdId,
+    eventId,
+  ]);
+  await client.query(`delete from app.finance_events where household_id = $1 and id = $2`, [householdId, eventId]);
+  return {};
+}
+
+async function assignEventTransactions(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceEventAssignTransactionsPayload,
+): Promise<Record<string, never>> {
+  await requireFinanceEvent(client, householdId, payload.eventId);
+  if (payload.action === "remove") {
+    await client.query(
+      `delete from app.finance_transaction_events
+        where household_id = $1 and event_id = $2 and transaction_id = any($3::uuid[])`,
+      [householdId, payload.eventId, payload.transactionIds],
+    );
+    return {};
+  }
+  // R22: una sola sentencia por conjuntos (nunca un bucle), filtrando a las
+  // transacciones que de verdad son del hogar — un id ajeno o inexistente en
+  // `transactionIds` se ignora en vez de reventar el comando entero.
+  await client.query(
+    `insert into app.finance_transaction_events (household_id, transaction_id, event_id)
+     select $1, tx.id, $2
+       from app.finance_transactions as tx
+      where tx.household_id = $1 and tx.id = any($3::uuid[])
+     on conflict do nothing`,
+    [householdId, payload.eventId, payload.transactionIds],
+  );
+  return {};
+}
+
+async function resolveTargetEventId(
+  client: PoolClient,
+  householdId: UUID,
+  eventId: UUID | null | undefined,
+  newEventName: string | undefined,
+): Promise<UUID | null> {
+  if (newEventName !== undefined) {
+    const name = newEventName.trim();
+    const existing = await client.query<{ id: string }>(
+      `select id from app.finance_events where household_id = $1 and lower(name) = lower($2)`,
+      [householdId, name],
+    );
+    if (existing.rows[0]) return existing.rows[0].id as UUID;
+    return (await createFinanceEvent(client, householdId, { name })).resourceId;
+  }
+  if (eventId != null) return requireFinanceEvent(client, householdId, eventId);
+  return null;
+}
+
+/**
+ * Asigna (o desasigna, con `eventId: null`) el evento que le toca a todo
+ * movimiento que case con el selector proveedor/categoría(+concepto) —
+ * espejo de `finance.transactions.assignConceptRecurrence` pero para
+ * eventos— y deja escrita la regla en `finance_event_rules` para que el
+ * pipeline (`matchEventRules`, `domain/finance/event-rules.ts`) seleccione
+ * las MISMAS filas en las importaciones futuras: por eso `provider_norm`/
+ * `concept_norm` se calculan con la MISMA composición que ese gemelo de
+ * dominio usa para comparar (`normText` puro para proveedor,
+ * `normText(normalizeConcept(...))` para concepto — nunca solo
+ * `normalizeConcept`, que no pasa por mayúsculas/acentos), no con la del
+ * propio payload sin tocar. Cadena vacía tras `trim()` → NULL, como hace
+ * ya `createManualTransaction` con `provider_norm`.
+ */
+async function assignConceptToEvent(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceEventAssignConceptPayload,
+): Promise<{ resourceId?: UUID }> {
+  const targetEventId = await resolveTargetEventId(client, householdId, payload.eventId, payload.newEventName);
+  const txIds = await matchingFinanceTxIds(client, householdId, payload);
+  const providerNorm = payload.provider ? normText(payload.provider) : null;
+  const conceptNorm = payload.concept ? normText(normalizeConcept(payload.concept)) : null;
+
+  if (targetEventId === null) {
+    // Caso de borrado: cae la regla y caen TODOS los vínculos de los movimientos que casan.
+    if (payload.categoryId) {
+      await client.query(`delete from app.finance_event_rules where household_id = $1 and category_id = $2`, [
+        householdId,
+        payload.categoryId,
+      ]);
+    } else {
+      await client.query(
+        `delete from app.finance_event_rules
+          where household_id = $1 and provider_norm = $2 and concept_norm is not distinct from $3`,
+        [householdId, providerNorm, conceptNorm],
+      );
+    }
+    if (txIds.length > 0) {
+      await client.query(
+        `delete from app.finance_transaction_events where household_id = $1 and transaction_id = any($2::uuid[])`,
+        [householdId, txIds],
+      );
+    }
+    return {};
+  }
+
+  if (payload.categoryId) {
+    await requireFinanceCategory(client, householdId, payload.categoryId);
+    await client.query(`delete from app.finance_event_rules where household_id = $1 and category_id = $2`, [
+      householdId,
+      payload.categoryId,
+    ]);
+    await client.query(
+      `insert into app.finance_event_rules (household_id, category_id, event_id) values ($1, $2, $3)`,
+      [householdId, payload.categoryId, targetEventId],
+    );
+  } else {
+    await client.query(
+      `delete from app.finance_event_rules
+        where household_id = $1 and provider_norm = $2 and concept_norm is not distinct from $3`,
+      [householdId, providerNorm, conceptNorm],
+    );
+    await client.query(
+      `insert into app.finance_event_rules (household_id, provider_norm, concept_norm, event_id)
+       values ($1, $2, $3, $4)`,
+      [householdId, providerNorm, conceptNorm, targetEventId],
+    );
+  }
+  if (txIds.length > 0) {
+    // Mover a un evento es EXCLUSIVO: el pivot agrupa por el primer evento asignado.
+    await client.query(
+      `delete from app.finance_transaction_events
+        where household_id = $1 and transaction_id = any($2::uuid[]) and event_id <> $3`,
+      [householdId, txIds, targetEventId],
+    );
+    await client.query(
+      `insert into app.finance_transaction_events (household_id, transaction_id, event_id)
+       select $1, unnest($2::uuid[]), $3
+       on conflict do nothing`,
+      [householdId, txIds, targetEventId],
+    );
+  }
+  return { resourceId: targetEventId };
+}
+
+async function updateProviderAlias(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceAliasUpdatePayload,
+): Promise<Record<string, never>> {
+  const providerNorm = normText(payload.provider);
+  if (!providerNorm) throw new CommandRejectedError("invalid_payload", "El proveedor no puede estar vacío");
+  const display = payload.alias.trim();
+  if (!display) {
+    await client.query(`delete from app.finance_provider_aliases where household_id = $1 and provider_norm = $2`, [
+      householdId,
+      providerNorm,
+    ]);
+    return {};
+  }
+  await client.query(
+    `insert into app.finance_provider_aliases (household_id, provider_norm, display)
+     values ($1, $2, $3)
+     on conflict (household_id, provider_norm) do update set display = excluded.display`,
+    [householdId, providerNorm, display],
+  );
+  return {};
+}
+
+/**
  * `finance`: todas las escrituras del módulo, discriminadas por `payload.kind`.
  *
  * Orden FIJO, no accidental:
@@ -843,6 +1087,26 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
       return linkTransfers(client, envelope.householdId, payload);
     case "finance.transfers.unlink":
       return unlinkTransfers(client, envelope.householdId, payload);
+    case "finance.event.create":
+      return createFinanceEvent(client, envelope.householdId, payload);
+    case "finance.event.update": {
+      await requireFinanceEvent(client, envelope.householdId, payload.eventId);
+      const clean = await cleanEventName(client, envelope.householdId, payload.name, payload.eventId);
+      await client.query(`update app.finance_events set name = $3 where household_id = $1 and id = $2`, [
+        envelope.householdId,
+        payload.eventId,
+        clean,
+      ]);
+      return { resourceId: payload.eventId };
+    }
+    case "finance.event.delete":
+      return deleteFinanceEvent(client, envelope.householdId, payload.eventId);
+    case "finance.event.assignTransactions":
+      return assignEventTransactions(client, envelope.householdId, payload);
+    case "finance.event.assignConcept":
+      return assignConceptToEvent(client, envelope.householdId, payload);
+    case "finance.alias.update":
+      return updateProviderAlias(client, envelope.householdId, payload);
     case "finance.account.update":
     case "finance.category.create":
     case "finance.category.update":
@@ -850,18 +1114,12 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
     case "finance.category.assignConcept":
     case "finance.rule.create":
     case "finance.rule.delete":
-    case "finance.event.create":
-    case "finance.event.update":
-    case "finance.event.delete":
-    case "finance.event.assignTransactions":
-    case "finance.event.assignConcept":
-    case "finance.alias.update":
     case "finance.import.undo":
-      // Tareas 3, 4 y 5 de esta cadena sustituyen cada uno de estos `case`
-      // por su implementación real. Hasta entonces el kind está reconocido
-      // por el esquema (y por tanto por el cerrojo de arriba) pero sin
-      // manejar todavía: no es un agujero de autorización, es trabajo
-      // pendiente explícito.
+      // Tarea 5 de esta cadena sustituye cada uno de estos `case` por su
+      // implementación real. Hasta entonces el kind está reconocido por el
+      // esquema (y por tanto por el cerrojo de arriba) pero sin manejar
+      // todavía: no es un agujero de autorización, es trabajo pendiente
+      // explícito.
       throw new CommandRejectedError(
         "invalid_payload",
         `Comando de finanzas aún no implementado: ${payload.kind}`,
