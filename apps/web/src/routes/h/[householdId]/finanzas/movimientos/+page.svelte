@@ -136,10 +136,19 @@
 
   // Cambiar un filtro local vuelve a la primera página (offset fuera);
   // paginar conserva los filtros. Siempre merge no destructivo.
+  //
+  // [FASE 5, T9 · corrección Minor 4] `goto` a la misma ruta no remonta el
+  // componente: `selected` sobreviviría al cambio de filtro/página apuntando a
+  // filas que `linkCheck` ya no ve (calculado solo sobre
+  // `movimientos.page.rows` actuales), dejando la barra de selección con un
+  // recuento que no corresponde a ninguna fila visible. Se vacía en el mismo
+  // gesto que dispara la navegación.
   function applyLocal(patch: Record<string, string | null>): void {
+    selected = [];
     void goto(`?${mergeParams(page.url.searchParams, { ...patch, offset: null })}`, { noScroll: true, keepFocus: true });
   }
   function goPage(nextOffset: number): void {
+    selected = [];
     void goto(`?${mergeParams(page.url.searchParams, { offset: nextOffset > 0 ? String(nextOffset) : null })}`, { noScroll: true });
   }
 </script>
@@ -177,7 +186,7 @@
   <article class="card">
     {#if selected.length > 0}
       <div class="seleccion-bar">
-        <span>{selected.length} seleccionados</span>
+        <span>{selected.length} seleccionado{selected.length === 1 ? '' : 's'}</span>
         <button class="button secondary small-button" type="button" disabled={!linkCheck.enabled}
           title={linkCheck.reason ?? 'Vincular como transferencia'} onclick={linkSelection}>⇄ Vincular transferencia</button>
         {#each movimientos.events as entry (entry.id)}

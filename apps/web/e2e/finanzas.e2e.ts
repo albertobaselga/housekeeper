@@ -105,7 +105,10 @@ test('Movimientos: cada fila trae sus controles de edición inline', async ({ pa
   // categoría, eventos, recurrencia y alias de proveedor, pero SIN botón de
   // desvincular ni de borrar (es un movimiento importado, no un manual).
   const encina = rows.nth(0);
-  await expect(encina.getByLabel('Seleccionar movimiento')).toBeVisible();
+  // [FASE 5, T9 · corrección Minor 5] El nombre accesible del checkbox
+  // incluye el título del movimiento (`txTitle`), no un rótulo genérico
+  // repetido en las 100 filas de una página.
+  await expect(encina.getByLabel('Seleccionar Encina')).toBeVisible();
   await expect(encina.getByLabel('Categoría')).toBeVisible();
   await expect(encina.getByTitle('Asignar a eventos')).toBeVisible();
   await expect(encina.getByLabel('Tipo de gasto')).toBeVisible();
@@ -129,25 +132,50 @@ test('Movimientos: seleccionar filas activa la barra y «Vincular transferencia�
   const rows = page.locator('.finance-ledger .finance-row-wrap');
   await expect(page.locator('.seleccion-bar')).toHaveCount(0);
 
-  await rows.nth(0).getByLabel('Seleccionar movimiento').check();
+  await rows.nth(0).getByLabel('Seleccionar Encina').check();
   const bar = page.locator('.seleccion-bar');
-  await expect(bar).toContainText('1 seleccionados');
+  // [FASE 5, T9 · corrección Minor 3] Singular correcto («1 seleccionado»,
+  // no «1 seleccionados»); el plural de abajo con 2 ya estaba bien.
+  await expect(bar).toContainText('1 seleccionado');
+  await expect(bar).not.toContainText('1 seleccionados');
   const linkButton = bar.getByRole('button', { name: /Vincular transferencia/ });
   await expect(linkButton).toBeDisabled();
   await expect(linkButton).toHaveAttribute('title', 'se necesitan al menos 2 movimientos');
 
   // Encina (−87,34 €) + nómina (+2.125,00 €): la selección no suma cero.
-  await rows.nth(1).getByLabel('Seleccionar movimiento').check();
+  await rows.nth(1).getByLabel('Seleccionar Talleres Roble').check();
   await expect(bar).toContainText('2 seleccionados');
   await expect(linkButton).toHaveAttribute('title', 'la selección no suma cero');
 
   // Encina + traspaso (fila 3, YA pertenece a un grupo): motivo distinto.
-  await rows.nth(1).getByLabel('Seleccionar movimiento').uncheck();
-  await rows.nth(2).getByLabel('Seleccionar movimiento').check();
+  await rows.nth(1).getByLabel('Seleccionar Talleres Roble').uncheck();
+  await rows.nth(2).getByLabel('Seleccionar TRASPASO A CUENTA COMUN').check();
   await expect(linkButton).toHaveAttribute('title', 'algún movimiento ya pertenece a un grupo');
 
   await bar.getByRole('button', { name: 'Quitar selección' }).click();
   await expect(page.locator('.seleccion-bar')).toHaveCount(0);
+});
+
+// [FASE 5, T9 · corrección Minor 4] `selected` no sobrevive a un cambio de
+// filtro: el fixture ignora el valor del filtro (siempre las mismas 5 filas),
+// así que esto no verifica un recorte de filas — verifica que `applyLocal`
+// vacía la selección en el mismo gesto que dispara la navegación, que es la
+// causa real señalada en la revisión (el estado del componente sobrevive al
+// `goto` porque es la misma ruta).
+test('Movimientos: cambiar el filtro de búsqueda vacía la selección', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
+  const rows = page.locator('.finance-ledger .finance-row-wrap');
+
+  await rows.nth(0).getByLabel('Seleccionar Encina').check();
+  await expect(page.locator('.seleccion-bar')).toContainText('1 seleccionado');
+
+  await page.getByPlaceholder('Buscar concepto o proveedor…').fill('encina');
+  // `getByRole('button', { name: 'Buscar' })` a secas casa también con la lupa
+  // global de la cabecera («Buscar en toda la casa»): se acota al formulario.
+  await page.locator('.finance-localfilters').getByRole('button', { name: 'Buscar', exact: true }).click();
+  await expect(page.locator('.seleccion-bar')).toHaveCount(0);
+  await expect(rows.nth(0).getByLabel('Seleccionar Encina')).not.toBeChecked();
 });
 
 test('Movimientos: «+ Añadir manual» abre y cierra el formulario', async ({ page }) => {

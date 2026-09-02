@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FinanceTxDto } from '@housekeeper/server';
-  import { ledgerRowMeta, txTitle } from '$lib/finance/detail';
+  import { isManualTransaction, ledgerRowMeta, txTitle } from '$lib/finance/detail';
   import { formatCents } from '$lib/finance/format';
   import type { FinanceCategoryOptionSource } from '$lib/finance/category-options';
   import CategorySelect from './CategorySelect.svelte';
@@ -39,8 +39,13 @@
     onUnlink?: (transferGroupId: string) => void;
   } = $props();
 
-  const editable = $derived(Boolean(onSetCategory || onToggleSelect || onSetRecurrence));
-  const isManual = (tx: FinanceTxDto): boolean => tx.batchId === null && tx.dedupHash.startsWith('manual-');
+  // [FASE 5, T9 · corrección Minor 6] Con CUALQUIER callback de edición se
+  // pinta el envoltorio de herramientas: un consumidor futuro que solo pase
+  // `onDeleteManual` o solo `onUnlink` no debe quedarse sin controles y sin
+  // aviso alguno.
+  const editable = $derived(
+    Boolean(onSetCategory || onToggleSelect || onSetRecurrence || onToggleEvent || onDeleteManual || onUnlink)
+  );
 </script>
 
 <div class="ledger-list finance-ledger" data-lista="principal">
@@ -60,7 +65,7 @@
           {#if onToggleSelect}
             <input
               type="checkbox"
-              aria-label="Seleccionar movimiento"
+              aria-label={`Seleccionar ${txTitle(tx)}`}
               checked={selectedIds?.has(tx.id) ?? false}
               onchange={(event) => onToggleSelect(tx.id, event.currentTarget.checked)}
             />
@@ -80,14 +85,15 @@
             <RecurrenceChip value={tx.recurrence} onchange={(next) => onSetRecurrence(tx.id, next)} />
           {/if}
           {#if onUnlink && tx.transferGroupId}
+            {@const groupId = tx.transferGroupId}
             <button class="button secondary small-button" type="button" title="Desvincular transferencia"
-              onclick={() => onUnlink(tx.transferGroupId!)}>⇄</button>
+              onclick={() => onUnlink(groupId)}>⇄</button>
           {/if}
           {#if tx.provider}
             <a class="button secondary small-button" title="Editar alias del proveedor"
               href={`ajustes?prov=${encodeURIComponent(tx.provider)}`}>✎</a>
           {/if}
-          {#if onDeleteManual && isManual(tx)}
+          {#if onDeleteManual && isManualTransaction(tx)}
             <button class="button danger small-button" type="button" onclick={() => onDeleteManual(tx.id)}>Borrar</button>
           {/if}
         </div>

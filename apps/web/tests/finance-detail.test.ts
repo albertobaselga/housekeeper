@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { detailCards, hasRaw, ledgerRowMeta, originRows, txTitle } from '../src/lib/finance/detail';
+import {
+  detailCards, hasRaw, isManualTransaction, ledgerRowMeta, originRows, txTitle
+} from '../src/lib/finance/detail';
 
 import type { FinanceTxDto } from '@housekeeper/server';
 import type { FinanceDetailMode } from '../src/lib/finance/api';
@@ -153,6 +155,33 @@ describe('originRows («Datos del origen»)', () => {
     const partnerSinRaw = tx({ id: 'tx-partner', raw: {} });
     const origin = originRows(mirror, partnerSinRaw);
     expect(origin?.label).toBe('Detalles');
+  });
+});
+
+describe('isManualTransaction (réplica de la guarda de borrado del servidor)', () => {
+  // [FASE 5, T9 · corrección Important 2] Las cuatro combinaciones de
+  // `batchId`/prefijo del hash: solo la rama positiva real (sin lote,
+  // hash `manual-…`) debe dar `true`. Antes de esta corrección, ninguna
+  // prueba del repo ejercía la rama positiva — un predicado invertido o que
+  // devolviera siempre `false` habría pasado igual.
+  it('sin lote y con hash `manual-…`: SÍ es un manual borrable', () => {
+    expect(isManualTransaction(tx({ batchId: null, dedupHash: 'manual-abc123' }))).toBe(true);
+  });
+
+  it('sin lote pero con un hash que no es `manual-…` (p. ej. un traspaso): NO es un manual', () => {
+    expect(isManualTransaction(tx({ batchId: null, dedupHash: 'fixture-roble-tx-0003' }))).toBe(false);
+  });
+
+  it('con lote y hash `manual-…` (no debería darse, pero el lote manda): NO es un manual', () => {
+    expect(isManualTransaction(tx({ batchId: 'fb100000-0000-4000-8000-000000000001', dedupHash: 'manual-abc123' }))).toBe(
+      false
+    );
+  });
+
+  it('con lote y sin prefijo `manual-` (importado normal): NO es un manual', () => {
+    expect(
+      isManualTransaction(tx({ batchId: 'fb100000-0000-4000-8000-000000000001', dedupHash: 'demo-fixture-tx-0001' }))
+    ).toBe(false);
   });
 });
 

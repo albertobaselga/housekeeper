@@ -73,6 +73,20 @@ export function originRows(
   return rows.length > 0 ? { label: 'Detalles', rows } : null;
 }
 
+/**
+ * [FASE 5, T9] Un manual borrable: sin lote de importación (`batchId` null) y
+ * con el hash sintético que el servidor genera al crearlo (`manual-…`) — no un
+ * lote real ni la contrapartida `cashpair-` de una inversión. Réplica EXACTA
+ * de la guarda del servidor (`packages/server/src/commands/finance.ts`:
+ * `if (tx.batch_id !== null || !tx.dedup_hash.startsWith("manual-")) rechaza`,
+ * aquí en positivo) para que la UI no ofrezca un borrado que el servidor fuera
+ * a rechazar. Única definición: LedgerTable la consume en vez de repetir el
+ * predicado a mano, y queda testeada aquí sin compilar el componente.
+ */
+export function isManualTransaction(tx: FinanceTxDto): boolean {
+  return tx.batchId === null && tx.dedupHash.startsWith('manual-');
+}
+
 /** Tarjetas a pintar en el panel según el modo: el propio movimiento, o lo ya traído para ids/grupo. */
 export function detailCards(mode: FinanceDetailMode | null, fetched: FinanceTxDto[] | null): FinanceTxDto[] {
   if (mode === null) return [];
