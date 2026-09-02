@@ -7,7 +7,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { computeDedupHash } from '../../server/src/finance/dedup-hash.ts';
 import { applyMigrations } from './migrate.mjs';
-import { construirSqliteSintetica, GRUPO_TRASPASO, SUMAS_CUENTA_MES, TOTALES } from './home-finance-sintetica.mjs';
+import { construirSqliteSintetica, GRUPO_TRASPASO_CANONICO, SUMAS_CUENTA_MES, TOTALES } from './home-finance-sintetica.mjs';
 import { compararResumenes, leerOrigen, migrar, resumenDestino, resumenOrigen } from './migrar-home-finance.mjs';
 
 const adminUrl = process.env.TEST_DATABASE_URL;
@@ -69,9 +69,13 @@ describe.runIf(Boolean(adminUrl))('migrar() contra Postgres real', () => {
       expect(farmacia).toEqual({ provider: 'Farmacia Ñuñez', provider_norm: 'FARMACIA NUNEZ',
         dedup_hash: 'manual-a1b2c3d4e5f60718' });
 
+      // El grupo llega del origen como uuid4().hex (32 hex sin guiones) y se
+      // busca por su forma CANÓNICA: es la que `aUuid` escribe y la que Postgres
+      // devuelve, y por tanto la única con la que el resumen del origen casa.
       const { rows: patas } = await client.query(
         `select amount_cents::text as importe from app.finance_transactions
-          where household_id = $1 and transfer_group_id = $2 order by amount_cents`, [HOGAR, GRUPO_TRASPASO]);
+          where household_id = $1 and transfer_group_id::text = $2 order by amount_cents`,
+        [HOGAR, GRUPO_TRASPASO_CANONICO]);
       expect(patas.map((p) => p.importe)).toEqual(['-50000', '50000']);
 
       const { rows: [hija] } = await client.query(

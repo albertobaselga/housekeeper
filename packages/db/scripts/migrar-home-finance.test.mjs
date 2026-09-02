@@ -4,8 +4,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { computeDedupHash } from '../../server/src/finance/dedup-hash.ts';
 import { importarModuloTs } from './cargar-ts.mjs';
-import { construirSqliteSintetica, CUENTAS, GRUPO_HUERFANO, GRUPO_TRASPASO, SUMAS_CUENTA_MES, TOTALES } from './home-finance-sintetica.mjs';
-import { avisosOrigen, compararResumenes, ErrorDeUso, hacerCopiaSeguridad, leerOrigen, normText, parseArgs, renderInforme, resumenOrigen, validarOrigen, verificarHashes } from './migrar-home-finance.mjs';
+import { construirSqliteSintetica, CUENTAS, GRUPO_HUERFANO, GRUPO_TRASPASO, GRUPO_TRASPASO_CANONICO, SUMAS_CUENTA_MES, TOTALES } from './home-finance-sintetica.mjs';
+import { aUuid, avisosOrigen, compararResumenes, ErrorDeUso, hacerCopiaSeguridad, leerOrigen, normText, parseArgs, renderInforme, resumenOrigen, validarOrigen, verificarHashes } from './migrar-home-finance.mjs';
 
 describe('parseArgs', () => {
   it('lee flags con valor y banderas', () => {
@@ -44,6 +44,31 @@ describe('normText (réplica de money.py::norm_text)', () => {
     for (const muestra of muestras) {
       expect(normText(muestra)).toBe(normTextDominio(muestra));
     }
+  });
+});
+
+describe('aUuid (transfer_group_id: el origen usa uuid4().hex, 32 hex sin guiones)', () => {
+  it('canonicaliza la forma REAL del origen, 32 hex sin guiones', () => {
+    expect(aUuid('fc9cabf5d7cb4499abbdead6b78db63e', 7))
+      .toBe('fc9cabf5-d7cb-4499-abbd-ead6b78db63e');
+    expect(aUuid('FC9CABF5D7CB4499ABBDEAD6B78DB63E', 7))
+      .toBe('fc9cabf5-d7cb-4499-abbd-ead6b78db63e');
+  });
+  it('deja la forma canónica igual, siempre en minúsculas (es idempotente)', () => {
+    expect(aUuid('e7b8c9d0-1234-4abc-8def-000000000002', 9))
+      .toBe('e7b8c9d0-1234-4abc-8def-000000000002');
+    expect(aUuid('E7B8C9D0-1234-4ABC-8DEF-000000000002', 9))
+      .toBe('e7b8c9d0-1234-4abc-8def-000000000002');
+    expect(aUuid(aUuid(GRUPO_TRASPASO, 3), 3)).toBe(GRUPO_TRASPASO_CANONICO);
+  });
+  it('«sin grupo» (null o cadena vacía) es null, no un error', () => {
+    expect(aUuid(null, 1)).toBe(null);
+    expect(aUuid('', 1)).toBe(null);
+  });
+  it('cualquier otra cosa aborta nombrando la transacción y el valor', () => {
+    expect(() => aUuid('no-soy-un-uuid', 42)).toThrow(/42.*no-soy-un-uuid/);
+    expect(() => aUuid('fc9cabf5d7cb4499abbdead6b78db63', 42)).toThrow(/transfer_group_id no-UUID/);
+    expect(() => aUuid('zz9cabf5d7cb4499abbdead6b78db63e', 42)).toThrow(/transfer_group_id no-UUID/);
   });
 });
 
@@ -110,7 +135,10 @@ describe('resumenOrigen y compararResumenes', () => {
       .toBe(SUMAS_CUENTA_MES['00490001512345678901']['2026-01']);
     expect(resumen.sumasCuentaMes.get('EFECTIVO|2026-02')).toBe(SUMAS_CUENTA_MES.EFECTIVO['2026-02']);
     expect(resumen.grupos.size).toBe(TOTALES.gruposTransferencia);
-    expect(resumen.grupos.get(GRUPO_TRASPASO)).toEqual({ patas: 2, suma: 0n });
+    // La clave es el UUID CANÓNICO, no el crudo del origen: es la única forma
+    // que puede casar con la de resumenDestino (Postgres canonicaliza al ::uuid).
+    expect(resumen.grupos.get(GRUPO_TRASPASO_CANONICO)).toEqual({ patas: 2, suma: 0n });
+    expect(resumen.grupos.get(GRUPO_TRASPASO)).toBeUndefined();
     expect(Object.fromEntries(resumen.estados)).toEqual(TOTALES.estados);
     expect(resumen.fechaMin).toBe(TOTALES.fechaMin);
     expect(resumen.fechaMax).toBe(TOTALES.fechaMax);
@@ -120,11 +148,11 @@ describe('resumenOrigen y compararResumenes', () => {
     const a = resumenOrigen(origen);
     expect(compararResumenes(a, resumenOrigen(origen)).ok).toBe(true);
     const b = resumenOrigen(origen);
-    b.grupos.set(GRUPO_TRASPASO, { patas: 2, suma: 5n });
+    b.grupos.set(GRUPO_TRASPASO_CANONICO, { patas: 2, suma: 5n });
     const rota = compararResumenes(a, b);
     expect(rota.ok).toBe(false);
     expect(rota.lineas.filter((l) => !l.ok).map((l) => l.etiqueta))
-      .toContain(`grupo ${GRUPO_TRASPASO} (patas y suma)`);
+      .toContain(`grupo ${GRUPO_TRASPASO_CANONICO} (patas y suma)`);
   });
   it('una pata huérfana del origen NO rompe la comparación', async () => {
     const origen = await crearOrigenSintetico();

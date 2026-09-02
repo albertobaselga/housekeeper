@@ -148,11 +148,15 @@ export function resumenOrigen(origen) {
     const clave = `${cuentasPorId.get(tx.account_id).bank_ref}|${tx.op_date.slice(0, 7)}`;
     sumasCuentaMes.set(clave, (sumasCuentaMes.get(clave) ?? 0n) + tx.amount_cents);
     estados.set(tx.status, (estados.get(tx.status) ?? 0) + 1);
-    if (tx.transfer_group_id) {
-      const g = grupos.get(tx.transfer_group_id) ?? { patas: 0, suma: 0n };
+    // Clave CANÓNICA: el origen guarda uuid4().hex sin guiones y el destino
+    // devuelve la forma con guiones, así que sin `aUuid` los dos resúmenes
+    // compararían cadenas distintas del mismo grupo (ver el comentario de aUuid).
+    const grupo = aUuid(tx.transfer_group_id, tx.id);
+    if (grupo !== null) {
+      const g = grupos.get(grupo) ?? { patas: 0, suma: 0n };
       g.patas += 1;
       g.suma += tx.amount_cents;
-      grupos.set(tx.transfer_group_id, g);
+      grupos.set(grupo, g);
     }
     if (fechaMin === null || tx.op_date < fechaMin) fechaMin = tx.op_date;
     if (fechaMax === null || tx.op_date > fechaMax) fechaMax = tx.op_date;
@@ -404,7 +408,31 @@ export function renderInforme({ modo, hogar, rutaSqlite, copia, comparacion, has
   return l.join('\n');
 }
 
-const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const HEX32 = /^[0-9a-f]{32}$/;
+const UUID_CANONICO = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** `transfer_group_id` a UUID canónico. El origen genera SIEMPRE los grupos con
+ *  `uuid.uuid4().hex` — 32 hexadecimales SIN guiones (transfers.py:112,
+ *  amex.py:79, investments.py:60, api.py:558) — sobre una columna String(36)
+ *  que admite las dos formas. Postgres acepta la corta en `::uuid` pero la
+ *  CANONICALIZA con guiones al devolverla, así que si el origen y el destino no
+ *  hablaran la misma forma, `compararResumenes` marcaría ✗ TODOS los grupos
+ *  sobre una migración perfectamente fiel. De ahí que se canonicalice aquí, en
+ *  una sola función que consumen los tres sitios que tocan el valor: la guarda
+ *  y el parámetro del INSERT de `migrar()` y la clave de `grupos` de
+ *  `resumenOrigen`. Es idempotente, así que aplicarla dos veces es inocuo.
+ *  `null`/'' son «sin grupo»; cualquier otra cosa para la migración con nombre
+ *  y apellidos antes de que Postgres escupa un 22P02 a mitad de escritura. */
+export function aUuid(valor, idTransaccion) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const limpio = String(valor).toLowerCase();
+  if (HEX32.test(limpio)) {
+    return [limpio.slice(0, 8), limpio.slice(8, 12), limpio.slice(12, 16),
+      limpio.slice(16, 20), limpio.slice(20)].join('-');
+  }
+  if (UUID_CANONICO.test(limpio)) return limpio;
+  throw new Error(`La transacción ${idTransaccion} tiene transfer_group_id no-UUID: ${valor}`);
+}
 
 /** `provider_norm`: cadena vacía (o ausente) → NULL, cualquier otro valor →
  *  normText(). La comparten dos sitios: las transacciones (normalizando
@@ -475,9 +503,10 @@ export async function migrar(client, householdId, origen) {
       [householdId, id, b.filename, bancoDeLote(b), b.imported_at, b.new_count, b.dup_count]);
   }
   for (const t of origen.transactions) {
-    if (t.transfer_group_id !== null && !esUuid.test(t.transfer_group_id)) {
-      throw new Error(`La transacción ${t.id} tiene transfer_group_id no-UUID: ${t.transfer_group_id}`);
-    }
+    // Guarda y parámetro del INSERT, en una sola llamada: lo que se escribe es
+    // exactamente lo que `resumenOrigen` usó de clave, así que los dos resúmenes
+    // comparan la misma cadena.
+    const grupo = aUuid(t.transfer_group_id, t.id);
     const id = randomUUID();
     mapas.transacciones.set(t.id, id);
     await client.query(
@@ -490,7 +519,7 @@ export async function migrar(client, householdId, origen) {
         t.op_date, t.value_date, t.concept, t.provider, providerNormOSuNulo(t.provider),
         String(t.amount_cents), t.balance_cents === null ? null : String(t.balance_cents),
         t.code_common, t.code_own, t.category_id === null ? null : mapas.categorias.get(t.category_id),
-        t.status, t.transfer_group_id, t.dedup_hash, t.recurrence, t.recurrence_manual,
+        t.status, grupo, t.dedup_hash, t.recurrence, t.recurrence_manual,
         // `leerOrigen` ya coalesce raw a '{}'; el ?? es la red por si migrar()
         // recibe un origen construido a mano (la columna es NOT NULL en 0036).
         t.bank_category, t.raw ?? '{}']);

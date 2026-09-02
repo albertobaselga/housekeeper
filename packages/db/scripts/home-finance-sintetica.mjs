@@ -61,7 +61,14 @@ CREATE TABLE event_rules (
 );
 `;
 
-export const GRUPO_TRASPASO = 'e7b8c9d0-1234-4abc-8def-000000000001';
+// El origen REAL genera los grupos con `uuid.uuid4().hex`: 32 hexadecimales SIN
+// guiones (transfers.py:112, amex.py:79, investments.py:60, api.py:558), en una
+// columna String(36) que admite las dos formas. GRUPO_TRASPASO lleva ese formato
+// real —el único que home-finance produce— y los otros dos conservan la forma
+// canónica, para que la suite cubra ambas. `…_CANONICO` es el mismo valor tal
+// como lo devuelve `aUuid` (y como lo guarda Postgres, que canonicaliza).
+export const GRUPO_TRASPASO = 'e7b8c9d012344abc8def000000000001';
+export const GRUPO_TRASPASO_CANONICO = 'e7b8c9d0-1234-4abc-8def-000000000001';
 export const GRUPO_INVERSION = 'e7b8c9d0-1234-4abc-8def-000000000002';
 // Pata suelta: el origen las admite (transfers.py::orphan_legs). No es un error.
 export const GRUPO_HUERFANO = 'e7b8c9d0-1234-4abc-8def-000000000003';
