@@ -61,3 +61,27 @@ describe("detectInvestmentContributions (port de investments.py)", () => {
     expect(detectInvestmentContributions([mirrored, mirror], accounts, opts)).toHaveLength(0);
   });
 });
+
+describe("detectInvestmentContributions: refs de traspaso en blanco", () => {
+  // `finance_accounts.transfer_refs` la edita el usuario desde Ajustes (fase 5).
+  // Una fila en blanco normaliza a "" y `haystack.includes("")` es SIEMPRE true:
+  // sin la guarda, esa cuenta se llevaría un espejo por cada cargo del hogar.
+  const conRefEnBlanco: FinanceAccountView[] = [
+    { id: "a1", name: "Caixa", bank: "caixabank", kind: "comun", bankRef: "r1", ownerAliases: [], transferRefs: [] },
+    { id: "inv9", name: "Fondo Vacio", bank: null, kind: "inversion", bankRef: "INV-9", ownerAliases: [], transferRefs: ["", "   "] },
+  ];
+
+  it("una ref en blanco no casa con todo", () => {
+    const cualquiera = tx({ id: "cq", concept: "COMPRA SUPERMERCADO", provider: "SUPER" });
+    expect(detectInvestmentContributions([cualquiera], conRefEnBlanco, opts)).toHaveLength(0);
+  });
+
+  it("una ref en blanco no impide que las refs buenas de la misma cuenta casen", () => {
+    const conAmbas: FinanceAccountView[] = [
+      conRefEnBlanco[0] as FinanceAccountView,
+      { ...(conRefEnBlanco[1] as FinanceAccountView), transferRefs: ["", "COREINDEXA"] },
+    ];
+    const cargo = tx({ id: "cq2", concept: "RECIBO COREINDEXA PENSIONES" });
+    expect(detectInvestmentContributions([cargo], conAmbas, opts)[0]?.investmentAccountId).toBe("inv9");
+  });
+});

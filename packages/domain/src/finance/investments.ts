@@ -14,9 +14,14 @@ function matchInvestmentAccount(
   const haystack = normText(`${tx.provider ?? ""} ${tx.concept}`);
   for (const acc of invAccounts) {
     for (const ref of acc.transferRefs) {
+      // Una ref en blanco normaliza a "" y `includes("")` es SIEMPRE true: sin
+      // esta guarda, esa cuenta de inversión se llevaría un espejo por cada cargo
+      // del hogar. `transfer_refs` la edita el usuario desde Ajustes (fase 5).
+      const refNorm = normText(ref);
+      if (refNorm === "") continue;
       if (NUMERIC_REF_RX.test(ref)) {
         if (refMatch !== null && refMatch[1] === ref) return acc;
-      } else if (haystack !== "" && haystack.includes(normText(ref))) {
+      } else if (haystack !== "" && haystack.includes(refNorm)) {
         return acc;
       }
     }

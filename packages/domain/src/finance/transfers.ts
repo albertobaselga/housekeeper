@@ -5,7 +5,15 @@ const KEYWORDS = ["TRANSFERENCIA", "TRASPASO"] as const;
 
 function allAliases(accounts: readonly FinanceAccountView[]): Set<string> {
   const aliases = new Set<string>();
-  for (const acc of accounts) for (const a of acc.ownerAliases) aliases.add(normText(a));
+  for (const acc of accounts) {
+    for (const a of acc.ownerAliases) {
+      // Mismo agujero que el de `transferRefs` en investments.ts: un alias en
+      // blanco normaliza a "" y `concept.includes("")` es SIEMPRE true, así que
+      // confirmaría cualquier pareja con keyword sin que el titular aparezca.
+      const norm = normText(a);
+      if (norm !== "") aliases.add(norm);
+    }
+  }
   return aliases;
 }
 

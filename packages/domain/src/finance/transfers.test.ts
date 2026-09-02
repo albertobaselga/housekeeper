@@ -72,3 +72,25 @@ describe("detectTransferPairs (port de transfers.py::detect_transfers)", () => {
     expect(detectTransferPairs([confirmed, charge], accounts)).toHaveLength(0);
   });
 });
+
+describe("detectTransferPairs: alias de titular en blanco", () => {
+  // Mismo agujero que el de `transferRefs`: `ownerAliases` también es editable y
+  // `concept.includes("")` es siempre true, así que un alias vacío confirmaría
+  // cualquier pareja con keyword sin que el titular aparezca en el concepto.
+  const conAliasEnBlanco = [acc("a1", ["", "  "]), acc("a2")];
+
+  it("un alias en blanco no confirma la pareja por sí solo", () => {
+    const out = tx({ id: "b1", accountId: "a1", amountCents: -9000n, concept: "TRASPASO A CUENTA AZUL" });
+    const back = tx({ id: "b2", accountId: "a2", amountCents: 9000n, concept: "ABONO RECIBIDO" });
+    expect(detectTransferPairs([out, back], conAliasEnBlanco)[0]?.status).toBe("sugerida_regla");
+  });
+
+  it("un alias en blanco no recupera una confirmada de ingreso", () => {
+    const confirmed = tx({
+      id: "b3", accountId: "a2", amountCents: 40000n, status: "confirmada",
+      categoryId: "cat-ing", categoryKind: "ingreso", concept: "TRANSFERENCIA RECIBIDA",
+    });
+    const charge = tx({ id: "b4", accountId: "a1", amountCents: -40000n, status: "confirmada", categoryKind: "gasto" });
+    expect(detectTransferPairs([confirmed, charge], conAliasEnBlanco)).toHaveLength(0);
+  });
+});
