@@ -150,9 +150,35 @@
   );
 
   /**
-   * Pide la ventana de un día. Si falla —sin red, o el servidor no puede leer—
-   * NO pasa nada visible: las rutinas ya están pintadas y la banda de «fuera de
-   * lo descargado» dice lo que no se sabe.
+   * [T12-R1, despacho de cierre F5] Guarda de forma sin `as` (R7) — mismo
+   * patrón que `isFinanceImportPreview` de `$lib/finance/api.ts` (guarda que
+   * SÍ conoce los campos, no solo «no es null ni primitivo»). Va aquí, junto
+   * a `loadWindow`, y no en `$lib/calendar/view.ts` (donde vive el tipo, que
+   * sería el sitio natural): esa lista de ficheros no está entre los que
+   * esta tarea puede tocar. Sin `@testing-library/svelte` no hay manera de
+   * importar esta función desde vitest (no está exportada); se deja
+   * verificada a mano — ver el informe de esta ronda.
+   */
+  function isRecordValue(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+  }
+  function isCalendarWindowShape(value: unknown): value is CalendarWindow {
+    return (
+      isRecordValue(value) &&
+      typeof value.windowFromISO === 'string' &&
+      typeof value.windowToISO === 'string' &&
+      Array.isArray(value.events) &&
+      Array.isArray(value.completions) &&
+      typeof value.eventDaysYear === 'number' &&
+      Array.isArray(value.eventDaysISO)
+    );
+  }
+
+  /**
+   * Pide la ventana de un día. Si falla —sin red, el servidor no puede leer, o
+   * el 200 trae un cuerpo con otra forma (redirección de sesión, contrato
+   * cambiado)— NO pasa nada visible: las rutinas ya están pintadas y la banda
+   * de «fuera de lo descargado» dice lo que no se sabe.
    */
   let windowRequest = 0;
   async function loadWindow(anchor: string): Promise<void> {
@@ -167,8 +193,8 @@
         { headers: { accept: 'application/json' } }
       );
       if (!response.ok) return;
-      const payload = (await response.json()) as CalendarWindow;
-      if (mine === windowRequest) fetched = payload;
+      const payload: unknown = await response.json();
+      if (isCalendarWindowShape(payload) && mine === windowRequest) fetched = payload;
     } catch {
       // Sin red: lo calculado en el navegador sigue en pie, y con su aviso.
     }
