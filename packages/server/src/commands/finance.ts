@@ -1,9 +1,11 @@
+import { randomUUID } from "node:crypto";
+
 import type { PoolClient } from "pg";
 
 import type { CommandEnvelopeV1, UUID } from "@housekeeper/contracts";
 import { hasCapability } from "@housekeeper/contracts/capabilities";
 import { financeCommandPayloadSchema, financeWritePayloadSchema } from "@housekeeper/contracts/schemas";
-import { normalizeConcept, normText } from "@housekeeper/domain/finance";
+import { cashCounterlegFor, normalizeConcept, normText } from "@housekeeper/domain/finance";
 
 import type { ActiveMembership } from "../database.js";
 import { runPostImportPipeline } from "../finance/pipeline.js";
@@ -155,6 +157,11 @@ type FinanceAssignConceptRecurrencePayload = Extract<
   FinanceWritePayload,
   { kind: "finance.transactions.assignConceptRecurrence" }
 >;
+type FinanceManualCreatePayload = Extract<FinanceWritePayload, { kind: "finance.transaction.manual.create" }>;
+type FinanceManualDeletePayload = Extract<FinanceWritePayload, { kind: "finance.transaction.manual.delete" }>;
+type FinanceTransactionInvestPayload = Extract<FinanceWritePayload, { kind: "finance.transaction.invest" }>;
+type FinanceTransfersLinkPayload = Extract<FinanceWritePayload, { kind: "finance.transfers.link" }>;
+type FinanceTransfersUnlinkPayload = Extract<FinanceWritePayload, { kind: "finance.transfers.unlink" }>;
 
 interface FinanceTxRow {
   id: UUID;
@@ -418,6 +425,343 @@ async function assignConceptRecurrence(
   return {};
 }
 
+async function requireFinanceAccount(
+  client: PoolClient,
+  householdId: UUID,
+  accountId: UUID,
+): Promise<{ id: string; kind: string; name: string }> {
+  const result = await client.query<{ id: string; kind: string; name: string }>(
+    `select id, kind, name from app.finance_accounts where household_id = $1 and id = $2`,
+    [householdId, accountId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new CommandRejectedError("finance_account_not_found", "La cuenta no existe en este hogar");
+  return row;
+}
+
+/**
+ * Cuenta «Efectivo» del hogar: se identifica por `bank_ref = 'EFECTIVO'`
+ * (`CASH_REF` del origen, `backend/app/cash.py:8`) y, como respaldo para
+ * cuentas migradas o creadas a mano sin esa referencia, por el nombre
+ * normalizado. Nunca por `bank = 'efectivo'`: el CHECK de 0036 solo admite
+ * los cuatro bancos reales y deja NULL para las cuentas sin banco.
+ */
+async function cashAccountId(client: PoolClient, householdId: UUID): Promise<UUID | null> {
+  const byRef = await client.query<{ id: string }>(
+    `select id from app.finance_accounts
+      where household_id = $1 and bank is null and archived_at is null and bank_ref = 'EFECTIVO'
+      limit 1`,
+    [householdId],
+  );
+  if (byRef.rows[0]) return byRef.rows[0].id as UUID;
+  const byName = await client.query<{ id: string }>(
+    `select id from app.finance_accounts
+      where household_id = $1 and bank is null and archived_at is null and upper(name) = 'EFECTIVO'
+      order by name
+      limit 1`,
+    [householdId],
+  );
+  return (byName.rows[0]?.id as UUID | undefined) ?? null;
+}
+
+/** Categoría raíz «Efectivo» (gasto) de la contrapartida; se siembra la primera vez. */
+async function cashCategoryId(client: PoolClient, householdId: UUID): Promise<UUID> {
+  const found = await client.query<{ id: string }>(
+    `select id from app.finance_categories
+      where household_id = $1 and parent_id is null and kind = 'gasto' and lower(name) = 'efectivo'
+      limit 1`,
+    [householdId],
+  );
+  const existing = found.rows[0]?.id;
+  if (existing) return existing as UUID;
+  const inserted = await client.query<{ id: string }>(
+    `insert into app.finance_categories (household_id, name, kind, parent_id)
+     values ($1, 'Efectivo', 'gasto', null) returning id`,
+    [householdId],
+  );
+  const id = inserted.rows[0]?.id;
+  if (!id) throw new Error("La inserción de la categoría Efectivo no devolvió identificador");
+  return id as UUID;
+}
+
+/** Categoría raíz «transferencia» del hogar (a lo sumo una: índice único
+ * parcial `finance_categories_one_transfer_root_idx`); se siembra la primera
+ * vez, igual que `cashCategoryId`. La usan invest/link para agrupar patas. */
+async function transferCategoryId(client: PoolClient, householdId: UUID): Promise<UUID> {
+  const found = await client.query<{ id: string }>(
+    `select id from app.finance_categories
+      where household_id = $1 and parent_id is null and kind = 'transferencia'
+      limit 1`,
+    [householdId],
+  );
+  const existing = found.rows[0]?.id;
+  if (existing) return existing as UUID;
+  const inserted = await client.query<{ id: string }>(
+    `insert into app.finance_categories (household_id, name, kind, parent_id)
+     values ($1, 'Transferencias', 'transferencia', null) returning id`,
+    [householdId],
+  );
+  const id = inserted.rows[0]?.id;
+  if (!id) throw new Error("La inserción de la categoría Transferencias no devolvió identificador");
+  return id as UUID;
+}
+
+async function createManualTransaction(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceManualCreatePayload,
+): Promise<{ resourceId: UUID }> {
+  await requireFinanceAccount(client, householdId, payload.accountId);
+  const category = payload.categoryId
+    ? await requireFinanceCategory(client, householdId, payload.categoryId)
+    : null;
+  const provider = (payload.provider ?? "").trim();
+  const providerNorm = provider ? normText(provider) : null;
+  const dedupHash = `manual-${randomUUID().replace(/-/g, "")}`;
+  const inserted = await client.query<{ id: string }>(
+    `insert into app.finance_transactions
+       (household_id, account_id, batch_id, op_date, value_date, concept, provider, provider_norm,
+        amount_cents, balance_cents, category_id, status, transfer_group_id, dedup_hash,
+        recurrence, recurrence_manual, raw, currency_code)
+     values ($1, $2, null, $3, null, $4, $5, $6, $7, null, $8, 'confirmada', null, $9,
+             $10, $11, '{}'::jsonb, 'EUR')
+     returning id`,
+    [
+      householdId,
+      payload.accountId,
+      payload.opDate,
+      payload.concept,
+      provider || null,
+      providerNorm,
+      payload.amountCents,
+      payload.categoryId ?? null,
+      dedupHash,
+      payload.recurrence ?? null,
+      payload.recurrence != null,
+    ],
+  );
+  const id = inserted.rows[0]?.id;
+  if (!id) throw new Error("La inserción del manual no devolvió identificador");
+
+  // Doble entrada del efectivo: un gasto EN la cuenta Efectivo nace con su
+  // contrapartida (+Efectivo, confirmada, recurrence_manual, hash `cashpair-`).
+  // Se escribe aquí porque este comando es su ÚNICO productor: el paso
+  // «efectivo» de runPostImportPipeline solo recategoriza retiradas de cajero
+  // (fase 2), nunca inserta la contrapartida.
+  const cashId = await cashAccountId(client, householdId);
+  if (cashId && payload.accountId === cashId && payload.categoryId && category) {
+    const efectivoCategoryId = await cashCategoryId(client, householdId);
+    const counterleg = cashCounterlegFor(
+      {
+        id: id as UUID,
+        accountId: payload.accountId,
+        opDate: payload.opDate,
+        concept: payload.concept,
+        provider: provider || null,
+        providerNorm,
+        amountCents: BigInt(payload.amountCents),
+        categoryId: payload.categoryId,
+        categoryKind: category.kind as "gasto" | "ingreso" | "transferencia",
+        status: "confirmada",
+        transferGroupId: null,
+        recurrence: payload.recurrence ?? null,
+        recurrenceManual: payload.recurrence != null,
+        codeCommon: null,
+        codeOwn: null,
+        dedupHash,
+      },
+      { cashAccountId: cashId, efectivoCategoryId },
+    );
+    if (counterleg) {
+      await client.query(
+        `insert into app.finance_transactions
+           (household_id, account_id, batch_id, op_date, value_date, concept, provider, provider_norm,
+            amount_cents, balance_cents, category_id, status, transfer_group_id, dedup_hash,
+            recurrence, recurrence_manual, raw, currency_code)
+         values ($1, $2, null, $3, null, $4, $5, $6, $7, null, $8, 'confirmada', null, $9,
+                 null, true, '{}'::jsonb, 'EUR')`,
+        [
+          householdId,
+          counterleg.accountId,
+          counterleg.opDate,
+          counterleg.concept,
+          counterleg.provider,
+          normText(counterleg.provider),
+          counterleg.amountCents.toString(),
+          counterleg.categoryId,
+          counterleg.dedupHash,
+        ],
+      );
+    }
+  }
+
+  // Y después, la verdad post-escritura compartida: reglas, alias, espejos y
+  // recurrencia, respetando los overrides manuales.
+  await runPostImportPipeline(client, householdId);
+  return { resourceId: id as UUID };
+}
+
+async function deleteManualTransaction(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceManualDeletePayload,
+): Promise<Record<string, never>> {
+  const tx = await requireFinanceTransaction(client, householdId, payload.transactionId);
+  if (tx.dedup_hash.startsWith("cashpair-")) {
+    throw new CommandRejectedError("finance_cashpair_leg", "Es una contrapartida de efectivo: borra su gasto");
+  }
+  if (tx.batch_id !== null || !tx.dedup_hash.startsWith("manual-")) {
+    throw new CommandRejectedError("finance_not_manual", "Solo se pueden borrar movimientos manuales");
+  }
+  const counter = await client.query<{ id: string }>(
+    `select id from app.finance_transactions where household_id = $1 and dedup_hash = $2`,
+    [householdId, `cashpair-${tx.dedup_hash}`],
+  );
+  const ids = [tx.id, ...counter.rows.map((row) => row.id)];
+  await client.query(
+    `delete from app.finance_transaction_events where household_id = $1 and transaction_id = any($2::uuid[])`,
+    [householdId, ids],
+  );
+  await client.query(`delete from app.finance_transactions where household_id = $1 and id = any($2::uuid[])`, [
+    householdId,
+    ids,
+  ]);
+  return {};
+}
+
+async function investTransaction(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceTransactionInvestPayload,
+): Promise<{ resourceId: UUID }> {
+  const tx = await requireFinanceTransaction(client, householdId, payload.transactionId);
+  const account = await requireFinanceAccount(client, householdId, payload.accountId);
+  if (account.kind !== "inversion") {
+    throw new CommandRejectedError("finance_not_investment_account", "La cuenta destino no es de inversión");
+  }
+  if (tx.transfer_group_id) {
+    throw new CommandRejectedError("finance_already_linked", "El movimiento ya está vinculado a un grupo");
+  }
+  if (BigInt(tx.amount_cents) >= 0n) {
+    throw new CommandRejectedError("finance_invest_needs_charge", "Solo un cargo puede marcarse como inversión");
+  }
+  // Mismo prefijo que detectInvestmentContributions (domain/finance/investments.ts,
+  // consumido por pipeline.ts): `invmirror-` + el dedup_hash del cargo real,
+  // NUNCA un hash recalculado — así un espejo ya existente (creado por el
+  // pipeline automático o por un invest anterior) se detecta por igualdad de
+  // cadena, no por casualidad estadística.
+  const mirrorHash = `invmirror-${tx.dedup_hash}`;
+  const existing = await client.query(
+    `select 1 from app.finance_transactions where household_id = $1 and dedup_hash = $2`,
+    [householdId, mirrorHash],
+  );
+  if ((existing.rowCount ?? 0) > 0) {
+    throw new CommandRejectedError("finance_mirror_exists", "Ya existía un espejo para este movimiento");
+  }
+  const groupId = randomUUID() as UUID;
+  const categoryId = await transferCategoryId(client, householdId);
+  await client.query(
+    `insert into app.finance_transactions
+       (household_id, account_id, batch_id, op_date, concept, provider, provider_norm,
+        amount_cents, category_id, status, transfer_group_id, dedup_hash,
+        recurrence, recurrence_manual, raw, currency_code)
+     values ($1, $2, null, $3, $4, $5, $6, $7, $8, 'confirmada', $9, $10, null, false, '{}'::jsonb, 'EUR')`,
+    [
+      householdId,
+      payload.accountId,
+      tx.op_date,
+      tx.concept,
+      tx.provider,
+      tx.provider ? normText(tx.provider) : null,
+      (-BigInt(tx.amount_cents)).toString(),
+      categoryId,
+      groupId,
+      mirrorHash,
+    ],
+  );
+  await client.query(
+    `update app.finance_transactions
+        set transfer_group_id = $3, category_id = $4, status = 'confirmada'
+      where household_id = $1 and id = $2`,
+    [householdId, tx.id, groupId, categoryId],
+  );
+  return { resourceId: groupId };
+}
+
+async function linkTransfers(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceTransfersLinkPayload,
+): Promise<{ resourceId: UUID }> {
+  const ids = [...new Set(payload.transactionIds)];
+  const loaded = await client.query<{ id: string; amount_cents: string; transfer_group_id: string | null }>(
+    `select id, amount_cents::text as amount_cents, transfer_group_id
+       from app.finance_transactions
+      where household_id = $1 and id = any($2::uuid[])`,
+    [householdId, ids],
+  );
+  if ((loaded.rowCount ?? 0) !== ids.length) {
+    throw new CommandRejectedError("finance_transaction_not_found", "Algún movimiento no existe");
+  }
+  if (loaded.rows.some((row) => row.transfer_group_id !== null)) {
+    throw new CommandRejectedError("finance_already_linked", "Algún movimiento ya pertenece a un grupo");
+  }
+  const sum = loaded.rows.reduce((total, row) => total + BigInt(row.amount_cents), 0n);
+  if (sum !== 0n) {
+    throw new CommandRejectedError("finance_transfer_sum_not_zero", "La selección no suma cero");
+  }
+  const groupId = randomUUID() as UUID;
+  const categoryId = await transferCategoryId(client, householdId);
+  await client.query(
+    `update app.finance_transactions
+        set transfer_group_id = $3, category_id = $4, status = 'confirmada'
+      where household_id = $1 and id = any($2::uuid[])`,
+    [householdId, ids, groupId, categoryId],
+  );
+  return { resourceId: groupId };
+}
+
+async function unlinkTransfers(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceTransfersUnlinkPayload,
+): Promise<Record<string, never>> {
+  const legs = await client.query<{ id: string; dedup_hash: string }>(
+    `select id, dedup_hash from app.finance_transactions
+      where household_id = $1 and transfer_group_id = $2`,
+    [householdId, payload.transferGroupId],
+  );
+  if ((legs.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError("finance_transfer_group_not_found", "Esa transferencia ya no existe");
+  }
+  // Grupos con pata espejo de INVERSIÓN (`invmirror-`): se borra el espejo y la
+  // pata real vuelve a pendiente. Grupos normales (dos patas manuales/reales):
+  // se desagrupan las dos. Las contrapartidas de efectivo (`cashpair-`) no se
+  // agrupan nunca: no llevan transfer_group_id y se borran con su gasto
+  // manual (deleteManualTransaction), nunca por aquí.
+  const mirrors = legs.rows.filter((row) => row.dedup_hash.startsWith("invmirror-")).map((row) => row.id);
+  const real = legs.rows.filter((row) => !row.dedup_hash.startsWith("invmirror-")).map((row) => row.id);
+  if (mirrors.length > 0) {
+    await client.query(
+      `delete from app.finance_transaction_events where household_id = $1 and transaction_id = any($2::uuid[])`,
+      [householdId, mirrors],
+    );
+    await client.query(`delete from app.finance_transactions where household_id = $1 and id = any($2::uuid[])`, [
+      householdId,
+      mirrors,
+    ]);
+  }
+  if (real.length > 0) {
+    await client.query(
+      `update app.finance_transactions
+          set transfer_group_id = null, category_id = null, status = 'pendiente'
+        where household_id = $1 and id = any($2::uuid[])`,
+      [householdId, real],
+    );
+  }
+  return {};
+}
+
 /**
  * `finance`: todas las escrituras del módulo, discriminadas por `payload.kind`.
  *
@@ -462,6 +806,16 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
       return bulkUpdateFinanceTransactions(client, envelope.householdId, payload);
     case "finance.transactions.assignConceptRecurrence":
       return assignConceptRecurrence(client, envelope.householdId, payload);
+    case "finance.transaction.manual.create":
+      return createManualTransaction(client, envelope.householdId, payload);
+    case "finance.transaction.manual.delete":
+      return deleteManualTransaction(client, envelope.householdId, payload);
+    case "finance.transaction.invest":
+      return investTransaction(client, envelope.householdId, payload);
+    case "finance.transfers.link":
+      return linkTransfers(client, envelope.householdId, payload);
+    case "finance.transfers.unlink":
+      return unlinkTransfers(client, envelope.householdId, payload);
     case "finance.account.update":
     case "finance.category.create":
     case "finance.category.update":
@@ -469,11 +823,6 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
     case "finance.category.assignConcept":
     case "finance.rule.create":
     case "finance.rule.delete":
-    case "finance.transaction.manual.create":
-    case "finance.transaction.manual.delete":
-    case "finance.transaction.invest":
-    case "finance.transfers.link":
-    case "finance.transfers.unlink":
     case "finance.event.create":
     case "finance.event.update":
     case "finance.event.delete":
