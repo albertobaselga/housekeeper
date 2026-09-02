@@ -247,7 +247,9 @@ export function validarOrigen(origen) {
     }
   }
   for (const c of origen.accounts) {
-    if (!(c.bank in BANCOS_CUENTA_ORIGEN)) {
+    // `hasOwn` y no `in`: `in` recorre la cadena de prototipos, así que un bank
+    // llamado 'constructor' o 'toString' habría pasado por vocabulario válido.
+    if (!Object.hasOwn(BANCOS_CUENTA_ORIGEN, c.bank)) {
       problemas.push(`Cuenta ${c.id} («${c.name}») con bank «${c.bank}» fuera del vocabulario del origen (${Object.keys(BANCOS_CUENTA_ORIGEN).join(', ')}).`);
     }
   }
@@ -456,7 +458,8 @@ export function providerNormOSuNulo(valor) {
  *  valor es un dato que nadie previó y la migración se para AQUÍ, con nombre y
  *  apellidos, en vez de reventar con un CHECK de Postgres a mitad de escritura. */
 export function bancoDeCuenta(cuenta) {
-  if (!(cuenta.bank in BANCOS_CUENTA_ORIGEN)) {
+  // `hasOwn` y no `in`: ver la misma observación en validarOrigen.
+  if (!Object.hasOwn(BANCOS_CUENTA_ORIGEN, cuenta.bank)) {
     throw new Error(`La cuenta ${cuenta.id} («${cuenta.name}») tiene bank «${cuenta.bank}», que no está contemplado (${Object.keys(BANCOS_CUENTA_ORIGEN).join(', ')}). Amplía BANCOS_CUENTA_ORIGEN o corrige el origen antes de migrar.`);
   }
   return BANCOS_CUENTA_ORIGEN[cuenta.bank];
@@ -469,6 +472,22 @@ export function bancoDeLote(lote) {
     throw new Error(`El lote ${lote.id} («${lote.filename}») tiene bank «${lote.bank}», que el destino no admite (${BANCOS_LOTE_DESTINO.join(', ')}).`);
   }
   return lote.bank;
+}
+
+/** Traduce un id entero del origen al uuid que se le asignó en el destino.
+ *  `Map.get` devuelve `undefined` cuando la referencia del origen no existe y
+ *  node-postgres lo convierte en NULL SIN CHISTAR: en las columnas nullables
+ *  (`transactions.category_id`, `transactions.batch_id`,
+ *  `event_rules.category_id`) una referencia colgada se migraría como «sin
+ *  categoría» o «sin lote» y el resumen no lo vería, porque conteos y sumas
+ *  seguirían cuadrando. Aquí se para en seco y con la etiqueta puesta. */
+export function mapear(mapa, id, etiqueta) {
+  if (id === null || id === undefined) return null;
+  const destino = mapa.get(id);
+  if (destino === undefined) {
+    throw new Error(`No se puede mapear ${etiqueta}: el id ${id} no existe en el origen (referencia colgada; se habría migrado como NULL sin avisar).`);
+  }
+  return destino;
 }
 
 /** Inserta el origen completo bajo el hogar dado. SIEMPRE dentro de una
@@ -491,14 +510,16 @@ export async function migrar(client, householdId, origen) {
     await client.query(
       `INSERT INTO app.finance_categories (household_id, id, parent_id, name, kind)
        VALUES ($1, $2, $3, $4, $5)`,
-      [householdId, id, c.parent_id === null ? null : mapas.categorias.get(c.parent_id), c.name, c.kind]);
+      [householdId, id, mapear(mapas.categorias, c.parent_id, `la categoría padre de la categoría ${c.id}`),
+        c.name, c.kind]);
   }
   for (const r of origen.rules) {
     if (!r.active) continue; // el destino no conserva reglas apagadas (aviso en el informe)
     await client.query(
       `INSERT INTO app.finance_rules (household_id, id, rule_type, pattern, category_id, priority, origin)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [householdId, randomUUID(), r.match_type, r.pattern, mapas.categorias.get(r.category_id), r.priority, r.origin]);
+      [householdId, randomUUID(), r.match_type, r.pattern,
+        mapear(mapas.categorias, r.category_id, `la categoría de la regla ${r.id}`), r.priority, r.origin]);
   }
   for (const b of origen.importBatches) {
     const id = randomUUID();
@@ -521,10 +542,12 @@ export async function migrar(client, householdId, origen) {
          category_id, status, transfer_group_id, dedup_hash, recurrence, recurrence_manual,
          bank_category, raw, currency_code)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb, 'EUR')`,
-      [householdId, id, mapas.cuentas.get(t.account_id), mapas.lotes.get(t.batch_id),
+      [householdId, id, mapear(mapas.cuentas, t.account_id, `la cuenta de la transacción ${t.id}`),
+        mapear(mapas.lotes, t.batch_id, `el lote de la transacción ${t.id}`),
         t.op_date, t.value_date, t.concept, t.provider, providerNormOSuNulo(t.provider),
         String(t.amount_cents), t.balance_cents === null ? null : String(t.balance_cents),
-        t.code_common, t.code_own, t.category_id === null ? null : mapas.categorias.get(t.category_id),
+        t.code_common, t.code_own,
+        mapear(mapas.categorias, t.category_id, `la categoría de la transacción ${t.id}`),
         t.status, grupo, t.dedup_hash, t.recurrence, t.recurrence_manual,
         // `leerOrigen` ya coalesce raw a '{}'; el ?? es la red por si migrar()
         // recibe un origen construido a mano (la columna es NOT NULL en 0036).
@@ -547,14 +570,17 @@ export async function migrar(client, householdId, origen) {
     await client.query(
       `INSERT INTO app.finance_transaction_events (household_id, id, transaction_id, event_id)
        VALUES ($1, $2, $3, $4)`,
-      [householdId, randomUUID(), mapas.transacciones.get(v.transaction_id), mapas.eventos.get(v.event_id)]);
+      [householdId, randomUUID(),
+        mapear(mapas.transacciones, v.transaction_id, `la transacción del vínculo ${v.id}`),
+        mapear(mapas.eventos, v.event_id, `el evento del vínculo ${v.id}`)]);
   }
   for (const v of origen.eventRules) {
     await client.query(
       `INSERT INTO app.finance_event_rules (household_id, id, provider_norm, concept_norm, category_id, event_id)
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [householdId, randomUUID(), providerNormOSuNulo(v.provider_norm), v.concept_norm,
-        v.category_id === null ? null : mapas.categorias.get(v.category_id), mapas.eventos.get(v.event_id)]);
+        mapear(mapas.categorias, v.category_id, `la categoría de la regla de evento ${v.id}`),
+        mapear(mapas.eventos, v.event_id, `el evento de la regla de evento ${v.id}`)]);
   }
 }
 
@@ -662,6 +688,12 @@ async function main() {
         console.error('Verificación cruzada de dedup_hash fallida: no se escribe nada en la base destino.');
       } else {
         await client.query('BEGIN');
+        // `import_batches.imported_at` viaja de un texto naíf del origen
+        // ('2026-02-01 10:00:00', sin zona) a un `timestamptz`: sin fijar la
+        // zona, la hora se interpreta con el TimeZone de la sesión y los lotes
+        // saldrían desplazados según desde qué máquina se migre. Se fija UTC
+        // para que el resultado no dependa de quién ejecuta.
+        await client.query(`SET TIME ZONE 'UTC'`);
         await migrar(client, householdId, origen);
         contexto.comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
         if (opciones.dryRun || !contexto.comparacion.ok) {

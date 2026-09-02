@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { computeDedupHash } from '../../server/src/finance/dedup-hash.ts';
 import { importarModuloTs } from './cargar-ts.mjs';
 import { construirSqliteSintetica, CUENTAS, GRUPO_HUERFANO, GRUPO_TRASPASO, GRUPO_TRASPASO_CANONICO, SUMAS_CUENTA_MES, TOTALES } from './home-finance-sintetica.mjs';
-import { aUuid, avisosOrigen, compararResumenes, ErrorDeUso, hacerCopiaSeguridad, leerOrigen, normText, parseArgs, providerNormOSuNulo, renderInforme, resumenOrigen, validarOrigen, verificarHashes } from './migrar-home-finance.mjs';
+import { aUuid, avisosOrigen, bancoDeCuenta, bancoDeLote, compararResumenes, ErrorDeUso, hacerCopiaSeguridad, leerOrigen, mapear, normText, parseArgs, providerNormOSuNulo, renderInforme, resumenOrigen, validarOrigen, verificarHashes } from './migrar-home-finance.mjs';
 
 describe('parseArgs', () => {
   it('lee flags con valor y banderas', () => {
@@ -69,6 +69,44 @@ describe('aUuid (transfer_group_id: el origen usa uuid4().hex, 32 hex sin guione
     expect(() => aUuid('no-soy-un-uuid', 42)).toThrow(/42.*no-soy-un-uuid/);
     expect(() => aUuid('fc9cabf5d7cb4499abbdead6b78db63', 42)).toThrow(/transfer_group_id no-UUID/);
     expect(() => aUuid('zz9cabf5d7cb4499abbdead6b78db63e', 42)).toThrow(/transfer_group_id no-UUID/);
+  });
+});
+
+// Los tres abortos tempranos son lo que alguien leerá a las tantas si la
+// migración se para: se comprueba que dicen lo que dicen, sin tocar Postgres.
+describe('abortos tempranos de migrar()', () => {
+  it('un banco de cuenta no contemplado para la migración con nombre y vocabulario', () => {
+    expect(() => bancoDeCuenta({ id: 9, name: 'X', bank: 'revolut' })).toThrow(/revolut/);
+    expect(() => bancoDeCuenta({ id: 9, name: 'X', bank: 'revolut' }))
+      .toThrow(/La cuenta 9 \(«X»\).*caixabank, deutsche_bank, openbank, amex, efectivo, inversion, manual/s);
+    // `in` recorría la cadena de prototipos: 'constructor' colaba y devolvía una función.
+    expect(() => bancoDeCuenta({ id: 9, name: 'X', bank: 'constructor' })).toThrow(/constructor/);
+    expect(bancoDeCuenta({ id: 1, name: 'Común', bank: 'caixabank' })).toBe('caixabank');
+    expect(bancoDeCuenta({ id: 4, name: 'Efectivo', bank: 'efectivo' })).toBe(null);
+  });
+  it('un banco de lote que el destino no admite para la migración', () => {
+    expect(() => bancoDeLote({ id: 3, filename: 'x.xls', bank: 'revolut' })).toThrow(/revolut/);
+    expect(() => bancoDeLote({ id: 3, filename: 'x.xls', bank: 'revolut' }))
+      .toThrow(/El lote 3 \(«x\.xls»\).*caixabank, deutsche_bank, openbank, amex, manual/s);
+    expect(bancoDeLote({ id: 4, filename: 'manual', bank: 'manual' })).toBe('manual');
+  });
+  it('un transfer_group_id que no es un UUID para la migración', () => {
+    expect(() => aUuid('esto-no-es-un-uuid', 42))
+      .toThrow(/La transacción 42 tiene transfer_group_id no-UUID: esto-no-es-un-uuid/);
+  });
+});
+
+describe('mapear (una referencia colgada no se escribe como NULL en silencio)', () => {
+  it('traduce el id del origen al uuid del destino y deja pasar «sin referencia»', () => {
+    const mapa = new Map([[1, 'a1b2c3d4-0000-4000-8000-000000000001']]);
+    expect(mapear(mapa, 1, 'la categoría de la transacción 5')).toBe('a1b2c3d4-0000-4000-8000-000000000001');
+    expect(mapear(mapa, null, 'la categoría de la transacción 5')).toBe(null);
+  });
+  it('un id ausente del mapa aborta nombrando la etiqueta y el id', () => {
+    const mapa = new Map([[1, 'a1b2c3d4-0000-4000-8000-000000000001']]);
+    expect(() => mapear(mapa, 7, 'la categoría de la transacción 42'))
+      .toThrow(/la categoría de la transacción 42/);
+    expect(() => mapear(mapa, 7, 'la categoría de la transacción 42')).toThrow(/\b7\b/);
   });
 });
 
@@ -218,6 +256,15 @@ describe('validarOrigen', () => {
       '2 categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0036).',
       '1 transacción(es) con concept de más de 500 caracteres (ids: 1); el destino lo limita con CHECK.',
       'Cuenta 1 («Cuenta Común») con bank «bancoinventado» fuera del vocabulario del origen (caixabank, deutsche_bank, openbank, amex, efectivo, inversion, manual).'
+    ]);
+  });
+  it('un bank que solo existe en la cadena de prototipos NO cuela por vocabulario', async () => {
+    // `'constructor' in BANCOS_CUENTA_ORIGEN` es true: con `in` este banco
+    // habría pasado la reja y `bancoDeCuenta` habría devuelto una función.
+    const origen = await crearOrigenSintetico();
+    origen.accounts[0].bank = 'constructor';
+    expect(validarOrigen(origen)).toEqual([
+      'Cuenta 1 («Cuenta Común») con bank «constructor» fuera del vocabulario del origen (caixabank, deutsche_bank, openbank, amex, efectivo, inversion, manual).'
     ]);
   });
   it('detecta categorías duplicadas bajo el mismo padre tras normalizar el nombre', async () => {
