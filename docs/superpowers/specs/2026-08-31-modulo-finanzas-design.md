@@ -285,7 +285,9 @@ Guion `packages/db/scripts/migrar-home-finance.mjs` (en el repo; los datos jamá
    Idempotencia: si el hogar ya tiene datos de finanzas, aborta salvo `--force-empty-check`.
 3. **Informe de verificación** (obligatorio, se imprime y se guarda en local): conteos por
    tabla origen=destino; suma de `amount_cents` por cuenta y por mes idénticas; nº de
-   grupos de transferencia y suma 0 por grupo; distribución de estados; min/max de fechas.
+   grupos de transferencia y, por grupo, si suma 0 (los grupos descuadrados se cuentan y
+   se listan como AVISO no bloqueante: el origen tiene patas huérfanas legítimas,
+   `transfers.py::orphan_legs`); distribución de estados; min/max de fechas.
 4. **Ensayo**: contra el Postgres 18.4 local en Docker (migraciones 0001–0036 + ETL +
    informe + smoke de la UI con ese hogar).
 5. **Producción**: `pnpm db:migrate` en Supabase → ETL → informe → activar concesión a la
