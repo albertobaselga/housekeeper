@@ -21,6 +21,13 @@ describe('formato de finanzas', () => {
     expect(bucketLabel('2026-05')).toBe('may 26');
   });
 
+  // m5: un cubo que no encaja en ninguna forma conocida (mes fuera de rango o
+  // sin guion) devolvía «undefined NN»/«undefined» en vez del propio cubo.
+  it('bucketLabel: un cubo malformado devuelve la entrada tal cual, nunca "undefined"', () => {
+    expect(bucketLabel('2026-13')).toBe('2026-13');
+    expect(bucketLabel('raro')).toBe('raro');
+  });
+
   it('deltaPct: porcentaje redondeado contra el periodo anterior, null sin previo', () => {
     expect(deltaPct(110n, 100n)).toBe(10);
     expect(deltaPct(-150n, -100n)).toBe(-50);

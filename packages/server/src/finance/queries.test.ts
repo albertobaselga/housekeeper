@@ -27,4 +27,13 @@ describe("monthsInRange: los cubos de mes del pivot, calendario completo", () =>
   it("un rango invertido no devuelve nada", () => {
     expect(monthsInRange("2026-05-01", "2026-04-01")).toEqual([]);
   });
+
+  // m10: sin tope, una URL manuscrita con from/to extremos (from=0001-01-01,
+  // el suelo de finiteOr) fabricaría ~120.000 cadenas de mes para el pivot.
+  it("un rango de siglos se acota a 600 meses (50 años), no fabrica decenas de miles", () => {
+    const months = monthsInRange("0001-01-01", "9999-12-31");
+    expect(months).toHaveLength(600);
+    expect(months[0]).toBe("0001-01");
+    expect(months[599]).toBe("0050-12");
+  });
 });

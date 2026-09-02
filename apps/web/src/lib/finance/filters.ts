@@ -120,9 +120,16 @@ export function parseFilters(params: URLSearchParams, today: string): FinanceFil
   const to = params.get('to') ?? '';
   const granularityParam = params.get('g') ?? '';
   const eventIdParam = params.get('ev');
+  const validFrom = DATE_PATTERN.test(from) ? from : fallback.from;
+  // m10(a): `to < from` es tan malformado como un `to` que no encaja en
+  // DATE_PATTERN (mismo criterio de «descartar»): sin este descarte,
+  // spanMonths sale negativo, rangeLabel se pinta al revés y la consulta
+  // devuelve cero filas sin decir por qué. La comparación lexicográfica de
+  // cadenas ISO (YYYY-MM-DD) ya ordena como fechas.
+  const validTo = DATE_PATTERN.test(to) && to >= validFrom ? to : fallback.to;
   return {
-    from: DATE_PATTERN.test(from) ? from : fallback.from,
-    to: DATE_PATTERN.test(to) ? to : fallback.to,
+    from: validFrom,
+    to: validTo,
     granularity: isGranularity(granularityParam) ? granularityParam : 'month',
     // Cada trozo se valida por separado (mismo criterio de «descartar lo
     // malformado» que from/to/g): un `acc` con un id que no es UUID llegaría a

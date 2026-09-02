@@ -27,7 +27,7 @@
           <strong class="cifra pequena">{formatCents(group.totalCents)}</strong>
         </summary>
         <ul>
-          {#each group.subs as sub, index (index)}
+          {#each group.subs as sub (sub.categoryId)}
             <li>
               <span>{sub.name}
                 {#if sub.categoryId !== null}

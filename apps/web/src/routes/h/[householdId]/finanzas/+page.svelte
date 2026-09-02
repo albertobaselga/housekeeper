@@ -81,11 +81,16 @@
   <FinanceFilterBar filters={dashboard.filters} accounts={dashboard.accounts} />
 
   {#if empty}
-    <!-- Vacío honesto: quien llega hasta aquí SÍ puede ver; es que no hay datos. -->
+    <!-- Vacío honesto: quien llega hasta aquí SÍ puede ver; es que no hay datos.
+         m9: el vacío es del PERIODO filtrado; pendingCount es de todo el hogar,
+         así que el aviso de pendientes no debe desaparecer con el periodo. -->
     <article class="card quiet-card">
       <span class="card-icon" aria-hidden="true">·</span>
       <h2>No hay movimientos en este periodo</h2>
       <p>Cambia el periodo con los filtros o <a href={`${base}/importar`}>importa un extracto</a>.</p>
+      {#if summary.pendingCount > 0}
+        <a class="status-chip warning" href={`${base}/revision`}>{summary.pendingCount} sin revisar</a>
+      {/if}
     </article>
   {:else}
     <section class="finance-kpis" aria-label="Indicadores del periodo">

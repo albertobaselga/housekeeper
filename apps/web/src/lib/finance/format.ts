@@ -24,13 +24,19 @@ export function formatPct(value: number | null): string {
   return value === null ? '—' : `${value.toLocaleString('es-ES')} %`;
 }
 
-/** Etiqueta de cubo temporal (portada de home-finance format.ts). */
+/**
+ * Etiqueta de cubo temporal (portada de home-finance format.ts). m5: un cubo
+ * que no sea `YYYY`, `YYYY-"T"Q` ni `YYYY-MM` (los únicos que fabrica
+ * `to_char`) devolvía «undefined NN» en vez del propio cubo — salvaguarda con
+ * desestructuración con default, sin `!` (como `filters.ts:split`).
+ */
 export function bucketLabel(bucket: string): string {
   if (/^\d{4}$/.test(bucket)) return bucket;
   if (bucket.includes('-T')) return bucket.replace('-', ' ');
   const [year, month] = bucket.split('-');
   // índice de mes, no dinero
-  return `${MONTHS_SHORT[Number(month) - 1]} ${year!.slice(2)}`;
+  const label = month === undefined ? undefined : MONTHS_SHORT[Number(month) - 1];
+  return year !== undefined && label !== undefined ? `${label} ${year.slice(2)}` : bucket;
 }
 
 /**

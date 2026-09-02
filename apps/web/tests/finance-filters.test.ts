@@ -52,6 +52,13 @@ describe('filtros de finanzas: parseo y presets', () => {
     expect(parseFilters(params, TODAY).accountIds).toEqual([validUuid]);
   });
 
+  // m10(a): sin este descarte, spanMonths sale negativo, rangeLabel se pinta
+  // al revés y la consulta devuelve cero filas sin decir por qué.
+  it('to < from: descarta to como malformado y cae al valor por defecto', () => {
+    const params = new URLSearchParams('from=2026-05-01&to=2026-04-01');
+    expect(parseFilters(params, TODAY)).toMatchObject({ from: '2026-05-01', to: '2026-08-31' });
+  });
+
   it('acc/ev con UUID válido: pasan tal cual', () => {
     const validUuid = '11000000-0000-4000-8000-000000000001';
     const params = new URLSearchParams(`acc=${validUuid}&ev=${validUuid}`);

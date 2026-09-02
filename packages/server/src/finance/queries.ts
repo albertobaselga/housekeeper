@@ -597,10 +597,12 @@ export async function readFinanceEventDetail(
   // restringido a ese otro evento y la cabecera saldría a cero contra un
   // desglose lleno.
   const scoped = { ...filters, eventId };
-  const summary = (await readFinanceEventsSummary(client, householdId, scoped))
-    .find((row) => row.id === eventId) ?? {
-      id: eventId, name: event.rows[0]!.name, incomeCents: "0", expenseCents: "0", netCents: "0", txCount: 0,
-    };
+  // `readFinanceEventsSummary` parte de `app.finance_events` con `left join`:
+  // devuelve una fila por CADA evento del hogar, y la existencia de `eventId`
+  // ya se comprobó arriba, así que la fila siempre aparece (m4: el `?? {…}`
+  // de más abajo era inalcanzable, y con él se iba el `!` de `event.rows[0]`).
+  const summary = (await readFinanceEventsSummary(client, householdId, scoped)).find((row) => row.id === eventId);
+  if (!summary) return null;
   const categories = await readFinanceBreakdown(client, householdId, scoped);
   return { ...summary, categories };
 }
@@ -610,12 +612,20 @@ export async function readFinanceEventDetail(
 export interface AnalyticsMonthTotals { totalCents: string; recCents: string; extCents: string }
 export interface AnalyticsRow { kind: "gasto" | "ingreso" | "inversion"; monthly: Record<string, AnalyticsMonthTotals> }
 
+// m10: tope defensivo. `parseFilters` no acota from/to (una URL manuscrita
+// con from=0001-01-01&to=9999-12-31 pasa el cerrojo igual: no filtra nada del
+// hogar), y sin tope `monthsInRange` fabricaría ~120.000 cadenas de mes para
+// el pivot. 600 meses = 50 años, de sobra para un hogar real.
+const MAX_MONTHS_IN_RANGE = 600;
+
 /** Meses de calendario del rango, ambos incluidos: las columnas del pivot. */
 export function monthsInRange(from: string, to: string): string[] {
   const [fromYear, fromMonth] = splitIso(from);
   const [toYear, toMonth] = splitIso(to);
+  const start = fromYear * 12 + (fromMonth - 1);
+  const end = Math.min(toYear * 12 + (toMonth - 1), start + MAX_MONTHS_IN_RANGE - 1);
   const months: string[] = [];
-  for (let index = fromYear * 12 + (fromMonth - 1); index <= toYear * 12 + (toMonth - 1); index += 1) {
+  for (let index = start; index <= end; index += 1) {
     months.push(`${String(Math.floor(index / 12)).padStart(4, "0")}-${String((index % 12) + 1).padStart(2, "0")}`);
   }
   return months;

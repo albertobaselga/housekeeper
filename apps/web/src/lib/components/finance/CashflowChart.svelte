@@ -1,6 +1,6 @@
 <script lang="ts">
   import { cashflowLayout, type CashflowBucketInput } from '$lib/finance/chart-geometry';
-  import { formatCents } from '$lib/finance/format';
+  import { bucketLabel, formatCents } from '$lib/finance/format';
 
   let { buckets }: { buckets: CashflowBucketInput[] } = $props();
 
@@ -39,7 +39,7 @@
       <tbody>
         {#each buckets as bucket (bucket.bucket)}
           <tr>
-            <td>{bucket.bucket}</td>
+            <td>{bucketLabel(bucket.bucket)}</td>
             <td>{formatCents(bucket.incomeCents)}</td>
             <td>{formatCents(bucket.expenseCents)}</td>
             <td>{formatCents(bucket.savingsCents)}</td>
