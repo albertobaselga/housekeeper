@@ -55,8 +55,12 @@
         { cents: p.ingresosExtCents, fill: 'var(--success-soft)', name: 'Ingresos ✦' },
         { cents: p.ingresosSinCents, fill: 'var(--line-strong)', name: 'Ingresos sin clasificar' }
       ]),
+      // R22: `--accent` es el terracota reservado a «ahora» (hora actual del
+      // calendario, chip de estado «now», …); Inversión y ahorro bruto no
+      // tienen token de serie propio en CategoryBars/CashflowChart, así que
+      // usan `--ink-soft` como el resto de series sin color dedicado.
       inversion: stack(xSlot(i) + slotW / 2 + barW * 0.6, [
-        { cents: p.inversionCents, fill: 'var(--accent)', name: 'Inversión' }
+        { cents: p.inversionCents, fill: 'var(--ink-soft)', name: 'Inversión' }
       ])
     }))
   );
@@ -140,12 +144,12 @@
   .axis { stroke: var(--line-strong); }
   .tick { font-size: var(--text-micro); fill: var(--ink-faint); font-variant-numeric: tabular-nums; }
   .line-neto { fill: none; stroke: var(--ink); stroke-width: 2; }
-  .line-bruto { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; }
+  .line-bruto { fill: none; stroke: var(--ink-soft); stroke-width: 2; stroke-dasharray: 5 4; }
   .nature-legend { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--text-meta); color: var(--ink-soft); margin-top: var(--space-2); }
   .dot, .dash { display: inline-block; width: var(--space-3); height: var(--space-2); border-radius: var(--r-sm); }
   .dot.gasto { background: var(--danger); }
   .dot.ingreso { background: var(--success); }
-  .dot.inversion { background: var(--accent); }
-  .dash { height: 0; border-top: 2px dashed var(--accent); border-radius: 0; }
+  .dot.inversion { background: var(--ink-soft); }
+  .dash { height: 0; border-top: 2px dashed var(--ink-soft); border-radius: 0; }
   .dash.neto { border-top: 2px solid var(--ink); }
 </style>
