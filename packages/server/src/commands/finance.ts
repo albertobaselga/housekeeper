@@ -863,15 +863,9 @@ async function createFinanceEvent(
 
 async function deleteFinanceEvent(client: PoolClient, householdId: UUID, eventId: UUID): Promise<Record<string, never>> {
   await requireFinanceEvent(client, householdId, eventId);
-  // Desvincula, no borra movimientos; las reglas de evento que lo apuntaban caen con él.
-  await client.query(`delete from app.finance_transaction_events where household_id = $1 and event_id = $2`, [
-    householdId,
-    eventId,
-  ]);
-  await client.query(`delete from app.finance_event_rules where household_id = $1 and event_id = $2`, [
-    householdId,
-    eventId,
-  ]);
+  // Desvincula, no borra movimientos: el CASCADE de 0036 sobre event_id ya
+  // borra por su cuenta finance_transaction_events y finance_event_rules —
+  // no se repite a mano (R22).
   await client.query(`delete from app.finance_events where household_id = $1 and id = $2`, [householdId, eventId]);
   return {};
 }
