@@ -1,6 +1,9 @@
 /** Clase \s de Python 3 (módulo `re`, modo str) — NO es la de JavaScript:
  * incluye U+001C-U+001F y U+0085, y excluye U+FEFF. Los hashes de dedup migrados
  * se calcularon con esta clase, así que aquí va explícita y no la implícita de JS. */
+// U+001C-U+001F SON espacio para Python y el hash de dedup migrado depende
+// de que aquí también lo sean: por eso la clase los lleva a propósito.
+// eslint-disable-next-line no-control-regex
 const PY_SPACE_RX = /[\t\n\v\f\r \u001c-\u001f\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/gu;
 
 /** Port fiel de backend/app/money.py::norm_text del origen home-finance.
