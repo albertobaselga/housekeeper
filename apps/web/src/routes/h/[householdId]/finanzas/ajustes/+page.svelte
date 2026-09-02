@@ -145,8 +145,17 @@
               <tr>
                 <td><input aria-label={`Nombre de ${account.name}`} value={account.name}
                   onblur={(event) => event.currentTarget.value !== account.name && saveAccount(account, { name: event.currentTarget.value })} /></td>
-                <td>{account.bank}</td>
-                <td class="cifra">…{account.bankRef.slice(-4)}</td>
+                <!--
+                  [FASE 5 · despacho de cierre, F5-C1] Las dos columnas salen
+                  de columnas NULLABLES (`bank`, `bank_ref` de
+                  0036_finance.sql:107,110): la cuenta de Efectivo de un hogar
+                  migrado no tiene ninguna de las dos. `bankRef.slice(-4)` sin
+                  guarda tumbaba la pantalla entera en SSR (500) en cuanto esa
+                  cuenta existía; el guion es el mismo que ya usan las celdas
+                  vacías de esta tabla y de la de reglas.
+                -->
+                <td>{account.bank ?? '—'}</td>
+                <td class="cifra">{account.bankRef ? `…${account.bankRef.slice(-4)}` : '—'}</td>
                 <td>
                   <select aria-label={`Tipo de ${account.name}`} value={account.kind}
                     onchange={(event) => saveAccount(account, { kind: event.currentTarget.value })}>

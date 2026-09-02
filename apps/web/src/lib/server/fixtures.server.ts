@@ -959,10 +959,44 @@ export const getFinanceImportarFixture = demoOnly(
 );
 
 /**
- * La maqueta de Ajustes es deliberadamente vacía: sin hogar real no hay
- * cuentas que configurar, y la pantalla ya dice qué hacer.
+ * Maqueta de Ajustes: dos cuentas y nada más.
+ *
+ * [FASE 5 · despacho de cierre, F5-C1] Nació deliberadamente VACÍA («sin hogar
+ * real no hay cuentas que configurar»), y esa decisión es justo la que dejó sin
+ * cubrir el único Critical de la rama: ninguna de las cuatro semillas del repo
+ * tenía una cuenta sin `bank_ref`, así que nadie vio que la plantilla
+ * desreferenciaba una columna nullable. Las dos cuentas de aquí son el corpus
+ * mínimo que ejercita las dos ramas: una de banco con referencia y la de
+ * Efectivo sin banco ni referencia (la que el ETL de la fase 3 crea en todo
+ * hogar migrado). El resto de colecciones sigue vacío.
  */
 export const getFinanceAjustesFixture = demoOnly(
   'finanzas/ajustes',
-  (): FinanceAjustesData => ({ accounts: [], categories: [], rules: [], providers: [] })
+  (): FinanceAjustesData => ({
+    accounts: [
+      {
+        id: 'fc600000-0000-4000-8000-000000000001',
+        name: 'Cuenta común (demo)',
+        bank: 'caixabank',
+        kind: 'comun',
+        ownerLabel: 'familia',
+        bankRef: 'ES1200000000000000005678',
+        ownerAliases: [],
+        transferRefs: []
+      },
+      {
+        id: 'fc600000-0000-4000-8000-000000000002',
+        name: 'Efectivo (demo)',
+        bank: null,
+        kind: 'comun',
+        ownerLabel: 'familia',
+        bankRef: null,
+        ownerAliases: [],
+        transferRefs: []
+      }
+    ],
+    categories: [],
+    rules: [],
+    providers: []
+  })
 );

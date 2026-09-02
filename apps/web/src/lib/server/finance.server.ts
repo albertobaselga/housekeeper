@@ -740,10 +740,19 @@ export async function loadFinanceImportar(
 export interface FinanceAjustesAccountRow {
   id: string;
   name: string;
+  /** NULL para una cuenta sin banco (Efectivo): `bank text CHECK (bank IS NULL OR …)`, 0036_finance.sql:107. */
   bank: string | null;
   kind: string;
   ownerLabel: string;
-  bankRef: string;
+  /**
+   * [FASE 5 · despacho de cierre, F5-C1] NULL es un estado NORMAL, no un
+   * descuido: `bank_ref text CHECK (bank_ref IS NULL OR …)` (0036_finance.sql:110)
+   * y el ETL de la fase 3 (`packages/db/scripts/migrar-home-finance.mjs:332`)
+   * lo deja vacío en las cuentas virtuales del origen (efectivo, inversión,
+   * manual). Declararlo `string` hacía que la plantilla desreferenciara sin
+   * guarda y que `svelte-check` no viera nada: Ruling R16 pedía justo esto.
+   */
+  bankRef: string | null;
   ownerAliases: string[];
   transferRefs: string[];
 }
@@ -758,6 +767,13 @@ export interface FinanceAjustesRuleRow {
 
 export interface FinanceAjustesProviderRow {
   providerNorm: string;
+  /**
+   * [FASE 5 · despacho de cierre, F5-C1] `finance_transactions.provider` SÍ es
+   * nullable (0036_finance.sql:222), así que `max(tx.provider)` podría salir
+   * NULL aunque el `where` exija `provider_norm is not null`. La consulta cae
+   * a `provider_norm` (que el propio `where` garantiza no nulo) para que este
+   * `string` sea verdad en la base y no solo en el tipo.
+   */
   provider: string;
   alias: string | null;
   count: number;
@@ -813,7 +829,7 @@ export async function loadFinanceAjustes(
       );
       // Tope explícito: la lista de proveedores es de trabajo, no un informe.
       const providers = await client.query<FinanceAjustesProviderRow>(
-        `select tx.provider_norm as "providerNorm", max(tx.provider) as provider,
+        `select tx.provider_norm as "providerNorm", coalesce(max(tx.provider), tx.provider_norm) as provider,
                 max(alias.display) as alias, count(*)::int as count,
                 sum(tx.amount_cents)::text as "totalCents"
            from app.finance_transactions as tx
