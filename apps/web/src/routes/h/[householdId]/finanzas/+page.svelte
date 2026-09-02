@@ -91,7 +91,14 @@
       <h2>No hay movimientos en este periodo</h2>
       <p>Cambia el periodo con los filtros o <a href={`${base}/importar`}>importa un extracto</a>.</p>
       {#if summary.pendingCount > 0}
-        <a class="status-chip warning pending-chip" href={`${base}/revision`}>{summary.pendingCount} sin revisar</a>
+        <!--
+          [FASE 5 · despacho de cierre, F5-SMK-1] «N sin revisar» a secas no
+          cuadraba con el badge de la barra de secciones: este chip cuenta TODO
+          el hogar (`kpis.ts`, sin ventana) y el badge cuenta la ventana de seis
+          meses de la bandeja, así que los dos números eran distintos y ninguno
+          decía de qué hablaba. El copy lo dice; el badge no se toca.
+        -->
+        <a class="status-chip warning pending-chip" href={`${base}/revision`}>{summary.pendingCount} sin revisar en total</a>
       {/if}
     </article>
   {:else}
@@ -117,7 +124,14 @@
         <p class="eyebrow">Tasa de ahorro</p>
         <p class="cifra">{formatPct(summary.netSavingsRate)}</p>
         {#if summary.pendingCount > 0}
-          <a class="status-chip warning pending-chip" href={`${base}/revision`}>{summary.pendingCount} sin revisar</a>
+          <!--
+          [FASE 5 · despacho de cierre, F5-SMK-1] «N sin revisar» a secas no
+          cuadraba con el badge de la barra de secciones: este chip cuenta TODO
+          el hogar (`kpis.ts`, sin ventana) y el badge cuenta la ventana de seis
+          meses de la bandeja, así que los dos números eran distintos y ninguno
+          decía de qué hablaba. El copy lo dice; el badge no se toca.
+        -->
+        <a class="status-chip warning pending-chip" href={`${base}/revision`}>{summary.pendingCount} sin revisar en total</a>
         {:else}
           <span class="status-chip success">todo revisado</span>
         {/if}

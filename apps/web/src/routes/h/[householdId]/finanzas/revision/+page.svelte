@@ -157,24 +157,30 @@
             -->
             {@const title = txTitle(row)}
             <tr>
-              <td class="cifra">{row.opDate}</td>
-              <td>{row.accountName}</td>
-              <td title={row.concept}>
+              <!--
+                [FASE 5 · despacho de cierre, T11-R2] En móvil la tabla se
+                convierte en fichas y cada celda pinta su rótulo desde
+                `data-etiqueta` (app.css:1546). Sin él, la fecha y el importe
+                salían como números sueltos sin decir cuál es cuál.
+              -->
+              <td class="cifra" data-etiqueta="Fecha">{row.opDate}</td>
+              <td data-etiqueta="Cuenta">{row.accountName}</td>
+              <td title={row.concept} data-etiqueta="Concepto">
                 {row.transferGroupId ? '⇄ ' : ''}{title.length > 55 ? `${title.slice(0, 55)}…` : title}
                 {#if row.provider}
                   <a href={`/h/${context.household.id}/finanzas/ajustes?prov=${encodeURIComponent(row.provider)}`}
                     title="Editar alias del proveedor">✎</a>
                 {/if}
               </td>
-              <td class="cifra">{formatCents(row.amountCents)}</td>
-              <td><span class="status-chip">{STATUS_LABEL[row.status] ?? row.status}</span></td>
-              <td>
+              <td class="cifra" data-etiqueta="Importe">{formatCents(row.amountCents)}</td>
+              <td data-etiqueta="Estado"><span class="status-chip">{STATUS_LABEL[row.status] ?? row.status}</span></td>
+              <td data-etiqueta="Categoría">
                 <CategorySelect categories={data.revision.categories}
                   value={localCategory[row.id] ?? row.categoryId}
                   onchange={(categoryId) => setCategory(row.id, categoryId)} />
               </td>
-              <td><RecurrenceChip value={row.recurrence} onchange={(next) => setRecurrence(row.id, next)} /></td>
-              <td>
+              <td data-etiqueta="Tipo"><RecurrenceChip value={row.recurrence} onchange={(next) => setRecurrence(row.id, next)} /></td>
+              <td data-etiqueta="Regla">
                 <!--
                   [FASE 5, T10 · corrección ronda 2, Important 1] La marca
                   nativa de una casilla mide 13×13: `mobile-densidad.dbe2e.ts`

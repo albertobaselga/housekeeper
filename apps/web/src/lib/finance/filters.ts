@@ -205,6 +205,23 @@ export function parseFilters(params: URLSearchParams, today: string): FinanceFil
   };
 }
 
+/**
+ * Techo del desplazamiento de página. [FASE 5 · despacho de cierre, F4-m10(c)]
+ * El `offset` de Movimientos tenía suelo pero no techo, a diferencia del
+ * `intParam` de la API: `?offset=99999999999` llegaba entero a la consulta,
+ * que Postgres resuelve recorriendo la tabla para devolver cero filas. 100.000
+ * son mil páginas de 100: más allá no hay pantalla que paginar.
+ */
+export const MAX_PAGE_OFFSET = 100_000;
+
+/** Desplazamiento de página saneado: entero, con suelo en 0 y techo en `MAX_PAGE_OFFSET`. */
+export function parsePageOffset(raw: string | null): number {
+  // `offset` es paginación, no dinero: `Number` es correcto aquí.
+  const value = Number(raw ?? '0');
+  if (!Number.isInteger(value) || value <= 0) return 0;
+  return Math.min(value, MAX_PAGE_OFFSET);
+}
+
 /** Merge NO destructivo: parte del query string vivo y solo toca sus claves. */
 export function mergeFilters(current: URLSearchParams, next: FinanceFilters): URLSearchParams {
   const merged = new URLSearchParams(current);

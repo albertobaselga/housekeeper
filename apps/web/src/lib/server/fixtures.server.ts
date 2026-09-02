@@ -934,13 +934,21 @@ export const getFinanceEventosFixture = demoOnly(
     from: range.from,
     to: range.to,
     openId,
+    // [FASE 5 · despacho de cierre, T11-R6] Tres estados, no dos: sin `open`
+    // no hay desglose (`null`); con el evento demo, el desglose falso; y con un
+    // `open` AJENO —un id que no es de este hogar— la lista vacía, que es lo
+    // que devuelve el cargador real (`readFinanceBreakdown` acotado a ese
+    // evento). Con `null` ahí, la maqueta escondía la sección entera y hacía
+    // parecer que el enlace estaba roto.
     detail:
-      openId === DEMO_EVENT_ID
-        ? [
-            { categoryId: 'fc400000-0000-4000-8000-000000000001', name: 'Alojamiento (demo)', count: 2, totalCents: '-30000' },
-            { categoryId: null, name: 'Sin categorizar', count: 1, totalCents: '-12000' }
-          ]
-        : null,
+      openId === null
+        ? null
+        : openId === DEMO_EVENT_ID
+          ? [
+              { categoryId: 'fc400000-0000-4000-8000-000000000001', name: 'Alojamiento (demo)', count: 2, totalCents: '-30000' },
+              { categoryId: null, name: 'Sin categorizar', count: 1, totalCents: '-12000' }
+            ]
+          : [],
     summary: [
       {
         id: DEMO_EVENT_ID,

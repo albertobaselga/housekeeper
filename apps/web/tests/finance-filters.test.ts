@@ -11,6 +11,7 @@ import {
   monthsAgoISO,
   parseDateRange,
   parseFilters,
+  parsePageOffset,
   presetRanges,
   rangeLabel,
   rangeOfMonths,
@@ -239,6 +240,29 @@ describe('parseDateRange: el rango de la URL, saneado en un solo sitio', () => {
 
   it('la ventana por omisión es un parámetro, no una constante escondida', () => {
     expect(parseDateRange(new URLSearchParams(), TODAY, 1)).toEqual({ from: '2026-07-31', to: TODAY });
+  });
+});
+
+// [FASE 5 · despacho de cierre, F4-m10(c)] El `offset` de Movimientos tenía
+// SUELO pero no techo: `?offset=99999999999` llegaba tal cual al `offset` de la
+// consulta, que Postgres acepta y resuelve recorriendo la tabla entera para
+// devolver cero filas. La API ya topaba el suyo (`intParam`, tope 1.000.000);
+// el cargador de la pantalla no.
+describe('parsePageOffset: el desplazamiento de página tiene suelo y techo', () => {
+  it('un número normal pasa tal cual', () => {
+    expect(parsePageOffset('300')).toBe(300);
+  });
+
+  it('sin parámetro, negativo o basura: primera página', () => {
+    expect(parsePageOffset(null)).toBe(0);
+    expect(parsePageOffset('')).toBe(0);
+    expect(parsePageOffset('-40')).toBe(0);
+    expect(parsePageOffset('tres')).toBe(0);
+    expect(parsePageOffset('12.5')).toBe(0);
+  });
+
+  it('un desplazamiento desmedido se recorta al techo', () => {
+    expect(parsePageOffset('99999999999')).toBe(100_000);
   });
 });
 

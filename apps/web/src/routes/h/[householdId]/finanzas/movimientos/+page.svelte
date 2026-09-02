@@ -5,13 +5,13 @@
   import type { FinanceTxDto } from '@housekeeper/server';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import CategorySelect from '$lib/components/finance/CategorySelect.svelte';
   import FinanceDetailPanel from '$lib/components/finance/FinanceDetailPanel.svelte';
   import FinanceFilterBar from '$lib/components/finance/FinanceFilterBar.svelte';
   import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import LedgerTable from '$lib/components/finance/LedgerTable.svelte';
   import ManualForm from '$lib/components/finance/ManualForm.svelte';
   import type { FinanceDetailMode } from '$lib/finance/api';
-  import { categoryPath } from '$lib/finance/breakdown';
   import { financeCommand } from '$lib/finance/commands';
   import { mergeParams, rangeLabel } from '$lib/finance/filters';
   import { formatCents } from '$lib/finance/format';
@@ -210,13 +210,28 @@
 
   <form class="finance-localfilters" onsubmit={(event) => { event.preventDefault(); applyLocal({ q: searchText.trim() || null }); }}>
     <input type="search" bind:value={searchText} placeholder="Buscar concepto o proveedor…" aria-label="Buscar concepto o proveedor" />
-    <select aria-label="Filtrar por categoría" value={currentCategory}
-      onchange={(event) => applyLocal({ cat: event.currentTarget.value || null })}>
-      <option value="">Todas las categorías</option>
-      {#each movimientos.categories.filter((category) => category.kind !== 'transferencia') as category (category.id)}
-        <option value={category.id}>{categoryPath(movimientos.categories, category.id)}</option>
-      {/each}
-    </select>
+    <!--
+      [FASE 5 · despacho de cierre, F4-I3] Este filtro montaba su propio
+      `<select>` plano con `categoryPath`: listaba también las raíces —«Casa»—,
+      y como el filtro del cargador compara por IGUALDAD exacta de
+      `category_id`, elegir la raíz devolvía «0 movimientos» aunque todas sus
+      subcategorías tuvieran datos. `CategorySelect` (el mismo componente que
+      ya usan Revisión y cada fila del ledger, así que no entra código nuevo en
+      el paquete) agrupa por raíz, rotula la raíz como «Casa / (general)» —que
+      es lo que de verdad hace el filtro— y deja fuera las categorías de
+      `transferencia` dentro de `categoryOptionGroups`, sin repetir aquí ese
+      filtro.
+    -->
+    <CategorySelect
+      categories={movimientos.categories}
+      value={currentCategory || null}
+      label="Filtrar por categoría"
+      onchange={(categoryId) => applyLocal({ cat: categoryId })}
+    />
+    {#if currentCategory}
+      <button class="button secondary small-button" type="button"
+        onclick={() => applyLocal({ cat: null })}>Todas las categorías</button>
+    {/if}
     <select aria-label="Filtrar por naturaleza" value={currentRecurrence}
       onchange={(event) => applyLocal({ rec: event.currentTarget.value || null })}>
       <option value="">Todos</option>

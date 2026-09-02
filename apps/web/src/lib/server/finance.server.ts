@@ -660,6 +660,12 @@ export async function loadFinanceEventos(
       const { from, to } = range;
       const filters: FinanceReadFilters = { from, to, accountIds: [], eventId: null, excludeEventIds: [] };
       const rangeSummary = await readFinanceEventsSummary(client, householdId, filters);
+      // [FASE 5 · despacho de cierre, T11-R4] SIN filtro de rango, y es
+      // deliberado: `totalCount` es el histórico completo del evento —lo que
+      // se desvincularía al borrarlo, que es lo que dice el aviso de la
+      // pantalla—, mientras que `txCount` (de `readFinanceEventsSummary`) es
+      // el del periodo visible. La celda de Movimientos enseña los dos para
+      // que el número del aviso no salga de la nada.
       const totals = await client.query<{ id: string; totalCount: number }>(
         `select te.event_id as id, count(*)::int as "totalCount"
            from app.finance_transaction_events as te

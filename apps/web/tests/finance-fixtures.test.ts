@@ -67,8 +67,12 @@ describe('fixtures sintéticas de finanzas (modo demo)', () => {
     expect(new Set(ids).size).toBe(ids.length); // sin duplicados: la key del `each` depende de esto.
 
     // Un `open` que no coincide con el único evento demo no inventa un
-    // desglose que no le corresponde.
+    // desglose que no le corresponde: devuelve la lista VACÍA, que es lo que
+    // devuelve el cargador real (`readFinanceBreakdown` acotado a un evento
+    // que no tiene movimientos). [FASE 5 · despacho de cierre, T11-R6] Antes
+    // era `null`, que la pantalla interpreta como «no se ha pedido ningún
+    // desglose» y escondía la sección entera: el enlace parecía roto.
     const other = getFinanceEventosFixture({ from: FILTERS.from, to: FILTERS.to }, 'fc999999-0000-4000-8000-000000000009');
-    expect(other.detail).toBeNull();
+    expect(other.detail).toEqual([]);
   });
 });
