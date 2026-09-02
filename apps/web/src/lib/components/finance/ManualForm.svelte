@@ -2,6 +2,7 @@
   import CategorySelect from './CategorySelect.svelte';
   import { manualAmountCents } from '$lib/finance/manual-form';
   import type { FinanceCategoryOptionSource } from '$lib/finance/category-options';
+  import { todayLocal } from '$lib/finance/filters';
 
   let {
     accounts,
@@ -27,7 +28,9 @@
 
   let movementKind = $state<'gasto' | 'ingreso'>('gasto');
   let amount = $state('');
-  let opDate = $state(new Date().toISOString().slice(0, 10));
+  // Fecha LOCAL, no UTC: `toISOString()` desplazaría la fecha por defecto un
+  // día en horas de madrugada según la zona (Ruling del coordinador, fase 5).
+  let opDate = $state(todayLocal());
   let concept = $state('');
   let provider = $state('');
   // svelte-ignore state_referenced_locally -- solo es el valor inicial del campo
