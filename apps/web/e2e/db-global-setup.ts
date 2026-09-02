@@ -210,7 +210,7 @@ WHERE NOT EXISTS (
    WHERE household_id = '${HOUSEHOLD}' AND membership_id = '${ADMIN_MEMBERSHIP}' AND revoked_at IS NULL);
 
 INSERT INTO app.finance_categories (household_id, id, name, kind, parent_id)
-SELECT '${HOUSEHOLD}', 'ac900000-0000-4000-8000-000000000001', 'Transferencias E2E', 'transferencia', NULL
+SELECT '${HOUSEHOLD}', '${E2E_SEED.finanzas.catTransferencias}', 'Transferencias E2E', 'transferencia', NULL
 WHERE NOT EXISTS (
   SELECT 1 FROM app.finance_categories
    WHERE household_id = '${HOUSEHOLD}' AND kind = 'transferencia' AND parent_id IS NULL);
@@ -230,7 +230,14 @@ INSERT INTO app.finance_transactions
    -4321, NULL, 'pendiente', NULL, 'e2e-fin-0001', NULL, false, '{}'::jsonb, 'EUR'),
   ('${HOUSEHOLD}', '${E2E_SEED.finanzas.txLuz}', '${E2E_SEED.finanzas.account}', NULL,
    current_date - 2, 'RECIBO LUZ NORTE E2E', 'LUZ NORTE E2E', 'luz norte e2e',
-   -6600, NULL, 'pendiente', NULL, 'e2e-fin-0002', NULL, false, '{}'::jsonb, 'EUR');
+   -6600, NULL, 'pendiente', NULL, 'e2e-fin-0002', NULL, false, '{}'::jsonb, 'EUR'),
+  -- [FASE 5, T10 · corrección Important 3] sugerida_regla CON categoría ya
+  -- asignada: es la única fila que activa el botón «Confirmar N sugerencias»
+  -- de Revisión (finance.transactions.bulk). Sin ella nada ejercitaba ese
+  -- camino ni los estados sugerida_* de STATUS_LABEL.
+  ('${HOUSEHOLD}', '${E2E_SEED.finanzas.txSugerida}', '${E2E_SEED.finanzas.account}', NULL,
+   current_date - 1, 'RECIBO CAFETERA EXPRESS E2E', 'CAFETERA EXPRESS E2E', 'cafetera express e2e',
+   -1250, '${E2E_SEED.finanzas.catCasa}', 'sugerida_regla', NULL, 'e2e-fin-0003', NULL, false, '{}'::jsonb, 'EUR');
 
 COMMIT;
 `;

@@ -8,6 +8,7 @@ import {
   mergeFilters,
   mergeParams,
   monthRange,
+  monthsAgoISO,
   parseFilters,
   presetRanges,
   rangeLabel,
@@ -161,5 +162,28 @@ describe('isUuid y DATE_PATTERN: exportados para que otras tareas no copien el r
 
   it('parseFilters con g=week (no es una granularidad válida) cae al valor por defecto', () => {
     expect(parseFilters(new URLSearchParams('g=week'), TODAY).granularity).toBe('month');
+  });
+});
+
+// [FASE 5, T10 · corrección Minor 7] `revision/+page.server.ts` reimplementaba
+// esto con `date.setUTCMonth(date.getUTCMonth() - months)`: un día 31 con un
+// mes destino más corto se desbordaba al mes siguiente (31/8 − 6 → 3/3, no
+// 28/2). Se movió aquí para reutilizar `addMonths`/`daysInMonth`, que ya
+// resuelven el mismo desborde para `rangeOfMonths`/`shiftRange`.
+describe('monthsAgoISO (rango rodante de la bandeja de Revisión)', () => {
+  it('31 de agosto menos 6 meses clampa a 28 de febrero, no se desborda a marzo', () => {
+    expect(monthsAgoISO(6, new Date(Date.UTC(2026, 7, 31)))).toBe('2026-02-28');
+  });
+
+  it('29 de febrero (bisiesto) menos 12 meses clampa a 28 de febrero del año anterior', () => {
+    expect(monthsAgoISO(12, new Date(Date.UTC(2024, 1, 29)))).toBe('2023-02-28');
+  });
+
+  it('un mes de igual longitud conserva el día exacto', () => {
+    expect(monthsAgoISO(1, new Date(Date.UTC(2026, 8, 15)))).toBe('2026-08-15');
+  });
+
+  it('cruza el cambio de año', () => {
+    expect(monthsAgoISO(2, new Date(Date.UTC(2026, 0, 15)))).toBe('2025-11-15');
   });
 });

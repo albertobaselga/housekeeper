@@ -869,6 +869,22 @@ export const getFinanceRevisionFixture = demoOnly(
         categoryId: null,
         recurrence: null,
         transferGroupId: null
+      },
+      // [FASE 5, T10 · corrección Important 3] `sugerida_regla` con categoría
+      // ya asignada: sin esta fila la demo nunca enseñaba el botón «Confirmar
+      // N sugerencias» ni la etiqueta STATUS_LABEL de una sugerencia.
+      {
+        id: 'fc100000-0000-4000-8000-000000000002',
+        opDate: range.to,
+        accountName: 'Cuenta común (demo)',
+        concept: 'RECIBO LUZ DEMO',
+        provider: 'LUZ DEMO',
+        providerDisplay: null,
+        amountCents: '-6100',
+        status: 'sugerida_regla',
+        categoryId: 'fc200000-0000-4000-8000-000000000001',
+        recurrence: 'recurrente',
+        transferGroupId: null
       }
     ],
     categories: [

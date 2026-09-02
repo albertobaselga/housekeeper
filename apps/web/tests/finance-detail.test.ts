@@ -87,6 +87,18 @@ describe('txTitle (título del movimiento, única definición para ledger y pane
     );
     expect(txTitle(tx({ providerDisplay: '', provider: 'mercadona', concept: 'Compra' }))).toBe('mercadona');
   });
+
+  // [FASE 5, T10 · corrección Important 2] La firma pide solo los tres campos
+  // que usa, no un FinanceTxDto completo: revision/+page.svelte llama a esto
+  // con una FinanceRevisionRow (que no tiene eventIds/raw/etc.) en vez de
+  // reimplementar el `||` a mano con `??` (que no caía ante una cadena
+  // vacía). Se prueba aquí con la forma estructural mínima, sin pasar por
+  // el helper `tx()` de arriba, para dejar constancia de que el contrato es
+  // ese objeto reducido y no el DTO completo.
+  it('acepta la forma reducida {providerDisplay, provider, concept} sin el resto de FinanceTxDto', () => {
+    expect(txTitle({ providerDisplay: null, provider: '', concept: 'Recibo luz' })).toBe('Recibo luz');
+    expect(txTitle({ providerDisplay: 'Luz Norte', provider: null, concept: 'Recibo luz' })).toBe('Luz Norte');
+  });
 });
 
 describe('hasRaw (única definición de «tiene raw» del módulo)', () => {

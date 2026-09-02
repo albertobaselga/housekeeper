@@ -4,6 +4,7 @@
   import CashflowChart from '$lib/components/finance/CashflowChart.svelte';
   import CategoryBars from '$lib/components/finance/CategoryBars.svelte';
   import FinanceFilterBar from '$lib/components/finance/FinanceFilterBar.svelte';
+  import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import FinanceSparkline from '$lib/components/finance/FinanceSparkline.svelte';
   import { mergeParams, rangeLabel } from '$lib/finance/filters';
   import { deltaPct, formatCents, formatPct } from '$lib/finance/format';
@@ -77,6 +78,7 @@
 
 <div class="page-wrap">
   <PageHeader eyebrow="Cuentas de la casa" title="Finanzas" support={rangeLabel(dashboard.filters)} />
+  <FinanceNav pendingReviewCount={data.pendingReviewCount} />
 
   <FinanceFilterBar filters={dashboard.filters} accounts={dashboard.accounts} />
 

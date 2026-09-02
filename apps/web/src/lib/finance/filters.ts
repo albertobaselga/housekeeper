@@ -75,6 +75,20 @@ export function rangeOfMonths(anchor: string, months: number): { from: string; t
   return { from: isoOf(startYear, startMonth, 1), to: isoOf(year, month, daysInMonth(year, month)) };
 }
 
+/**
+ * ISO de hace `months` meses respecto de `today` (por defecto, ahora mismo en
+ * UTC): el mismo día del mes salvo que el mes destino sea más corto, en cuyo
+ * caso clampa al último día real de ese mes en vez de desbordar al mes
+ * siguiente (31/8 − 6 tenía que dar 28/2, y con aritmética cruda de `Date`
+ * daba 3/3). Reutiliza `addMonths`/`daysInMonth`/`isoOf` en vez de reabrir el
+ * mismo cálculo con `setUTCMonth`. [FASE 5, T10 · corrección Minor 7 — antes
+ * vivía inline en `revision/+page.server.ts` sin el clamp].
+ */
+export function monthsAgoISO(months: number, today: Date = new Date()): string {
+  const [year, month] = addMonths(today.getUTCFullYear(), today.getUTCMonth() + 1, -months);
+  return isoOf(year, month, Math.min(today.getUTCDate(), daysInMonth(year, month)));
+}
+
 export function spanMonths(filters: Pick<FinanceFilters, 'from' | 'to'>): number {
   const [fromYear, fromMonth] = split(filters.from);
   const [toYear, toMonth] = split(filters.to);

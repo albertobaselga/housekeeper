@@ -24,11 +24,20 @@ export function ledgerRowMeta(tx: FinanceTxDto, eventNameById: Record<string, st
 
 /**
  * Título visible de un movimiento: proveedor mostrado, o el bruto, o el
- * concepto (única definición: LedgerTable y FinanceDetailPanel consumen esta
- * en vez de repetir el mismo `||` a mano). Una cadena vacía en cualquiera de
- * los dos primeros campos cae al siguiente, como siempre hizo el operador `||`.
+ * concepto (única definición: LedgerTable, FinanceDetailPanel y la celda de
+ * Revisión consumen esta en vez de repetir el mismo `||` a mano — [FASE 5,
+ * T10 · corrección Important 2] Revisión reimplementaba esto con `??`, que no
+ * cae al siguiente campo ante una cadena VACÍA). Una cadena vacía en
+ * cualquiera de los dos primeros campos cae al siguiente, como siempre hizo
+ * el operador `||`.
+ *
+ * La firma pide solo los tres campos que usa (no el `FinanceTxDto` completo):
+ * `FinanceRevisionRow` (`$lib/server/finance.server.ts`) no es un
+ * `FinanceTxDto` —le faltan `eventIds`, `raw`, etc.— y no debía fabricar uno
+ * falso solo para llamar aquí. `FinanceTxDto` sigue satisfaciendo esta forma
+ * sin cambios en sus llamadores actuales.
  */
-export function txTitle(tx: FinanceTxDto): string {
+export function txTitle(tx: { providerDisplay: string | null; provider: string | null; concept: string }): string {
   return tx.providerDisplay || tx.provider || tx.concept;
 }
 

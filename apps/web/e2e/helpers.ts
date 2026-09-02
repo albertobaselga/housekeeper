@@ -58,9 +58,18 @@ export const E2E_SEED = {
    */
   finanzas: {
     account: 'ac910000-0000-4000-8000-000000000001',
+    // [FASE 5, T10 · corrección Minor 6] Raíz `transferencia` del hogar: antes
+    // vivía incrustada en db-global-setup.ts mientras sus tres hermanas
+    // vivían aquí.
+    catTransferencias: 'ac900000-0000-4000-8000-000000000001',
     catCasa: 'ac900000-0000-4000-8000-000000000002',
     txSuper: 'ac920000-0000-4000-8000-000000000001',
-    txLuz: 'ac920000-0000-4000-8000-000000000002'
+    txLuz: 'ac920000-0000-4000-8000-000000000002',
+    // [FASE 5, T10 · corrección Important 3] `sugerida_regla` con categoría YA
+    // asignada: es la única fila que activa el botón «Confirmar N sugerencias»
+    // (finance.transactions.bulk) — sin ella, ni el dbe2e ni la maqueta
+    // ejercitaban ese camino ni los estados `sugerida_*` de STATUS_LABEL.
+    txSugerida: 'ac920000-0000-4000-8000-000000000003'
   }
 } as const;
 

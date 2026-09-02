@@ -2,6 +2,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import FinanceFilterBar from '$lib/components/finance/FinanceFilterBar.svelte';
   import NatureStackChart from '$lib/components/finance/NatureStackChart.svelte';
   import PivotTable from '$lib/components/finance/PivotTable.svelte';
@@ -64,6 +65,7 @@
 
 <div class="page-wrap">
 <PageHeader eyebrow="Cuentas de la casa" title="Analítica" support={rangeLabel(a.filters)} />
+<FinanceNav pendingReviewCount={data.pendingReviewCount} />
 
 <FinanceFilterBar filters={a.filters} accounts={a.accounts} />
 <!-- ↑ props canónicas de la fase 4: { filters: FinanceFilters; accounts: {id;name;kind}[] },

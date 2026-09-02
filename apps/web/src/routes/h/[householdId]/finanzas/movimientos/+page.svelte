@@ -6,6 +6,7 @@
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import FinanceDetailPanel from '$lib/components/finance/FinanceDetailPanel.svelte';
   import FinanceFilterBar from '$lib/components/finance/FinanceFilterBar.svelte';
+  import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import LedgerTable from '$lib/components/finance/LedgerTable.svelte';
   import ManualForm from '$lib/components/finance/ManualForm.svelte';
   import type { FinanceDetailMode } from '$lib/finance/api';
@@ -155,6 +156,7 @@
 
 <div class="page-wrap">
   <PageHeader eyebrow="Cuentas de la casa" title="Movimientos" support={rangeLabel(movimientos.filters)} />
+  <FinanceNav pendingReviewCount={data.pendingReviewCount} />
 
   <ActionStatus status={actionStatus} />
 

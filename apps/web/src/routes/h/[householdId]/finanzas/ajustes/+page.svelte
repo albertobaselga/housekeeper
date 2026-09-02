@@ -1,5 +1,6 @@
 <script lang="ts">
   import PageHeader from '$lib/components/PageHeader.svelte';
+  import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -7,6 +8,7 @@
 
 <div class="page-wrap">
   <PageHeader eyebrow="Finanzas" title="Ajustes de Finanzas" />
+  <FinanceNav pendingReviewCount={data.pendingReviewCount} />
   <section class="empty-state">
     <span aria-hidden="true">€</span>
     {#if data.status.transactionCount === 0}

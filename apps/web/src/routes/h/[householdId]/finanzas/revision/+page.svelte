@@ -2,9 +2,11 @@
   import ActionStatus from '$lib/components/ActionStatus.svelte';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import CategorySelect from '$lib/components/finance/CategorySelect.svelte';
+  import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import RecurrenceChip from '$lib/components/finance/RecurrenceChip.svelte';
   import { useAppContext } from '$lib/auth/context';
   import { financeCommand } from '$lib/finance/commands';
+  import { txTitle } from '$lib/finance/detail';
   import { STATUS_LABEL, formatCents } from '$lib/finance/format';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import type { PageData } from './$types';
@@ -78,7 +80,19 @@
 </script>
 
 <div class="page-wrap">
-  <PageHeader eyebrow="Finanzas" title="Revisión" support={`${rows.length} movimientos por revisar`} />
+  <!--
+    [FASE 5, T10 · corrección Minor 1] Con `data.revision === null` (no se
+    puede leer) `rows` es `[]`: el rótulo decía «0 movimientos por revisar»
+    justo encima del aviso de que no se podía leer nada, una frase que
+    afirmaba lo que la siguiente línea desmentía. `undefined` oculta el
+    `support` del todo en ese caso (ver `PageHeader.svelte`).
+  -->
+  <PageHeader
+    eyebrow="Finanzas"
+    title="Revisión"
+    support={data.revision ? `${rows.length} movimientos por revisar` : undefined}
+  />
+  <FinanceNav pendingReviewCount={data.pendingReviewCount} />
   <ActionStatus status={actionStatus} />
 
   {#if !data.revision}
@@ -101,11 +115,22 @@
         </thead>
         <tbody>
           {#each rows as row (row.id)}
+            <!--
+              [FASE 5, T10 · corrección Important 2] Antes la celda
+              reimplementaba el título con `??`, que —a diferencia de
+              `txTitle` (única definición, `$lib/finance/detail.ts`)— no cae a
+              `provider` ante una cadena VACÍA en `providerDisplay` (o a
+              `concept` ante una vacía en ambos): un movimiento importado con
+              `provider = ''` y sin alias pintaba la celda en blanco aquí
+              mientras Movimientos (que sí usa `txTitle` vía LedgerTable)
+              mostraba el concepto.
+            -->
+            {@const title = txTitle(row)}
             <tr>
               <td class="cifra">{row.opDate}</td>
               <td>{row.accountName}</td>
               <td title={row.concept}>
-                {row.transferGroupId ? '⇄ ' : ''}{row.providerDisplay ?? row.provider ?? row.concept.slice(0, 55)}
+                {row.transferGroupId ? '⇄ ' : ''}{title.length > 55 ? `${title.slice(0, 55)}…` : title}
                 {#if row.provider}
                   <a href={`/h/${context.household.id}/finanzas/ajustes?prov=${encodeURIComponent(row.provider)}`}
                     title="Editar alias del proveedor">✎</a>
