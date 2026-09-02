@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { replaceState } from '$app/navigation';
+  import { invalidate, replaceState } from '$app/navigation';
   import { page } from '$app/state';
   import {
     buildPivotTree,
@@ -8,23 +8,27 @@
     type PivotDimension,
     type PivotEventGroup
   } from '@housekeeper/domain/finance';
+  import type { FinanceWritePayloadV1 } from '@housekeeper/contracts';
   import { monthLabel } from '$lib/finance/chart-data';
   import { categoryPath } from '$lib/finance/breakdown';
   import { formatCents } from '$lib/finance/format';
   import {
-    addDim, DIM_LABELS, moveDim, parseChips, parseDims, parseIdList, PIVOT_DIMENSIONS,
-    removeDim, sameSortKey, serializeChips, serializeDims, serializeIdList, sortTree, rowMatchesChips,
-    type PivotNodeLike, type PivotSortKey, type SortDir
+    addDim, collectMovIdsByKey, DIM_LABELS, moveDim, parseChips, parseDims, parseIdList, PIVOT_DIMENSIONS,
+    rangeBetween, removeDim, resolveSelectionIds, rowMatchesChips, sameSortKey, selectableListAny,
+    serializeChips, serializeDims, serializeIdList, sortTree, summarizeCategoryDrop, summarizeEventDrop,
+    toAnySelectable, toggleInMap, toMovementSelectable,
+    type PivotNodeLike, type PivotSortKey, type SelectableItem, type SortDir
   } from '$lib/finance/pivot-state';
+  import {
+    acuse, assignConceptRecurrence, assignConceptToCategory, assignConceptToEvent, assignTransactionsToEvent,
+    buildTxCategoryIndex, bulkByIds, conceptTargetOf, createEventPayload, investTransaction,
+    planCategoryUndo, sendAll, undoEventAssign, updateTransactionRecurrence,
+    type CategoryUndo
+  } from '$lib/finance/pivot-actions';
   import type { AnaliticaCategory, AnaliticaEventSummary, AnaliticaPivotRow } from '$lib/finance/analitica-data';
+  import PivotActionBar from './PivotActionBar.svelte';
   import PivotSearch from './PivotSearch.svelte';
 
-  // `invAccounts` y `householdId` no se usan todavía: los consume la Task 12
-  // (barra de acciones y envío de comandos). Se mantienen en la firma pública
-  // del componente porque la integración de la página (Task 10, Step 3) ya
-  // los pasa; svelte-check/eslint no señalan props de `$props()` sin usar en
-  // este repo (no hay `noUnusedParameters`/`eslint-plugin-svelte`), así que no
-  // hace falta ningún `svelte-ignore`/`eslint-disable` para mantenerlos.
   let {
     rows, months, categories, events, invAccounts, householdId, onOpenIds
   }: {
@@ -128,6 +132,202 @@
     depth === 0 ? '' : `background: color-mix(in srgb, var(--surface) ${100 - Math.min(depth, 4) * 7}%, var(--line-strong));`;
   const openLeaf = (node: PivotNodeLike) =>
     onOpenIds(node.movs.map((m) => m.id), node.label, `${node.movs.length} ${node.movs.length === 1 ? 'movimiento' : 'movimientos'}`);
+
+  // ── Selección (Map inmutable + rango con Shift) ────────────────────────────
+  let selected = $state<Map<string, SelectableItem>>(new Map());
+  let lastKey = $state<string | null>(null);
+  const selectionList = $derived([...selected.values()]);
+  const selectionMovs = $derived(selectionList.reduce((s, i) => s + i.count, 0));
+  const clearSelection = () => { selected = new Map(); lastKey = null; };
+
+  /** Guarda de tipo: evita el `!` sobre `txId` (prohibido) en los aplicadores de abajo. */
+  function hasTxId(item: SelectableItem): item is SelectableItem & { txId: string } {
+    return item.txId != null;
+  }
+
+  function clickItem(item: SelectableItem, siblings: SelectableItem[], shiftKey: boolean): void {
+    if (shiftKey && lastKey) {
+      const range = rangeBetween(siblings, lastKey, item.key);
+      if (range) {
+        const next = new Map(selected);
+        for (const it of range) next.set(it.key, it);
+        selected = next;
+        lastKey = item.key;
+        return;
+      }
+    }
+    selected = toggleInMap(selected, item);
+    lastKey = item.key;
+  }
+
+  // Sin `as`: cada árbol es un `PivotNode[]`/`PivotEventGroup['children']` del
+  // dominio, estructuralmente asignable a `PivotNodeLike` (mismos campos, más
+  // `concepts` que aquí no hace falta) — TS lo infiere sin forzar el tipo.
+  const allRoots = $derived([
+    ...gastoTree, ...ingresoTree, ...internaTree, ...inversionTree,
+    ...displayEventos.flatMap((e) => e.children)
+  ]);
+  const movIdsByKey = $derived(collectMovIdsByKey(allRoots));
+  // `AnaliticaPivotRow` no lleva categoryId por movimiento: cada fila del pivot
+  // ya agrupa movimientos que comparten `catId` (fase 2, mismo groupBy que
+  // `PivotSourceRow`), así que se aplana a pares {id, categoryId} usando el
+  // catId de la fila que contiene cada mov — no es la firma literal del brief
+  // (`buildTxCategoryIndex(rows)`), que asumía filas por movimiento.
+  const txCatIndex = $derived(
+    buildTxCategoryIndex(rows.flatMap((r) => r.movs.map((m) => ({ id: m.id, categoryId: r.catId }))))
+  );
+
+  // ── Toast con Deshacer y envío secuencial de comandos ──────────────────────
+  // `sendAll`/`acuse`/`COLA` viven en `$lib/finance/pivot-actions` (tarea 6),
+  // ya probados allí (R14/R25): aquí solo se encadena `householdId` y el
+  // `invalidate` de `$app/navigation` con el token canónico 'cc:finance'
+  // (Task 8) a través de este cierre — `sendAll` real pide 3 argumentos
+  // (householdId, payloads, { invalidate }), no uno solo como el brief.
+  let toast = $state<{ message: string; onUndo?: () => Promise<void> } | null>(null);
+  const submit = (payloads: readonly FinanceWritePayloadV1[]) => sendAll(householdId, payloads, { invalidate });
+
+  async function runCategoryUndo(plan: CategoryUndo): Promise<void> {
+    const payloads = [
+      ...plan.reassignments.map((r) => assignConceptToCategory(r.provider, r.concept, r.categoryId)),
+      ...plan.bulkRestores.map((g) => bulkByIds(g.transactionIds, { categoryId: g.categoryId }))
+    ];
+    const r = await submit(payloads);
+    const aviso = plan.bulkRestores.length > 0 ? ' · las reglas creadas se conservan (bórralas en Ajustes)' : '';
+    const saltos = plan.skipped > 0 ? ` · ${plan.skipped} sin categoría previa` : '';
+    toast = { message: acuse(r, `Deshecho${aviso}${saltos}`) };
+  }
+
+  // ── Aplicadores compartidos ───────────────────────────────────────────────
+  // La barra de acciones y el drag-and-drop (tarea 13) son dos caminos para el
+  // MISMO gesto: comparten estas tres funciones para que no puedan divergir.
+
+  async function applyEventAssignment(
+    items: readonly SelectableItem[], eventId: string, eventName: string, omitted: number
+  ): Promise<void> {
+    const transactionIds = items.filter(hasTxId).map((i) => i.txId);
+    const conceptItems = items.filter((i) => i.txId == null);
+    const movs = items.reduce((s, i) => s + i.count, 0);
+    const r = await submit([
+      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
+      ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'add')] : [])
+    ]);
+    toast = {
+      message: acuse(r, summarizeEventDrop(movs, eventName, omitted)),
+      ...(r.ok && (conceptItems.length > 0 || transactionIds.length > 0)
+        ? {
+            onUndo: async () => {
+              const u = await submit([
+                ...conceptItems.map((i) => undoEventAssign(conceptTargetOf(i))),
+                ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'remove')] : [])
+              ]);
+              toast = { message: acuse(u, 'Deshecho') };
+            }
+          }
+        : {})
+    };
+  }
+
+  /**
+   * Evento nuevo: el id lo genera el cliente para poder encadenar «crear» y
+   * «asignar» sin esperar al ACK. Así los movimientos sueltos (hojas con txId)
+   * también se asignan — antes se perdían en silencio con un toast de éxito.
+   */
+  async function applyNewEventAssignment(
+    items: readonly SelectableItem[], name: string, omitted: number
+  ): Promise<void> {
+    const existing = events.find((e) => e.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+    if (existing) return applyEventAssignment(items, existing.id, existing.name, omitted);
+    const eventId = crypto.randomUUID();
+    const transactionIds = items.filter(hasTxId).map((i) => i.txId);
+    const conceptItems = items.filter((i) => i.txId == null);
+    const movs = items.reduce((s, i) => s + i.count, 0);
+    // R27: la firma real es createEventPayload(name, id?) — el id va SEGUNDO.
+    const r = await submit([
+      createEventPayload(name, eventId),
+      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
+      ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'add')] : [])
+    ]);
+    toast = { message: acuse(r, summarizeEventDrop(movs, name, omitted)) };
+  }
+
+  async function applyCategoryAssignment(
+    items: readonly SelectableItem[], categoryId: string, omitted: number
+  ): Promise<void> {
+    const transactionIds = resolveSelectionIds(items.filter(hasTxId), movIdsByKey);
+    const conceptItems = items.filter((i) => i.txId == null && i.categoryId == null);
+    const omitidos = omitted + items.filter((i) => i.categoryId != null).length;
+    const plan = planCategoryUndo(conceptItems, movIdsByKey, txCatIndex);
+    const movidos = conceptItems.reduce((s, i) => s + i.count, 0) + transactionIds.length;
+    const r = await submit([
+      ...conceptItems.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
+      ...(transactionIds.length ? [bulkByIds(transactionIds, { categoryId })] : [])
+    ]);
+    toast = {
+      // Con 0 movidos, summarizeCategoryDrop ya explica POR QUÉ no se movió nada
+      // («las categorías no pueden soltarse sobre otra categoría»): ese texto es
+      // mejor acuse vacío que el genérico.
+      message: acuse(
+        r,
+        summarizeCategoryDrop(movidos, catPathOf(categoryId), omitidos),
+        summarizeCategoryDrop(0, catPathOf(categoryId), omitidos)
+      ),
+      ...(r.ok && movidos > 0 ? { onUndo: () => runCategoryUndo(plan) } : {})
+    };
+  }
+
+  // ── Acciones de la barra (delegan en los aplicadores) ──────────────────────
+  async function actionMoveToEvent(eventId: string): Promise<void> {
+    const items = selectionList;
+    if (items.length === 0) return;
+    const name = events.find((e) => e.id === eventId)?.name ?? '';
+    await applyEventAssignment(items, eventId, name, 0);
+    clearSelection();
+  }
+  async function actionNewEvent(name: string): Promise<void> {
+    const items = selectionList;
+    if (items.length === 0) return;
+    await applyNewEventAssignment(items, name, 0);
+    clearSelection();
+  }
+  async function actionMoveToCategory(categoryId: string): Promise<void> {
+    const items = selectionList;
+    if (items.length === 0) return;
+    await applyCategoryAssignment(items, categoryId, 0);
+    clearSelection();
+  }
+  async function actionSetRecurrence(rec: 'recurrente' | 'extraordinario'): Promise<void> {
+    const items = selectionList;
+    if (items.length === 0) return;
+    // Por concepto: assignConceptRecurrence. Hoja suelta: transaction.update
+    // (finance.transactions.bulk NO admite recurrence, resolución nº 5).
+    const transactionIds = items.filter(hasTxId).map((i) => i.txId);
+    const conceptItems = items.filter((i) => i.txId == null);
+    const r = await submit([
+      ...conceptItems.map((i) => assignConceptRecurrence(conceptTargetOf(i), rec)),
+      ...transactionIds.map((id) => updateTransactionRecurrence(id, rec))
+    ]);
+    const label = rec === 'recurrente' ? '♻ recurrente' : '✦ extraordinario';
+    toast = { message: acuse(r, `${selectionMovs} movimiento${selectionMovs === 1 ? '' : 's'} → ${label}`) };
+    clearSelection();
+  }
+  async function actionInvest(accountId: string): Promise<void> {
+    // Solo cargos negativos sin cruzar (el servidor rechaza el resto): se envía
+    // por id exacto resolviendo la selección completa.
+    const ids = resolveSelectionIds(selectionList, movIdsByKey);
+    if (ids.length === 0) {
+      toast = { message: 'No hay nada que asignar' };
+      return;
+    }
+    const name = invAccounts.find((a) => a.id === accountId)?.name ?? '';
+    const r = await submit(ids.map((id) => investTransaction(id, accountId)));
+    toast = { message: acuse(r, `${ids.length} movimiento${ids.length === 1 ? '' : 's'} → inversión ${name}`) };
+    clearSelection();
+  }
+  function actionOpenPanel(): void {
+    const ids = resolveSelectionIds(selectionList, movIdsByKey);
+    const n = selectionList.length;
+    onOpenIds(ids, `${n} seleccionado${n === 1 ? '' : 's'}`, `${ids.length} movimiento${ids.length === 1 ? '' : 's'}`);
+  }
 </script>
 
 {#snippet subtotalRow(label: string, data: { count: number; totalCents: bigint; avgCents: bigint; ticketCents: bigint; monthly: Record<string, bigint> }, tone: '' | 'ok' | 'warn', tooltip: string, testid = '')}
@@ -140,10 +340,12 @@
   </tr>
 {/snippet}
 
-{#snippet nodeRow(node: PivotNodeLike, kind: 'gasto' | 'ingreso' | 'evento' | 'transferencia' | 'inversion', nodeDims: readonly PivotDimension[])}
+{#snippet nodeRow(node: PivotNodeLike, kind: 'gasto' | 'ingreso' | 'evento' | 'transferencia' | 'inversion', nodeDims: readonly PivotDimension[], siblings: SelectableItem[])}
   {@const isExpanded = forceExpand || expanded.has(node.key)}
   {@const hasChildren = node.children.length > 0}
   {@const canOpen = !hasChildren && node.movs.length > 0}
+  {@const item = kind === 'transferencia' || kind === 'inversion' ? toMovementSelectable(node, nodeDims) : toAnySelectable(node, nodeDims)}
+  {@const childSiblings = selectableListAny(node.children, nodeDims)}
   {@const natClass = (kind === 'gasto' || kind === 'ingreso') && nodeDims[node.depth] === 'nat'
     ? node.nat === 'recurrente' ? (kind === 'gasto' ? 'neg' : 'pos') : node.nat === 'extraordinario' ? 'suave' : ''
     : ''}
@@ -159,6 +361,10 @@
       {:else}
         <span class="flecha" aria-hidden="true"></span>
       {/if}
+      <input type="checkbox" class="marca" style:visibility={item ? 'visible' : 'hidden'}
+        tabindex={item ? 0 : -1} checked={item ? selected.has(node.key) : false}
+        aria-label={`seleccionar ${node.label}`}
+        onclick={(e) => { e.stopPropagation(); if (item) clickItem(item, siblings, e.shiftKey); }} />
       {#if canOpen}
         <button type="button" class="abrir" title="abrir ficha"
           onclick={(e) => { e.stopPropagation(); openLeaf(node); }}>{node.label}</button>
@@ -174,7 +380,7 @@
   </tr>
   {#if isExpanded}
     {#each node.children as child (child.key)}
-      {@render nodeRow(child, kind, nodeDims)}
+      {@render nodeRow(child, kind, nodeDims, childSiblings)}
     {/each}
   {/if}
 {/snippet}
@@ -217,12 +423,12 @@
       <tbody>
         {#if ingresoTree.length > 0}
           <tr class="banda" data-testid="pivot-banda-ingresos"><td colspan={colSpan}>INGRESOS</td></tr>
-          {#each ingresoTree as node (node.key)}{@render nodeRow(node, 'ingreso', dims)}{/each}
+          {#each ingresoTree as node (node.key)}{@render nodeRow(node, 'ingreso', dims, selectableListAny(ingresoTree, dims))}{/each}
           {@render subtotalRow('Subtotal ingresos', tree.subtotales.ingresos, '', '')}
         {/if}
         {#if gastoTree.length > 0}
           <tr class="banda" data-testid="pivot-banda-gastos"><td colspan={colSpan}>GASTOS</td></tr>
-          {#each gastoTree as node (node.key)}{@render nodeRow(node, 'gasto', dims)}{/each}
+          {#each gastoTree as node (node.key)}{@render nodeRow(node, 'gasto', dims, selectableListAny(gastoTree, dims))}{/each}
           {@render subtotalRow('Subtotal gastos', tree.subtotales.gastos, '', '')}
         {/if}
         <tr class="banda" data-testid="pivot-banda-eventos"><td colspan={colSpan}>EVENTOS</td></tr>
@@ -249,7 +455,7 @@
             {#each months as m (m)}<td class="importe cifra">{cellText(event.monthly[m])}</td>{/each}
           </tr>
           {#if evExpanded}
-            {#each event.children as child (child.key)}{@render nodeRow(child, 'evento', dims)}{/each}
+            {#each event.children as child (child.key)}{@render nodeRow(child, 'evento', dims, selectableListAny(event.children, dims))}{/each}
           {/if}
         {/each}
         {#if displayEventos.length > 0}
@@ -257,14 +463,14 @@
         {/if}
         {#if internaTree.length > 0}
           <tr class="banda" data-testid="pivot-banda-internas"><td colspan={colSpan}>INTERNAS</td></tr>
-          {#each internaTree as node (node.key)}{@render nodeRow(node, 'transferencia', INTERNA_DIMS)}{/each}
+          {#each internaTree as node (node.key)}{@render nodeRow(node, 'transferencia', INTERNA_DIMS, [])}{/each}
           {@render subtotalRow('Subtotal internas', tree.subtotales.internas,
             tree.subtotales.internas.totalCents === 0n ? 'ok' : 'warn',
             tree.subtotales.internas.totalCents === 0n ? '' : 'Con todas las cuentas seleccionadas debe sumar 0: un valor distinto indica una pata fuera del filtro de cuentas o un descuadre real.')}
         {/if}
         {#if inversionTree.length > 0}
           <tr class="banda" data-testid="pivot-banda-inversion"><td colspan={colSpan}>INVERSIÓN</td></tr>
-          {#each inversionTree as node (node.key)}{@render nodeRow(node, 'inversion', INVERSION_DIMS)}{/each}
+          {#each inversionTree as node (node.key)}{@render nodeRow(node, 'inversion', INVERSION_DIMS, [])}{/each}
           {@render subtotalRow('Subtotal inversión', tree.subtotales.inversiones, '', '')}
         {/if}
         {#if gastoTree.length > 0 || ingresoTree.length > 0 || displayEventos.length > 0}
@@ -276,6 +482,27 @@
   {#if hasSearch}
     <p class="nota">los KPIs muestran el total del periodo</p>
   {/if}
+{/if}
+
+{#if selectionList.length > 0}
+  <!-- `events` (el prop íntegro), no `displayEventos`: mientras `hasSearch` es
+       true, `displayEventos` se reduce a `eventTree` y omitiría eventos sin
+       movimientos visibles en la búsqueda actual — aquí hace falta la lista
+       completa del household para poder mover la selección a cualquiera. -->
+  <PivotActionBar concepts={selectionList.length} movs={selectionMovs}
+    {events} {categories} {invAccounts}
+    categoryOnlySelection={selectionList.every((i) => i.categoryId != null)}
+    onMoveToEvent={actionMoveToEvent} onNewEvent={actionNewEvent}
+    onMoveToCategory={actionMoveToCategory} onSetRecurrence={actionSetRecurrence}
+    onInvest={actionInvest} onOpenPanel={actionOpenPanel} onClear={clearSelection} />
+{/if}
+
+{#if toast}
+  <div class="pivot-toast" role="status" data-testid="pivot-toast">
+    <span>{toast.message}</span>
+    {#if toast.onUndo}<button type="button" onclick={() => { const u = toast?.onUndo; toast = null; void u?.(); }}>Deshacer</button>{/if}
+    <button type="button" aria-label="cerrar aviso" onclick={() => (toast = null)}>✕</button>
+  </div>
 {/if}
 
 <style>
@@ -307,4 +534,13 @@
   .vacio, .nota { color: var(--ink-soft); font-size: var(--text-meta); margin-top: var(--space-2); }
   small { color: var(--ink-faint); }
   .limpiar { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); text-decoration: underline; }
+  .marca { margin-right: var(--space-1); }
+  .pivot-toast { position: fixed; z-index: 50; bottom: calc(var(--bottom-nav-h) + var(--space-6) + var(--space-6)); inset-inline: 0; margin-inline: auto; width: fit-content; max-width: calc(100% - var(--space-6)); display: flex; align-items: center; gap: var(--space-3); background: var(--primary); color: var(--ink-on-primary); border-radius: var(--r-md); box-shadow: var(--shadow-over); padding: var(--space-2) var(--space-3); font-size: var(--text-meta); }
+  .pivot-toast button { border: 0; background: transparent; color: var(--ink-on-primary); cursor: pointer; font-weight: 700; text-decoration: underline; }
+
+  /* Presupuesto de la spec §8: el módulo respeta prefers-reduced-motion. El
+     toast aparece y desaparece sin desplazamiento ni fundido para quien lo pide. */
+  @media (prefers-reduced-motion: reduce) {
+    .pivot-toast, .pivot-toast button { transition: none; animation: none; }
+  }
 </style>
