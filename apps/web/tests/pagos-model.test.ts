@@ -35,6 +35,10 @@ function settlement(overrides: Partial<SettlementView> = {}): SettlementView {
     receiptConfirmedAt: null,
     receiptNote: null,
     paymentStateLabel: 'Pendiente de pago',
+    // El recibo archivado que trajo el Frente E. La fila del mes no lo mira
+    // —vive dentro del pliegue—, pero el tipo lo exige y la respuesta honesta
+    // para una cuenta que nadie ha cerrado con el worker delante es «no».
+    receiptDocumentAvailable: false,
     lines: [],
     payments: [],
     ...overrides
