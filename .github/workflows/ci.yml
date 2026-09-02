@@ -325,6 +325,7 @@ jobs:
           --label 'suites de Vitest con servidor o base de datos'
           --specs 'apps/web::tests/*.test.ts'
           --specs 'packages/server::src/*.test.ts'
+          --specs 'packages/server::src/finance/**/*.test.ts'
           --specs 'apps/worker::src/*.test.ts'
           --junit 'evidence/**/*.xml'
 
