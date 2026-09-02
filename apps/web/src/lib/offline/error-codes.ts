@@ -84,7 +84,35 @@ const ERROR_CODE_LABELS: Record<string, string> = {
 
   // Los mensajes de accesos y membresías viven como messageOverrides en la
   // página de Ajustes: solo allí pueden producirse y así no pesan en Hoy.
-  group_not_found: 'El grupo ya no existe'
+  group_not_found: 'El grupo ya no existe',
+
+  // Finanzas
+  // El más frecuente de todos: lo lanza requireFinanceAdmin (fase 1) cuando a un
+  // admin le revocan Finanzas a media sesión. Sin él, el acuse diría «No se pudo
+  // guardar el cambio.» sin causa, y la spec §7 exige acuse veraz.
+  finance_not_granted: 'Finanzas no está activado para tu cuenta',
+  not_granted: 'Esa persona ya no tenía Finanzas activado',
+  already_granted: 'Esa persona ya tenía Finanzas activado',
+  grant_target_not_admin: 'Solo se puede activar Finanzas a quien administra la casa',
+  // membership_not_found queda fuera a propósito (R23): no pesa en Hoy.
+  finance_account_not_found: 'La cuenta ya no existe',
+  finance_category_not_found: 'La categoría ya no existe',
+  finance_category_in_use: 'La categoría sigue en uso: vacíala antes de borrarla',
+  finance_category_is_transfer: 'La categoría de transferencias no admite esa operación',
+  finance_rule_not_found: 'La regla ya no existe',
+  finance_transaction_not_found: 'El movimiento ya no existe',
+  finance_not_manual: 'Solo se pueden borrar movimientos manuales',
+  finance_cashpair_leg: 'Es una contrapartida de efectivo: borra su gasto original',
+  finance_event_not_found: 'El evento ya no existe',
+  finance_event_name_taken: 'Ya existe un evento con ese nombre',
+  finance_batch_not_found: 'Esa importación ya no existe',
+  finance_transfer_sum_not_zero: 'La selección no suma cero',
+  finance_already_linked: 'Algún movimiento ya pertenece a una transferencia',
+  finance_transfer_group_not_found: 'Esa transferencia ya no existe',
+  finance_not_investment_account: 'La cuenta destino no es de inversión',
+  finance_invest_needs_charge: 'Solo un cargo puede marcarse como inversión',
+  finance_mirror_exists: 'Ese movimiento ya tiene su espejo de inversión',
+  finance_selector_required: 'Se necesita un proveedor o una categoría'
 };
 
 /**

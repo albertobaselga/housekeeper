@@ -6,10 +6,13 @@ import {
   commandEnvelopeSchema,
   financeCommandPayloadSchema,
   financeGrantPayloadSchema,
-  financeRevokePayloadSchema
+  financeRevokePayloadSchema,
+  financeWritePayloadSchema
 } from '@housekeeper/contracts/schemas';
 
-import { financeGrantToggle, grantFinanceAccess, revokeFinanceAccess } from '../src/lib/finance/commands';
+import { financeCommand, financeGrantToggle, grantFinanceAccess, revokeFinanceAccess } from '../src/lib/finance/commands';
+import { canLinkSelection } from '../src/lib/finance/link-transfers';
+import { manualAmountCents } from '../src/lib/finance/manual-form';
 
 const HOUSEHOLD = '10000000-0000-4000-8000-000000000001';
 const MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
@@ -88,5 +91,52 @@ describe('financeGrantToggle elige el comando por el estado REAL de la fila', ()
       // dos concesiones simultáneas compartirían identidad de agregado.
       expect(envelope.aggregateId, `granted=${granted}`).toBe(MEMBERSHIP);
     }
+  });
+});
+
+// Nombres propios distintos de HOUSEHOLD/MEMBERSHIP/OPTIONS de arriba: son
+// constantes de módulo y no se pueden redeclarar con los mismos nombres del
+// brief (HH/TX1/TX2/OPTIONS) sin colisionar con las ya existentes.
+const HH = '10000000-0000-4000-8000-000000000001';
+const TX1 = 'ab300000-0000-4000-8000-000000000001';
+const TX2 = 'ab300000-0000-4000-8000-000000000002';
+const WRITE_OPTIONS = { operationId: '99999999-0000-4000-8000-000000000031', occurredAt: '2026-08-07T10:00:00.000Z' };
+
+describe('constructor de envelopes de finanzas', () => {
+  it('produce envelopes válidos contra el contrato, con el kind congelado', () => {
+    const envelope = financeCommand(
+      HH,
+      { kind: 'finance.transaction.update', transactionId: TX1, status: 'confirmada' },
+      WRITE_OPTIONS
+    );
+    expect(commandEnvelopeSchema.parse(envelope)).toBeTruthy();
+    expect(envelope.aggregateType).toBe('finance');
+    expect(financeWritePayloadSchema.parse(envelope.payload)).toMatchObject({ kind: 'finance.transaction.update' });
+  });
+});
+
+describe('canLinkSelection (réplica cliente de finance.transfers.link)', () => {
+  const rows = [
+    { id: TX1, amountCents: '-5000', transferGroupId: null },
+    { id: TX2, amountCents: '5000', transferGroupId: null }
+  ];
+  it('exige 2+, sin grupo previo y suma cero en bigint', () => {
+    expect(canLinkSelection(rows, new Set([TX1]))).toMatchObject({ enabled: false });
+    expect(canLinkSelection(rows, new Set([TX1, TX2]))).toEqual({ enabled: true, reason: null });
+    expect(
+      canLinkSelection([{ ...rows[0]!, transferGroupId: 'g' }, rows[1]!], new Set([TX1, TX2])).reason
+    ).toBe('algún movimiento ya pertenece a un grupo');
+    expect(
+      canLinkSelection([rows[0]!, { ...rows[1]!, amountCents: '4999' }], new Set([TX1, TX2])).reason
+    ).toBe('la selección no suma cero');
+  });
+});
+
+describe('manualAmountCents', () => {
+  it('firma el importe según el tipo y rechaza basura', () => {
+    expect(manualAmountCents('12,50', 'gasto')).toBe('-1250');
+    expect(manualAmountCents('12,50', 'ingreso')).toBe('1250');
+    expect(manualAmountCents('0', 'gasto')).toBeNull();
+    expect(manualAmountCents('abc', 'gasto')).toBeNull();
   });
 });

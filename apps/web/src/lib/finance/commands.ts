@@ -1,4 +1,4 @@
-import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
+import type { CommandEnvelopeV1, FinanceWritePayloadV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 
@@ -69,4 +69,27 @@ export function financeGrantToggle(
   options: EnvelopeOptions = {}
 ): CommandEnvelopeV1<FinanceGrantPayload | FinanceRevokePayload> {
   return input.granted ? revokeFinanceAccess(input, options) : grantFinanceAccess(input, options);
+}
+
+export interface FinanceEnvelopeOptions {
+  operationId?: string;
+  occurredAt?: string;
+}
+
+/**
+ * Constructor ÚNICO de envelopes de Finanzas: el payload discriminado por
+ * `kind` viaja congelado; la validación zod vive en los tests y en el
+ * servidor, nunca en el bundle del navegador.
+ */
+export function financeCommand<TPayload extends FinanceWritePayloadV1>(
+  householdId: string,
+  payload: TPayload,
+  options: FinanceEnvelopeOptions = {}
+): CommandEnvelopeV1<TPayload> {
+  return createCommandEnvelope({
+    householdId,
+    aggregateType: 'finance',
+    payload,
+    ...options
+  }) as CommandEnvelopeV1<TPayload>;
 }
