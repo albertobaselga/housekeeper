@@ -103,4 +103,20 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
   it('buildTxCategoryIndex recibe pares {id, categoryId} aplanados desde los movs de cada fila (AnaliticaPivotRow no trae categoryId por movimiento)', () => {
     expect(table).toMatch(/buildTxCategoryIndex\(\s*rows\.flatMap/);
   });
+
+  it('el plan de deshacer de una recategorización cubre TAMBIÉN una hoja de movimiento suelta, no solo conceptos', () => {
+    // Defecto del snippet del brief: `planCategoryUndo(conceptItems, …)` con
+    // `conceptItems = items.filter(txId == null && categoryId == null)`
+    // excluye las hojas de movimiento (txId set) del plan. Seleccionar UNA sola
+    // hoja y recategorizarla deja el plan vacío (`planCategoryUndo` sí sabe
+    // indexarlas por id exacto, ver `finance-pivot-actions.test.ts`, caso
+    // "mezcla de un nodo de concepto y una hoja de movimiento"): pulsar
+    // «Deshacer» no restaura nada y el toast dice, engañoso, «No hay nada que
+    // asignar» (acuse con sent===0). `planCategoryUndo` debe recibir todos los
+    // ítems salvo los de categoría agregada (`categoryId == null`), no solo
+    // `conceptItems`.
+    expect(table).toMatch(/const undoItems = items\.filter\(\(i\) => i\.categoryId == null\);/);
+    expect(table).toMatch(/planCategoryUndo\(undoItems, movIdsByKey, txCatIndex\)/);
+    expect(table).not.toMatch(/planCategoryUndo\(conceptItems, movIdsByKey, txCatIndex\)/);
+  });
 });

@@ -256,7 +256,15 @@
     const transactionIds = resolveSelectionIds(items.filter(hasTxId), movIdsByKey);
     const conceptItems = items.filter((i) => i.txId == null && i.categoryId == null);
     const omitidos = omitted + items.filter((i) => i.categoryId != null).length;
-    const plan = planCategoryUndo(conceptItems, movIdsByKey, txCatIndex);
+    // El plan de deshacer cubre TODO lo que de verdad se mueve (conceptos Y
+    // hojas de movimiento sueltas), no solo `conceptItems`: una hoja (`txId`
+    // set, `provider: ''`) también se indexa por id exacto en
+    // `planCategoryUndo` (ver el caso "mezcla" de `finance-pivot-actions.test.ts`).
+    // Omitirla dejaría el plan vacío al recategorizar una única hoja y
+    // «Deshacer» no restauraría nada, con un acuse engañoso («No hay nada que
+    // asignar», por `sent === 0`).
+    const undoItems = items.filter((i) => i.categoryId == null);
+    const plan = planCategoryUndo(undoItems, movIdsByKey, txCatIndex);
     const movidos = conceptItems.reduce((s, i) => s + i.count, 0) + transactionIds.length;
     const r = await submit([
       ...conceptItems.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
