@@ -11,7 +11,7 @@ export * from "./transfers.js";
 
 export * from "./amex.js";
 
-// investments (Task 7)
+export * from "./investments.js";
 
 // cash (Task 7)
 
