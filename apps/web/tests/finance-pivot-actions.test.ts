@@ -325,6 +325,39 @@ describe('sendAll y acuse (R14): plan de envío en cadena de la barra de accione
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it('F6-I5: onProgress publica (nº de comando, total) antes de cada envío, y no se llama con el lote vacío', async () => {
+    const pasos: [number, number][] = [];
+    const send = vi.fn().mockResolvedValue({ outcome: 'synced', message: 'Guardado ✓' });
+    const invalidate = async () => {};
+
+    await sendAll('h1', PAYLOADS, { send, invalidate, onProgress: (done, total) => pasos.push([done, total]) });
+    expect(pasos).toEqual([
+      [1, 3],
+      [2, 3],
+      [3, 3]
+    ]);
+
+    pasos.length = 0;
+    await sendAll('h1', [], { send, invalidate, onProgress: (done, total) => pasos.push([done, total]) });
+    expect(pasos).toEqual([]);
+  });
+
+  it('F6-I5: un corte deja de publicar progreso (los comandos posteriores no se envían)', async () => {
+    const pasos: number[] = [];
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({ outcome: 'synced', message: 'Guardado ✓' })
+      .mockResolvedValueOnce({ outcome: 'rejected', message: 'No se pudo guardar el cambio.' });
+
+    await sendAll('h1', PAYLOADS, {
+      send,
+      invalidate: async () => {},
+      onProgress: (done) => pasos.push(done)
+    });
+
+    expect(pasos).toEqual([1, 2]);
+  });
+
   it('lista vacía no envía nada, y acuse devuelve el copy de "vacío"', async () => {
     const invalidated: string[] = [];
     const send = vi.fn();

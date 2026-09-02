@@ -49,7 +49,44 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
 
   it('invalida con el token canónico cc:finance a través de un cierre sobre sendAll (ruling: sendAll real pide 3 argumentos)', () => {
     expect(table).toMatch(/import \{[^}]*\binvalidate\b[^}]*\} from '\$app\/navigation';/);
-    expect(table).toMatch(/sendAll\(householdId, payloads, \{ invalidate \}\)/);
+    expect(table).toMatch(/sendAll\(householdId, payloads, \{\s*invalidate,/);
+  });
+
+  it('T12-M5/F6-I5: todo lo que escribe pasa por `run`, con try/catch, aviso de fallo y bloqueo de reenvío', () => {
+    // Un rechazo del outbox (IndexedDB llena, cuota) dejaba una promesa sin
+    // manejar y la acción a medias sin decir nada.
+    expect(table).toMatch(/async function run\(fn: \(\) => Promise<void>\): Promise<void>/);
+    expect(table).toMatch(/catch \{\s*toast = \{ message: 'No se pudo guardar el cambio\.' \};/);
+    expect(table).toMatch(/if \(enviando\) return;/);
+    expect(table).toMatch(/finally \{\s*enviando = false;/);
+    // Ninguna acción ni drop llama al aplicador por fuera del envoltorio.
+    for (const gesto of [
+      'applyCategoryAssignment(payload.items, categoryId, payload.omitted)',
+      'applyEventAssignment(payload.items, eventId, eventName, payload.omitted)',
+      'applyNewEventAssignment(payload.items, name, payload.omitted)'
+    ]) {
+      expect(table).toContain(`run(() => ${gesto})`);
+    }
+    expect(table).toMatch(/<PivotActionBar[\s\S]*\{enviando\}/);
+  });
+
+  it('F6-I5: el toast cuenta el progreso del lote (sendAll lo publica con onProgress)', () => {
+    expect(table).toMatch(/onProgress: \(done, total\) =>/);
+    expect(table).toContain('`Guardando ${done} de ${total}…`');
+  });
+
+  it('T12-M4/F6-M7: la selección y las claves expandidas no sobreviven a un árbol nuevo', () => {
+    // Cambio de chips/dims (routing superficial) o re-ejecución del loader
+    // (cambio de rango): las claves dejan de significar lo mismo.
+    expect(table).toContain('clearSelection();');
+    expect(table).toMatch(/vistoRows !== rows \|\| vistoClave !== clave/);
+    expect(table).toMatch(/\[\.\.\.expanded\]\.filter\(\(k\) => expandableKeys\.has\(k\)\)/);
+  });
+
+  it('F6-M3: al cerrar el aviso el foco vuelve a un ancla estable, no al <body>', () => {
+    expect(table).toContain('function devolverFoco()');
+    expect(table).toMatch(/data-fila=\{node\.key\}/);
+    expect(table).toMatch(/toast = null; devolverFoco\(\);/);
   });
 
   it('R27: createEventPayload(name, id) — nunca (id, name)', () => {

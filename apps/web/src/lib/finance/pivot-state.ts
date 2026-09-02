@@ -180,7 +180,15 @@ export function toMovementSelectable(node: PivotNodeLike, dims: readonly PivotDi
 }
 
 export function toAnySelectable(node: PivotNodeLike, dims: readonly PivotDimension[]): SelectableItem | null {
-  return toSelectable(node) ?? toCategorySelectable(node, dims) ?? toMovementSelectable(node, dims);
+  // F6-M6: la CATEGORÍA manda en un nivel `cat`/`sub`. El dominio marca
+  // `provider` en cualquier nodo cuyas filas compartan proveedor
+  // (packages/domain/src/finance/pivot.ts), así que una categoría con un único
+  // proveedor llegaba aquí con `provider` puesto y se arrastraba como
+  // proveedor: soltarla sobre otra categoría creaba regla, mientras que la
+  // misma categoría con dos proveedores se rechazaba. El gesto dependía de
+  // cuántos proveedores hubiera dentro, que es invisible; ahora depende de la
+  // dimensión del nivel, que sí se ve en la cabecera.
+  return toCategorySelectable(node, dims) ?? toSelectable(node) ?? toMovementSelectable(node, dims);
 }
 
 export function selectableListAny(nodes: readonly PivotNodeLike[], dims: readonly PivotDimension[]): SelectableItem[] {

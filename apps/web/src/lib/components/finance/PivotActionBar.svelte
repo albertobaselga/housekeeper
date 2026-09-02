@@ -2,7 +2,7 @@
   import type { AnaliticaCategory, AnaliticaEventSummary } from '$lib/finance/analitica-data';
 
   let {
-    concepts, movs, events, categories, invAccounts, categoryOnlySelection = false,
+    concepts, movs, events, categories, invAccounts, categoryOnlySelection = false, enviando = false,
     onMoveToEvent, onNewEvent, onMoveToCategory, onSetRecurrence, onInvest, onOpenPanel, onClear
   }: {
     // R6: contadores de presentación (cuántos ítems/movimientos hay en la
@@ -13,6 +13,12 @@
     categories: AnaliticaCategory[];
     invAccounts: { id: string; name: string }[];
     categoryOnlySelection?: boolean;
+    /**
+     * F6-I5: hay un lote en vuelo. Una acción en bloque son N peticiones en
+     * serie; sin esto, un segundo clic impaciente lanzaba la cadena entera otra
+     * vez (duplicando reglas y trabajo).
+     */
+    enviando?: boolean;
     onMoveToEvent: (eventId: string) => void;
     onNewEvent: (name: string) => void;
     onMoveToCategory: (categoryId: string) => void;
@@ -30,19 +36,19 @@
   }
 </script>
 
-<div class="barra" role="toolbar" aria-label="Acciones sobre la selección" data-testid="pivot-actionbar">
+<div class="barra" role="toolbar" aria-label="Acciones sobre la selección" aria-busy={enviando} data-testid="pivot-actionbar">
   <span class="cifra resumen">{concepts} concepto{concepts === 1 ? '' : 's'} · {movs} mov{movs === 1 ? '' : 's'}</span>
 
   <details>
     <summary>Mover a evento ▾</summary>
     <div class="menu">
       {#each events as e (e.id)}
-        <button type="button" onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onMoveToEvent(e.id))}>{e.name}</button>
+        <button type="button" disabled={enviando} onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onMoveToEvent(e.id))}>{e.name}</button>
       {/each}
       {#if events.length === 0}<p class="vacio">Sin eventos aún</p>{/if}
       <form onsubmit={(ev) => { ev.preventDefault(); if (newEventName.trim()) { onNewEvent(newEventName.trim()); newEventName = ''; } }}>
         <input type="text" placeholder="+ Nuevo evento…" bind:value={newEventName} aria-label="Nombre del evento nuevo" />
-        <button type="submit">+</button>
+        <button type="submit" disabled={enviando}>+</button>
       </form>
     </div>
   </details>
@@ -52,9 +58,9 @@
     {#if !categoryOnlySelection}
       <div class="menu alto">
         {#each parents as p (p.id)}
-          <button type="button" class="padre" onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onMoveToCategory(p.id))}>{p.name}</button>
+          <button type="button" class="padre" disabled={enviando} onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onMoveToCategory(p.id))}>{p.name}</button>
           {#each categories.filter((c) => c.parentId === p.id) as c (c.id)}
-            <button type="button" class="hija" onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onMoveToCategory(c.id))}>{c.name}</button>
+            <button type="button" class="hija" disabled={enviando} onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onMoveToCategory(c.id))}>{c.name}</button>
           {/each}
         {/each}
       </div>
@@ -66,8 +72,8 @@
   <details>
     <summary>Naturaleza ▾</summary>
     <div class="menu">
-      <button type="button" onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onSetRecurrence('recurrente'))}>♻ Recurrente</button>
-      <button type="button" onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onSetRecurrence('extraordinario'))}>✦ Extraordinario</button>
+      <button type="button" disabled={enviando} onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onSetRecurrence('recurrente'))}>♻ Recurrente</button>
+      <button type="button" disabled={enviando} onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onSetRecurrence('extraordinario'))}>✦ Extraordinario</button>
     </div>
   </details>
 
@@ -76,13 +82,13 @@
     <div class="menu">
       {#if invAccounts.length === 0}<p class="vacio">Crea una cuenta de inversión en Ajustes.</p>{/if}
       {#each invAccounts as acc (acc.id)}
-        <button type="button" onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onInvest(acc.id))}>{acc.name}</button>
+        <button type="button" disabled={enviando} onclick={(ev) => pick(ev.currentTarget.closest('details'), () => onInvest(acc.id))}>{acc.name}</button>
       {/each}
     </div>
   </details>
 
-  <button type="button" class="plana" onclick={onOpenPanel}>Abrir panel</button>
-  <button type="button" class="plana" aria-label="limpiar selección" onclick={onClear}>×</button>
+  <button type="button" class="plana" disabled={enviando} onclick={onOpenPanel}>Abrir panel</button>
+  <button type="button" class="plana" disabled={enviando} aria-label="limpiar selección" onclick={onClear}>×</button>
 </div>
 
 <style>
@@ -101,4 +107,6 @@
   .menu input { flex: 1; border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--space-1); font-size: max(1em, 1rem); }
   .plana { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); cursor: pointer; padding: var(--space-1) var(--space-2); font-size: var(--text-meta); }
   .vacio { color: var(--ink-soft); font-size: var(--text-meta); padding: var(--space-1); }
+  /* F6-I5: los botones deshabilitados mientras hay un lote en vuelo se ven. */
+  .barra button:disabled { opacity: .45; cursor: default; }
 </style>

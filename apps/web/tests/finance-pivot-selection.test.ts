@@ -42,12 +42,28 @@ describe('toSelectable / toCategorySelectable / toMovementSelectable / toAnySele
     expect(toMovementSelectable(n, ['cat', 'movement'])?.txId).toBe('t1');
     expect(isMovementLeaf(n, ['cat', 'prov'])).toBe(false);
   });
-  it('toAnySelectable prefiere proveedor, luego categoría, luego movimiento', () => {
+  it('toAnySelectable prefiere categoría en un nivel cat/sub, y proveedor en los demás', () => {
     expect(toAnySelectable(node({ key: '/prov:A', provider: 'A' }), ['prov'])?.provider).toBe('A');
     expect(toAnySelectable(node({ key: '/cat:O', catId: 'c1', label: 'O' }), ['cat'])?.categoryId).toBe('c1');
     const leaf = node({ key: '/cat:O/movement:t9', depth: 1, movs: [{ id: 't9', date: 'x', cents: -1n }] });
     expect(toAnySelectable(leaf, ['cat', 'movement'])?.txId).toBe('t9');
     expect(toAnySelectable(node({ key: '/nat:mix' }), ['nat'])).toBeNull();
+  });
+
+  it('F6-M6: una categoría con un ÚNICO proveedor sigue siendo seleccionable como categoría', () => {
+    // El dominio pone `provider` en cualquier nodo cuyas filas compartan
+    // proveedor, así que este nodo de nivel `cat` llega con los dos campos. Sin
+    // la preferencia por categoría se arrastraba como proveedor y soltarlo
+    // sobre otra categoría creaba una regla, mientras que la misma categoría
+    // con dos proveedores se rechazaba: el gesto dependía de cuántos
+    // proveedores hubiera dentro, que no se ve.
+    const monoProveedor = node({ key: '/cat:O', catId: 'c1', label: 'Ocio', provider: 'Cine Ideal', count: 4 });
+    const item = toAnySelectable(monoProveedor, ['cat', 'prov']);
+    expect(item?.categoryId).toBe('c1');
+    expect(item?.provider).toBe('');
+    // En el nivel de proveedor (sin catId propio) manda el proveedor.
+    const provNode = node({ key: '/cat:O/prov:Cine', depth: 1, provider: 'Cine Ideal', count: 4 });
+    expect(toAnySelectable(provNode, ['cat', 'prov'])?.provider).toBe('Cine Ideal');
   });
 });
 

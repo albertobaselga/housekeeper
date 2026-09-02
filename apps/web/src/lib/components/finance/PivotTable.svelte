@@ -155,6 +155,19 @@
   const selectionMovs = $derived(selectionList.reduce((s, i) => s + i.count, 0));
   const clearSelection = () => { selected = new Map(); lastKey = null; };
 
+  // F6-M3: al cerrar el aviso (con «Deshacer» o con «✕») el elemento enfocado
+  // desaparece del DOM y el foco cae al <body>; con teclado o lector se pierde
+  // el sitio en una tabla larga. Se recuerda la fila que originó la acción y se
+  // le devuelve el foco; si ya no está en el árbol, ancla la tabla entera.
+  let tablaEl = $state<HTMLDivElement | null>(null);
+  let anchorKey: string | null = null;
+  let arrastreKey: string | null = null;
+  function devolverFoco(): void {
+    const destino = anchorKey !== null ? tablaEl?.querySelector(`[data-fila="${CSS.escape(anchorKey)}"]`) : null;
+    if (destino instanceof HTMLElement) destino.focus();
+    else tablaEl?.focus();
+  }
+
   /** Guarda de tipo: evita el `!` sobre `txId` (prohibido) en los aplicadores de abajo. */
   function hasTxId(item: SelectableItem): item is SelectableItem & { txId: string } {
     return item.txId != null;
@@ -192,6 +205,41 @@
     buildTxCategoryIndex(rows.flatMap((r) => r.movs.map((m) => ({ id: m.id, categoryId: r.catId }))))
   );
 
+  // Claves que el árbol vigente sabe expandir: las de los nodos más las de las
+  // filas de evento (`event/<id>`, que no pasan por `movIdsByKey`).
+  const expandableKeys = $derived(
+    new Set([...movIdsByKey.keys(), ...displayEventos.map((e) => `event/${e.eventId}`)])
+  );
+
+  // T12-M4 + F6-M7. La selección y el conjunto `expanded` se apoyan en claves
+  // del árbol vigente; cuando el árbol se rehace dejan de significar lo mismo:
+  //  - cambiar chips/dims reconstruye las claves (routing superficial, el
+  //    loader NO se re-ejecuta), y
+  //  - cambiar el rango en FinanceFilterBar sí re-ejecuta el loader: las
+  //    MISMAS claves apuntan entonces a otros movimientos, y un ítem de
+  //    concepto ni siquiera pasa por `movIdsByKey` (va por proveedor), así que
+  //    una selección superviviente mandaría comando sobre movimientos que el
+  //    usuario ya no está viendo.
+  // La identidad de `rows` solo cambia al re-ejecutarse el loader (o al
+  // cambiar el filtro de naturaleza de la página), que es exactamente el
+  // disparador que hace falta. `vistoRows`/`vistoClave` NO son `$state`:
+  // escribirlas dentro del `$effect` que las lee crearía un ciclo.
+  let vistoRows: AnaliticaPivotRow[] | null = null;
+  let vistoClave = '';
+  $effect(() => {
+    const clave = `${serializeDims(dims) ?? ''}|${serializeChips(chips)}`;
+    const primera = vistoRows === null;
+    const cambio = !primera && (vistoRows !== rows || vistoClave !== clave);
+    vistoRows = rows;
+    vistoClave = clave;
+    if (!cambio) return;
+    clearSelection();
+    // F6-M7: las claves de `expanded` construidas con las dims anteriores ya no
+    // existen en el árbol y se quedarían en el Set para siempre.
+    const validas = [...expanded].filter((k) => expandableKeys.has(k));
+    if (validas.length !== expanded.size) expanded = new Set(validas);
+  });
+
   // ── Toast con Deshacer y envío secuencial de comandos ──────────────────────
   // `sendAll`/`acuse`/`COLA` viven en `$lib/finance/pivot-actions` (tarea 6),
   // ya probados allí (R14/R25): aquí solo se encadena `householdId` y el
@@ -199,7 +247,38 @@
   // (Task 8) a través de este cierre — `sendAll` real pide 3 argumentos
   // (householdId, payloads, { invalidate }), no uno solo como el brief.
   let toast = $state<{ message: string; onUndo?: () => Promise<void> } | null>(null);
-  const submit = (payloads: readonly FinanceWritePayloadV1[]) => sendAll(householdId, payloads, { invalidate });
+  // F6-I5: mientras hay un lote en vuelo la barra se deshabilita (un segundo
+  // clic impaciente relanzaba la cadena entera) y el toast va contando.
+  let enviando = $state(false);
+  const submit = (payloads: readonly FinanceWritePayloadV1[]) =>
+    sendAll(householdId, payloads, {
+      invalidate,
+      onProgress: (done, total) => {
+        if (total > 1) toast = { message: `Guardando ${done} de ${total}…` };
+      }
+    });
+
+  /**
+   * Único envoltorio de todo lo que escribe (acciones de la barra, drops y el
+   * «Deshacer» del toast):
+   * - T12-M5: un rechazo de IndexedDB o del outbox deja de ser una promesa sin
+   *   manejar y se cuenta al usuario.
+   * - F6-I5: `enviando` bloquea la barra mientras dura el lote.
+   * - F6-M3: recuerda la fila que originó la acción para devolverle el foco
+   *   cuando el aviso se cierre.
+   */
+  async function run(fn: () => Promise<void>): Promise<void> {
+    if (enviando) return;
+    anchorKey = selectionList[0]?.key ?? arrastreKey ?? anchorKey;
+    enviando = true;
+    try {
+      await fn();
+    } catch {
+      toast = { message: 'No se pudo guardar el cambio.' };
+    } finally {
+      enviando = false;
+    }
+  }
 
   async function runCategoryUndo(plan: CategoryUndo): Promise<void> {
     const payloads = [
@@ -342,6 +421,7 @@
     e.dataTransfer.setDragImage(createDragGhostElement(dragGhostLabel(payload)), 10, 10);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', node.key);
+    arrastreKey = node.key;
     dragging = payload;
   }
   const onDragEnd = () => (dragging = null);
@@ -349,18 +429,18 @@
   // Los tres drops delegan en los aplicadores compartidos de la tarea 12: mismo
   // reparto conceptos/ids, mismos payloads, mismo acuse y mismo Deshacer que la
   // barra de acciones. Aquí solo se resuelve el gesto.
-  async function onDropCategory(categoryId: string): Promise<void> {
+  function onDropCategory(categoryId: string): Promise<void> {
     const payload = dragging;
     dragging = null;
-    if (!payload || payload.items.length === 0) return;
-    await applyCategoryAssignment(payload.items, categoryId, payload.omitted);
+    if (!payload || payload.items.length === 0) return Promise.resolve();
+    return run(() => applyCategoryAssignment(payload.items, categoryId, payload.omitted));
   }
 
-  async function onDropEvent(eventId: string, eventName: string): Promise<void> {
+  function onDropEvent(eventId: string, eventName: string): Promise<void> {
     const payload = dragging;
     dragging = null;
-    if (!payload || payload.items.length === 0) return;
-    await applyEventAssignment(payload.items, eventId, eventName, payload.omitted);
+    if (!payload || payload.items.length === 0) return Promise.resolve();
+    return run(() => applyEventAssignment(payload.items, eventId, eventName, payload.omitted));
   }
 
   function onDropNewEvent(): void {
@@ -370,61 +450,72 @@
     newEventDrop = payload;
     newEventName = '';
   }
-  async function confirmNewEventDrop(): Promise<void> {
+  function confirmNewEventDrop(): Promise<void> {
     const payload = newEventDrop;
     const name = newEventName.trim();
     newEventDrop = null;
-    if (!payload || !name) return;
-    await applyNewEventAssignment(payload.items, name, payload.omitted);
+    if (!payload || !name) return Promise.resolve();
+    return run(() => applyNewEventAssignment(payload.items, name, payload.omitted));
   }
 
   // ── Acciones de la barra (delegan en los aplicadores) ──────────────────────
-  async function actionMoveToEvent(eventId: string): Promise<void> {
+  function actionMoveToEvent(eventId: string): Promise<void> {
     const items = selectionList;
-    if (items.length === 0) return;
+    if (items.length === 0) return Promise.resolve();
     const name = events.find((e) => e.id === eventId)?.name ?? '';
-    await applyEventAssignment(items, eventId, name, 0);
-    clearSelection();
+    return run(async () => {
+      await applyEventAssignment(items, eventId, name, 0);
+      clearSelection();
+    });
   }
-  async function actionNewEvent(name: string): Promise<void> {
+  function actionNewEvent(name: string): Promise<void> {
     const items = selectionList;
-    if (items.length === 0) return;
-    await applyNewEventAssignment(items, name, 0);
-    clearSelection();
+    if (items.length === 0) return Promise.resolve();
+    return run(async () => {
+      await applyNewEventAssignment(items, name, 0);
+      clearSelection();
+    });
   }
-  async function actionMoveToCategory(categoryId: string): Promise<void> {
+  function actionMoveToCategory(categoryId: string): Promise<void> {
     const items = selectionList;
-    if (items.length === 0) return;
-    await applyCategoryAssignment(items, categoryId, 0);
-    clearSelection();
+    if (items.length === 0) return Promise.resolve();
+    return run(async () => {
+      await applyCategoryAssignment(items, categoryId, 0);
+      clearSelection();
+    });
   }
-  async function actionSetRecurrence(rec: 'recurrente' | 'extraordinario'): Promise<void> {
+  function actionSetRecurrence(rec: 'recurrente' | 'extraordinario'): Promise<void> {
     const items = selectionList;
-    if (items.length === 0) return;
-    // Por concepto: assignConceptRecurrence. Hoja suelta: transaction.update
-    // (finance.transactions.bulk NO admite recurrence, resolución nº 5).
-    const transactionIds = items.filter(hasTxId).map((i) => i.txId);
-    const conceptItems = items.filter((i) => i.txId == null);
-    const r = await submit([
-      ...conceptItems.map((i) => assignConceptRecurrence(conceptTargetOf(i), rec)),
-      ...transactionIds.map((id) => updateTransactionRecurrence(id, rec))
-    ]);
-    const label = rec === 'recurrente' ? '♻ recurrente' : '✦ extraordinario';
-    toast = { message: acuse(r, `${selectionMovs} movimiento${selectionMovs === 1 ? '' : 's'} → ${label}`) };
-    clearSelection();
+    if (items.length === 0) return Promise.resolve();
+    const movs = selectionMovs;
+    return run(async () => {
+      // Por concepto: assignConceptRecurrence. Hoja suelta: transaction.update
+      // (finance.transactions.bulk NO admite recurrence, resolución nº 5).
+      const transactionIds = items.filter(hasTxId).map((i) => i.txId);
+      const conceptItems = items.filter((i) => i.txId == null);
+      const r = await submit([
+        ...conceptItems.map((i) => assignConceptRecurrence(conceptTargetOf(i), rec)),
+        ...transactionIds.map((id) => updateTransactionRecurrence(id, rec))
+      ]);
+      const label = rec === 'recurrente' ? '♻ recurrente' : '✦ extraordinario';
+      toast = { message: acuse(r, `${movs} movimiento${movs === 1 ? '' : 's'} → ${label}`) };
+      clearSelection();
+    });
   }
-  async function actionInvest(accountId: string): Promise<void> {
+  function actionInvest(accountId: string): Promise<void> {
     // Solo cargos negativos sin cruzar (el servidor rechaza el resto): se envía
     // por id exacto resolviendo la selección completa.
     const ids = resolveSelectionIds(selectionList, movIdsByKey);
     if (ids.length === 0) {
       toast = { message: 'No hay nada que asignar' };
-      return;
+      return Promise.resolve();
     }
     const name = invAccounts.find((a) => a.id === accountId)?.name ?? '';
-    const r = await submit(ids.map((id) => investTransaction(id, accountId)));
-    toast = { message: acuse(r, `${ids.length} movimiento${ids.length === 1 ? '' : 's'} → inversión ${name}`) };
-    clearSelection();
+    return run(async () => {
+      const r = await submit(ids.map((id) => investTransaction(id, accountId)));
+      toast = { message: acuse(r, `${ids.length} movimiento${ids.length === 1 ? '' : 's'} → inversión ${name}`) };
+      clearSelection();
+    });
   }
   function actionOpenPanel(): void {
     const ids = resolveSelectionIds(selectionList, movIdsByKey);
@@ -477,7 +568,7 @@
         ondragend={isDraggable ? onDragEnd : undefined}>⠿</span>
       <input type="checkbox" class="marca" style:visibility={item ? 'visible' : 'hidden'}
         tabindex={item ? 0 : -1} checked={item ? selected.has(node.key) : false}
-        aria-label={`seleccionar ${node.label}`}
+        aria-label={`seleccionar ${node.label}`} data-fila={node.key}
         onclick={(e) => {
           // El clic nativo cambia `checked` en el DOM ANTES de correr este
           // manejador. En el camino de rango (Shift+clic) una fila que YA
@@ -534,7 +625,9 @@
   <p class="vacio">Sin resultados que coincidan con la búsqueda.
     <button type="button" class="limpiar" onclick={() => setShallowParam('q', '')}>limpiar búsqueda</button></p>
 {:else}
-  <div class="pivot-scroll">
+  <!-- tabindex -1: ancla de foco cuando la fila que originó una acción ya no
+       está en el DOM (F6-M3). No entra en el orden de tabulación. -->
+  <div class="pivot-scroll" bind:this={tablaEl} tabindex="-1">
     <table class="pivot" data-testid="pivot-table">
       <thead>
         <tr>
@@ -631,7 +724,7 @@
        movimientos visibles en la búsqueda actual — aquí hace falta la lista
        completa del household para poder mover la selección a cualquiera. -->
   <PivotActionBar concepts={selectionList.length} movs={selectionMovs}
-    {events} {categories} {invAccounts}
+    {events} {categories} {invAccounts} {enviando}
     categoryOnlySelection={selectionList.every((i) => i.categoryId != null)}
     onMoveToEvent={actionMoveToEvent} onNewEvent={actionNewEvent}
     onMoveToCategory={actionMoveToCategory} onSetRecurrence={actionSetRecurrence}
@@ -641,8 +734,11 @@
 {#if toast}
   <div class="pivot-toast" role="status" data-testid="pivot-toast">
     <span>{toast.message}</span>
-    {#if toast.onUndo}<button type="button" onclick={() => { const u = toast?.onUndo; toast = null; void u?.(); }}>Deshacer</button>{/if}
-    <button type="button" aria-label="cerrar aviso" onclick={() => (toast = null)}>✕</button>
+    <!-- F6-M3: el foco vuelve al ancla ANTES de que el aviso salga del DOM; si
+         no, cae al <body> y en una tabla larga se pierde el sitio. -->
+    {#if toast.onUndo}<button type="button"
+      onclick={() => { const u = toast?.onUndo; toast = null; devolverFoco(); if (u) void run(u); }}>Deshacer</button>{/if}
+    <button type="button" aria-label="cerrar aviso" onclick={() => { toast = null; devolverFoco(); }}>✕</button>
   </div>
 {/if}
 

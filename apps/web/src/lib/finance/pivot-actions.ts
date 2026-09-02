@@ -234,6 +234,13 @@ export interface SendAllDeps {
   /** Inyectable en pruebas; en producción es `sendFinanceCommand`. */
   send?: typeof sendFinanceCommand;
   invalidate: (token: string) => Promise<void>;
+  /**
+   * F6-I5: una acción en bloque son N peticiones EN SERIE (una por concepto).
+   * Con 30-40 filas la interfaz callaba durante todo el envío. Se llama justo
+   * ANTES de mandar cada comando, con (nº de este comando, total del lote), y
+   * nunca con el lote vacío.
+   */
+  onProgress?: (done: number, total: number) => void;
 }
 
 /**
@@ -252,7 +259,10 @@ export async function sendAll(
   const send = deps.send ?? sendFinanceCommand;
   let anySynced = false;
   let anyQueued = false;
+  let done = 0;
   for (const payload of payloads) {
+    done += 1;
+    deps.onProgress?.(done, payloads.length);
     const result = await send(householdId, payload);
     if (result.outcome === 'rejected' || result.outcome === 'conflict') {
       return { ok: false, sent: payloads.length, queued: anyQueued, message: result.message };
