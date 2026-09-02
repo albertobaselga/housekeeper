@@ -11,21 +11,35 @@ import { dateLabel, formatCents, STATUS_LABEL } from './format';
 
 /** Línea secundaria de una fila del ledger: fecha·cuenta · categoría · eventos · recurrencia · estado. */
 export function ledgerRowMeta(tx: FinanceTxDto, eventNameById: Record<string, string>): string {
-  return (
-    [
-      `${dateLabel(tx.opDate)} · ${tx.accountName}`,
-      tx.categoryName ?? 'Sin categorizar',
-      tx.eventIds.map((id) => eventNameById[id]).filter(Boolean).join(', ') || null,
-      tx.recurrence === 'recurrente' ? '♻' : tx.recurrence === 'extraordinario' ? '✦' : null,
-      STATUS_LABEL[tx.status] ?? tx.status
-    ] as (string | null)[]
-  )
+  return [
+    `${dateLabel(tx.opDate)} · ${tx.accountName}`,
+    tx.categoryName ?? 'Sin categorizar',
+    tx.eventIds.map((id) => eventNameById[id]).filter(Boolean).join(', ') || null,
+    tx.recurrence === 'recurrente' ? '♻' : tx.recurrence === 'extraordinario' ? '✦' : null,
+    STATUS_LABEL[tx.status] ?? tx.status
+  ]
     .filter((piece): piece is string => piece !== null)
     .join(' · ');
 }
 
-/** `raw` es jsonb NOT NULL DEFAULT '{}' (Ruling R11): la guarda exige también claves. */
-function hasRaw(tx: FinanceTxDto): boolean {
+/**
+ * Título visible de un movimiento: proveedor mostrado, o el bruto, o el
+ * concepto (única definición — Issue Minor #4 de la revisión: LedgerTable y
+ * FinanceDetailPanel repetían el mismo `||` a mano). Una cadena vacía en
+ * cualquiera de los dos primeros campos cae al siguiente, como siempre hizo
+ * el operador `||`.
+ */
+export function txTitle(tx: FinanceTxDto): string {
+  return tx.providerDisplay || tx.provider || tx.concept;
+}
+
+/**
+ * `raw` es jsonb NOT NULL DEFAULT '{}' (Ruling R11): la guarda exige también
+ * claves. Predicado de tipo (no `boolean`) para que `source.raw` quede
+ * estrechado a `Record<string, string>` sin recurrir a un `as` sobre datos de
+ * fila (Issue Important #1 de la revisión: R7 prohíbe esas aserciones).
+ */
+function hasRaw(tx: FinanceTxDto): tx is FinanceTxDto & { raw: Record<string, string> } {
   return tx.raw !== null && Object.keys(tx.raw).length > 0;
 }
 
@@ -43,7 +57,7 @@ export function originRows(
   if (hasRaw(source)) {
     return {
       label: source === tx ? 'Datos del origen' : 'Datos del origen (cargo emparejado)',
-      rows: Object.entries(source.raw as Record<string, string>).map(([key, value]) => [key, String(value)])
+      rows: Object.entries(source.raw).map(([key, value]) => [key, String(value)])
     };
   }
   const rows = (

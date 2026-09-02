@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { FinanceTxDto } from '@housekeeper/server';
-  import { ledgerRowMeta } from '$lib/finance/detail';
+  import { ledgerRowMeta, txTitle } from '$lib/finance/detail';
   import { formatCents } from '$lib/finance/format';
 
   let { rows, eventNameById, onOpen }: {
@@ -14,7 +14,7 @@
   {#each rows as tx (tx.id)}
     <button type="button" class="finance-row" onclick={() => onOpen(tx)}>
       <span>
-        <strong>{tx.transferGroupId ? '⇄ ' : ''}{tx.providerDisplay || tx.provider || tx.concept}</strong>
+        <strong>{tx.transferGroupId ? '⇄ ' : ''}{txTitle(tx)}</strong>
         <small>{ledgerRowMeta(tx, eventNameById)}</small>
       </span>
       <strong class="cifra pequena" class:positivo={BigInt(tx.amountCents) > 0n}>

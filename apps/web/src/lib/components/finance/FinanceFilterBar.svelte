@@ -25,9 +25,10 @@
     void goto(`?${merged}`, { noScroll: true, keepFocus: true });
   }
 
-  function pickPreset(event: Event): void {
-    const value = (event.currentTarget as HTMLSelectElement).value;
-    (event.currentTarget as HTMLSelectElement).value = '';
+  function pickPreset(event: Event & { currentTarget: HTMLSelectElement }): void {
+    const select = event.currentTarget;
+    const value = select.value;
+    select.value = '';
     if (value === 'custom') { showCustom = true; return; }
     const preset = presets.find((candidate) => candidate.label === value);
     if (preset) { showCustom = false; apply(preset.range); }
@@ -72,6 +73,11 @@
       {#each accounts as account (account.id)}
         <!-- Las cuentas virtuales (inversión) también se filtran: «todas» no
              puede omitirlas en silencio (regla del original). -->
+        <!-- Nota (Issue Minor #7 de la revisión): con `accountIds` vacío
+             («todas») los chips salen todos activos por diseño; pulsar uno
+             no lo «despulsa», lo convierte en la única cuenta seleccionada.
+             Es el comportamiento portado del original, no un bug — pero si
+             el e2e de la T13/T14 espera lo contrario, es aquí donde mirar. -->
         <button type="button" class="chip" class:virtual={account.kind === 'inversion'}
           class:active={filters.accountIds.length === 0 || filters.accountIds.includes(account.id)}
           aria-pressed={filters.accountIds.length === 0 || filters.accountIds.includes(account.id)}

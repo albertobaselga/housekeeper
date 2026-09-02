@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { FinanceTxDto } from '@housekeeper/server';
   import { financeApi, type FinanceDetailMode } from '$lib/finance/api';
-  import { detailCards, originRows } from '$lib/finance/detail';
+  import { detailCards, originRows, txTitle } from '$lib/finance/detail';
   import { dateLabel, formatCents, STATUS_LABEL, summarizeTxs } from '$lib/finance/format';
   import { modalDialog } from '$lib/components/modal-dialog';
 
@@ -24,29 +24,50 @@
     const current = mode;
     if (!current || !live) return;
     const api = financeApi(householdId);
+    // `stale` cierra la carrera: si `mode` cambia (otro grupo, otro
+    // movimiento) antes de que esta promesa resuelva, el efecto se relanza y
+    // marca esta ejecución obsoleta en su cleanup, así que la respuesta
+    // tardía ya no pisa el estado del modo nuevo (Issue Important #2 de la
+    // revisión).
+    let stale = false;
     void (async () => {
       try {
-        if (current.kind === 'ids') fetched = (await api.transactionsByIds(current.ids)).rows;
-        else if (current.kind === 'grupo') fetched = (await api.transactionsByGroups([current.groupId])).rows;
-        else if (!current.tx.raw && current.tx.transferGroupId) {
+        if (current.kind === 'ids') {
+          const rows = (await api.transactionsByIds(current.ids)).rows;
+          if (!stale) fetched = rows;
+        } else if (current.kind === 'grupo') {
+          const rows = (await api.transactionsByGroups([current.groupId])).rows;
+          if (!stale) fetched = rows;
+        } else if (!current.tx.raw && current.tx.transferGroupId) {
           // Espejo sin datos de fichero: los datos del origen son los del
           // cargo real emparejado en el mismo grupo (contrato del original).
           const legs = (await api.transactionsByGroups([current.tx.transferGroupId])).rows;
           const partner = legs.find((leg) => leg.id !== current.tx.id && leg.raw);
-          if (partner) partnerByTx = { [current.tx.id]: partner };
+          if (partner && !stale) partnerByTx = { [current.tx.id]: partner };
         }
       } catch {
-        loadError = true;
+        if (!stale) loadError = true;
       }
     })();
+    return () => {
+      stale = true;
+    };
   });
 
   const cards = $derived(detailCards(mode, fetched));
   const figures = $derived(summarizeTxs(cards));
   const heading = $derived(
     mode === null ? ''
-      : mode.kind === 'movimiento' ? (mode.tx.providerDisplay || mode.tx.provider || mode.tx.concept)
+      : mode.kind === 'movimiento' ? txTitle(mode.tx)
       : mode.label
+  );
+  // El fetch que puede fallar es el del cargo emparejado (Datos del origen);
+  // en modo «movimiento» la tarjeta ya está pintada sin red, así que el
+  // aviso no debe sugerir que el detalle entero falló (Issue Minor #6).
+  const errorMessage = $derived(
+    mode?.kind === 'movimiento'
+      ? 'No hemos podido cargar los datos del origen emparejado.'
+      : 'No hemos podido cargar el detalle. Vuelve a intentarlo.'
   );
 </script>
 
@@ -69,7 +90,7 @@
     </header>
 
     {#if loadError}
-      <p class="note error" role="status">No hemos podido cargar el detalle. Vuelve a intentarlo.</p>
+      <p class="note error" role="status">{errorMessage}</p>
     {:else if cards.length === 0 && mode.kind !== 'movimiento'}
       <p class="audit-note">{live ? 'Cargando…' : 'El detalle por grupo necesita conexión con la base de datos.'}</p>
     {/if}

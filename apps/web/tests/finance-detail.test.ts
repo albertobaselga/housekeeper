@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { detailCards, ledgerRowMeta, originRows } from '../src/lib/finance/detail';
+import { detailCards, ledgerRowMeta, originRows, txTitle } from '../src/lib/finance/detail';
 
 import type { FinanceTxDto } from '@housekeeper/server';
 import type { FinanceDetailMode } from '../src/lib/finance/api';
@@ -59,6 +59,29 @@ describe('ledgerRowMeta (fila del ledger)', () => {
     expect(ledgerRowMeta(tx({ status: 'sugerida_regla' }), {})).toContain('regla');
     expect(ledgerRowMeta(tx({ status: 'sugerida_agente' }), {})).toContain('agente');
     expect(ledgerRowMeta(tx({ status: 'archivada' }), {})).toContain('archivada');
+  });
+});
+
+describe('txTitle (título del movimiento, única definición para ledger y panel)', () => {
+  it('prefiere el proveedor mostrado cuando existe', () => {
+    expect(txTitle(tx({ providerDisplay: 'Mercadona', provider: 'mercadona', concept: 'Compra' }))).toBe('Mercadona');
+  });
+
+  it('sin proveedor mostrado, cae al proveedor bruto', () => {
+    expect(txTitle(tx({ providerDisplay: null, provider: 'mercadona', concept: 'Compra' }))).toBe('mercadona');
+  });
+
+  it('sin proveedor mostrado ni bruto, cae al concepto', () => {
+    expect(txTitle(tx({ providerDisplay: null, provider: null, concept: 'Compra supermercado' }))).toBe(
+      'Compra supermercado'
+    );
+  });
+
+  it('una cadena vacía (no null) también cae al siguiente campo, como el resto del || original', () => {
+    expect(txTitle(tx({ providerDisplay: '', provider: '', concept: 'Compra supermercado' }))).toBe(
+      'Compra supermercado'
+    );
+    expect(txTitle(tx({ providerDisplay: '', provider: 'mercadona', concept: 'Compra' }))).toBe('mercadona');
   });
 });
 
