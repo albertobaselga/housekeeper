@@ -2,6 +2,24 @@ import { expect, test } from '@playwright/test';
 
 import { HOUSEHOLD, loginAs, nativeDragDrop } from './helpers';
 
+// [FASE 5, T13 · R35] La barra de secciones es SISTEMA, no una pantalla
+// concreta: si `movimientos/+page.svelte` (o cualquier otra) dejase de
+// montar `<FinanceNav>`, ninguna prueba existente lo notaría — cada dbe2e de
+// pantalla concreta comprueba SU contenido, no la barra compartida. Este
+// test de fixture (sin base de datos) recorre las siete rutas y afirma que
+// la navegación sigue ahí en todas, en un solo sitio.
+test('admin en modo fixture: la barra de secciones de Finanzas está en las siete pantallas', async ({ page }) => {
+  await loginAs(page, 'admin');
+  const rutas = ['', 'analitica', 'movimientos', 'revision', 'eventos', 'importar', 'ajustes'];
+  for (const ruta of rutas) {
+    await page.goto(`/h/${HOUSEHOLD}/finanzas${ruta ? `/${ruta}` : ''}`);
+    await expect(
+      page.getByRole('navigation', { name: 'Secciones de Finanzas' }),
+      `«${ruta || 'finanzas'}» no monta la barra de secciones`
+    ).toBeVisible();
+  }
+});
+
 test('admin en modo fixture: el Dashboard de Finanzas pinta KPIs, flujo de caja y proveedores', async ({ page }) => {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/finanzas`);
