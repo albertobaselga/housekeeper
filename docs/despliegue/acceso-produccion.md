@@ -1,6 +1,6 @@
 # Acceso en producción: cuentas, contraseñas y qué hacer si se pierden
 
-Cómo entra la gente en Casa Clara cuando la aplicación deja de ser una demostración.
+Cómo entra la gente en Housekeeper cuando la aplicación deja de ser una demostración.
 Esta es la implementación de la **opción A** de [opciones-de-acceso.md](opciones-de-acceso.md):
 usuario y contraseña de Better Auth, **sin correo en ningún punto del recorrido**.
 
@@ -68,7 +68,7 @@ repositorio** (en el llavero de Alberto, en una carpeta cifrada, donde sea; nunc
 en Git y nunca en el entorno del servidor).
 
 ```bash
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/fuera/del/repo/hogar.json
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/fuera/del/repo/hogar.json
 ```
 
 Necesita en el entorno: `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET` y
@@ -79,8 +79,8 @@ Necesita en el entorno: `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET` y
 ```json
 {
   "household": {
-    "slug": "casa-clara",
-    "displayName": "Casa Clara"
+    "slug": "casa-ejemplo",
+    "displayName": "Casa Ejemplo"
   },
   "people": [
     { "username": "alberto", "name": "Alberto", "email": "alberto@sucorreo.es", "role": "family_admin" },
@@ -106,7 +106,7 @@ Necesita en el entorno: `DATABASE_AUTH_URL`, `BETTER_AUTH_SECRET` y
 ### Qué imprime
 
 ```
-Hogar Casa Clara (casa-clara) → e561d89e-…
+Hogar Casa Ejemplo (casa-ejemplo) → e561d89e-…
   creada    alberto        family_admin       alberto@sucorreo.es
   creada    ana            family_admin       ana@sucorreo.es
   creada    nuria         employee_live_in   nuria@casa.local
@@ -132,10 +132,10 @@ hay que pedirlo explícitamente:
 
 ```bash
 # Ver qué haría, sin escribir nada
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/hogar.json --dry-run
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/hogar.json --dry-run
 
 # Reponer TODAS las contraseñas del fichero (cierra todas las sesiones)
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/hogar.json --reset-passwords
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/hogar.json --reset-passwords
 ```
 
 ### Ana también es administradora, y eso es a propósito
@@ -212,7 +212,7 @@ Alberto es el dueño del proyecto de base de datos y puede ejecutar el guion de
 alta con `--reset-passwords` desde una máquina con acceso:
 
 ```bash
-pnpm --filter @casa-clara/web seed:accounts --config /ruta/hogar.json --reset-passwords
+pnpm --filter @housekeeper/web seed:accounts --config /ruta/hogar.json --reset-passwords
 ```
 
 Eso repone todas las contraseñas del fichero y las imprime. Es el último recurso

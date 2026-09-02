@@ -14,7 +14,7 @@
  * dos ejecutores a la vez; añadirlo en uno solo es el fallo que este módulo hace
  * imposible.
  *
- * El logger llega inyectado y no importado a propósito. `@casa-clara/server`
+ * El logger llega inyectado y no importado a propósito. `@housekeeper/server`
  * expone la versión con redacción por dos caminos incompatibles —`/logging`
  * apunta a `dist` (lo que necesita el demonio compilado con tsc) y la raíz
  * apunta a `src` (lo que necesita el empaquetador de la web)—, y un import fijo
@@ -23,7 +23,17 @@
  */
 import type { Pool } from "pg";
 
-import { RENDER_RECEIPT_JOB, createRenderReceiptHandler, type DocumentUploader } from "./handlers.js";
+import {
+  CLOSE_DUE_SWEEP_JOB,
+  createCloseDueQueries,
+  createCloseDueSweepHandler,
+} from "./close-due.js";
+import {
+  RENDER_RECEIPT_JOB,
+  createReceiptQueries,
+  createRenderReceiptHandler,
+  type DocumentUploader,
+} from "./handlers.js";
 import {
   ICS_SYNC_ALL_JOB,
   ICS_SYNC_JOB,
@@ -47,7 +57,7 @@ import {
 } from "./push.js";
 import type { JobHandler } from "./queue.js";
 
-/** Lo que este módulo necesita del logger con redacción de `@casa-clara/server`. */
+/** Lo que este módulo necesita del logger con redacción de `@housekeeper/server`. */
 export interface JobLogger {
   info(message: string, fields?: Readonly<Record<string, unknown>>): void;
   error(message: string, fields?: Readonly<Record<string, unknown>>): void;
@@ -57,8 +67,16 @@ export interface JobRuntimeDeps {
   /** Pool con el rol `casa_clara_worker`: es el único que puede tocar la cola. */
   pool: Pool;
   uploadDocument: DocumentUploader;
+  /**
+   * El bucket donde `uploadDocument` sube los objetos (Frente E): el registro
+   * del recibo (`app_private.record_settlement_receipt`) necesita anotarlo
+   * junto a la clave para que la descarga sepa de dónde leer. No se deriva de
+   * `uploadDocument` porque esa función es opaca a propósito — cierra sobre el
+   * cliente de almacenamiento real, que aquí no hace falta conocer—.
+   */
+  documentsBucket: string;
   log: JobLogger;
-  /** `errorCode` de `@casa-clara/server`: código estable y sin datos personales. */
+  /** `errorCode` de `@housekeeper/server`: código estable y sin datos personales. */
   errorCode: (cause: unknown) => string;
   /**
    * Entorno del que salen las claves VAPID. Se pasa —y no se lee de
@@ -133,10 +151,14 @@ export function createJobHandlers(deps: JobRuntimeDeps): Record<string, JobHandl
   const icsQueries = createIcsQueries(deps.pool);
   const vapid: VapidConfig | null = loadVapidConfig(deps.environment ?? {});
   const pushQueries = createPushQueries(deps.pool);
+  // Frente E: registro del recibo (app.settlement_receipts, migración 0035).
+  const receiptQueries = createReceiptQueries(deps.pool, deps.documentsBucket);
+  const closeDueQueries = createCloseDueQueries(deps.pool);
 
   const handlers: Record<string, JobHandler> = Object.create(null) as Record<string, JobHandler>;
   handlers[RENDER_RECEIPT_JOB] = createRenderReceiptHandler({
     upload: deps.uploadDocument,
+    recordReceipt: receiptQueries.recordReceipt,
     // El aviso se encola SOLO si el canal existe. Si no hay claves, el recibo se
     // genera igual y nadie se entera por el móvil: exactamente lo que pasaba
     // hasta hoy, y nada vive solo detrás del push.
@@ -147,7 +169,19 @@ export function createJobHandlers(deps: JobRuntimeDeps): Record<string, JobHandl
       resolveTargets: pushQueries.resolveTargets,
       recordDelivery: pushQueries.recordDelivery,
       rescheduleSettlementDue: pushQueries.rescheduleSettlementDue,
+      today: pushQueries.today,
       send: createWebPushSender(vapid),
+    });
+    // El barrido «el mes está por cerrar» (Frente D) encola avisos de este
+    // mismo canal, así que solo tiene sentido registrarlo cuando el canal
+    // existe: sin VAPID no hay a quién avisar y el barrido no se registra
+    // (tampoco se re-arma: `ensureCloseDueScheduled` no se llama sin manejador
+    // que lo atienda, ver index.ts/job-runner.server.ts).
+    handlers[CLOSE_DUE_SWEEP_JOB] = createCloseDueSweepHandler({
+      listHouseholds: closeDueQueries.listHouseholds,
+      enqueuePush: closeDueQueries.enqueuePush,
+      enqueueSweep: closeDueQueries.enqueueSweep,
+      today: closeDueQueries.today,
     });
   }
   handlers[PRUNE_DISCOVERY_JOB] = createPruneDiscoveryHandler({

@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { UUID } from "@housekeeper/contracts";
 import {
   agreementCommandPayloadSchema,
   vacationCommandPayloadSchema,
-} from "@casa-clara/contracts/schemas";
+} from "@housekeeper/contracts/schemas";
 import {
   contractYear,
   contractYearName,
@@ -18,7 +18,7 @@ import {
   type ContractYear,
   type PeriodMonth,
   type VacationCompensation,
-} from "@casa-clara/domain";
+} from "@housekeeper/domain";
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";

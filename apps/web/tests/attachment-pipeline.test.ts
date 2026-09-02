@@ -52,7 +52,7 @@ function fakePool(): { pool: never; inserts: unknown[][] } {
 
 function deps(overrides: Partial<AttachmentDependencies> = {}): AttachmentDependencies {
   return {
-    bucket: 'casaclara-test',
+    bucket: 'housekeeper-test',
     putObject: () => Promise.resolve(),
     getObject: () => Promise.resolve(new Uint8Array()),
     ...overrides

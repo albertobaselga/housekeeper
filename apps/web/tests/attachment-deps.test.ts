@@ -114,20 +114,20 @@ describe('createAttachmentDependencies desde variables de entorno', () => {
     CLAMAV_PORT: '3310',
     S3_ENDPOINT: 'http://minio:9000',
     S3_REGION: 'eu-west-1',
-    S3_PRIVATE_BUCKET: 'casaclara-local',
-    S3_ACCESS_KEY_ID: 'casaclara-local',
+    S3_PRIVATE_BUCKET: 'housekeeper-local',
+    S3_ACCESS_KEY_ID: 'housekeeper-local',
     S3_SECRET_ACCESS_KEY: 'local-object-storage-only'
   };
   const SUPABASE_ENV = {
     SUPABASE_URL: 'https://proyectosintetico00.supabase.co',
     SUPABASE_SERVICE_ROLE_KEY: 'clave-de-servicio-sintetica',
-    SUPABASE_STORAGE_BUCKET: 'casaclara'
+    SUPABASE_STORAGE_BUCKET: 'housekeeper'
   };
 
   it('con la configuración completa de Compose devuelve deps con el bucket y con escáner', () => {
     const deps = createAttachmentDependencies(COMPOSE_ENV);
     expect(deps).not.toBeNull();
-    expect(deps!.bucket).toBe('casaclara-local');
+    expect(deps!.bucket).toBe('housekeeper-local');
     expect(typeof deps!.scan).toBe('function');
     expect(typeof deps!.putObject).toBe('function');
   });
@@ -145,13 +145,13 @@ describe('createAttachmentDependencies desde variables de entorno', () => {
   it('con la clave de servicio de Supabase basta: es el camino de Vercel + Supabase', () => {
     const deps = createAttachmentDependencies(SUPABASE_ENV);
     expect(deps).not.toBeNull();
-    expect(deps!.bucket).toBe('casaclara');
+    expect(deps!.bucket).toBe('housekeeper');
     expect(deps!.scan).toBeUndefined();
     expect(typeof deps!.getObjectStream).toBe('function');
   });
 
   it('Supabase gana a S3 cuando están las dos (el despliegue real manda)', () => {
-    expect(createAttachmentDependencies({ ...COMPOSE_ENV, ...SUPABASE_ENV })!.bucket).toBe('casaclara');
+    expect(createAttachmentDependencies({ ...COMPOSE_ENV, ...SUPABASE_ENV })!.bucket).toBe('housekeeper');
   });
 
   it('sin almacén (local sin Docker) devuelve null y la ruta responderá 503', () => {
@@ -175,7 +175,7 @@ describe('un antivirus caído es un 503 honesto, no un 500 mudo', () => {
 
   function deps(overrides: Partial<AttachmentDependencies> = {}): AttachmentDependencies {
     return {
-      bucket: 'casaclara-local',
+      bucket: 'housekeeper-local',
       scan: () => Promise.resolve('clean'),
       putObject: () => Promise.resolve(),
       getObject: () => Promise.resolve(new Uint8Array()),

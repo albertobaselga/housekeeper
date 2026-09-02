@@ -1,17 +1,19 @@
 # Avisos en el móvil: claves, puesta en marcha y qué mirar cuando no llegan
 
-**Qué resuelve.** Que dos hechos de la casa —el recibo del mes de quien trabaja
-aquí y la cuenta del mes por pagar de quien administra— lleguen al teléfono sin
-que nadie tenga que abrir la aplicación para enterarse. **Dos avisos, y ninguno
-más**: lo que queda prohibido y por qué está en `docs/notificaciones.md` §6, y no
-es una lista de opciones apagadas sino código que no existe.
+**Qué resuelve.** Que tres hechos de la casa —el recibo del mes de quien
+trabaja aquí, la cuenta del mes por pagar de quien administra, y el mes que
+está a punto de acabar, también a quien administra— lleguen al teléfono sin
+que nadie tenga que abrir la aplicación para enterarse. **Tres avisos, y
+ninguno más**: lo que queda prohibido y por qué está en
+`docs/notificaciones.md` §6 (y su enmienda de 31/08/2026, §0ter), y no es una
+lista de opciones apagadas sino código que no existe.
 
 **Qué NO resuelve, y conviene decirlo antes de encenderlo.** El push **no es un
 canal de confianza**: no garantiza entrega ni latencia. Nada con consecuencia
 —un plazo, un vencimiento, una confirmación— puede depender de que el aviso
-llegara, y no depende: los dos hechos se ven igual en Hoy y en Empleo. Y **Casa
-Clara no es un sistema de emergencia**; el 112 lo es, y está fijo y sin depender
-de nada en la pantalla de Emergencias.
+llegara, y no depende: los dos hechos se ven igual en Hoy y en Empleo. Y
+**Housekeeper no es un sistema de emergencia**; el 112 lo es, y está fijo y sin
+depender de nada en la pantalla de Emergencias.
 
 > **Este runbook lo aplica quien administra la instalación.** Nada de lo que hay
 > aquí lo ejecuta el proyecto por su cuenta, y ninguno de estos comandos se ha
@@ -23,7 +25,8 @@ de nada en la pantalla de Emergencias.
 
 - El planificador de la cola tiene que estar funcionando: los avisos salen de
   ella y de ningún otro sitio. Ver `docs/runbooks/planificador-cola.md`.
-- La migración **0032** aplicada (`pnpm db:migrate`).
+- Las migraciones **0032** y **0034** aplicadas (`pnpm db:migrate`). La 0034 es
+  la que trae el tercer aviso, «el mes está a punto de acabar».
 - Acceso al panel de **Vercel** del proyecto de la web.
 - Un rato con cada teléfono delante. La cadena de iOS —instalar, volver a entrar,
   conceder el permiso— **se hace en persona**, y es el momento de enseñar la
@@ -39,7 +42,7 @@ navegador (es su función); la privada firma cada envío y **no sale del servido
 jamás**.
 
 ```bash
-pnpm --filter @casa-clara/worker exec web-push generate-vapid-keys --json
+pnpm --filter @housekeeper/worker exec web-push generate-vapid-keys --json
 ```
 
 Sale algo así, y **no se parece a ningún valor real de esta casa** —es un ejemplo
@@ -113,9 +116,24 @@ que alcanzan los cinco papeles. No está en Ajustes del hogar y no va a estarlo:
 Ajustes es de quien administra, y el interruptor del teléfono de otra persona no
 se toca desde el panel de nadie.
 
-**No hay ninguna otra pantalla que ofrezca los avisos.** Ni un banner, ni una
-insignia, ni un recordatorio. Quien los quiera, va y los enciende. Si alguien
-dice que no al diálogo del sistema, no se le vuelve a preguntar: no hay dónde.
+**Desde el 31/08/2026 hay además una puerta de entrada real** (ver
+`docs/notificaciones.md` §0ter): al entrar al hogar, la aplicación comprueba
+sola el estado de los avisos EN ESE DISPOSITIVO y actúa según lo que
+encuentra:
+
+| Estado del permiso | Qué pasa |
+|---|---|
+| Concedido, con suscripción viva | Nada. |
+| Concedido, sin suscripción (caché o fila borrada) | Se repara sola, en silencio. |
+| Sin decidir | Banner propio de la aplicación, descartable: «Activa los avisos en este dispositivo para enterarte del cierre del mes y del recibo.» + **Activar** / **Ahora no**. |
+| Bloqueado | Silencio: sigue sin haber más sitio que «Tu cuenta» para explicar el desbloqueo. |
+
+**El diálogo nativo del sistema solo aparece tras tocar «Activar»**, nunca al
+entrar: la regla de no dispararlo solo no cambia, solo se le añadió un paso
+propio delante. Descartar el banner dura la visita (`sessionStorage`) y
+reaparece en la siguiente. Si al entrar la aplicación todavía no está
+instalada, se ofrece antes instalarla (banner de instalación); los dos
+banners nunca salen a la vez — primero instalar, después avisos.
 
 ### En Android y en escritorio
 
@@ -182,6 +200,26 @@ domingo**. Si ve un `run_at` fuera de esa ventana, es un defecto: la ventana la
 aplica `app.push_run_at` en el encolado, que es el único sitio donde puede
 aplicarse (en Web Push no se puede programar en el dispositivo ni recibir un
 aviso y no mostrarlo).
+
+### El tercer aviso, aparte
+
+`settlement.close_due` no sale de cerrar nada: sale del barrido mensual
+`notification.close_due_sweep` (`apps/worker/src/close-due.ts`), programado
+para el penúltimo día del mes y re-armado solo al completarse — nunca hay dos
+barridos pendientes a la vez. No hay un atajo tan corto como cerrar una cuenta
+para probarlo: la forma honesta es esperar a que le toque, o adelantar
+`run_at` a mano en un entorno de pruebas:
+
+```sql
+-- Adelantar el barrido para probarlo ya, en un entorno de pruebas:
+update app_private.job_queue
+   set run_at = statement_timestamp()
+ where job_type = 'notification.close_due_sweep' and status = 'queued';
+```
+
+y comprobar con la consulta de arriba que aparece una fila con
+`aviso = 'settlement.close_due'`. Se re-arma solo para el mes siguiente en
+cuanto termina, con cero hogares por avisar o con varios — da igual.
 
 ---
 

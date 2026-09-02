@@ -8,7 +8,7 @@ import {
   type AggregateType,
   type CommandAckV1,
   type CommandEnvelopeV1,
-} from "@casa-clara/contracts";
+} from "@housekeeper/contracts";
 
 import { extraWorkCommandHandler } from "./commands/extra-work.js";
 import { processSyncBatch, type CommandHandlers } from "./sync.js";
@@ -30,7 +30,7 @@ const TYPE_NOCHE_DE_GUARDIA = "13000000-0000-4000-8000-000000000006";
 const TYPE_SIN_TARIFA = "13000000-0000-4000-8000-000000000007";
 // Conceptos del acuerdo de la segunda empleada.
 const TYPE_JORNADA_COMPLETA = "13000000-0000-4000-8000-000000000008";
-const APP_LOGIN = "it_casa_clara_app_login";
+const APP_LOGIN = "it_housekeeper_app_login";
 
 const ADMIN: AuthenticatedPrincipal = { userId: "fixture:roble:admin" };
 const EMPLOYEE_ONE_USER: AuthenticatedPrincipal = { userId: "fixture:roble:employee" };

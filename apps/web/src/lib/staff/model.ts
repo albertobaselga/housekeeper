@@ -1,4 +1,4 @@
-import type { Role } from '@casa-clara/contracts';
+import type { Role } from '@housekeeper/contracts';
 
 import { dateLabel, formatCents, weeklyHoursLabel } from '$lib/employment/model';
 

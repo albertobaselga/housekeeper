@@ -11,10 +11,10 @@ import { buildHandoverExport } from '../src/lib/server/handover.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_handover_rt_login';
+const APP_LOGIN = 'it_housekeeper_handover_rt_login';
 // Base propia (patrón de la suite de traspaso): las suites del paquete corren
 // en paralelo y cada una reprovisiona su esquema completo.
-const ROUNDTRIP_DB = 'casaclara_handover_rt';
+const ROUNDTRIP_DB = 'housekeeper_handover_rt';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const ADMIN_USER = { id: 'fixture:roble:admin' };

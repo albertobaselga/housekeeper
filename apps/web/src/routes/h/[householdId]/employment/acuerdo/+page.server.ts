@@ -7,8 +7,8 @@ import type {
   RecurringSupplementInputV1,
   ScheduleDayInputV1,
   WeekdayV1
-} from '@casa-clara/contracts';
-import { agreementTermsInputSchema } from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts';
+import { agreementTermsInputSchema } from '@housekeeper/contracts/schemas';
 
 import { parseEuroInput } from '$lib/employment/commands';
 import { PAYER_CHOICES } from '$lib/employment/payer';

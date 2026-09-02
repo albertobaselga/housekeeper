@@ -1,4 +1,4 @@
-import type { Role } from '@casa-clara/contracts/capabilities';
+import type { Role } from '@housekeeper/contracts/capabilities';
 
 /**
  * Cómo se llama cada papel de la casa en pantalla.
@@ -12,7 +12,7 @@ import type { Role } from '@casa-clara/contracts/capabilities';
  *
  * Aquí solo puede haber datos de presentación. El único import es de tipo, y
  * `import type` se borra al compilar: si algún día este fichero importa algo
- * ejecutable de `./capabilities` o de `@casa-clara/contracts/capabilities`, la
+ * ejecutable de `./capabilities` o de `@housekeeper/contracts/capabilities`, la
  * matriz vuelve al arranque de todas las pantallas.
  */
 export const ROLE_LABELS: Readonly<Record<Role, string>> = {

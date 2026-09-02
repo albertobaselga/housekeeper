@@ -12,7 +12,7 @@ import {
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 // Sobrescribible para poder ejecutar varios worktrees contra el mismo cluster.
-const AUTH_DB = process.env.TEST_AUTH_DB ?? 'casaclara_auth_it';
+const AUTH_DB = process.env.TEST_AUTH_DB ?? 'housekeeper_auth_it';
 const BASE_URL = 'http://localhost:3000';
 
 /** Contraseñas de prueba, todas por encima del mínimo. */

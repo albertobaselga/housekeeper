@@ -118,7 +118,7 @@ async function main() {
       const missing = FIXTURE_LOGIN_MARKERS.filter((marker) => !hits.has(marker.text));
       if (missing.length > 0) {
         problems.push(
-          `${root}: se construyó con CASA_CLARA_FIXTURE_LOGIN=true pero faltan las marcas ` +
+          `${root}: se construyó con HOUSEKEEPER_FIXTURE_LOGIN=true pero faltan las marcas ` +
             `${missing.map((marker) => marker.text).join(', ')}. O el selector ya no está donde se cree, ` +
             'o esta comprobación mira donde no debe.'
         );

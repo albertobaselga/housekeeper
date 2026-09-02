@@ -16,12 +16,12 @@ USER root
 RUN apk add --no-cache nodejs=~22
 
 COPY infra/clamav/gateway.mjs /usr/local/lib/clamav-gateway.mjs
-COPY infra/clamav/entrypoint.sh /usr/local/bin/casaclara-clamav
-RUN chmod +x /usr/local/bin/casaclara-clamav
+COPY infra/clamav/entrypoint.sh /usr/local/bin/housekeeper-clamav
+RUN chmod +x /usr/local/bin/housekeeper-clamav
 
 ENV CLAMAV_GATEWAY_PORT=3311 \
     CLAMAV_UPSTREAM_HOST=127.0.0.1 \
     CLAMAV_UPSTREAM_PORT=3310
 
 EXPOSE 3311
-ENTRYPOINT ["/usr/local/bin/casaclara-clamav"]
+ENTRYPOINT ["/usr/local/bin/housekeeper-clamav"]

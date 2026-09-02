@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 
-import { vacationNewsSince, type VacationEventInput } from '@casa-clara/domain';
-import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { vacationNewsSince, type VacationEventInput } from '@housekeeper/domain';
+import { AuthorizationError, createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 import { unreadable } from './data-source.server';
 
 import {

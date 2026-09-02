@@ -20,7 +20,7 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     MINIO_ROOT_USER=validation-user
     MINIO_ROOT_PASSWORD=validation-only-object-password
     S3_BUCKET=validation
-    'SMTP_FROM=Casa Clara validation <no-reply@casaclara.test>'
+    'SMTP_FROM=Housekeeper validation <no-reply@housekeeper.test>'
     GRAFANA_ADMIN_USER=validation
     GRAFANA_ADMIN_PASSWORD=validation-only-grafana-password
   )
@@ -37,9 +37,9 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
     S3_ACCESS_KEY_ID=validation
     S3_SECRET_ACCESS_KEY=validation-only-object-password
     SMTP_HOST=smtp.validation.test
-    'SMTP_FROM=Casa Clara validation <no-reply@casaclara.test>'
+    'SMTP_FROM=Housekeeper validation <no-reply@housekeeper.test>'
     CLAMAV_GATEWAY_TOKEN=validation-only-clamav-token
-    CLAMAV_TLS_DIR=/tmp/casaclara-validation-tls
+    CLAMAV_TLS_DIR=/tmp/housekeeper-validation-tls
   )
   env "${worker_env[@]}" docker compose -f infra/compose.worker.yml config --quiet
 else

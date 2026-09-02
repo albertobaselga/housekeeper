@@ -1,14 +1,14 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
-import { manualAdjustmentCommandPayloadSchema } from "@casa-clara/contracts/schemas";
+import type { UUID } from "@housekeeper/contracts";
+import { manualAdjustmentCommandPayloadSchema } from "@housekeeper/contracts/schemas";
 import {
   DomainRuleError,
   imputationMonth,
   monthFirstDay,
   monthLabel,
   type PeriodMonth,
-} from "@casa-clara/domain";
+} from "@housekeeper/domain";
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";

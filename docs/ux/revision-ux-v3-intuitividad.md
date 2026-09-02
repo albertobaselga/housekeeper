@@ -1,7 +1,7 @@
 # Revisión UX v3 · Auditoría de intuitividad
 
 **Fecha:** 8 de agosto de 2026
-**Método:** recorrido completo con Playwright (build de producción, base de datos propia `casaclara_ux_audit`, puerto 4383) simulando a personas de 55+ años sin costumbre de aplicaciones. Recorridos: Alberto (admin, escritorio 1280×800), Ana (empleada interna, móvil 390×844), Marta (miembro), Lucía (apoyo) y hogar vacío (primer uso). Evidencias en pantallazos (`scratchpad/ux-audit/`, fuera del repo).
+**Método:** recorrido completo con Playwright (build de producción, base de datos propia `housekeeper_ux_audit`, puerto 4383) simulando a personas de 55+ años sin costumbre de aplicaciones. Recorridos: Alberto (admin, escritorio 1280×800), Ana (empleada interna, móvil 390×844), Marta (miembro), Lucía (apoyo) y hogar vacío (primer uso). Evidencias en pantallazos (`scratchpad/ux-audit/`, fuera del repo).
 **Pregunta única:** ¿la pantalla se explica sola, o hay que llamar a alguien para que te la explique?
 
 ---

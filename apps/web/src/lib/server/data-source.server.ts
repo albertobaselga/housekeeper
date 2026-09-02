@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { error, isHttpError } from '@sveltejs/kit';
-import { AuthorizationError, errorCode, type Logger } from '@casa-clara/server';
+import { AuthorizationError, errorCode, type Logger } from '@housekeeper/server';
 
 /**
  * La regla de la casa: CON BASE DE DATOS CONFIGURADA, LAS MAQUETAS NO EXISTEN.

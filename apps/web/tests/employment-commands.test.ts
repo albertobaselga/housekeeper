@@ -17,7 +17,7 @@ import {
   settlementClosePayloadSchema,
   settlementOpenPayloadSchema,
   settlementReceiptConfirmPayloadSchema
-} from '@casa-clara/contracts/schemas';
+} from '@housekeeper/contracts/schemas';
 
 import {
   acceptExtra,

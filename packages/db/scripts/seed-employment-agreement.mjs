@@ -492,7 +492,7 @@ export function scheduleToStructured(schedule) {
 /**
  * Minutos efectivos que suma la semana.
  *
- * La misma regla que `weeklyEffectiveMinutes` de `@casa-clara/domain`, repetida
+ * La misma regla que `weeklyEffectiveMinutes` de `@housekeeper/domain`, repetida
  * aquí a la fuerza: el motor puro es TypeScript sin compilar (el paquete exporta
  * `./src/index.ts`) y este guion se ejecuta con `node` a secas, sin
  * transpilador. Las dos copias están fijadas por pruebas que comparan los mismos
@@ -778,7 +778,7 @@ async function findMembership(client, householdId, { username, email }) {
   if (rows.length === 0) {
     throw new Error(
       `«${username}» no tiene membresía viva en el hogar. Ejecuta antes el alta de cuentas ` +
-        '(pnpm --filter @casa-clara/web seed:accounts --config …) con este mismo JSON.'
+        '(pnpm --filter @housekeeper/web seed:accounts --config …) con este mismo JSON.'
     );
   }
   if (rows.length > 1) {

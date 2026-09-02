@@ -1,4 +1,4 @@
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { describeEmploymentCommand, describeErrorCode as describeEmploymentErrorCode, EMPLOYMENT_AGGREGATES } from '$lib/employment/outbox';
 import type { OutboxRecord } from '$lib/offline/schema';

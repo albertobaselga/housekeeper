@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
-import { createLogger, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, withAuthorizedTransaction } from '@housekeeper/server';
 
 import {
   buildSupplementView,

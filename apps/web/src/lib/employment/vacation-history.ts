@@ -6,7 +6,7 @@ import {
   vacationDaysInWindow,
   vacationYearBalance,
   type ContractYear
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 
 import { dateLabel, vacationRangeLabel } from './model';
 
@@ -386,7 +386,7 @@ export function buildVacationPersonView(input: {
           : null,
       excessNote:
         remainingDays !== null && remainingDays < 0
-          ? 'Se han apuntado más días de los que reconoce el contrato. Casa Clara no lo corrige ' +
+          ? 'Se han apuntado más días de los que reconoce el contrato. La aplicación no lo corrige ' +
             'sola: lo enseña para que lo habléis y decidáis qué hacer.'
           : null,
       // Sólo cuando ha gastado por delante de lo devengado y AÚN le quedan días

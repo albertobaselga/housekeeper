@@ -2,7 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { API_VERSION, type CriticalSnapshotV1 } from "@casa-clara/contracts";
+import { API_VERSION, type CriticalSnapshotV1 } from "@housekeeper/contracts";
 
 import {
   canonicalJson,

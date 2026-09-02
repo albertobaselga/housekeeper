@@ -55,6 +55,21 @@ test('con canal configurado, el servidor deja de decir que no hay canal', async 
   await expect(page.getByRole('heading', { name: 'Lo que nunca te vamos a mandar' })).toBeVisible();
 });
 
+test('en Hoy, con los avisos bloqueados de fábrica en este navegador, el banner de entrada calla', async ({ page }) => {
+  await loginAs(page, 'employee');
+  await page.goto(`/h/${HOUSEHOLD}/today`);
+
+  // Frente C: el banner propio de entrada (AppShell) solo ofrece «Activar» con
+  // el permiso del navegador por decidir. Chromium sin cabeza deniega los
+  // avisos de fábrica (ver la nota de arriba: `Notification.permission` es
+  // `denied` incluso concediéndolo desde Playwright), así que aquí el estado
+  // que ve la aplicación es «bloqueado» — y el §0.5 manda silencio ahí: la
+  // pantalla «Tu cuenta» ya explica cómo desbloquear, y duplicarlo en Hoy sería
+  // insistir donde la persona no puede hacer nada distinto.
+  await expect(page.getByRole('region', { name: 'Avisos en este dispositivo' })).toHaveCount(0);
+  await expect(page.getByText('Activa los avisos en este dispositivo')).toHaveCount(0);
+});
+
 test('quien administra ve su propio canal, y el de nadie más', async ({ page }) => {
   await loginAs(page, 'admin');
   await page.goto(`/h/${HOUSEHOLD}/account`);

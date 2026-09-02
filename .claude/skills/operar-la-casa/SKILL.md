@@ -1,11 +1,11 @@
 ---
 name: operar-la-casa
-description: Operar y mantener Casa Clara como administrador — dar de alta personas, contratos, rutinas, notas de la guía, contactos, menú, liquidaciones y avisos; instalar de cero en local o en Vercel + Supabase; migrar, respaldar, rotar secretos y diagnosticar. Úsala ante cualquier petición de administración («añade una hoja a la guía», «crea una rutina», «da de alta a una persona»), de instalación o de mantenimiento de esta aplicación.
+description: Operar y mantener Housekeeper como administrador — dar de alta personas, contratos, rutinas, notas de la guía, contactos, menú, liquidaciones y avisos; instalar de cero en local o en Vercel + Supabase; migrar, respaldar, rotar secretos y diagnosticar. Úsala ante cualquier petición de administración («añade una hoja a la guía», «crea una rutina», «da de alta a una persona»), de instalación o de mantenimiento de esta aplicación.
 ---
 
-# Operar Casa Clara
+# Operar Housekeeper
 
-Casa Clara gestiona un hogar real y la relación laboral con quien trabaja en él.
+Housekeeper gestiona un hogar real y la relación laboral con quien trabaja en él.
 **Está en producción sirviendo a una familia y a una empleada de verdad.** Un
 error aquí no rompe una pantalla: rompe el sueldo de alguien, o le impide
 registrar el trabajo que hizo.
@@ -110,10 +110,12 @@ sale de la URL.
 | Personas y accesos | `/h/<hogar>/settings` | `family_admin` | [ops](referencia-operaciones.md#personas-cuentas-roles-y-caducidad) |
 | Alta de personal | `/h/<hogar>/personal` | `family_admin` | [ops](referencia-operaciones.md#personas-cuentas-roles-y-caducidad) |
 | Tu contraseña y tus avisos | `/h/<hogar>/account` | cualquiera | [ops](referencia-operaciones.md#avisos-push) |
+| Contrato (resumen del mes) | `/h/<hogar>/employment` | `settlement.read` | [ops](referencia-operaciones.md#liquidaciones-pagos-y-el-pdf) |
+| Conceptos del mes (extras, gastos, adelantos, ausencias) | `/h/<hogar>/employment/conceptos` | `settlement.read` | [ops](referencia-operaciones.md#contratos) |
+| Liquidaciones, pagos y el recibo en PDF | `/h/<hogar>/employment/pagos` | `settlement.read` | [ops](referencia-operaciones.md#liquidaciones-pagos-y-el-pdf) |
 | Contrato (alta y versiones) | `/h/<hogar>/employment/acuerdo` | `family_admin` | [ops](referencia-operaciones.md#contratos) |
 | Condiciones pactadas | `/h/<hogar>/employment/condiciones` | `agreement.read` | [ops](referencia-operaciones.md#contratos) |
 | Vacaciones | `/h/<hogar>/employment/vacaciones` | `agreement.read` | [ops](referencia-operaciones.md#vacaciones) |
-| Liquidaciones y pagos | `/h/<hogar>/employment` | `settlement.read` | [ops](referencia-operaciones.md#liquidaciones-pagos-y-el-pdf) |
 | Rutinas | `/h/<hogar>/routines` | `routine.read` | [ops](referencia-operaciones.md#rutinas) |
 | Guía de la casa | `/h/<hogar>/wiki` | `content.read` | [ops](referencia-operaciones.md#guía-de-la-casa) |
 | Contactos | `/h/<hogar>/contacts` | cualquiera | [ops](referencia-operaciones.md#contactos-y-emergencias) |
@@ -122,6 +124,14 @@ sale de la URL.
 | Recetas | `/h/<hogar>/recipes` | `content.read` | [ops](referencia-operaciones.md#menú-recetas-alérgenos-comensales-y-compra) |
 | Calendario | `/h/<hogar>/calendar` | `calendar.read` | [ops](referencia-operaciones.md#calendario-y-calendarios-enlazados) |
 | Buscar | `/h/<hogar>/search` | `search.use` | — |
+
+**Las seis rutas de `employment` son una sola pantalla en pestañas.** El
+expediente laboral se repartió porque no cabía en una página de móvil: se entra
+por el resumen del mes y se cambia de pestaña sin salir de Contrato. Importa
+saber cuál es cuál, porque **cada cosa se hace en la suya**: apuntar una jornada
+extra o un gasto, en Conceptos; cerrar el mes, registrar el pago y descargar el
+recibo, en Pagos. Buscarlas en el resumen es el error más común desde el
+rediseño.
 
 ---
 
@@ -134,10 +144,13 @@ Lo que más caro sale. El detalle de cada una, en las hojas.
    quien trabaja sin poder registrar ni una jornada, y **no se arregla hacia
    atrás**: una versión nueva sólo rige desde su fecha. Ensaya con `--dry-run`.
 
-2. **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`.** Si le
-   pones el rol propietario, Better Auth crea sus tablas en `public` en vez de
-   en `casa_auth`. El alta de cuentas **dice que ha ido bien e imprime las
-   contraseñas**, y luego no entra nadie: 401 para todo el mundo. Verificado.
+2. **`DATABASE_AUTH_URL` tiene que ser el rol `casa_clara_auth_login`** (nombre
+   legado del proyecto anterior; ver
+   [docs/despliegue/identificadores-legado.md](../../../docs/despliegue/identificadores-legado.md)).
+   Si le pones el rol propietario, Better Auth crea sus tablas en `public` en
+   vez de en `casa_auth`. El alta de cuentas **dice que ha ido bien e imprime
+   las contraseñas**, y luego no entra nadie: 401 para todo el mundo.
+   Verificado.
 
 3. **Sin `SNAPSHOT_SIGNING_KEY_B64` la aplicación responde 200 y parece sana.**
    Cada instancia firma con una clave efímera propia, así que el modo sin

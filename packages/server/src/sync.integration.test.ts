@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { API_VERSION, type CommandEnvelopeV1 } from "@casa-clara/contracts";
+import { API_VERSION, type CommandEnvelopeV1 } from "@housekeeper/contracts";
 
 import { submitExpenseHandler } from "./commands/expense.js";
 import { processSyncBatch, type CommandHandlers } from "./sync.js";
@@ -13,7 +13,7 @@ const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const ROBLE_HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
 const OLIVO_HOUSEHOLD = "20000000-0000-4000-8000-000000000001";
 const ROBLE_AGREEMENT = "12000000-0000-4000-8000-000000000001";
-const APP_LOGIN = "it_casa_clara_app_login";
+const APP_LOGIN = "it_housekeeper_app_login";
 
 const HANDLERS: CommandHandlers = { expense: submitExpenseHandler };
 

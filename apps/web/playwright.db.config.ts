@@ -16,7 +16,7 @@ const adminUrl = process.env.E2E_DATABASE_URL ?? '';
 // 18 specs se han ejecutado de verdad y no sólo recolectado.
 const JUNIT_OUTPUT = process.env.PLAYWRIGHT_JUNIT_OUTPUT_NAME ?? '../../artifacts/e2e/junit-db.xml';
 
-export const E2E_APP_LOGIN = 'e2e_casa_clara_web';
+export const E2E_APP_LOGIN = 'e2e_housekeeper_web';
 export const E2E_APP_PASSWORD = 'e2e-only';
 
 function appDatabaseUrl(): string {
@@ -55,14 +55,14 @@ export default defineConfig({
     // Ésta es, literalmente, la combinación que en producción sería letal: un
     // selector de cuentas de mentira sobre datos de verdad. Aquí es legítima
     // porque los datos son fixtures y porque exige declarar
-    // CASA_CLARA_FIXTURE_LOGIN, que es lo que la vuelve imposible de alcanzar
+    // HOUSEKEEPER_FIXTURE_LOGIN, que es lo que la vuelve imposible de alcanzar
     // por descuido: sin esa variable el selector no existe en el paquete, y con
     // ella el paquete se niega a arrancar en cualquier despliegue de Vercel
     // (deployment-config.js, 'fixture-bundle-with-database').
     command: `pnpm build && PORT=${PORT} ORIGIN=http://127.0.0.1:${PORT} node build`,
     env: {
       DATABASE_URL: appDatabaseUrl(),
-      CASA_CLARA_FIXTURE_LOGIN: 'true',
+      HOUSEKEEPER_FIXTURE_LOGIN: 'true',
       // Cinturón sobre los tirantes del job de CI: Playwright arranca el
       // webServer con `{...process.env, ...webServer.env}`, así que una
       // variable del entorno se colaría en el servidor bajo prueba. Esta

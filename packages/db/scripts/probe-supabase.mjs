@@ -14,10 +14,10 @@
 // de ser desplegable en Postgres gestionado, esta sonda se pone roja.
 //
 //   PROBE_ADMIN_URL=postgresql://casa_admin@127.0.0.1:54329/postgres \
-//     pnpm --filter @casa-clara/db probe:supabase
+//     pnpm --filter @housekeeper/db probe:supabase
 //
 // Variables: PROBE_ADMIN_URL (obligatoria, superusuario del clúster),
-// PROBE_DATABASE (por omisión casaclara_sb_probe), PROBE_ROLE (sb_postgres),
+// PROBE_DATABASE (por omisión housekeeper_sb_probe), PROBE_ROLE (sb_postgres),
 // PROBE_EXTENSIONS_SCHEMA (extensions). Con --keep no borra la base al acabar.
 
 import { spawn } from 'node:child_process';
@@ -30,7 +30,7 @@ import pg from 'pg';
 const packageRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const adminUrl = process.env.PROBE_ADMIN_URL;
-const database = process.env.PROBE_DATABASE ?? 'casaclara_sb_probe';
+const database = process.env.PROBE_DATABASE ?? 'housekeeper_sb_probe';
 const role = process.env.PROBE_ROLE ?? 'sb_postgres';
 const extensionsSchema = process.env.PROBE_EXTENSIONS_SCHEMA ?? 'extensions';
 // Con `trust` local da igual, pero un clúster con autenticación por contraseña

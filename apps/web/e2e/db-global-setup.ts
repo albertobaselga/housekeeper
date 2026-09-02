@@ -8,7 +8,7 @@ import { E2E_APP_LOGIN, E2E_APP_PASSWORD } from '../playwright.db.config';
 import { E2E_SEED } from './helpers';
 
 // Siembra de la base de datos para los e2e con Postgres: igual que el
-// global-setup de @casa-clara/server (migraciones + fixtures sintéticas) más
+// global-setup de @housekeeper/server (migraciones + fixtures sintéticas) más
 // una página de wiki publicada para ejercitar el editor visual, y un login
 // sin BYPASSRLS con el que corre el servidor web.
 

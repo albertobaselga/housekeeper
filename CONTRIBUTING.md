@@ -1,4 +1,4 @@
-# Cómo trabajar en Casa Clara
+# Cómo trabajar en Housekeeper
 
 Repositorio privado, un mantenedor y agentes trabajando en paralelo. Estas son
 las reglas mínimas que evitan pisarse.
@@ -42,19 +42,19 @@ La tabla completa de comando → job está en el [README](README.md#cómo-se-eje
 Lo que hay que recordar:
 
 ```bash
-export TEST_DATABASE_URL="postgresql://usuario@127.0.0.1:5432/casaclara_dev"
-export E2E_DATABASE_URL="postgresql://usuario@127.0.0.1:5432/casaclara_e2e"
+export TEST_DATABASE_URL="postgresql://usuario@127.0.0.1:5432/housekeeper_dev"
+export E2E_DATABASE_URL="postgresql://usuario@127.0.0.1:5432/housekeeper_e2e"
 ```
 
 **En secuencia, nunca en paralelo.** Las suites de integración recrean el
-esquema y crean bases y roles de **nombre fijo** (`casaclara_access_it`,
-`it_casa_clara_app_login`, `e2e_casa_clara_web`…). Dos a la vez sobre el mismo
+esquema y crean bases y roles de **nombre fijo** (`housekeeper_access_it`,
+`it_housekeeper_app_login`, `e2e_housekeeper_web`…). Dos a la vez sobre el mismo
 clúster se destruyen mutuamente y los fallos que produce eso son difíciles de
 leer. Si necesitas paralelismo, usa clústeres distintos —que es exactamente lo
 que hace el CI, un contenedor de PostgreSQL por job.
 
 Si compartes clúster con otra persona o con otro worktree, prefija tus bases
-(`casaclara_<algo>_*`) y no toques las ajenas.
+(`housekeeper_<algo>_*`) y no toques las ajenas.
 
 ## Commits y pull requests
 

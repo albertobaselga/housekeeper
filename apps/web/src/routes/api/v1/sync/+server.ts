@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { syncRequestSchema } from '@casa-clara/contracts/schemas';
+import { syncRequestSchema } from '@housekeeper/contracts/schemas';
 import {
   accessCommandHandlers,
   contactCommandHandlers,
@@ -10,7 +10,7 @@ import {
   submitExpenseHandler,
   wikiCommandHandlers,
   type CommandHandlers
-} from '@casa-clara/server';
+} from '@housekeeper/server';
 
 import { getDatabasePool } from '$lib/server/db.server';
 import type { RequestHandler } from './$types';

@@ -1,13 +1,13 @@
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
-import { extraWorkCommandPayloadSchema } from "@casa-clara/contracts/schemas";
+import type { UUID } from "@housekeeper/contracts";
+import { extraWorkCommandPayloadSchema } from "@housekeeper/contracts/schemas";
 import {
   transitionExtraWork,
   valueExtraWork,
   type ExtraWorkEvent as DomainExtraWorkEvent,
   type ExtraWorkStatus,
-} from "@casa-clara/domain";
+} from "@housekeeper/domain";
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler } from "../sync.js";

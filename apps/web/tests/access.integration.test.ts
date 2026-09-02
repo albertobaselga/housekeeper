@@ -9,10 +9,10 @@ import { loadAccessOverview, resolveMembershipIdentity } from '../src/lib/server
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_access_login';
+const APP_LOGIN = 'it_housekeeper_access_login';
 // Base de datos propia (patrón de la suite de comida): las otras suites
 // recrean el esquema entero en paralelo y ninguna puede compartir instancia.
-const ACCESS_DB = 'casaclara_access_it';
+const ACCESS_DB = 'housekeeper_access_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';

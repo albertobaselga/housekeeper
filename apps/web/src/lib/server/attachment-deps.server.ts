@@ -42,7 +42,7 @@ export interface ClamAvOptions {
  * `stream: OK` (limpio) o `stream: <firma> FOUND` (infectado), terminado en \0.
  *
  * Con `tls` el socket se abre cifrado y con `token` se antepone la línea
- * `CASACLARA <token>\n`, que la pasarela consume y no reenvía: clamd al otro
+ * `HOUSEKEEPER <token>\n`, que la pasarela consume y no reenvía: clamd al otro
  * lado ve exactamente el mismo diálogo de siempre.
  */
 export function scanWithClamAv(bytes: Uint8Array, options: ClamAvOptions): Promise<'clean' | 'infected'> {
@@ -76,7 +76,7 @@ export function scanWithClamAv(bytes: Uint8Array, options: ClamAvOptions): Promi
     const sendStream = (): void => {
       // El saludo de la pasarela va PRIMERO y en su propia escritura: quien
       // no lo conozca no llega a hablar con clamd.
-      if (options.token) socket.write(`CASACLARA ${options.token}\n`);
+      if (options.token) socket.write(`HOUSEKEEPER ${options.token}\n`);
       socket.write('zINSTREAM\0');
       for (let offset = 0; offset < bytes.length; offset += INSTREAM_CHUNK_BYTES) {
         const chunk = bytes.subarray(offset, Math.min(offset + INSTREAM_CHUNK_BYTES, bytes.length));

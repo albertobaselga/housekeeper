@@ -55,7 +55,7 @@ export function bootRefusal(
   if (verdict) {
     // Una línea en el registro del arranque, para quien mire los logs antes que
     // la pantalla. El detalle completo va también en la respuesta.
-    console.error(`[casa-clara] arranque rechazado (${verdict.code}): ${verdict.message}`);
+    console.error(`[housekeeper] arranque rechazado (${verdict.code}): ${verdict.message}`);
   }
   return verdict;
 }
@@ -73,7 +73,7 @@ export function resetBootRefusal(): void {
  */
 export function refusalResponse(problem: DeploymentProblem): Response {
   const body = [
-    'Casa Clara no está sirviendo esta casa ahora mismo.',
+    'Esta instalación no está sirviendo esta casa ahora mismo.',
     '',
     'La configuración del despliegue está a medias, y a medias es peor que vacía:',
     'la aplicación prefiere no abrir a abrir una puerta que no es la de esta casa.',

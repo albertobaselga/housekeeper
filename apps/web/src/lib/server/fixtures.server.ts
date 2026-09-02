@@ -18,7 +18,7 @@ import { demoOnly, fixturesAllowed } from './data-source.server';
  * e2e ejercita con base de datos a propósito.
  */
 
-// Los identificadores replican las fixtures sintéticas de @casa-clara/db
+// Los identificadores replican las fixtures sintéticas de @housekeeper/db
 // (fixture-casa-roble): con DATABASE_URL configurada, la sesión demo opera
 // directamente contra Postgres bajo RLS sin tabla de correspondencias.
 const HOUSEHOLD: HouseholdSummary = {
@@ -62,7 +62,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000001',
     'Alberto',
     'A',
-    'alberto.admin@casaclara.demo',
+    'alberto.admin@hogar.demo',
     'family_admin'
   ),
   demoUser(
@@ -70,7 +70,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000002',
     'Marta',
     'M',
-    'marta.familia@casaclara.demo',
+    'marta.familia@hogar.demo',
     'family_member'
   ),
   demoUser(
@@ -78,7 +78,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000003',
     'Ana',
     'AN',
-    'ana.empleada@casaclara.demo',
+    'ana.empleada@hogar.demo',
     'employee_live_in'
   ),
   demoUser(
@@ -86,7 +86,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000004',
     'Lucía',
     'L',
-    'lucia.apoyo@casaclara.demo',
+    'lucia.apoyo@hogar.demo',
     'helper'
   ),
   demoUser(
@@ -94,7 +94,7 @@ const DEMO_USERS: DemoUser[] = [
     '11000000-0000-4000-8000-000000000005',
     'Diego',
     'D',
-    'diego.canguro@casaclara.demo',
+    'diego.canguro@hogar.demo',
     'viewer'
   )
 ];

@@ -11,10 +11,10 @@ import { buildSettlementDocument } from '../src/lib/server/settlement-document.s
 import { FIXTURE_HOUSEHOLD } from './helpers';
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const APP_LOGIN = 'it_casa_clara_doc_login';
+const APP_LOGIN = 'it_housekeeper_doc_login';
 // Base de datos propia (patrón de la suite de exportación): las otras suites
 // recrean el esquema entero en paralelo y ninguna puede compartir instancia.
-const DOC_DB = 'casaclara_settlement_doc_it';
+const DOC_DB = 'housekeeper_settlement_doc_it';
 
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
 const ADMIN_USER = { id: 'fixture:roble:admin' };

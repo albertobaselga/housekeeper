@@ -22,7 +22,7 @@ import {
   type SettlementLine,
   type VacationCarryoverExpiry,
   type Weekday
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 
 // La etiqueta del año de contrato la escribe el módulo del historial, que es
 // donde vive el lenguaje de las vacaciones. Decirlo aquí a mano dejaría dos
@@ -338,6 +338,13 @@ export interface SettlementRow {
   pendingCents: string;
   receiptConfirmedAt: string | null;
   receiptNote: string | null;
+  /**
+   * Frente E: si el PDF del recibo ya quedó registrado
+   * (`app.settlement_receipts`). Opcional porque no todas las consultas que
+   * usan esta fila lo seleccionan (p. ej. el ZIP del expediente, que no ofrece
+   * descarga); ausente se trata como «todavía no».
+   */
+  hasReceiptDocument?: boolean;
 }
 
 export interface SettlementLineRow {
@@ -640,6 +647,13 @@ export interface SettlementView {
   receiptConfirmedAt: string | null;
   receiptNote: string | null;
   paymentStateLabel: string;
+  /**
+   * Frente E: si el PDF del recibo ya está registrado y por tanto descargable
+   * desde `/api/v1/households/{householdId}/settlements/{id}/receipt`. Solo
+   * tiene sentido preguntarlo con la liquidación cerrada — una abierta no
+   * tiene recibo que generar todavía.
+   */
+  receiptDocumentAvailable: boolean;
   lines: SettlementLineView[];
   payments: SettlementPaymentView[];
 }
@@ -1242,7 +1256,7 @@ export function scheduleMismatchLabel(
 /**
  * El horario de una versión, resuelto y redactado.
  *
- * La frase y los minutos salen del motor puro (`@casa-clara/domain`), no de
+ * La frase y los minutos salen del motor puro (`@housekeeper/domain`), no de
  * aquí: son las mismas reglas que aplican el guion de alta y las pruebas, y
  * reescribirlas en la capa de vista sería tener dos horarios distintos según
  * quién los mire.
@@ -1815,6 +1829,7 @@ export function buildSettlementViews(
       receiptConfirmedAt: row.receiptConfirmedAt,
       receiptNote: row.receiptNote,
       paymentStateLabel: paymentStateLabel(row, fullyPaid, ownPayments.length > 0),
+      receiptDocumentAvailable: row.hasReceiptDocument === true,
       lines: ownLines,
       payments: ownPayments
     };

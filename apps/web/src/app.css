@@ -462,6 +462,12 @@
   #main-content { min-height: calc(100dvh - var(--topbar)); }
   .bottom-nav { display: none; }
 
+  /* Los dos banners de entrada (instalación / avisos, nunca a la vez) viven
+     FUERA de `.page-wrap`: cada pantalla dibuja el suyo con su propio margen,
+     así que estos ponen el mismo aire por su cuenta en vez de pegarse al
+     borde del contenido. */
+  .install-banner, .push-banner { margin: var(--pad-page-y) var(--pad-page-x) 0; }
+
   /* Capa modal del shell: hoja «Más» (móvil) y overlay de búsqueda (⌘K). */
   .sheet-backdrop { position: fixed; z-index: 70; inset: 0; background: var(--scrim); }
   .more-sheet {

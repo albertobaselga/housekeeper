@@ -2,12 +2,14 @@ import { createServer } from "node:http";
 
 import { Pool } from "pg";
 
-import { createLogger, errorCode } from "@casa-clara/server/logging";
+import { createLogger, errorCode } from "@housekeeper/server/logging";
 
+import { ensureCloseDueScheduled } from "./close-due.js";
 import { loadWorkerConfig } from "./config.js";
 import { ensureIcsSyncScheduled } from "./ics.js";
 import { objectStore, putPrivateObject } from "./integrations.js";
 import { ensurePruneDiscoveryScheduled } from "./maintenance.js";
+import { loadVapidConfig } from "./push.js";
 import { reclaimStaleJobs, runOneJob } from "./queue.js";
 import { createJobHandlers } from "./registry.js";
 
@@ -26,6 +28,7 @@ const handlers = createJobHandlers({
   pool,
   uploadDocument: (key, body, contentType) =>
     putPrivateObject(storageClient, config.storage.bucket, key, body, contentType),
+  documentsBucket: config.storage.bucket,
   log,
   errorCode,
   // Las claves VAPID no son obligatorias para arrancar: sin ellas el demonio
@@ -33,17 +36,22 @@ const handlers = createJobHandlers({
   // push, así que faltar no puede impedir que se generen los recibos.
   environment: process.env,
 });
+// El barrido de cierre de mes solo tiene sentido —y solo tiene manejador
+// registrado, ver registry.ts— cuando hay canal de avisos: sin VAPID no se
+// arma, para no dejar un trabajo re-encolándose y muriendo `dead` en cada
+// pasada por falta de manejador.
+const closeDueEnabled = loadVapidConfig(process.env) !== null;
 
 const healthServer = createServer(async (request, response) => {
   if (request.url === "/metrics") {
     response.writeHead(200, { "content-type": "text/plain; version=0.0.4", "cache-control": "no-store" });
     response.end([
-      "# HELP casa_clara_worker_processed_jobs_total Jobs claimed by this worker.",
-      "# TYPE casa_clara_worker_processed_jobs_total counter",
-      `casa_clara_worker_processed_jobs_total ${processedJobs}`,
-      "# HELP casa_clara_worker_poll_failures_total Queue polling failures.",
-      "# TYPE casa_clara_worker_poll_failures_total counter",
-      `casa_clara_worker_poll_failures_total ${pollFailures}`,
+      "# HELP housekeeper_worker_processed_jobs_total Jobs claimed by this worker.",
+      "# TYPE housekeeper_worker_processed_jobs_total counter",
+      `housekeeper_worker_processed_jobs_total ${processedJobs}`,
+      "# HELP housekeeper_worker_poll_failures_total Queue polling failures.",
+      "# TYPE housekeeper_worker_poll_failures_total counter",
+      `housekeeper_worker_poll_failures_total ${pollFailures}`,
       "",
     ].join("\n"));
     return;
@@ -90,6 +98,15 @@ async function loop(): Promise<void> {
     await ensureIcsSyncScheduled(pool);
   } catch {
     pollFailures += 1;
+  }
+  // Barrido «el mes está por cerrar» (Frente D): mismo contrato, y solo si hay
+  // canal de avisos (ver closeDueEnabled arriba).
+  if (closeDueEnabled) {
+    try {
+      await ensureCloseDueScheduled(pool);
+    } catch {
+      pollFailures += 1;
+    }
   }
   while (!stopping) {
     try {

@@ -107,7 +107,7 @@ describe('historial de vacaciones de una persona', () => {
     expect(person.years[0]?.headline).toBe(
       'En el segundo año ha disfrutado 42 días y el contrato reconoce 30 días: hay 12 días de más.'
     );
-    expect(person.years[0]?.excessNote).toContain('Casa Clara no lo corrige sola');
+    expect(person.years[0]?.excessNote).toContain('La aplicación no lo corrige sola');
     expect(person.years[0]?.headline).not.toMatch(/%/);
     // El exceso ya lo cuenta todo: la nota del adelanto sería un segundo aviso
     // diciendo lo mismo con otras palabras.

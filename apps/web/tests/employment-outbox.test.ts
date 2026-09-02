@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 
-import { commandEnvelopeSchema } from '@casa-clara/contracts/schemas';
+import { commandEnvelopeSchema } from '@housekeeper/contracts/schemas';
 
 import {
   openSettlement,
@@ -30,7 +30,7 @@ const AGREEMENT = '12000000-0000-4000-8000-000000000001';
 const ENTITY = '12400000-0000-4000-8000-000000000005';
 
 function databaseName(label: string): string {
-  return `casa-clara-outbox-${label}-${crypto.randomUUID()}`;
+  return `housekeeper-outbox-${label}-${crypto.randomUUID()}`;
 }
 
 describe('descripciones humanas de comandos del expediente', () => {

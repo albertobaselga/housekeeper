@@ -7,7 +7,7 @@ import {
   API_VERSION,
   type CommandAckV1,
   type CommandEnvelopeV1,
-} from "@casa-clara/contracts";
+} from "@housekeeper/contracts";
 
 import { submitExpenseHandler } from "./commands/expense.js";
 import { processSyncBatch, type CommandHandlers } from "./sync.js";
@@ -19,7 +19,7 @@ const ROBLE_HOUSEHOLD = "10000000-0000-4000-8000-000000000001";
 const ROBLE_AGREEMENT = "12000000-0000-4000-8000-000000000001";
 const ROBLE_EMPLOYEE_MEMBERSHIP = "11000000-0000-4000-8000-000000000003";
 const ROBLE_ADMIN_MEMBERSHIP = "11000000-0000-4000-8000-000000000001";
-const APP_LOGIN = "it_casa_clara_app_login";
+const APP_LOGIN = "it_housekeeper_app_login";
 
 const EMPLOYEE: AuthenticatedPrincipal = { userId: "fixture:roble:employee" };
 
@@ -71,7 +71,7 @@ describe.runIf(Boolean(adminUrl))("gasto con justificante adjunto (receiptStorag
     const inserted = await adminPool.query<{ id: string }>(
       `insert into app.storage_objects
          (household_id, bucket, object_key, media_type, byte_size, sha256, created_by_membership_id)
-       values ($1, 'casa-clara-it', $2, 'image/jpeg', 2048, $3, $4)
+       values ($1, 'housekeeper-it', $2, 'image/jpeg', 2048, $3, $4)
        returning id`,
       [ROBLE_HOUSEHOLD, key, sha256, createdByMembershipId],
     );

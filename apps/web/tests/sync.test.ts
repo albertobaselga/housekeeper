@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { generateKeyPairSync, sign as nodeSign } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
-import { canonicalJson } from '@casa-clara/contracts';
+import { canonicalJson } from '@housekeeper/contracts';
 
 import { listOutbox, queueOutbox } from '../src/lib/offline/idb';
 import { createOutboxRecord } from '../src/lib/offline/schema';
@@ -11,7 +11,7 @@ import { verifySnapshotSignature } from '../src/lib/offline/verify';
 import { FIXTURE_HOUSEHOLD as HOUSEHOLD, envelopeFixture, snapshotFixture } from './helpers';
 
 function databaseName(label: string): string {
-  return `casa-clara-sync-${label}-${crypto.randomUUID()}`;
+  return `housekeeper-sync-${label}-${crypto.randomUUID()}`;
 }
 
 function jsonResponse(body: unknown, ok = true): Response {

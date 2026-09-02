@@ -1,11 +1,11 @@
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 import { queueCommand, type QueueOutcome } from '$lib/offline/queue-command';
 
 /**
  * Constructores puros de envelopes para la gestión de accesos (F4-03).
- * Producen los payloads CONGELADOS de @casa-clara/contracts/schemas
+ * Producen los payloads CONGELADOS de @housekeeper/contracts/schemas
  * (membershipSetExpiry y membershipRevoke). La validación zod vive en los
  * tests y en el servidor, nunca en el bundle del navegador; los tipos locales
  * replican el contrato porque el índice de contracts no exporta interfaces de

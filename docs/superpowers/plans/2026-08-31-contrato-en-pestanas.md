@@ -17,7 +17,7 @@
 - Ningún `<svelte:head><title>` en páginas: el título lo pinta el layout raíz desde `$lib/app-title`.
 - El formulario de alta de personal sigue «liso» (sin `use:enhance`): decisión de presupuesto documentada en `personal/+page.svelte:145-154`.
 - No tocar: la cola offline, los form actions existentes, el trigger append-only de versiones, `verify-today-bundle.mjs` (no importar nada nuevo hacia el grafo de Hoy).
-- Comprobaciones: `pnpm --filter @casa-clara/web test` (unit), `pnpm typecheck`, `pnpm lint`, `pnpm --filter @casa-clara/web check` (incluye lint de CSS). Integración/e2e requieren Postgres (`test:e2e:db`, `*.integration.test.ts`); si el entorno no tiene BD, dejarlo dicho en el informe final.
+- Comprobaciones: `pnpm --filter @housekeeper/web test` (unit), `pnpm typecheck`, `pnpm lint`, `pnpm --filter @housekeeper/web check` (incluye lint de CSS). Integración/e2e requieren Postgres (`test:e2e:db`, `*.integration.test.ts`); si el entorno no tiene BD, dejarlo dicho en el informe final.
 
 ---
 
@@ -31,7 +31,7 @@
 **Interfaces:**
 - Produces: `NESTED_ROUTE_CAPABILITY['employment/conceptos'] === 'settlement.read'` y `NESTED_ROUTE_CAPABILITY['employment/pagos'] === 'settlement.read'`; `SECTION_LABELS['employment/conceptos'] === 'Conceptos del mes'`, `SECTION_LABELS['employment/pagos'] === 'Pagos'`.
 
-- [ ] **Step 1: Test en rojo** — en `routing.test.ts`, junto a los casos de `employment/acuerdo|condiciones|vacaciones`, añadir que `guardForPath('/h/x/employment/conceptos')` y `.../pagos` devuelven `{known: true, capability: 'settlement.read'}`. Ejecutar `pnpm --filter @casa-clara/web test -- routing` → FALLA (`known: false`).
+- [ ] **Step 1: Test en rojo** — en `routing.test.ts`, junto a los casos de `employment/acuerdo|condiciones|vacaciones`, añadir que `guardForPath('/h/x/employment/conceptos')` y `.../pagos` devuelven `{known: true, capability: 'settlement.read'}`. Ejecutar `pnpm --filter @housekeeper/web test -- routing` → FALLA (`known: false`).
 - [ ] **Step 2: Implementar** — añadir a `NESTED_ROUTE_CAPABILITY`:
 
 ```ts
@@ -63,7 +63,7 @@
 
 - [ ] **Step 1:** `+page.server.ts` — copiar el de la raíz (`employment/+page.server.ts`) cambiando la rama fixture: `return demoOrUnavailable(() => ({ overview: null }));` (la maqueta de demostración solo vive en el Resumen).
 - [ ] **Step 2:** `+page.svelte` — `PageHeader` con `eyebrow="Contrato"`, `title="Conceptos del mes"`, `description="Jornadas extra, gastos, adelantos y ausencias: aquí se apuntan y aquí se deciden."`. Mover desde `employment/+page.svelte` los derivados que estas tarjetas necesitan (`agreement`, `isOwnAgreement`, `canRegisterExtra`, `canRegisterForEmployee`, `selectedEmployeeLabel`, `canSubmitExpense`, `canConfirmWork`, `canCloseSettlement`, `seesAmounts`, líneas `:26-72`) y las tres tarjetas + `OutboxTriageCard` + `ActionStatus`/`OptimisticActions` (mismo patrón `invalidateToken: 'cc:employment'`). Para quien no ve importes, conservar la tarjeta «Importes reservados» adaptada (`:341-348`).
-- [ ] **Step 3:** Comprobar en frío: `pnpm --filter @casa-clara/web typecheck && pnpm --filter @casa-clara/web check`.
+- [ ] **Step 3:** Comprobar en frío: `pnpm --filter @housekeeper/web typecheck && pnpm --filter @housekeeper/web check`.
 - [ ] **Step 4: Commit** — `feat(web): pestaña de conceptos del mes`.
 
 ---
@@ -225,7 +225,7 @@
 
 - [ ] **Step 1: Test en rojo** — en `employment-model.test.ts`, caso nuevo: con `hrefBases`, una línea de jornada extra produce `href === '/h/H/employment/conceptos#extra-E1'` y una de anticipo `'/h/H/employment#anticipo-A1'`; sin bases, se quedan como fragmento (asegurar que los asserts existentes siguen en pie).
 - [ ] **Step 2:** Implementar en `model.ts` y enhebrar `hrefBases` por `buildAccrual` y `settlementLineHref`/`buildSettlementViews` hasta `employment.server.ts`.
-- [ ] **Step 3:** Verde: `pnpm --filter @casa-clara/web test -- employment-model` y suite completa unit.
+- [ ] **Step 3:** Verde: `pnpm --filter @housekeeper/web test -- employment-model` y suite completa unit.
 - [ ] **Step 4:** Los `id` ancla deben existir en el destino: comprobar que `ExtraWorkPendingCard`/`ExpensesPendingCard`/`ManualAdjustmentsCard` pintan `id="extra-{id}"`, `id="gasto-{id}"`, `id="concepto-{id}"` (hoy los pintaba la principal y las tarjetas; ajustar las tarjetas si falta alguno) y que las tarjetas de versiones (acuerdo y condiciones, Task 7b) llevan `id="version-{id}"`.
 - [ ] **Step 5: Commit** — `feat(web): los orígenes de la cuenta enlazan a la pestaña donde viven`.
 
@@ -299,6 +299,6 @@
 - Modify: `apps/web/tests/employment.integration.test.ts` y vecinos SOLO si asertan sobre la forma de la página (la mayoría asertan sobre el overview del servidor, que no cambia)
 
 - [ ] **Step 1:** `grep -rn "employment" apps/web/e2e apps/web/src/lib/server/today.server.ts apps/web/src/lib/wiki` y revisar cada enlace/paso de navegación: lo que buscaba tarjetas en la principal ahora pasa por su pestaña (p. ej. aceptar jornada → `employment/conceptos`; cerrar y pagar → `employment/pagos`; apuntar vacaciones → `employment/vacaciones`).
-- [ ] **Step 2:** Ejecutar TODO lo que el entorno permita: `pnpm --filter @casa-clara/web test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter @casa-clara/web check`; con BD: `pnpm test:e2e:db`, integración. Arreglar hasta verde.
+- [ ] **Step 2:** Ejecutar TODO lo que el entorno permita: `pnpm --filter @housekeeper/web test`, `pnpm typecheck`, `pnpm lint`, `pnpm --filter @housekeeper/web check`; con BD: `pnpm test:e2e:db`, integración. Arreglar hasta verde.
 - [ ] **Step 3:** Autorrevisión contra la especificación (`docs/ux/rediseno-contrato-en-pestanas.md`): cada requisito señalable a una pestaña/función entregada.
 - [ ] **Step 4: Commit** — `test(web): la navegación por pestañas del contrato, cubierta`.

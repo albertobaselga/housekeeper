@@ -13,14 +13,14 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 
 FROM dependencies AS build
-ARG WORKSPACE_FILTER=@casa-clara/web
+ARG WORKSPACE_FILTER=@housekeeper/web
 RUN pnpm --filter "${WORKSPACE_FILTER}..." build
 
 FROM base AS runtime
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
-    WORKSPACE_FILTER=@casa-clara/web
+    WORKSPACE_FILTER=@housekeeper/web
 COPY --from=build --chown=node:node /workspace /workspace
 USER node
 EXPOSE 3000

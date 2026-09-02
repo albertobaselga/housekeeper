@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 import type { PoolClient } from "pg";
 
-import type { UUID } from "@casa-clara/contracts";
+import type { UUID } from "@housekeeper/contracts";
 import {
   icsFeedCommandPayloadSchema,
   retiredRoutineUpsertPayloadSchema,
@@ -10,7 +10,7 @@ import {
   routineUncompletePayloadSchema,
   routineUpsertPayloadSchema,
   type RoutineUpsertPayload,
-} from "@casa-clara/contracts/schemas";
+} from "@housekeeper/contracts/schemas";
 import {
   overduePolicyFor,
   pendingFor,
@@ -18,7 +18,7 @@ import {
   type RoutineOverduePolicy,
   type RoutinePattern,
   type RoutineSchedule,
-} from "@casa-clara/domain";
+} from "@housekeeper/domain";
 
 import type { ActiveMembership } from "../database.js";
 import { CommandRejectedError, type CommandHandler, type CommandHandlers } from "../sync.js";
@@ -63,7 +63,7 @@ async function householdToday(client: PoolClient): Promise<string> {
  * que es lo honesto: no se guarda, y se dice por qué.
  *
  * `advanceDueDate` solo seguía viva porque el feed ICS la importaba. El feed
- * genera ahora sus ocurrencias con el motor puro de `@casa-clara/domain`, que
+ * genera ahora sus ocurrencias con el motor puro de `@housekeeper/domain`, que
  * es la única aritmética de recurrencia que queda en pie en todo el árbol.
  */
 

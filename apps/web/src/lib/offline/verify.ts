@@ -1,4 +1,4 @@
-import { canonicalJson } from '@casa-clara/contracts';
+import { canonicalJson } from '@housekeeper/contracts';
 
 import type { CriticalSnapshotV1 } from './schema';
 

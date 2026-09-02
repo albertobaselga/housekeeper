@@ -57,7 +57,7 @@ function startFakeClamd(): Promise<FakeClamd> {
 
 /** Par certificado/clave autofirmado para `localhost`, vía el openssl del sistema. */
 async function selfSigned(): Promise<{ certPath: string; keyPath: string; caPem: string }> {
-  const dir = mkdtempSync(join(tmpdir(), 'casaclara-clamav-gw-'));
+  const dir = mkdtempSync(join(tmpdir(), 'housekeeper-clamav-gw-'));
   const keyPath = join(dir, 'privkey.pem');
   const certPath = join(dir, 'fullchain.pem');
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });

@@ -1,10 +1,10 @@
-import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
 
 import { createCommandEnvelope } from '$lib/offline/schema';
 
 /**
  * Constructor puro del envelope `ics_feed.upsert_source` (payload CONGELADO de
- * icsSourceUpsertPayloadSchema en @casa-clara/contracts/schemas): alta/edición
+ * icsSourceUpsertPayloadSchema en @housekeeper/contracts/schemas): alta/edición
  * de un calendario enlazado por URL. La UI habla de «calendario enlazado»; el
  * tecnicismo ICS vive solo en el contrato. `operationId`/`occurredAt` son
  * inyectables para tests deterministas (mismo patrón que $lib/contacts).

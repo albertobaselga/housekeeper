@@ -44,7 +44,7 @@ que el ADR 0001 exige antes de tocar datos reales.
 ## 2. Qué se ha probado de verdad (y qué es sólo análisis)
 
 Casi todo lo que sigue sobre la base de datos está **verificado empíricamente**,
-no deducido. Se creó `casaclara_deploy_probe` en el Postgres 18 local con un rol
+no deducido. Se creó `housekeeper_deploy_probe` en el Postgres 18 local con un rol
 `sb_postgres` que imita al `postgres` de Supabase (`NOSUPERUSER`, `CREATEROLE`,
 `CREATEDB`, `NOBYPASSRLS`), con las extensiones preinstaladas en un esquema
 `extensions` y con los roles `anon`/`authenticated`/`service_role` presentes,
@@ -88,6 +88,11 @@ infraestructura nueva), **TRIVIAL** (configuración o una línea).
 | B-4 | **BLOQUEANTE** | Better Auth escribe en un esquema llamado literalmente `auth` (`00-create-roles.sh:45-47`). En Supabase `auth` es de GoTrue y pertenece a `supabase_auth_admin` | Renombrar a `casa_auth`. El aislamiento se logra igual con `ALTER ROLE casa_clara_auth_login SET search_path TO casa_auth` — es un rol propio, no reservado, así que Supabase lo permite | 0,25 j |
 | B-5 | TRABAJO | Para ejecutar la suite RLS contra Supabase, el rol propietario necesita **pertenencia** a `casa_clara_app`/`casa_clara_worker`, no sólo `ADMIN OPTION`: comprobado, `SET ROLE` falla si sólo hay admin | Añadir `GRANT casa_clara_app, casa_clara_worker TO postgres;` al runbook de bootstrap | 0,1 j |
 | B-6 | TRIVIAL | El plan Free pausa el proyecto tras 7 días de inactividad | Plan Pro (25 USD/mes) desde el primer día, o asumir despertar manual | decisión, no trabajo |
+
+> Los roles `casa_clara_app`, `casa_clara_worker` y `casa_clara_auth_login` que
+> aparecen en esta tabla y en el resto del documento son nombres legados del
+> proyecto anterior; ver
+> [docs/despliegue/identificadores-legado.md](identificadores-legado.md).
 
 **Buena noticia sobre el pooler** — y corrige la sospecha de partida. El código
 **no** usa `set_config(..., false)` en ninguna parte. Todo es transaccional:
@@ -608,7 +613,7 @@ de la casa (importada del manual) y el calendario.
 
    ```bash
    # ensayo, no escribe nada
-   DATABASE_URL='<directa 5432>' pnpm --filter @casa-clara/db manual:import -- \
+   DATABASE_URL='<directa 5432>' pnpm --filter @housekeeper/db manual:import -- \
      --household <uuid-del-hogar> --dry-run
    ```
 
@@ -721,7 +726,7 @@ lectura de justificantes y decidir el comportamiento del outbox offline.
 ### Fase 5 — Cerrar los huecos de CI (1 – 1,5 j)
 
 Añadir `test:e2e:db` al pipeline (18 specs que hoy no corren), dar Postgres a los
-tests de integración de `@casa-clara/web` y `@casa-clara/worker`, y disparar
+tests de integración de `@housekeeper/web` y `@housekeeper/worker`, y disparar
 `browser-quality.yml` también en la rama de despliegue. **Puede hacerse en
 paralelo con las fases 1-4, y conviene**: son las pruebas que validan justo lo
 que estas fases tocan.
@@ -744,7 +749,7 @@ Lo que ya está bien resuelto y **no hay que rehacer**:
 
 - **Hay servicio de Postgres**, en el job `database` (`ci.yml:64-85`,
   `postgres:18.4-alpine` con `--data-checksums`). Ese job encadena
-  `db:migrate` → `test:db` → `test:rls` → tests de `@casa-clara/server` →
+  `db:migrate` → `test:db` → `test:rls` → tests de `@housekeeper/server` →
   `test:import` → **`db:migrate` otra vez para probar idempotencia**
   (`ci.yml:101-102`).
 - **Guardas anti-falso-verde**, que son la mejor parte del expediente.
@@ -788,8 +793,8 @@ protegen y no se están ejecutando:
    invoca**. Es la batería de aceptación entera de familia y empleada.
 2. **Los tests de integración de web y worker nunca ven una base de datos.**
    Están todos bajo `describe.runIf(Boolean(adminUrl))`, y el job `unit` no tiene
-   Postgres. El job `database` sólo ejecuta `@casa-clara/server`, nunca
-   `@casa-clara/web` ni `@casa-clara/worker`. Y las guardas anti-falso-verde no
+   Postgres. El job `database` sólo ejecuta `@housekeeper/server`, nunca
+   `@housekeeper/web` ni `@housekeeper/worker`. Y las guardas anti-falso-verde no
    lo detectan, porque los tests *no* de integración de esos paquetes ya dan un
    recuento positivo.
 3. **`browser-quality.yml` no corre en push a `main`** (`:3-5`), sólo en PR.
@@ -808,7 +813,7 @@ protegen y no se están ejecutando:
 | Unitarios | `test:unit` con las guardas de recuento | Ya existe |
 | **Base de datos** | `db:migrate` desde cero → `test:db` → `test:rls` → `test:import` → `db:migrate` otra vez | Ya existe. **Debe correr contra un Postgres configurado como Supabase** (propietario no superusuario) o dejará de detectar B-1 y B-2 |
 | **E2E con base de datos** | `test:e2e:db` — **hueco 1**, hay que añadirlo | Es la única prueba de que los 5 roles ven lo que deben bajo RLS real |
-| Integración web + worker | `@casa-clara/web` y `@casa-clara/worker` con `TEST_DATABASE_URL` — **hueco 2** | Hoy son inertes |
+| Integración web + worker | `@housekeeper/web` y `@housekeeper/worker` con `TEST_DATABASE_URL` — **hueco 2** | Hoy son inertes |
 | Navegador | `test:e2e`, `test:a11y`, `test:lighthouse` | Existe, pero hay que dispararlo también en la rama de despliegue |
 | Seguridad | gitleaks historial completo, `pnpm audit`, dependency-review | Ya existe |
 | **Migraciones en producción** | `db:migrate` contra Supabase por **conexión directa**, como paso previo y separado del despliegue de la web | El runner usa `pg_advisory_lock` de sesión: no puede ir por el pooler |
@@ -936,30 +941,30 @@ Entre **27 y 55 USD/mes** según las decisiones 2, 3 y 4.
 
 ## Anexo — cómo reproducir las pruebas de esta auditoría
 
-Se usó una base desechable, sin tocar el puerto 4381 ni `casaclara_docs`:
+Se usó una base desechable, sin tocar el puerto 4381 ni `housekeeper_docs`:
 
 ```bash
 export PATH=/tmp/codex-node24/bin:$PATH
-export PGBIN=/tmp/casa-clara-pg18.mwJavm/root/usr/lib/postgresql/18/bin
-export LD_LIBRARY_PATH=/tmp/casa-clara-pg18.mwJavm/root/usr/lib/x86_64-linux-gnu
+export PGBIN=/tmp/housekeeper-pg18.mwJavm/root/usr/lib/postgresql/18/bin
+export LD_LIBRARY_PATH=/tmp/housekeeper-pg18.mwJavm/root/usr/lib/x86_64-linux-gnu
 
 # 1. Rol que imita al `postgres` de Supabase
 $PGBIN/psql "postgresql://casa_admin@127.0.0.1:54329/postgres" -c \
   "CREATE ROLE sb_postgres LOGIN CREATEROLE CREATEDB NOSUPERUSER NOBYPASSRLS NOREPLICATION;"
 $PGBIN/psql "postgresql://casa_admin@127.0.0.1:54329/postgres" -c \
-  "CREATE DATABASE casaclara_deploy_probe OWNER sb_postgres;"
+  "CREATE DATABASE housekeeper_deploy_probe OWNER sb_postgres;"
 
 # 2. Extensiones donde las pone Supabase
-$PGBIN/psql "postgresql://casa_admin@127.0.0.1:54329/casaclara_deploy_probe" -c \
+$PGBIN/psql "postgresql://casa_admin@127.0.0.1:54329/housekeeper_deploy_probe" -c \
   "CREATE SCHEMA extensions; CREATE EXTENSION unaccent SCHEMA extensions; CREATE EXTENSION pg_trgm SCHEMA extensions;"
 
 # 3. Migraciones -> falla en 0006 (B-1) y luego en 0007 (B-2)
-DATABASE_URL="postgresql://sb_postgres@127.0.0.1:54329/casaclara_deploy_probe" \
+DATABASE_URL="postgresql://sb_postgres@127.0.0.1:54329/housekeeper_deploy_probe" \
   node packages/db/scripts/migrate.mjs
 
 # 4. Suites SQL/RLS (pasan 5/5 una vez resueltos B-1, B-2 y B-5)
-TEST_DATABASE_URL="postgresql://sb_postgres@127.0.0.1:54329/casaclara_deploy_probe" \
+TEST_DATABASE_URL="postgresql://sb_postgres@127.0.0.1:54329/housekeeper_deploy_probe" \
   node packages/db/scripts/run-sql-tests.mjs
 ```
 
-Limpieza: `DROP DATABASE casaclara_deploy_probe; DROP ROLE sb_postgres;`.
+Limpieza: `DROP DATABASE housekeeper_deploy_probe; DROP ROLE sb_postgres;`.

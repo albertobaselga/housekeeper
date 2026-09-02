@@ -20,21 +20,21 @@
 // de las dos cosas. La receta completa, desde una base vacía:
 //
 //   # 1. Base de datos desechable con las fixtures sintéticas
-//   export DATABASE_URL=postgresql://casa_admin@127.0.0.1:5432/casaclara_shots
+//   export DATABASE_URL=postgresql://casa_admin@127.0.0.1:5432/housekeeper_shots
 //   export APP_DB_PASSWORD=shots-only WORKER_DB_PASSWORD=shots-only AUTH_DB_PASSWORD=shots-only
 //   node packages/db/scripts/bootstrap.mjs
 //   node packages/db/scripts/migrate.mjs
-//   psql -d casaclara_shots -f packages/db/fixtures/001_two_households.sql
+//   psql -d housekeeper_shots -f packages/db/fixtures/001_two_households.sql
 //
 //   # 2. La Guía entera (corpus commiteado) y el contenido de las capturas
 //   node packages/db/scripts/import-manual.mjs --household 10000000-0000-4000-8000-000000000001
-//   psql -d casaclara_shots -v ON_ERROR_STOP=1 -f apps/web/scripts/manual-shots-seed.sql
+//   psql -d housekeeper_shots -v ON_ERROR_STOP=1 -f apps/web/scripts/manual-shots-seed.sql
 //
 //   # 3. Cuentas con contraseña, enganchadas a las membresías de la fixture
 //   node apps/web/scripts/manual-shots-accounts.mjs
 //
 //   # 4. Servidor (build de producción) con base, identidad y claves de avisos
-//   pnpm --filter @casa-clara/web build
+//   pnpm --filter @housekeeper/web build
 //   DATABASE_URL=… DATABASE_AUTH_URL=… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=http://127.0.0.1:4363 \
 //   VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… VAPID_SUBJECT=mailto:… \
 //   PORT=4363 ORIGIN=http://127.0.0.1:4363 node apps/web/build

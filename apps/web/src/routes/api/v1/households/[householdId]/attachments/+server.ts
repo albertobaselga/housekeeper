@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 
-import { AuthorizationError } from '@casa-clara/server';
+import { AuthorizationError } from '@housekeeper/server';
 
 import { createAttachmentDependencies } from '$lib/server/attachment-deps.server';
 import {

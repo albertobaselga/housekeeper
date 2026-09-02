@@ -16,6 +16,8 @@ test('la cabecera y la pestaña llevan el nombre del hogar en cada sección', as
   await page.goto(`/h/${HOUSEHOLD}/routines`);
   await expect(page).toHaveTitle('Rutinas · Casa Roble');
   await expect(page.locator('body')).not.toContainText('Casa Clara');
+  // Ni el nombre anterior del proyecto ni el nuevo se muestran nunca.
+  await expect(page.locator('body')).not.toContainText(/Housekeeper/i);
 });
 
 test('una nota de la guía se titula con su propio nombre y el del hogar', async ({ page }) => {

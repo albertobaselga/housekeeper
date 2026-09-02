@@ -76,7 +76,7 @@ const FIXTURE_MARKERS = [
   'Carmen · 2.º B',
   'Colegio Las Encinas',
   'Familia Roble',
-  'alberto.admin@casaclara.demo'
+  'alberto.admin@hogar.demo'
 ];
 
 function fixtureLeak(value: unknown): string | null {
@@ -145,7 +145,7 @@ describe.each([
   ['la lectura real no devuelve nada', 'empty' as const]
 ])('con DATABASE_URL configurada y %s, ninguna pantalla sirve la maqueta', (_label, mode) => {
   beforeEach(() => {
-    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/casaclara';
+    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/housekeeper';
     state.pool = mode;
   });
 
@@ -178,7 +178,7 @@ describe.each([
 
 describe('con DATABASE_URL configurada, Emergencias', () => {
   beforeEach(() => {
-    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/casaclara';
+    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/housekeeper';
     state.pool = 'down';
   });
 
@@ -219,7 +219,7 @@ describe('las maquetas no se pueden ni construir con base configurada', () => {
   it('cada constructor de maqueta lanza con DATABASE_URL y devuelve datos sin ella', async () => {
     const modulePath = '../src/lib/server/fixtures.server';
 
-    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/casaclara';
+    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/housekeeper';
     const guarded = (await import(modulePath)) as Record<string, unknown>;
     const builders = Object.keys(guarded).filter((name) => /^get.+Fixture$/.test(name));
     // Si alguien añade una maqueta nueva, entra sola en esta comprobación.
@@ -237,7 +237,7 @@ describe('las maquetas no se pueden ni construir con base configurada', () => {
   });
 
   it('el snapshot crítico sin lectura real lleva el 112 y nada más', async () => {
-    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/casaclara';
+    fakeEnv.DATABASE_URL = 'postgresql://casa_clara_app@127.0.0.1:5432/housekeeper';
     const { getCriticalSnapshotPayload } = await import('../src/lib/server/fixtures.server');
     const payload = getCriticalSnapshotPayload(null, null);
     expect(payload.contacts).toEqual([

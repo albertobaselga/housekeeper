@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { Pool } from 'pg';
 
-import { createLogger, errorCode, withAuthorizedTransaction } from '@casa-clara/server';
+import { createLogger, errorCode, withAuthorizedTransaction } from '@housekeeper/server';
 
 import { getDatabasePool } from './db.server';
 

@@ -272,6 +272,39 @@
                 {#if row.receiptNote}
                   <p class="audit-note">Al confirmar el cobro, la empleada anotó: {row.receiptNote}</p>
                 {/if}
+                <!-- El recibo que archivó el worker al cerrar: el mismo fichero que
+                     anunció el aviso al móvil, byte a byte. No es el documento de
+                     pago de la fila —ese se dibuja al momento—, así que se nombra
+                     distinto: si algún día no coincidieran, quien mira tiene que
+                     poder decir cuál está mirando. Entre cerrar y tenerlo pasa una
+                     vuelta de la cola.
+
+                     Cuando no lo hay, la frase no promete una espera. Los meses que
+                     se cerraron antes de que existiera el archivo de recibos
+                     (migración 0035) no tendrán fila NUNCA, salvo que alguien lance
+                     el backfill del runbook: decirles «se está generando» sería una
+                     espera que no termina jamás. Y separar los dos casos no se puede
+                     de forma fiable: esta vista no tiene la fecha de cierre —solo el
+                     periodo, y un mes puede cerrarse meses después—, y no vamos a
+                     inventar un campo en la base para redactar una frase. Así que se
+                     dice una que es verdad en los dos, y se señala lo que sí está
+                     disponible hoy: el documento de pago de la fila, con los mismos
+                     conceptos. -->
+                {#if row.settlement.status === 'closed'}
+                  <p class="audit-note">
+                    {#if row.settlement.receiptDocumentAvailable}
+                      <a
+                        href={`/api/v1/households/${overview.householdId}/settlements/${row.settlement.id}/receipt`}
+                        target="_blank"
+                        rel="noopener"
+                      >Recibo archivado (PDF)</a>
+                    {:else}
+                      Sin recibo archivado: este mes se cerró antes de que se archivaran los
+                      recibos, o acaba de cerrarse y aún está en la cola. El documento de pago
+                      de la fila lleva los mismos conceptos.
+                    {/if}
+                  </p>
+                {/if}
                 <SettlementActions
                   householdId={overview.householdId}
                   settlement={row.settlement}

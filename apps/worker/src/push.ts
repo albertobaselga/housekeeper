@@ -7,7 +7,7 @@
  * que es JavaScript.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * DOS AVISOS. NI UNO MÁS, Y LA LISTA DE LO QUE NO SE MANDA ES CÓDIGO.
+ * TRES AVISOS. NI UNO MÁS, Y LA LISTA DE LO QUE NO SE MANDA ES CÓDIGO.
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * `PUSH_TOPICS` es el catálogo entero y está cerrado. Lo que queda prohibido, y
@@ -26,7 +26,9 @@
  *   · producto y relleno (novedades, resúmenes, «hace tiempo que no entras»).
  *
  * La base tampoco los sabría resolver: `app_private.push_notice_targets`
- * (migración 0032) rechaza con 22023 cualquier tópico fuera de estos dos.
+ * (migración 0032) rechaza con 22023 cualquier tópico fuera del suyo, y
+ * `app_private.close_due_households`/`push_close_due_targets` (migración 0034)
+ * son la única puerta del tercero.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * NINGÚN DATO EN EL TEXTO
@@ -48,12 +50,13 @@
  */
 import type { Pool } from "pg";
 
+import { loadVapidConfig, type VapidConfig } from "./push-channel.js";
 import { PermanentJobError, type JobHandler } from "./queue.js";
 
 export const PUSH_NOTICE_JOB = "notification.push";
 
 /** El catálogo entero. Añadir uno cuesta una migración y una discusión. */
-export const PUSH_TOPICS = ["settlement.receipt_ready", "settlement.due"] as const;
+export const PUSH_TOPICS = ["settlement.receipt_ready", "settlement.due", "settlement.close_due"] as const;
 export type PushTopic = (typeof PUSH_TOPICS)[number];
 
 /**
@@ -92,11 +95,19 @@ export interface PushTarget {
   endpoint: string;
   p256dh: string;
   auth: string;
-  agreementId: string;
+  /**
+   * Los tres campos de abajo son de una LIQUIDACIÓN y solo los llevan los dos
+   * avisos que cuelgan de una (`settlement.receipt_ready`, `settlement.due`,
+   * resueltos por `push_notice_targets`). El tercero, `settlement.close_due`,
+   * es del HOGAR y del mes, sin liquidación de la que colgar nada, así que
+   * `push_close_due_targets` no los trae — de ahí que sean opcionales aquí en
+   * vez de partir `PushTarget` en dos tipos para una diferencia tan pequeña.
+   */
+  agreementId?: string;
   /** `YYYY-MM-DD` del primer día del periodo liquidado. */
-  periodStart: string;
+  periodStart?: string;
   /** `YYYY-MM-DD` del vencimiento del pago. */
-  dueOn: string;
+  dueOn?: string;
 }
 
 export interface PushNoticeText {
@@ -137,19 +148,54 @@ export function dayLabel(isoDate: string): string {
  * «La cuenta de junio está sin pagar» sí; «paga la cuenta» no. Un aviso que da
  * órdenes al teléfono de alguien es otra cosa distinta de un aviso.
  */
+/** «Junio» con mayúscula inicial: este aviso abre la frase con el mes. */
+function capitalize(word: string): string {
+  return word.length === 0 ? word : word[0]!.toUpperCase() + word.slice(1);
+}
+
 export function composeNotice(
   topic: PushTopic,
   target: PushTarget,
   householdId: string,
   today: Date,
 ): PushNoticeText {
-  const month = monthLabel(target.periodStart, today);
-  const href = `/h/${householdId}/employment?empleada=${target.agreementId}`;
+  if (topic === "settlement.close_due") {
+    // Sin liquidación de la que colgar nada: es del hogar y del mes en curso
+    // (el de HOY, que es cuando se envía). Sin `?empleada=` tampoco — no hay
+    // una persona concreta de la que hablar todavía.
+    const monthKey = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, "0")}`;
+    return {
+      title: `${capitalize(monthLabel(`${monthKey}-01`, today))} está a punto de acabar`,
+      body: "El mes se acaba: toca cerrar la cuenta y preparar el pago.",
+      url: `/h/${householdId}/employment`,
+      tag: `cierre-${monthKey}`,
+    };
+  }
+
+  // Los otros dos son de una liquidación concreta: `push_notice_targets`
+  // siempre resuelve estos tres campos, así que su ausencia aquí sería un
+  // error de programación (un `resolveTargets` mal cableado), no un caso de
+  // negocio — de ahí la excepción llana en vez de un `PermanentJobError`.
+  const agreementId = target.agreementId;
+  const periodStart = target.periodStart;
+  const dueOn = target.dueOn;
+  if (!agreementId || !periodStart || !dueOn) {
+    throw new Error(`Aviso «${topic}» sin datos de acuerdo`);
+  }
+
+  const month = monthLabel(periodStart, today);
+  // A la PESTAÑA DE PAGOS, no a la portada de Contrato. Un aviso tiene que
+  // aterrizar donde está lo que promete: el enlace al recibo archivado y el
+  // botón de confirmar el cobro viven en `employment/pagos` desde que el
+  // expediente se repartió en pestañas, y la portada ya no hace ninguna de las
+  // dos cosas. La ruta pide `settlement.read`, que es de las capacidades de la
+  // empleada: la destinataria del aviso del recibo puede abrirla.
+  const href = `/h/${householdId}/employment/pagos?empleada=${agreementId}`;
   // El agrupador tiene que caber en 32 caracteres del alfabeto de base64url, así
   // que ni el tópico con puntos ni el uuid entero valen. Con el prefijo corto y
   // los ocho primeros dígitos basta para que dos avisos del mismo asunto se
   // sustituyan, que es para lo único que sirve.
-  const shortId = target.agreementId.replace(/-/g, "").slice(0, 8);
+  const shortId = agreementId.replace(/-/g, "").slice(0, 8);
 
   if (topic === "settlement.receipt_ready") {
     return {
@@ -162,35 +208,20 @@ export function composeNotice(
   return {
     title: `La cuenta de ${month} está sin pagar`,
     // El importe NO va aquí, y no es un olvido: ver la cabecera del módulo.
-    body: `Vence ${dayLabel(target.dueOn)}. El importe se ve al abrir.`,
+    body: `Vence ${dayLabel(dueOn)}. El importe se ve al abrir.`,
     url: href,
     tag: `cuenta-${shortId}`,
   };
 }
 
-export interface VapidConfig {
-  subject: string;
-  publicKey: string;
-  privateKey: string;
-}
-
 /**
- * `sub` limpio o Apple contesta 403 BadJwtToken — y **solo Apple**, lo que
- * convierte un espacio de más en un fallo que aparece únicamente en los iPhone
- * de la casa y en ningún otro sitio. Se valida aquí, al arrancar, y no allí.
+ * El «¿hay canal?» no se decide aquí sino en `push-channel.js`, y se reexporta
+ * para que nada de lo que ya lo pedía a este módulo tenga que enterarse. Está
+ * fuera porque la web necesita exactamente el mismo criterio y no puede importar
+ * este fichero: `handlers.ts` arrastra `documents.ts` con `pdf-lib` detrás. El
+ * porqué largo, en la cabecera de aquel módulo.
  */
-const VAPID_SUBJECT = /^(mailto:[^\s<>]+@[^\s<>]+\.[^\s<>]+|https:\/\/[^\s<>]+)$/;
-
-export function loadVapidConfig(
-  environment: Partial<Record<string, string>>,
-): VapidConfig | null {
-  const subject = environment.VAPID_SUBJECT?.trim();
-  const publicKey = environment.VAPID_PUBLIC_KEY?.trim();
-  const privateKey = environment.VAPID_PRIVATE_KEY?.trim();
-  if (!subject || !publicKey || !privateKey) return null;
-  if (!VAPID_SUBJECT.test(subject)) return null;
-  return { subject, publicKey, privateKey };
-}
+export { loadVapidConfig, type VapidConfig };
 
 export type PushSendOutcome =
   /** Entregado al servicio de push (no al teléfono: eso nadie lo sabe). */
@@ -207,9 +238,13 @@ export interface PushSender {
 }
 
 export interface PushNoticeDeps {
+  /**
+   * `settlementId` es `null` para `settlement.close_due`: ese aviso es del
+   * hogar y del mes, sin liquidación de la que colgar nada.
+   */
   resolveTargets: (
     householdId: string,
-    settlementId: string,
+    settlementId: string | null,
     topic: PushTopic,
   ) => Promise<PushTarget[]>;
   recordDelivery: (subscriptionId: string, delivered: boolean, gone: boolean) => Promise<void>;
@@ -221,12 +256,21 @@ export interface PushNoticeDeps {
     repeat: number;
     afterDays: number;
   }) => Promise<void>;
+  /**
+   * Fecha civil de HOY en `Europe/Madrid`, vía consulta — la usa `composeNotice`
+   * para el mes de `settlement.close_due`, que sale de esta fecha y no del
+   * reloj UTC del proceso (que puede correr en cualquier zona y desalinearse
+   * justo en los bordes de mes que este aviso necesita acertar). Los otros dos
+   * avisos hablan del periodo de la liquidación, no de «hoy», así que solo
+   * importa para el tercero.
+   */
+  today: () => Promise<Date>;
   now?: () => Date;
 }
 
 interface PushNoticePayload {
   topic: PushTopic;
-  settlementId: string;
+  settlementId: string | null;
   /** Cuántas veces se ha reavisado ya de esto. Un entero: ningún dato personal. */
   repeat: number;
 }
@@ -240,6 +284,15 @@ export function parsePushNoticePayload(payload: unknown): PushNoticePayload {
     // Reintentar no lo haría legal: el catálogo es cerrado.
     throw new PermanentJobError(`Aviso fuera del catálogo: ${String(topic)}`);
   }
+  // El aviso de cierre de mes NO lleva settlementId — no hay liquidación
+  // todavía — y llevar uno de más sería la misma clase de error que faltarlo:
+  // se rechaza igual, como fallo permanente.
+  if (topic === "settlement.close_due") {
+    if (raw.settlementId !== undefined) {
+      throw new PermanentJobError("El aviso de cierre de mes no lleva settlementId");
+    }
+    return { topic, settlementId: null, repeat: 0 };
+  }
   const settlementId = raw.settlementId;
   if (typeof settlementId !== "string" || !UUID.test(settlementId)) {
     throw new PermanentJobError("El aviso necesita el identificador de la liquidación");
@@ -252,7 +305,9 @@ export function parsePushNoticePayload(payload: unknown): PushNoticePayload {
 }
 
 /**
- * Trabajo `notification.push` {topic, settlementId, repeat?}.
+ * Trabajo `notification.push` {topic, settlementId?, repeat?}. `settlementId`
+ * falta a propósito en `settlement.close_due`: ese aviso es del hogar y del
+ * mes, no de una liquidación.
  *
  * Tres propiedades que conviene no perder al tocarlo:
  *
@@ -276,9 +331,13 @@ export function createPushNoticeHandler(deps: PushNoticeDeps): JobHandler {
   return async (job) => {
     const { topic, settlementId, repeat } = parsePushNoticePayload(job.payload);
     const targets = await deps.resolveTargets(job.householdId, settlementId, topic);
+    // Solo el aviso de cierre de mes necesita la fecha civil de verdad (su mes
+    // sale de «hoy»); los otros dos hablan del periodo de la liquidación, así
+    // que no vale la pena la consulta extra para ellos.
+    const today = topic === "settlement.close_due" ? await deps.today() : now();
 
     for (const target of targets) {
-      const notice = composeNotice(topic, target, job.householdId, now());
+      const notice = composeNotice(topic, target, job.householdId, today);
       const outcome = await deps.send({ target, notice });
       await deps.recordDelivery(
         target.subscriptionId,
@@ -292,7 +351,16 @@ export function createPushNoticeHandler(deps: PushNoticeDeps): JobHandler {
     // dentro de tres días. Nótese que se re-encola aunque no haya habido ningún
     // destinatario esta vez —el teléfono puede estar suscrito mañana— pero no si
     // el hecho desapareció, porque entonces tampoco habría a quién.
-    if (topic === "settlement.due" && repeat < SETTLEMENT_DUE_MAX_REPEATS && targets.length > 0) {
+    //
+    // El aviso de cierre de mes (`settlement.close_due`) NO escala nunca: se
+    // manda una vez y calla — el aviso post-cierre `settlement.due` toma el
+    // relevo si hace falta.
+    if (
+      topic === "settlement.due" &&
+      settlementId !== null &&
+      repeat < SETTLEMENT_DUE_MAX_REPEATS &&
+      targets.length > 0
+    ) {
       await deps.rescheduleSettlementDue({
         householdId: job.householdId,
         settlementId,
@@ -350,17 +418,28 @@ export function createWebPushSender(vapid: VapidConfig): PushSender {
 /**
  * Las consultas reales sobre el pool del emisor.
  *
- * `casa_clara_worker` no tiene ni un permiso sobre `app.push_subscriptions`: las
- * dos funciones definer de la 0032 son la única superficie, y ya llevan dentro
- * el filtro de membresía viva, el de audiencia y el de vacaciones.
+ * `casa_clara_worker` no tiene ni un permiso sobre `app.push_subscriptions`:
+ * las funciones definer de la 0032 (`push_notice_targets`) y la 0034
+ * (`push_close_due_targets`) son la única superficie, y ya llevan dentro el
+ * filtro de membresía viva, el de audiencia y el de vacaciones.
  */
 export function createPushQueries(pool: Pool): Pick<
   PushNoticeDeps,
-  "resolveTargets" | "recordDelivery" | "rescheduleSettlementDue"
+  "resolveTargets" | "recordDelivery" | "rescheduleSettlementDue" | "today"
 > & {
   announceReceipt: (input: { householdId: string; settlementId: string }) => Promise<void>;
 } {
   return {
+    // Misma consulta que `apps/worker/src/close-due.ts` (`civilToday`): la
+    // fecha civil de HOY en Europe/Madrid, no el reloj del proceso.
+    today: async () => {
+      const result = await pool.query<{ today: string }>(
+        "select ((now() AT TIME ZONE 'Europe/Madrid')::date)::text as today",
+      );
+      const today = result.rows[0]?.today;
+      if (!today) throw new Error("No se pudo obtener la fecha civil de Europe/Madrid");
+      return new Date(`${today}T00:00:00.000Z`);
+    },
     announceReceipt: async ({ householdId, settlementId }) => {
       // `app.push_run_at(statement_timestamp())` y no `statement_timestamp()`:
       // el recibo se genera cuando la cola llega a él, que puede ser cualquier
@@ -377,6 +456,22 @@ export function createPushQueries(pool: Pool): Pick<
       );
     },
     resolveTargets: async (householdId, settlementId, topic) => {
+      if (topic === "settlement.close_due") {
+        const result = await pool.query<{
+          subscription_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+        }>("select subscription_id, endpoint, p256dh, auth from app_private.push_close_due_targets($1)", [
+          householdId,
+        ]);
+        return result.rows.map((row) => ({
+          subscriptionId: row.subscription_id,
+          endpoint: row.endpoint,
+          p256dh: row.p256dh,
+          auth: row.auth,
+        }));
+      }
       const result = await pool.query<{
         subscription_id: string;
         endpoint: string;

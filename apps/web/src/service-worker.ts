@@ -4,8 +4,8 @@ import { build, files, version } from '$service-worker';
 
 declare const self: ServiceWorkerGlobalScope;
 
-const STATIC_CACHE = `casa-clara-static-${version}`;
-const PAGE_CACHE = `casa-clara-pages-${version}`;
+const STATIC_CACHE = `housekeeper-static-${version}`;
+const PAGE_CACHE = `housekeeper-pages-${version}`;
 const PRECACHE = [...build, ...files];
 
 /**
@@ -14,7 +14,7 @@ const PRECACHE = [...build, ...files];
  * Lo usa el layout del hogar para dejar Emergencias disponible offline sin
  * exigir una visita previa (UX-P1-5 / I-03).
  */
-const WARM_HEADER = 'x-casa-clara-warm-page';
+const WARM_HEADER = 'x-housekeeper-warm-page';
 
 /**
  * ¿Puede esta respuesta sustituir en la caché a la que ya hay guardada?
@@ -77,30 +77,32 @@ self.addEventListener('push', (event) => {
       // Payload que no es JSON: no debería ocurrir nunca, pero callarse no es
       // una opción que este canal permita.
     }
-    await self.registration.showNotification(notice.title ?? 'Casa Clara', {
+    await self.registration.showNotification(notice.title ?? 'Hogar', {
       body: notice.body ?? 'Hay algo que mirar en la aplicación.',
       // El icono lo resuelve el navegador desde el manifiesto; no se declara
       // aquí para no tener dos sitios donde mantenerlo.
-      tag: notice.tag ?? 'casa-clara',
+      tag: notice.tag ?? 'housekeeper',
       // Sustituir en silencio: el mismo asunto avisado dos veces no vibra dos
       // veces. La escalada de la cuenta pendiente reutiliza su etiqueta a
-      // propósito.
+      // propósito. El campo es del estándar y los navegadores lo respetan, pero
+      // la lib.dom de TypeScript 6 dejó de declararlo: de ahí la afirmación de
+      // tipo del cierre, que lo nombra en vez de quitarlo.
       renotify: false,
       // Nada de esta casa justifica quedarse en pantalla hasta que alguien la
       // toque, ni sonar por encima de lo que la persona esté haciendo.
       requireInteraction: false,
       silent: false,
       data: { url: notice.url ?? '/' }
-    });
+    } as NotificationOptions & { renotify: boolean });
   })());
 });
 
 /**
  * Tocar el aviso lleva a donde se atiende el hecho.
  *
- * Si ya hay una ventana de Casa Clara abierta se reutiliza en vez de abrir otra:
- * en un móvil, dos instancias de la misma aplicación es un estado del que cuesta
- * salir.
+ * Si ya hay una ventana de la aplicación abierta se reutiliza en vez de abrir
+ * otra: en un móvil, dos instancias de la misma aplicación es un estado del
+ * que cuesta salir.
  */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
@@ -121,6 +123,25 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+
+  /*
+   * La API se sirve tal cual, sin pasar por ninguna caché ni por ningún
+   * fallback. Un enlace a un PDF —el recibo archivado, con `target="_blank"`, o
+   * el documento de pago, con `download`— es para el navegador una NAVEGACIÓN,
+   * así que sin esta salida entraría por la rama de abajo y su 503 se cambiaría
+   * por la página «Sin conexión». Y 503 es justo lo que estos endpoints
+   * responden en sus fallos honestos (entre ellos el desajuste de almacén, cuyo
+   * mensaje nombra a propósito los dos buckets): la persona vería «Sin
+   * conexión» teniendo conexión y el motivo real se perdería por el camino.
+   *
+   * El fondo es que un PDF, un ZIP o un JSON no son «lo último que se guardó en
+   * este dispositivo»: la copia de una pantalla no los sustituye, ni con 503 ni
+   * sin red. La avería venía de main y esta salida arregla también su endpoint
+   * del documento de pago.
+   */
+  if (url.origin === self.location.origin && url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith((async () => {
@@ -170,7 +191,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
   if (PRECACHE.includes(url.pathname)) {
