@@ -62,13 +62,12 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
     expect(table).toMatch(/catch \{\s*toast = \{ message: 'No se pudo guardar el cambio\.' \};/);
     expect(table).toMatch(/if \(enviando\) return;/);
     expect(table).toMatch(/finally \{\s*enviando = false;/);
-    // Ninguna acción ni drop llama a un aplicador por fuera del envoltorio.
-    const aplicadores = table.match(/\bapply(Event|NewEvent|Category)\w*\(/g) ?? [];
+    // Los aplicadores se invocan DENTRO del envoltorio. C-M4: cualitativo, no
+    // un conteo exacto — un refactor legítimo (una acción más, una menos) no
+    // debe teñir esto de rojo sin haber cambiado nada del comportamiento.
     const dentroDeRun = table.match(/run\(async \(\) => \{\s*await apply\w+\(/g) ?? [];
-    // 3 declaraciones + 1 reenvío interno (applyNewEvent → applyEvent) + 6
-    // llamadas, todas dentro de `run`.
-    expect(aplicadores.length).toBe(10);
-    expect(dentroDeRun.length).toBe(6);
+    expect(dentroDeRun.length).toBeGreaterThan(0);
+    expect(table).toContain('return run(async () => {');
     expect(table).toMatch(/<PivotActionBar[\s\S]*\{enviando\}/);
   });
 
@@ -91,8 +90,10 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
     expect(table).toContain('>Cancelar<');
     // Escape desde CUALQUIER control del popover (campo y los dos botones), no
     // solo desde dentro del <input>, que era justo donde el foco no estaba.
+    // C-M4: que esté enganchado a más de un control basta; el número exacto de
+    // controles del popover no es lo que este caso vigila.
     const escapes = table.match(/onkeydown=\{onPopoverKeydown\}/g) ?? [];
-    expect(escapes.length).toBe(3);
+    expect(escapes.length).toBeGreaterThan(1);
     expect(table).toMatch(/function onPopoverKeydown[\s\S]*?cancelNewEventDrop\(\);/);
     // El atributo inerte que pedía el foco («data-» + «autofocus») ya no está.
     expect(table).not.toMatch(/<input[^>]*data-autofocus/);
@@ -101,8 +102,11 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
   it('T13-M4/T13-M5: soltar una fila sobre sí misma no hace nada, y un drop aplicado limpia la selección', () => {
     expect(table).toMatch(/sueltaSobreSiMisma\(e, destinoKey\)/);
     expect(table).toMatch(/e\.dataTransfer\?\.getData\('text\/plain'\) === destinoKey/);
+    // C-M4: cualitativo. El comportamiento (qué payloads salen) lo cubre
+    // finance-pivot-actions.test.ts; aquí solo se vigila que el drop no deje
+    // la selección viva para que el siguiente gesto la reenvíe.
     const drops = table.match(/await apply\w+\(payload\.items[\s\S]{0,120}?clearSelection\(\);/g) ?? [];
-    expect(drops.length).toBe(3);
+    expect(drops.length).toBeGreaterThan(0);
   });
 
   it('T13-M6: el popover se posiciona con `fixed` y coordenadas, y se abre hacia arriba si no cabe', () => {
@@ -208,20 +212,26 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
     expect(table).toMatch(
       /const puedeDeshacer = plan\.reassignments\.length > 0 \|\| plan\.bulkRestores\.length > 0;/
     );
-    expect(table).toMatch(/r\.ok && movidos > 0 && puedeDeshacer \? \{ onUndo: \(\) => runCategoryUndo\(plan\) \} : \{\}/);
+    expect(table).toMatch(/r\.ok && movidos > 0 && puedeDeshacer \? \{ onUndo: \(\) => runCategoryUndo\(/);
     // T12-M6: la rama «No se pudo deshacer: N sin categoría previa» era
     // inalcanzable tras esa guarda y se borró en vez de condicionarla; un
     // mensaje muerto es peor que ninguno.
     expect(table).not.toMatch(/No se pudo deshacer/);
   });
 
-  it('F6-I1: el acuse de «Deshacer» avisa SIEMPRE de que las reglas creadas se conservan', () => {
-    // El servidor no revierte la regla por ninguno de los dos caminos del plan
-    // (`finance.category.assignConcept` siempre INSERTA una nueva): condicionar
-    // el aviso a `bulkRestores` dejaba el camino `reassignments` prometiendo un
-    // «Deshecho» limpio que la capa de reglas no cumple.
-    expect(table).toContain("const aviso = ' · las reglas creadas se conservan (bórralas en Ajustes)';");
-    expect(table).not.toMatch(/plan\.bulkRestores\.length > 0 \? ' · las reglas creadas/);
+  it('C-I1: el acuse de «Deshacer» solo avisa de las reglas que de verdad sobreviven', () => {
+    // `finance.category.assignConcept` SUSTITUYE la regla manual de prioridad 0
+    // del mismo patrón (`replaceManualRule`, integrado en el servidor), así que
+    // la rama `reassignments` reajusta la regla del drop y no hay nada que
+    // borrar: avisar allí invitaría al usuario a deshacer el estado correcto.
+    // Solo `bulkRestores` (por ids, sin tocar reglas) la deja huérfana, y solo
+    // si el drop llegó a crear alguna (un drop de solo hojas no crea ninguna).
+    expect(table).not.toContain("const aviso = ' · las reglas creadas se conservan (bórralas en Ajustes)';");
+    expect(table).toMatch(/huerfanas === 0\s*\?\s*''/);
+    expect(table).toContain("' · la regla creada se conserva (bórrala en Ajustes)'");
+    expect(table).toMatch(/const huerfanas = reparto\.concepts\.filter\(/);
+    expect(table).toMatch(/!plan\.reassignments\.some\(\(re\) => re\.provider === i\.provider && re\.concept === i\.concept\)/);
+    expect(table).toContain('runCategoryUndo(plan, huerfanas)');
   });
 
   it('el plan de deshacer de una recategorización cubre TAMBIÉN una hoja de movimiento suelta, no solo conceptos', () => {

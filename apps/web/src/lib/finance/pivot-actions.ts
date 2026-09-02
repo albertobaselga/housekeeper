@@ -262,12 +262,18 @@ export function categoryAssignPayloads(
 // cada movimiento. Previa única → re-asignar el concepto; previas mixtas →
 // restauración por ids.
 //
-// F6-I1: ninguno de los dos caminos revierte la REGLA que creó el drop.
-// `finance.category.assignConcept` siempre inserta una regla nueva, así que
-// re-asignar el concepto deja dos reglas con el mismo patrón y categorías
-// distintas, y la restauración por ids deja intacta la original. Los
-// movimientos vuelven a su sitio; las reglas se borran en Ajustes, y el acuse
-// lo dice siempre (`runCategoryUndo` en PivotTable.svelte).
+// F6-I1, con la mitad de servidor ya integrada: `finance.category.assignConcept`
+// SUSTITUYE la regla manual de prioridad 0 del mismo `(rule_type, pattern)`
+// antes de insertar la suya (`replaceManualRule`, en
+// packages/server/src/commands/finance.ts, compartido con la ruta `createRule`
+// de `finance.transaction.update`). Consecuencia por rama:
+//  - `reassignments` reenvía `assignConcept` con la categoría previa, así que
+//    REAJUSTA la regla que creó el drop: queda apuntando a donde estaba, no
+//    hay nada que borrar en Ajustes (y borrarla desharía el estado correcto);
+//  - `bulkRestores` va por ids exactos y no toca reglas, así que la del drop
+//    sobrevive apuntando a la categoría equivocada.
+// Por eso el acuse solo avisa en el segundo caso, y solo si el drop llegó a
+// crear alguna regla (`runCategoryUndo` en PivotTable.svelte).
 
 /**
  * Forma mínima de una fila de movimiento tal como la sirve el servidor: solo

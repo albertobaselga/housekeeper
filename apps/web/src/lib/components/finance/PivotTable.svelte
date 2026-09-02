@@ -276,16 +276,26 @@
     }
   }
 
-  async function runCategoryUndo(plan: CategoryUndo): Promise<void> {
+  /**
+   * `huerfanas`: cuántas de las reglas que creó el drop sobreviven al deshacer.
+   *
+   * F6-I1, con la mitad de servidor ya integrada: `finance.category.assignConcept`
+   * SUSTITUYE la regla manual de prioridad 0 del mismo `(rule_type, pattern)`
+   * antes de insertar la suya (`replaceManualRule`). Así que la rama
+   * `reassignments` REAJUSTA la regla del drop —queda apuntando a la categoría
+   * previa, y mandar al usuario a borrarla en Ajustes le invitaría a deshacer
+   * el estado correcto— y solo la rama `bulkRestores`, que va por ids y no
+   * toca reglas, deja viva la del drop. El aviso se condiciona a que quede
+   * alguna de verdad: un drop de solo hojas de movimiento no crea ninguna.
+   */
+  async function runCategoryUndo(plan: CategoryUndo, huerfanas: number): Promise<void> {
     const payloads = categoryUndoPayloads(plan);
-    // F6-I1: el aviso es INCONDICIONAL. El servidor no revierte la regla por
-    // ninguno de los dos caminos: `finance.category.assignConcept` siempre
-    // INSERTA una regla nueva (nunca borra ni actualiza la anterior), así que
-    // la rama `reassignments` deja DOS reglas con el mismo patrón apuntando a
-    // categorías distintas, y la rama `bulkRestores` deja intacta la que creó
-    // el drop. Decir «Deshecho» a secas prometía lo que la capa de reglas no
-    // cumple.
-    const aviso = ' · las reglas creadas se conservan (bórralas en Ajustes)';
+    const aviso =
+      huerfanas === 0
+        ? ''
+        : huerfanas === 1
+          ? ' · la regla creada se conserva (bórrala en Ajustes)'
+          : ' · las reglas creadas se conservan (bórralas en Ajustes)';
     const saltos = plan.skipped > 0 ? ` · ${plan.skipped} sin categoría previa` : '';
     // T12-M6: aquí vivía una rama para el lote vacío con un mensaje sobre los
     // movimientos sin categoría previa. La guarda `puedeDeshacer` de
@@ -360,6 +370,13 @@
     // `sent === 0` antes que nada) devolvería «No hay nada que asignar» — el
     // mismo fallo que ya se corrigió para la hoja suelta, con otro disparador.
     const puedeDeshacer = plan.reassignments.length > 0 || plan.bulkRestores.length > 0;
+    // Reglas que el drop crea y que el deshacer NO reajusta: una por cada
+    // concepto movido (`categoryAssignPayloads` manda un `assignConcept` por
+    // cada uno) que no vuelva a salir en `reassignments`. Las hojas de
+    // movimiento van por ids y no crean regla ninguna.
+    const huerfanas = reparto.concepts.filter(
+      (i) => !plan.reassignments.some((re) => re.provider === i.provider && re.concept === i.concept)
+    ).length;
     toast = {
       // Con 0 movidos, summarizeCategoryDrop ya explica POR QUÉ no se movió nada
       // («las categorías no pueden soltarse sobre otra categoría»): ese texto es
@@ -369,7 +386,7 @@
         summarizeCategoryDrop(movidos, catPathOf(categoryId), omitidos),
         summarizeCategoryDrop(0, catPathOf(categoryId), omitidos)
       ),
-      ...(r.ok && movidos > 0 && puedeDeshacer ? { onUndo: () => runCategoryUndo(plan) } : {})
+      ...(r.ok && movidos > 0 && puedeDeshacer ? { onUndo: () => runCategoryUndo(plan, huerfanas) } : {})
     };
   }
 
@@ -378,6 +395,7 @@
   let newEventDrop = $state<DragPayload | null>(null);
   let newEventName = $state('');
   let newEventInput = $state<HTMLInputElement | null>(null);
+  let popoverEl = $state<HTMLFormElement | null>(null);
   let popoverPos = $state<{ left: number; top: number } | null>(null);
 
   /**
@@ -404,10 +422,43 @@
     };
   }
 
-  function cancelNewEventDrop(): void {
+  /** Cierra el popover sin tocar el foco: lo usa el `focusout`, que ya lo tiene donde el usuario lo dejó. */
+  function cierraPopover(): void {
     newEventDrop = null;
     newEventName = '';
     popoverPos = null;
+  }
+
+  /**
+   * Escape, «Cancelar» y el envío: cierran y DEVUELVEN el foco al ancla
+   * (C-M2). Sin esto el elemento enfocado desaparece del DOM y el foco cae al
+   * `<body>`, el mismo agujero que F6-M3 tapó para el aviso.
+   */
+  function cancelNewEventDrop(): void {
+    cierraPopover();
+    devolverFoco();
+  }
+
+  /**
+   * C-M2: si el foco sale del popover entero (clic o Tab fuera), se cierra —
+   * mismo patrón que `onFocusOut` de PivotSearch.svelte. `relatedTarget` es el
+   * elemento que RECIBE el foco: si sigue dentro, no hay nada que cerrar. Aquí
+   * NO se devuelve el foco: el usuario acaba de llevárselo a otra parte.
+   */
+  function onPopoverFocusOut(e: FocusEvent): void {
+    const next = e.relatedTarget;
+    if (next instanceof Node && popoverEl?.contains(next)) return;
+    cierraPopover();
+  }
+
+  /**
+   * C-M3: las coordenadas de `position: fixed` se calculan UNA vez, en el
+   * drop. Cualquier desplazamiento posterior —de la página o del propio
+   * `.pivot-scroll`— las deja mintiendo, así que el popover se cierra en vez
+   * de quedarse flotando sobre una fila que ya no es la suya.
+   */
+  function cierraPorScroll(): void {
+    if (newEventDrop !== null) cierraPopover();
   }
 
   // T13-M2: el popover no tomaba el foco —el atributo que lo pedía era inerte,
@@ -456,7 +507,13 @@
     arrastreKey = node.key;
     dragging = payload;
   }
-  const onDragEnd = () => (dragging = null);
+  const onDragEnd = () => {
+    dragging = null;
+    // C-M7: un arrastre cancelado no puede dejar su clave viva como ancla de
+    // foco; si no, una acción posterior sin selección devolvería el foco a una
+    // fila que no participó en ella.
+    arrastreKey = null;
+  };
 
   // Los tres drops delegan en los aplicadores compartidos de la tarea 12: mismo
   // reparto conceptos/ids, mismos payloads, mismo acuse y mismo Deshacer que la
@@ -485,10 +542,18 @@
   }
 
   function onDropNewEvent(e: DragEvent): void {
+    // C-M5: sin rectángulo no hay dónde pintar el popover. Se comprueba ANTES
+    // de consumir el arrastre: si se consumiera, el gesto se perdería en
+    // silencio (ni popover ni aviso) y el usuario no sabría que ha de repetirlo.
+    const fila = e.currentTarget;
+    if (!(fila instanceof HTMLElement)) return;
     const payload = dragging;
     dragging = null;
     if (!payload || payload.items.length === 0) return;
-    popoverPos = e.currentTarget instanceof HTMLElement ? posicionaPopover(e.currentTarget) : null;
+    // El popover sobrevive al `dragend` (que limpia `arrastreKey`), así que el
+    // ancla de foco se captura aquí, mientras la clave del origen sigue viva.
+    anchorKey = arrastreKey ?? anchorKey;
+    popoverPos = posicionaPopover(fila);
     newEventDrop = payload;
     newEventName = '';
   }
@@ -645,6 +710,11 @@
   {/if}
 {/snippet}
 
+<!-- C-M3: el `scroll` de un elemento no burbujea, así que hacen falta los dos
+     escuchadores: el de la ventana (desplazamiento de la página) y el del
+     propio `.pivot-scroll`, más abajo. -->
+<svelte:window onscroll={cierraPorScroll} />
+
 <div class="pivot-controles">
   <PivotSearch rows={filteredRows.length ? filteredRows : rows} {catPathOf} {chips}
     onChips={(next) => setShallowParam('q', serializeChips(next))} />
@@ -669,7 +739,7 @@
 {:else}
   <!-- tabindex -1: ancla de foco cuando la fila que originó una acción ya no
        está en el DOM (F6-M3). No entra en el orden de tabulación. -->
-  <div class="pivot-scroll" bind:this={tablaEl} tabindex="-1">
+  <div class="pivot-scroll" bind:this={tablaEl} tabindex="-1" onscroll={cierraPorScroll}>
     <table class="pivot" data-testid="pivot-table">
       <thead>
         <tr>
@@ -700,16 +770,22 @@
             {#if newEventDrop && popoverPos}
               <!-- T13-M2: Escape cierra desde CUALQUIER control del popover
                    (ver `onPopoverKeydown`), no solo estando dentro del campo. -->
-              <form class="popover-evento" style:left={`${popoverPos.left}px`} style:top={`${popoverPos.top}px`}
+              <form class="popover-evento" bind:this={popoverEl} onfocusout={onPopoverFocusOut}
+                style:left={`${popoverPos.left}px`} style:top={`${popoverPos.top}px`}
                 onsubmit={(e) => { e.preventDefault(); void confirmNewEventDrop(); }}>
                 <input type="text" placeholder="＋ nuevo evento…" bind:value={newEventName} bind:this={newEventInput}
                   aria-label="Nombre del evento nuevo" onkeydown={onPopoverKeydown} />
                 <!-- T13-M1: con el nombre vacío el submit se tragaba el
                      arrastre en silencio. Ahora no hay submit que tragar. -->
+                <!-- `onmousedown` con preventDefault (mismo recurso que
+                     PivotSearch con sus sugerencias): el clic NO mueve el foco,
+                     así que el `focusout` de C-M2 no cierra el popover justo
+                     antes de que el clic llegue. El submit y el onclick siguen
+                     disparando igual. -->
                 <button type="submit" disabled={newEventName.trim().length === 0}
-                  onkeydown={onPopoverKeydown}>Crear y asignar</button>
+                  onmousedown={(e) => e.preventDefault()} onkeydown={onPopoverKeydown}>Crear y asignar</button>
                 <button type="button" class="cancelar" onclick={cancelNewEventDrop}
-                  onkeydown={onPopoverKeydown}>Cancelar</button>
+                  onmousedown={(e) => e.preventDefault()} onkeydown={onPopoverKeydown}>Cancelar</button>
               </form>
             {/if}
           </td>
