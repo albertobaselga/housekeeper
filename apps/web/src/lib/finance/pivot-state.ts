@@ -52,9 +52,8 @@ export function addDim(dims: readonly PivotDimension[], dim: PivotDimension): Pi
 }
 
 // ── Orden de columnas (Acumulado/Promedio/Ticket/mes, recursivo) ─────────────
-// `packages/domain/src/finance/pivot.ts` exporta `sortPivotTree`, pero ordena
-// un `PivotTree` completo (gastos/ingresos/eventos); aquí se necesita ordenar
-// una lista genérica de nodos (selección, buscador), así que no se reutiliza.
+// `sortPivotTree` de packages/domain/src/finance/pivot.ts ordena un PivotTree
+// completo (gastos/ingresos/eventos), no una lista de nodos: no se reutiliza.
 
 export type PivotSortKey = 'label' | 'total' | 'avg' | 'ticket' | { month: string };
 export type SortDir = 'asc' | 'desc';
