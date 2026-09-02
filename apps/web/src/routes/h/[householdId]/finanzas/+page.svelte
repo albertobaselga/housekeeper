@@ -91,7 +91,7 @@
       <h2>No hay movimientos en este periodo</h2>
       <p>Cambia el periodo con los filtros o <a href={`${base}/importar`}>importa un extracto</a>.</p>
       {#if summary.pendingCount > 0}
-        <a class="status-chip warning" href={`${base}/revision`}>{summary.pendingCount} sin revisar</a>
+        <a class="status-chip warning pending-chip" href={`${base}/revision`}>{summary.pendingCount} sin revisar</a>
       {/if}
     </article>
   {:else}
@@ -117,7 +117,7 @@
         <p class="eyebrow">Tasa de ahorro</p>
         <p class="cifra">{formatPct(summary.netSavingsRate)}</p>
         {#if summary.pendingCount > 0}
-          <a class="status-chip warning" href={`${base}/revision`}>{summary.pendingCount} sin revisar</a>
+          <a class="status-chip warning pending-chip" href={`${base}/revision`}>{summary.pendingCount} sin revisar</a>
         {:else}
           <span class="status-chip success">todo revisado</span>
         {/if}
@@ -162,4 +162,13 @@
   .kpi-pos { color: var(--success); }
   .kpi-neg { color: var(--danger); }
   .kpi-note { color: var(--ink-faint); font-size: var(--text-meta); }
+  /*
+    [FASE 5, T13 · R33] `.status-chip` a secas mide su propia línea de texto
+    (por debajo de 44 px): correcto para el resto de usos no interactivos de
+    la clase, pero este chip es un <a href> — una diana real que
+    mobile-densidad.dbe2e.ts mide como tal. Piso táctil propio, sin tocar
+    `.status-chip` global (que sigue usándose como adorno en el resto de la
+    pantalla y de la aplicación).
+  */
+  .pending-chip { min-height: var(--row-data); }
 </style>

@@ -63,12 +63,22 @@
       {#if editable}
         <div class="finance-row-tools">
           {#if onToggleSelect}
-            <input
-              type="checkbox"
-              aria-label={`Seleccionar ${txTitle(tx)}`}
-              checked={selectedIds?.has(tx.id) ?? false}
-              onchange={(event) => onToggleSelect(tx.id, event.currentTarget.checked)}
-            />
+            <!--
+              [FASE 5, T13 · R33] La marca nativa de una casilla mide 13×13:
+              mobile-densidad.dbe2e.ts mide, para checkbox/radio, el <label>
+              que la envuelve (es la diana real). Mismo patrón que
+              revision/+page.svelte (.rule-toggle): se envuelve en un
+              <label> con área ≥44×44 y el nombre accesible se traslada al
+              <label>, sin duplicarlo con un aria-label a la vez en el input.
+            -->
+            <label class="select-toggle">
+              <input
+                type="checkbox"
+                checked={selectedIds?.has(tx.id) ?? false}
+                onchange={(event) => onToggleSelect(tx.id, event.currentTarget.checked)}
+              />
+              <span class="sr-only">Seleccionar {txTitle(tx)}</span>
+            </label>
           {/if}
           {#if categories && onSetCategory}
             <CategorySelect {categories} value={tx.categoryId} onchange={(categoryId) => onSetCategory(tx.id, categoryId)} />
@@ -114,7 +124,29 @@
   .finance-row > span { display: grid; min-width: 0; }
   .finance-row small { overflow: hidden; color: var(--ink-faint); font-size: var(--text-meta); text-overflow: ellipsis; white-space: nowrap; }
   .positivo { color: var(--success); }
-  .finance-row-wrap { border-top: 1px solid var(--line); }
+  /*
+    [FASE 5, T13] `.ledger-list > div` (app.css) da grid de dos columnas
+    (importe a la derecha) a cualquier hijo DIRECTO de `.ledger-list` — pensado
+    para la fila simple de esa clase compartida (un `<span>` + un `<strong
+    class="cifra">`, p. ej. Top proveedores del Dashboard). Aquí el hijo
+    directo es ESTE envoltorio, con dos hijos PROPIOS distintos
+    (`.finance-row` y, si hay edición, `.finance-row-tools`): sin este
+    `display: block`, esos dos hijos heredaban ese grid de la clase
+    compartida y cayan en sus dos columnas —las herramientas de edición AL
+    LADO del importe, no debajo— con un ancho de columna que variaba según
+    cuántos controles trajera cada fila, desplazando la cifra a una posición
+    distinta por fila (A7 de mobile-densidad.dbe2e.ts: «cifras en varias
+    posiciones»). `.finance-row` ya es su propio grid de dos columnas (arriba)
+    y sigue pintándose igual; solo cambia el CONTENEDOR que lo envuelve.
+  */
+  .finance-row-wrap { display: block; border-top: 1px solid var(--line); }
   .finance-row-wrap:first-child { border-top: 0; }
   .finance-row-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-bottom: var(--space-2); }
+  .select-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--row-data);
+    min-height: var(--row-data);
+  }
 </style>
