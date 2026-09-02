@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { detailCards, ledgerRowMeta, originRows, txTitle } from '../src/lib/finance/detail';
+import { detailCards, hasRaw, ledgerRowMeta, originRows, txTitle } from '../src/lib/finance/detail';
 
 import type { FinanceTxDto } from '@housekeeper/server';
 import type { FinanceDetailMode } from '../src/lib/finance/api';
@@ -82,6 +82,20 @@ describe('txTitle (título del movimiento, única definición para ledger y pane
       'Compra supermercado'
     );
     expect(txTitle(tx({ providerDisplay: '', provider: 'mercadona', concept: 'Compra' }))).toBe('mercadona');
+  });
+});
+
+describe('hasRaw (única definición de «tiene raw» del módulo)', () => {
+  it('con raw null: no tiene raw', () => {
+    expect(hasRaw(tx({ raw: null }))).toBe(false);
+  });
+
+  it('raw es NOT NULL DEFAULT \'{}\' (Ruling R11): un objeto vacío no cuenta como raw propio', () => {
+    expect(hasRaw(tx({ raw: {} }))).toBe(false);
+  });
+
+  it('con claves: sí tiene raw', () => {
+    expect(hasRaw(tx({ raw: { fichero: 'extracto.csv' } }))).toBe(true);
   });
 });
 

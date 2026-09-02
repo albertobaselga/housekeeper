@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { FinanceTxDto } from '@housekeeper/server';
   import { financeApi, type FinanceDetailMode } from '$lib/finance/api';
-  import { detailCards, originRows, txTitle } from '$lib/finance/detail';
+  import { detailCards, hasRaw, originRows, txTitle } from '$lib/finance/detail';
   import { dateLabel, formatCents, STATUS_LABEL, summarizeTxs } from '$lib/finance/format';
   import { modalDialog } from '$lib/components/modal-dialog';
 
@@ -27,8 +27,7 @@
     // `stale` cierra la carrera: si `mode` cambia (otro grupo, otro
     // movimiento) antes de que esta promesa resuelva, el efecto se relanza y
     // marca esta ejecución obsoleta en su cleanup, así que la respuesta
-    // tardía ya no pisa el estado del modo nuevo (Issue Important #2 de la
-    // revisión).
+    // tardía ya no pisa el estado del modo nuevo.
     let stale = false;
     void (async () => {
       try {
@@ -38,11 +37,14 @@
         } else if (current.kind === 'grupo') {
           const rows = (await api.transactionsByGroups([current.groupId])).rows;
           if (!stale) fetched = rows;
-        } else if (!current.tx.raw && current.tx.transferGroupId) {
+        } else if (!hasRaw(current.tx) && current.tx.transferGroupId) {
           // Espejo sin datos de fichero: los datos del origen son los del
           // cargo real emparejado en el mismo grupo (contrato del original).
+          // `raw` es NOT NULL DEFAULT '{}' (Ruling R11): usar `hasRaw` aquí,
+          // no `tx.raw` a pelo, porque un `{}` es truthy y dejaría esta rama
+          // muerta contra datos reales.
           const legs = (await api.transactionsByGroups([current.tx.transferGroupId])).rows;
-          const partner = legs.find((leg) => leg.id !== current.tx.id && leg.raw);
+          const partner = legs.find((leg) => leg.id !== current.tx.id && hasRaw(leg));
           if (partner && !stale) partnerByTx = { [current.tx.id]: partner };
         }
       } catch {
@@ -63,7 +65,7 @@
   );
   // El fetch que puede fallar es el del cargo emparejado (Datos del origen);
   // en modo «movimiento» la tarjeta ya está pintada sin red, así que el
-  // aviso no debe sugerir que el detalle entero falló (Issue Minor #6).
+  // aviso no debe sugerir que el detalle entero falló.
   const errorMessage = $derived(
     mode?.kind === 'movimiento'
       ? 'No hemos podido cargar los datos del origen emparejado.'

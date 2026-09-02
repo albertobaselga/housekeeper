@@ -24,10 +24,9 @@ export function ledgerRowMeta(tx: FinanceTxDto, eventNameById: Record<string, st
 
 /**
  * Título visible de un movimiento: proveedor mostrado, o el bruto, o el
- * concepto (única definición — Issue Minor #4 de la revisión: LedgerTable y
- * FinanceDetailPanel repetían el mismo `||` a mano). Una cadena vacía en
- * cualquiera de los dos primeros campos cae al siguiente, como siempre hizo
- * el operador `||`.
+ * concepto (única definición: LedgerTable y FinanceDetailPanel consumen esta
+ * en vez de repetir el mismo `||` a mano). Una cadena vacía en cualquiera de
+ * los dos primeros campos cae al siguiente, como siempre hizo el operador `||`.
  */
 export function txTitle(tx: FinanceTxDto): string {
   return tx.providerDisplay || tx.provider || tx.concept;
@@ -37,9 +36,12 @@ export function txTitle(tx: FinanceTxDto): string {
  * `raw` es jsonb NOT NULL DEFAULT '{}' (Ruling R11): la guarda exige también
  * claves. Predicado de tipo (no `boolean`) para que `source.raw` quede
  * estrechado a `Record<string, string>` sin recurrir a un `as` sobre datos de
- * fila (Issue Important #1 de la revisión: R7 prohíbe esas aserciones).
+ * fila (R7 prohíbe esas aserciones). Exportado: es la única definición válida
+ * de «tiene raw» del módulo — cualquier llamador que necesite decidir si un
+ * movimiento trae datos de origen propios debe usar esta, no repetir
+ * `tx.raw` a pelo (un `{}` es truthy y rompería esa comprobación).
  */
-function hasRaw(tx: FinanceTxDto): tx is FinanceTxDto & { raw: Record<string, string> } {
+export function hasRaw(tx: FinanceTxDto): tx is FinanceTxDto & { raw: Record<string, string> } {
   return tx.raw !== null && Object.keys(tx.raw).length > 0;
 }
 
@@ -60,15 +62,14 @@ export function originRows(
       rows: Object.entries(source.raw).map(([key, value]) => [key, String(value)])
     };
   }
-  const rows = (
-    [
-      ['Fecha valor', source.valueDate],
-      ['Saldo', source.balanceCents === null ? null : formatCents(source.balanceCents)],
-      ['Concepto común', source.codeCommon],
-      ['Concepto propio', source.codeOwn],
-      ['Categoría banco', source.bankCategory]
-    ] as [string, string | null][]
-  ).filter((entry): entry is [string, string] => entry[1] !== null && entry[1] !== '');
+  const entries: [string, string | null][] = [
+    ['Fecha valor', source.valueDate],
+    ['Saldo', source.balanceCents === null ? null : formatCents(source.balanceCents)],
+    ['Concepto común', source.codeCommon],
+    ['Concepto propio', source.codeOwn],
+    ['Categoría banco', source.bankCategory]
+  ];
+  const rows = entries.filter((entry): entry is [string, string] => entry[1] !== null && entry[1] !== '');
   return rows.length > 0 ? { label: 'Detalles', rows } : null;
 }
 
