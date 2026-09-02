@@ -83,8 +83,10 @@ export DATABASE_URL="postgresql://ci_admin:ci-only-password@127.0.0.1:5439/casac
 ```
 
 2. Esquema completo (todas las migraciones pendientes en orden; hoy llega
-   hasta la 0037_finance_endurecimiento — los roles de grupo los crea la
-   0001):
+   hasta la 0038_gastos_privados_y_alta_sin_admin, y las de finanzas son
+   0036_finance y 0037_finance_endurecimiento, que comparten número con dos
+   del contrato sin pisarse porque el runner registra por nombre de fichero —
+   los roles de grupo los crea la 0001):
 
 ```bash
 pnpm --filter @housekeeper/db migrate

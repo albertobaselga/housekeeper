@@ -95,11 +95,21 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    DATABASE_URL="$DIRECTA" pnpm db:migrate
    ```
 
-   Criterio de salida: la última migración aplicada es `0037_finance_endurecimiento.sql`
-   y el runner no deja ninguna pendiente (imprime el recuento al terminar; la
-   numeración tiene huecos históricos, así que el número total no es el del
-   último fichero). Repetir el comando debe
-   aplicar 0: la idempotencia es parte del contrato.
+   Criterio de salida: la última migración aplicada es
+   `0038_gastos_privados_y_alta_sin_admin.sql` y el runner no deja ninguna
+   pendiente (imprime el recuento al terminar; la numeración tiene huecos
+   históricos, así que el número total no es el del último fichero). Repetir
+   el comando debe aplicar 0: la idempotencia es parte del contrato.
+
+   **Dos números están repetidos a propósito.** Las dos ramas que se fusionaron
+   el 2-sep-2026 numeraron sus migraciones a la vez: finanzas trajo
+   `0036_finance` y `0037_finance_endurecimiento` (aplicadas en producción esa
+   misma mañana) y el contrato trajo `0036_vacation_day_rate`,
+   `0037_vacation_carryover` y `0038_gastos_privados_y_alta_sin_admin`. El
+   runner ordena y registra por NOMBRE DE FICHERO completo, así que las cinco
+   conviven, no se pisan y ninguna se renumera: renombrar una ya aplicada haría
+   que el runner intentara aplicarla otra vez. El siguiente número libre es
+   **0039**.
 3. **Suites SQL y RLS** contra el proyecto real, no contra una sonda local:
 
    **SOLO PARA UN PROYECTO RECIÉN CREADO Y VACÍO**: `run-sql-tests.mjs` hace
