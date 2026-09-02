@@ -422,11 +422,19 @@ export async function loadFinanceAnalitica(
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
       await requireFinanceAdmin(client, membership);
       const read: FinanceReadFilters = { ...toReadFilters(filters), excludeEventIds };
+      // La tabla de partidas NUNCA se autoexcluye: es donde el usuario elige QUÉ
+      // excluir, así que sus importes deben verse siempre completos (referencia
+      // dorada: home-finance/backend/app/reports.py:616-623, `events_summary`
+      // no toma `exclude_event_ids`; solo lo toman `range_summary`/`series`/
+      // `analytics`/`pivot_rows`). Con `read` aquí, la partida excluida se
+      // mostraría con todo a 0,00 € y los subtotales «No seleccionado»/«Total»
+      // quedarían muertos.
+      const readEvents: FinanceReadFilters = toReadFilters(filters);
       const summary = await readFinanceSummary(client, householdId, read);
       const [analytics, pivot, events, categories, accounts] = await Promise.all([
         readFinanceAnalytics(client, householdId, read),
         readFinancePivot(client, householdId, read),
-        readFinanceEventsSummary(client, householdId, read),
+        readFinanceEventsSummary(client, householdId, readEvents),
         readFinanceCategories(client, householdId),
         readFinanceAccounts(client, householdId)
       ]);

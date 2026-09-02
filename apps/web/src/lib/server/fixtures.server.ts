@@ -628,9 +628,10 @@ const ANALITICA_ACCOUNTS = FINANCE_ACCOUNTS.map((acc) => {
 });
 
 // Categorías extra propias de Analítica (destino del dnd / partidas de la
-// maqueta): la fase 4 no las necesitaba. Los tests de Dashboard/Movimientos
-// (finance-fixtures.test.ts) y el e2e de fase 4 no cuentan categorías, así que
-// añadirlas a la lista base no los rompe.
+// maqueta): la fase 4 no las necesitaba. Se CONCATENAN solo para
+// ANALITICA_CATEGORIES, sin mutar FINANCE_CATEGORIES: Dashboard/Movimientos
+// (finance-fixtures.test.ts) y el e2e de fase 4 siguen viendo exactamente el
+// corpus de categorías que ya tenían.
 const ANALITICA_EXTRA_CATEGORIES = [
   { id: 'fb000000-0000-4000-8000-000000000007', name: 'Restaurantes', parentId: null, kind: 'gasto' },
   { id: 'fb000000-0000-4000-8000-000000000008', name: 'Ocio', parentId: null, kind: 'gasto' },

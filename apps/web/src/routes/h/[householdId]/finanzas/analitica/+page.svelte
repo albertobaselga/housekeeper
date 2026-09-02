@@ -5,6 +5,7 @@
   import FinanceFilterBar from '$lib/components/finance/FinanceFilterBar.svelte';
   import { formatCents } from '$lib/finance/format';
   import { buildNatureChartData, monthsInRange, pctOf, perMonth } from '$lib/finance/chart-data';
+  import { isUuid, rangeLabel } from '$lib/finance/filters';
   import { parseIdList, serializeIdList } from '$lib/finance/pivot-state';
   import type { PageData } from './$types';
 
@@ -12,8 +13,10 @@
   const a = $derived(data.analitica);
 
   // Partidas excluidas de KPIs y gráfica: ?exev= (CSV), navegación real porque
-  // los KPIs se recalculan en el servidor.
-  const excludedEventIds = $derived(parseIdList(page.url.searchParams.get('exev')));
+  // los KPIs se recalculan en el servidor. Filtrado por isUuid igual que el
+  // servidor (+page.server.ts, Ruling R24): con `?exev=basura` el rótulo de
+  // abajo no debe anunciar una exclusión que el servidor ignora.
+  const excludedEventIds = $derived(parseIdList(page.url.searchParams.get('exev')).filter(isUuid));
   function toggleExcluded(id: string): void {
     const next = excludedEventIds.includes(id)
       ? excludedEventIds.filter((x) => x !== id)
@@ -25,7 +28,7 @@
     void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
   }
 
-  const months = $derived(monthsInRange(a.from, a.to));
+  const monthCount = $derived(monthsInRange(a.from, a.to));
   const chartPoints = $derived(buildNatureChartData(a.months, a.analyticsRows));
   const incomeRec = $derived(chartPoints.reduce((s, p) => s + p.ingresosRecCents, 0n));
   const incomeExt = $derived(chartPoints.reduce((s, p) => s + p.ingresosExtCents, 0n));
@@ -38,7 +41,8 @@
   const pct = (v: number | null) => (v === null ? '—' : `${v} %`);
 </script>
 
-<PageHeader eyebrow="Finanzas" title="Analítica" support={`${a.from} → ${a.to}`} />
+<div class="page-wrap">
+<PageHeader eyebrow="Cuentas de la casa" title="Analítica" support={rangeLabel(a.filters)} />
 
 <FinanceFilterBar filters={a.filters} accounts={a.accounts} />
 <!-- ↑ props canónicas de la fase 4: { filters: FinanceFilters; accounts: {id;name;kind}[] },
@@ -72,14 +76,14 @@
   {/if}
 </section>
 
-<p class="media-rotulo">Media mensual · {months} {months === 1 ? 'mes' : 'meses'} completos</p>
+<p class="media-rotulo">Media mensual · {monthCount} {monthCount === 1 ? 'mes' : 'meses'} completos</p>
 <section class="kpi-grid compact" aria-label="Medias mensuales">
-  <article class="kpi"><span>Ingresos/mes</span><strong class="cifra pos">{formatCents(perMonth(a.summary.incomeCents, months))}</strong></article>
-  <article class="kpi"><span>Gastos/mes</span><strong class="cifra neg">{formatCents(perMonth(a.summary.expenseCents, months))}</strong></article>
-  <article class="kpi"><span>Ahorro/mes</span><strong class="cifra {a.summary.savingsCents >= 0n ? 'pos' : 'neg'}">{formatCents(perMonth(a.summary.savingsCents, months))}</strong></article>
-  <article class="kpi"><span>Inversión/mes</span><strong class="cifra pos">{formatCents(perMonth(a.summary.investedCents, months))}</strong></article>
-  <article class="kpi"><span>Free CF/mes</span><strong class="cifra">{formatCents(perMonth(a.summary.freeCashFlowCents, months))}</strong></article>
-  <article class="kpi"><span>Ops CF/mes</span><strong class="cifra">{formatCents(perMonth(a.summary.opsCashFlowCents, months))}</strong></article>
+  <article class="kpi"><span>Ingresos/mes</span><strong class="cifra pos">{formatCents(perMonth(a.summary.incomeCents, monthCount))}</strong></article>
+  <article class="kpi"><span>Gastos/mes</span><strong class="cifra neg">{formatCents(perMonth(a.summary.expenseCents, monthCount))}</strong></article>
+  <article class="kpi"><span>Ahorro/mes</span><strong class="cifra {a.summary.savingsCents >= 0n ? 'pos' : 'neg'}">{formatCents(perMonth(a.summary.savingsCents, monthCount))}</strong></article>
+  <article class="kpi"><span>Inversión/mes</span><strong class="cifra pos">{formatCents(perMonth(a.summary.investedCents, monthCount))}</strong></article>
+  <article class="kpi"><span>Free CF/mes</span><strong class="cifra">{formatCents(perMonth(a.summary.freeCashFlowCents, monthCount))}</strong></article>
+  <article class="kpi"><span>Ops CF/mes</span><strong class="cifra">{formatCents(perMonth(a.summary.opsCashFlowCents, monthCount))}</strong></article>
 </section>
 
 <section aria-labelledby="partidas-titulo">
@@ -123,6 +127,7 @@
     </div>
   {/if}
 </section>
+</div>
 
 <style>
   .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--gap-card); margin-top: var(--space-4); }
