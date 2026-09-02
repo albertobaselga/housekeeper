@@ -170,13 +170,23 @@
       orden de tabulación y del árbol de accesibilidad: sin ratón ni pantalla
       táctil no había forma de abrir el selector, y un lector de pantalla
       anunciaba el texto del `<label>` como texto suelto, no como control.
-      `.sr-only` (ocultamiento por *clip*, ya usado en el resto de la casa)
-      mantiene el aspecto de botón y deja el input focusable y anunciado; el
+      Se mantiene el aspecto de botón y el input focusable y anunciado; el
       foco se ve con `:focus-within` en el label. `disabled={busy}` de paso
       impide elegir un segundo fichero mientras el primero se analiza
       (revisión #8: dos previsualizaciones ya no pueden pisarse).
+
+      [FASE 5, T13] `.sr-only` (ocultamiento por *clip*, 1×1 px) es la marca
+      de esta corrección, pero encoge el propio input a una diana de 1×1: es
+      el input, no el `<label>` que lo rodea, quien cuenta como control ante
+      `document.querySelectorAll('input')` (mobile-densidad.dbe2e.ts, A3), así
+      que el truco reservado a checkbox/radio (medir el `<label>` que envuelve)
+      no lo cubre. Se sustituye por el patrón estándar de «input de fichero
+      invisible superpuesto al botón visible»: `opacity: 0` en vez de *clip*,
+      del tamaño exacto del label (`inset: 0`) — sigue sin verse, sigue
+      anunciado igual por el lector de pantalla, y ahora su diana real mide lo
+      que mide el botón.
     -->
-    <input type="file" accept=".xls,.xlsx" class="sr-only" disabled={busy}
+    <input type="file" accept=".xls,.xlsx" class="importar-input" disabled={busy}
       onchange={(event) => {
         const chosen = event.currentTarget.files?.[0];
         event.currentTarget.value = '';
@@ -238,7 +248,7 @@
     {:else}
       <div class="importar-scroll">
         <table class="wiki-table">
-          <thead><tr><th>Fecha</th><th>Fichero</th><th>Banco</th><th>Nuevas</th><th>Dup.</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Fichero</th><th>Banco</th><th>Nuevas</th><th>Dup</th><th></th></tr></thead>
           <tbody>
             {#each data.importar.batches as batch (batch.id)}
               <tr>
@@ -260,6 +270,16 @@
 <style>
   .importar-boton { display: inline-block; position: relative; }
   .importar-boton:focus-within { outline: .2rem solid var(--primary); outline-offset: .2rem; }
+  /*
+    [FASE 5, T13] `inset: -1px`, no `0`: la caja de posicionamiento de un
+    absoluto es el borde de PADDING del ancestro posicionado (aquí,
+    `.importar-boton`), no su borde exterior — con `inset: 0` el input
+    quedaba 2 px más bajo y 2 px más estrecho que el propio botón (el borde
+    de 1 px por lado de `.button`, transparente pero real), justo por debajo
+    del piso de 44 px de mobile-densidad.dbe2e.ts (A3). `-1px` compensa
+    exactamente ese borde y el input vuelve a medir lo mismo que el botón.
+  */
+  .importar-input { position: absolute; inset: -1px; opacity: 0; cursor: pointer; }
   .importar-scroll { overflow-x: auto; }
   .cuenta-nueva { display: grid; gap: var(--space-2); }
 </style>
