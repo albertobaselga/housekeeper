@@ -168,6 +168,9 @@ type FinanceEventAssignTransactionsPayload = Extract<
 >;
 type FinanceEventAssignConceptPayload = Extract<FinanceWritePayload, { kind: "finance.event.assignConcept" }>;
 type FinanceAliasUpdatePayload = Extract<FinanceWritePayload, { kind: "finance.alias.update" }>;
+type FinanceAccountUpdatePayload = Extract<FinanceWritePayload, { kind: "finance.account.update" }>;
+type FinanceCategoryCreatePayload = Extract<FinanceWritePayload, { kind: "finance.category.create" }>;
+type FinanceCategoryAssignConceptPayload = Extract<FinanceWritePayload, { kind: "finance.category.assignConcept" }>;
 
 interface FinanceTxRow {
   id: UUID;
@@ -1028,6 +1031,156 @@ async function updateProviderAlias(
   return {};
 }
 
+async function updateFinanceAccount(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceAccountUpdatePayload,
+): Promise<{ resourceId: UUID }> {
+  await requireFinanceAccount(client, householdId, payload.accountId);
+  // Solo columnas editables por comando: `bank`/`bank_ref` no aparecen aquí ni
+  // en el esquema (`financeAccountUpdatePayloadSchema`) — se fijan al importar
+  // y no se tocan por esta vía (resolución del coordinador).
+  await client.query(
+    `update app.finance_accounts
+        set name = $3, kind = $4, owner_label = $5,
+            owner_aliases = $6::jsonb, transfer_refs = $7::jsonb
+      where household_id = $1 and id = $2`,
+    [
+      householdId,
+      payload.accountId,
+      payload.name,
+      payload.accountKind,
+      payload.ownerLabel,
+      JSON.stringify(payload.ownerAliases),
+      JSON.stringify(payload.transferRefs),
+    ],
+  );
+  return { resourceId: payload.accountId };
+}
+
+async function createFinanceCategory(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceCategoryCreatePayload,
+): Promise<{ resourceId: UUID }> {
+  let kind: string = payload.categoryKind;
+  if (payload.parentId) {
+    const parent = await requireFinanceCategory(client, householdId, payload.parentId);
+    if (parent.parent_id !== null) {
+      throw new CommandRejectedError("invalid_payload", "El árbol de categorías es de dos niveles");
+    }
+    if (parent.kind === "transferencia") {
+      throw new CommandRejectedError("finance_category_is_transfer", "La categoría de transferencias no tiene hijas");
+    }
+    kind = parent.kind; // la subcategoría hereda la naturaleza del padre, no el categoryKind del payload
+  }
+  const inserted = await client.query<{ id: string }>(
+    `insert into app.finance_categories (household_id, name, kind, parent_id)
+     values ($1, $2, $3, $4) returning id`,
+    [householdId, payload.name, kind, payload.parentId],
+  );
+  const id = inserted.rows[0]?.id;
+  if (!id) throw new Error("La inserción de la categoría no devolvió identificador");
+  return { resourceId: id as UUID };
+}
+
+async function deleteFinanceCategory(
+  client: PoolClient,
+  householdId: UUID,
+  categoryId: UUID,
+): Promise<Record<string, never>> {
+  const category = await requireFinanceCategory(client, householdId, categoryId);
+  if (category.kind === "transferencia") {
+    throw new CommandRejectedError("finance_category_is_transfer", "La categoría de transferencias no se borra");
+  }
+  const usage = await client.query<{ txs: number; children: number; rules: number; event_rules: number }>(
+    `select
+       (select count(*)::int from app.finance_transactions where household_id = $1 and category_id = $2) as txs,
+       (select count(*)::int from app.finance_categories where household_id = $1 and parent_id = $2) as children,
+       (select count(*)::int from app.finance_rules where household_id = $1 and category_id = $2) as rules,
+       (select count(*)::int from app.finance_event_rules where household_id = $1 and category_id = $2) as event_rules`,
+    [householdId, categoryId],
+  );
+  const counts = usage.rows[0];
+  if (counts && (counts.txs > 0 || counts.children > 0 || counts.rules > 0 || counts.event_rules > 0)) {
+    throw new CommandRejectedError(
+      "finance_category_in_use",
+      `Categoría en uso: ${counts.txs} movimientos, ${counts.children} subcategorías, ${counts.rules} reglas, ${counts.event_rules} eventos`,
+    );
+  }
+  await client.query(`delete from app.finance_categories where household_id = $1 and id = $2`, [householdId, categoryId]);
+  return {};
+}
+
+/**
+ * OJO: aquí `payload.categoryId` es la categoría DESTINO, no un selector. Si
+ * se le pasara el payload entero, `matchingFinanceTxIds` tomaría la rama
+ * `selector.categoryId` y recategorizaría los movimientos que YA están en el
+ * destino, sin tocar los del proveedor pedido. Selector explícito, siempre.
+ */
+async function assignConceptToCategory(
+  client: PoolClient,
+  householdId: UUID,
+  payload: FinanceCategoryAssignConceptPayload,
+): Promise<{ resourceId: UUID }> {
+  const target = await requireFinanceCategory(client, householdId, payload.categoryId);
+  if (target.kind === "transferencia") {
+    throw new CommandRejectedError("finance_category_is_transfer", "No se puede recategorizar a transferencia");
+  }
+  const ids = await matchingFinanceTxIds(client, householdId, {
+    provider: payload.provider,
+    concept: payload.concept,
+  });
+  if (ids.length > 0) {
+    // Los movimientos ya categorizados como transferencia no se tocan (en la
+    // práctica ya vienen excluidos: matchingFinanceTxIds filtra
+    // transfer_group_id is null cuando el selector es proveedor/concepto).
+    await client.query(
+      `update app.finance_transactions as tx
+          set category_id = $3, status = 'confirmada'
+        where tx.household_id = $1 and tx.id = any($2::uuid[])
+          and not exists (
+            select 1 from app.finance_categories as cat
+             where cat.household_id = tx.household_id and cat.id = tx.category_id
+               and cat.kind = 'transferencia')`,
+      [householdId, ids, payload.categoryId],
+    );
+  }
+  const inserted = await client.query<{ id: string }>(
+    `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin)
+     values ($1, $2, $3, $4, 0, 'manual') returning id`,
+    [
+      householdId,
+      payload.concept === undefined ? "proveedor_exacto" : "concepto_contiene",
+      payload.concept === undefined ? payload.provider : payload.concept,
+      payload.categoryId,
+    ],
+  );
+  return { resourceId: inserted.rows[0]?.id as UUID };
+}
+
+async function undoImport(client: PoolClient, householdId: UUID, batchId: UUID): Promise<Record<string, never>> {
+  const batch = await client.query(`select id from app.finance_import_batches where household_id = $1 and id = $2`, [
+    householdId,
+    batchId,
+  ]);
+  if ((batch.rowCount ?? 0) === 0) {
+    throw new CommandRejectedError("finance_batch_not_found", "Esa importación ya no existe");
+  }
+  await client.query(
+    `delete from app.finance_transaction_events
+      where household_id = $1 and transaction_id in (
+        select id from app.finance_transactions where household_id = $1 and batch_id = $2)`,
+    [householdId, batchId],
+  );
+  // ON DELETE CASCADE del esquema (0036 finance_transactions_batch_id_fkey):
+  // borrar el lote se lleva sus transacciones por delante, espejos de
+  // inversión incluidos (heredan el batch_id del cargo real: pipeline.ts,
+  // "hereda el batch_id de su cargo — deshacer el lote lo arrastra").
+  await client.query(`delete from app.finance_import_batches where household_id = $1 and id = $2`, [householdId, batchId]);
+  return {};
+}
+
 /**
  * `finance`: todas las escrituras del módulo, discriminadas por `payload.kind`.
  *
@@ -1103,22 +1256,62 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
     case "finance.alias.update":
       return updateProviderAlias(client, envelope.householdId, payload);
     case "finance.account.update":
+      return updateFinanceAccount(client, envelope.householdId, payload);
     case "finance.category.create":
-    case "finance.category.update":
+      return createFinanceCategory(client, envelope.householdId, payload);
+    case "finance.category.update": {
+      await requireFinanceCategory(client, envelope.householdId, payload.categoryId);
+      await client.query(`update app.finance_categories set name = $3 where household_id = $1 and id = $2`, [
+        envelope.householdId,
+        payload.categoryId,
+        payload.name,
+      ]);
+      return { resourceId: payload.categoryId };
+    }
     case "finance.category.delete":
+      return deleteFinanceCategory(client, envelope.householdId, payload.categoryId);
     case "finance.category.assignConcept":
-    case "finance.rule.create":
-    case "finance.rule.delete":
+      return assignConceptToCategory(client, envelope.householdId, payload);
+    case "finance.rule.create": {
+      const target = await requireFinanceCategory(client, envelope.householdId, payload.categoryId);
+      if (target.kind === "transferencia") {
+        throw new CommandRejectedError("finance_category_is_transfer", "Las reglas no apuntan a transferencia");
+      }
+      // R15 (resolución del coordinador): cuando el payload no trae
+      // `priority`, el INSERT omite la columna para que mande el DEFAULT de
+      // la tabla (100) — nunca 0 a secas, que colocaría a esta regla suelta
+      // en un escalón de precedencia distinto al de cualquier otra regla
+      // manual (domain/finance/rules.ts ordena por `priority` al resolver
+      // empates). `pattern` se recorta a 200 antes de insertar, igual que
+      // exige el CHECK de la tabla (0036), aunque el esquema ya lo acote a esa
+      // misma longitud.
+      const pattern = payload.pattern.slice(0, 200);
+      const inserted =
+        payload.priority === undefined
+          ? await client.query<{ id: string }>(
+              `insert into app.finance_rules (household_id, rule_type, pattern, category_id, origin)
+               values ($1, $2, $3, $4, 'manual') returning id`,
+              [envelope.householdId, payload.ruleType, pattern, payload.categoryId],
+            )
+          : await client.query<{ id: string }>(
+              `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin)
+               values ($1, $2, $3, $4, $5, 'manual') returning id`,
+              [envelope.householdId, payload.ruleType, pattern, payload.categoryId, payload.priority],
+            );
+      return { resourceId: inserted.rows[0]?.id as UUID };
+    }
+    case "finance.rule.delete": {
+      const deleted = await client.query(`delete from app.finance_rules where household_id = $1 and id = $2`, [
+        envelope.householdId,
+        payload.ruleId,
+      ]);
+      if ((deleted.rowCount ?? 0) === 0) {
+        throw new CommandRejectedError("finance_rule_not_found", "La regla ya no existe");
+      }
+      return {};
+    }
     case "finance.import.undo":
-      // Tarea 5 de esta cadena sustituye cada uno de estos `case` por su
-      // implementación real. Hasta entonces el kind está reconocido por el
-      // esquema (y por tanto por el cerrojo de arriba) pero sin manejar
-      // todavía: no es un agujero de autorización, es trabajo pendiente
-      // explícito.
-      throw new CommandRejectedError(
-        "invalid_payload",
-        `Comando de finanzas aún no implementado: ${payload.kind}`,
-      );
+      return undoImport(client, envelope.householdId, payload.batchId);
     default: {
       const _exhaustive: never = payload;
       throw new CommandRejectedError("invalid_payload", "Comando de finanzas desconocido");
