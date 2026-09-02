@@ -9,9 +9,12 @@ import {
   requireFinanceAdmin,
   withAuthorizedTransaction,
   readFinanceAccounts,
+  readFinanceAnalytics,
   readFinanceBreakdown,
   readFinanceCategories,
   readFinanceEvents,
+  readFinanceEventsSummary,
+  readFinancePivot,
   readFinanceProviders,
   readFinanceSeries,
   readFinanceSummary,
@@ -29,6 +32,16 @@ import {
 } from '@housekeeper/server';
 
 import { belongsToHousehold } from '$lib/auth/membership';
+import {
+  isFinanceAccountKind,
+  isFinanceCategoryKind,
+  type AnaliticaCategory,
+  type AnaliticaData,
+  type AnaliticaEventSummary,
+  type AnaliticaPivotRow,
+  type AnaliticaSummary
+} from '$lib/finance/analitica-data';
+import type { AnalyticsRowLike } from '$lib/finance/chart-data';
 import { DATE_PATTERN, isUuid, type FinanceFilters } from '$lib/finance/filters';
 import { DATA_UNAVAILABLE_MESSAGE, DATA_UNAVAILABLE_STATUS, unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
@@ -300,6 +313,144 @@ export function parseTransactionsQuery(url: URL): FinanceTransactionsQuery {
     limit: intParam(url, 'limit', 100, 1, 500),
     offset: intParam(url, 'offset', 0, 0, 1_000_000)
   };
+}
+
+// ── Analítica (fase 6) ───────────────────────────────────────────────────────
+// Mismo patrón que loadFinanceDashboard: lectura bajo RLS con el cliente
+// autorizado y mapeo explícito de los DTO (céntimos como cadena) al contrato
+// de cliente (céntimos bigint). `BigInt(v)` acepta cadena y bigint, así que el
+// mapeo vale aunque alguna lectura ya devuelva bigint (es el caso de
+// `readFinancePivot`, que ya entrega `PivotSourceRow[]` con bigint del
+// dominio — fase 2).
+
+function toAnaliticaSummary(dto: FinanceSummaryDto): AnaliticaSummary {
+  return {
+    incomeCents: BigInt(dto.incomeCents),
+    expenseCents: BigInt(dto.expenseCents),
+    recurringExpenseCents: BigInt(dto.recurringExpenseCents),
+    extraordinaryExpenseCents: BigInt(dto.extraordinaryExpenseCents),
+    unclassifiedExpenseCents: BigInt(dto.unclassifiedExpenseCents),
+    savingsCents: BigInt(dto.savingsCents),
+    netSavingsRate: dto.netSavingsRate,
+    grossSavingsRate: dto.grossSavingsRate,
+    investedCents: BigInt(dto.investedCents),
+    investmentRate: dto.investmentRate,
+    freeCashFlowCents: BigInt(dto.freeCashFlowCents),
+    opsCashFlowCents: BigInt(dto.opsCashFlowCents),
+    receivedContributionsCents: BigInt(dto.receivedContributionsCents),
+    outgoingTransfersCents: BigInt(dto.outgoingTransfersCents),
+    pendingCount: dto.pendingCount
+  };
+}
+
+function toAnaliticaEvents(
+  dtos: Awaited<ReturnType<typeof readFinanceEventsSummary>>
+): AnaliticaEventSummary[] {
+  return dtos.map((e) => ({
+    id: e.id,
+    name: e.name,
+    txCount: e.txCount,
+    netCents: BigInt(e.netCents),
+    incomeCents: BigInt(e.incomeCents),
+    expenseCents: BigInt(e.expenseCents)
+  }));
+}
+
+function toAnaliticaCategories(
+  dtos: Awaited<ReturnType<typeof readFinanceCategories>>
+): AnaliticaCategory[] {
+  return dtos.map((c) => {
+    if (!isFinanceCategoryKind(c.kind)) throw new Error(`kind de categoría desconocido: ${c.kind}`);
+    return { id: c.id, parentId: c.parentId, name: c.name, kind: c.kind };
+  });
+}
+
+function toAnalyticsRows(
+  rows: Awaited<ReturnType<typeof readFinanceAnalytics>>['rows']
+): AnalyticsRowLike[] {
+  return rows.map((r) => ({
+    kind: r.kind,
+    monthly: Object.fromEntries(
+      Object.entries(r.monthly).map(([month, m]) => [
+        month,
+        { totalCents: BigInt(m.totalCents), recCents: BigInt(m.recCents), extCents: BigInt(m.extCents) }
+      ])
+    )
+  }));
+}
+
+function toAnaliticaPivotRows(
+  rows: Awaited<ReturnType<typeof readFinancePivot>>['rows']
+): AnaliticaPivotRow[] {
+  // `PivotSourceRow` (dominio, fase 2) ya trae bigint y los mismos nombres de
+  // campo que `AnaliticaPivotRow`: el mapeo es de FORMA (movs a array
+  // mutable), no de tipo. `BigInt(...)` es un no-op sobre un bigint y protege
+  // si alguna lectura futura devolviera cadena.
+  return rows.map((r) => ({
+    cat: r.cat,
+    sub: r.sub,
+    catId: r.catId,
+    nat: r.nat,
+    prov: r.prov,
+    concept: r.concept,
+    event: r.event,
+    eventId: r.eventId,
+    kind: r.kind,
+    month: r.month,
+    totalCents: BigInt(r.totalCents),
+    count: r.count,
+    movs: r.movs.map((m) => ({ id: m.id, date: m.date, cents: BigInt(m.cents) }))
+  }));
+}
+
+/**
+ * Lectura de Analítica bajo RLS: mismo patrón que `loadFinanceDashboard`
+ * (doble cerrojo, `catch` compartido). `excludeEventIds` ya llega filtrado a
+ * UUIDs válidos desde la ruta (Ruling R24 del coordinador): aquí solo se
+ * inyecta en los filtros de lectura, junto a `toReadFilters` (que por defecto
+ * lo fija a `[]`).
+ */
+export async function loadFinanceAnalitica(
+  user: { id: string },
+  householdId: string,
+  filters: FinanceFilters,
+  excludeEventIds: string[],
+  pool: Pool | null = getDatabasePool()
+): Promise<Omit<AnaliticaData, 'filters'> | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const read: FinanceReadFilters = { ...toReadFilters(filters), excludeEventIds };
+      const summary = await readFinanceSummary(client, householdId, read);
+      const [analytics, pivot, events, categories, accounts] = await Promise.all([
+        readFinanceAnalytics(client, householdId, read),
+        readFinancePivot(client, householdId, read),
+        readFinanceEventsSummary(client, householdId, read),
+        readFinanceCategories(client, householdId),
+        readFinanceAccounts(client, householdId)
+      ]);
+      const cuentas = accounts.map((acc) => {
+        if (!isFinanceAccountKind(acc.kind)) throw new Error(`kind de cuenta desconocido: ${acc.kind}`);
+        return { id: acc.id, name: acc.name, kind: acc.kind };
+      });
+      return {
+        from: filters.from,
+        to: filters.to,
+        months: pivot.months,
+        summary: toAnaliticaSummary(summary),
+        analyticsRows: toAnalyticsRows(analytics.rows),
+        pivotRows: toAnaliticaPivotRows(pivot.rows),
+        eventsSummary: toAnaliticaEvents(events),
+        categories: toAnaliticaCategories(categories),
+        accounts: cuentas,
+        invAccounts: cuentas.filter((acc) => acc.kind === 'inversion').map((acc) => ({ id: acc.id, name: acc.name }))
+      };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) return null;
+    return unreadable(log, 'finance analitica', cause);
+  }
 }
 
 /** Ejecuta una lectura autorizada y responde JSON sin caché. */

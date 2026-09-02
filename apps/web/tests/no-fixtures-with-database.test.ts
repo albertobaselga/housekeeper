@@ -106,7 +106,13 @@ const CASES: LoadCase[] = [
   { module: '../src/routes/h/[householdId]/wiki/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/wiki/[slug]/+page.server.ts', params: { slug: 'lavadora-programa-corto' } },
   { module: '../src/routes/h/[householdId]/search/+page.server.ts', search: '?q=lavadora' },
-  { module: '../src/routes/h/[householdId]/settings/+page.server.ts' }
+  { module: '../src/routes/h/[householdId]/settings/+page.server.ts' },
+  // Finanzas (fase 4/6): el Dashboard y Movimientos no se registraron al
+  // cerrar la fase 4 (comprobado: no estaban en esta lista); esta tarea los
+  // añade junto con Analítica, que sí es de esta fase.
+  { module: '../src/routes/h/[householdId]/finanzas/+page.server.ts' },
+  { module: '../src/routes/h/[householdId]/finanzas/movimientos/+page.server.ts' },
+  { module: '../src/routes/h/[householdId]/finanzas/analitica/+page.server.ts' }
 ];
 
 type LoadFn = (event: Record<string, unknown>) => unknown;

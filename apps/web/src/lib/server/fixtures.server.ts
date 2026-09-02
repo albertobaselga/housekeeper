@@ -2,6 +2,7 @@ import type { FinanceTxDto } from '@housekeeper/server';
 
 import type { Role } from '$lib/auth/capabilities';
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
+import { isFinanceAccountKind, isFinanceCategoryKind, type AnaliticaData, type AnaliticaPivotRow } from '$lib/finance/analitica-data';
 import type { FinanceFilters } from '$lib/finance/filters';
 
 import { demoOnly, fixturesAllowed } from './data-source.server';
@@ -612,3 +613,216 @@ export const getFinanceMovimientosFixture = demoOnly(
     events: [{ id: 'fe000000-0000-4000-8000-000000000001', name: 'Semana Santa 2026' }]
   })
 );
+
+// ── Maqueta de Analítica (fase 6) ────────────────────────────────────────────
+// Reutiliza las cuentas y categorías del corpus de finanzas de la fase 4
+// (FINANCE_ACCOUNTS/FINANCE_CATEGORIES arriba): una sola lista de cuentas y
+// una sola lista base de categorías demo en el fichero. `kind` en esas
+// constantes es `string` (inferido); la guarda de analitica-data.ts estrecha
+// el tipo y hace explícito que aquí no hay ningún valor inesperado.
+export type AnaliticaFixture = Omit<AnaliticaData, 'filters'>;
+
+const ANALITICA_ACCOUNTS = FINANCE_ACCOUNTS.map((acc) => {
+  if (!isFinanceAccountKind(acc.kind)) throw new Error(`kind de cuenta demo desconocido: ${acc.kind}`);
+  return { id: acc.id, name: acc.name, kind: acc.kind };
+});
+
+// Categorías extra propias de Analítica (destino del dnd / partidas de la
+// maqueta): la fase 4 no las necesitaba. Los tests de Dashboard/Movimientos
+// (finance-fixtures.test.ts) y el e2e de fase 4 no cuentan categorías, así que
+// añadirlas a la lista base no los rompe.
+const ANALITICA_EXTRA_CATEGORIES = [
+  { id: 'fb000000-0000-4000-8000-000000000007', name: 'Restaurantes', parentId: null, kind: 'gasto' },
+  { id: 'fb000000-0000-4000-8000-000000000008', name: 'Ocio', parentId: null, kind: 'gasto' },
+  { id: 'fb000000-0000-4000-8000-000000000009', name: 'Viajes', parentId: null, kind: 'gasto' }
+] as const;
+
+const ANALITICA_CATEGORIES = [...FINANCE_CATEGORIES, ...ANALITICA_EXTRA_CATEGORIES].map((cat) => {
+  if (!isFinanceCategoryKind(cat.kind)) throw new Error(`kind de categoría demo desconocido: ${cat.kind}`);
+  return { id: cat.id, parentId: cat.parentId, name: cat.name, kind: cat.kind };
+});
+
+const CAT_SUPERMERCADO = 'fb000000-0000-4000-8000-000000000002';
+const CAT_NOMINA = 'fb000000-0000-4000-8000-000000000005';
+const CAT_OCIO = 'fb000000-0000-4000-8000-000000000008';
+const CAT_VIAJES = 'fb000000-0000-4000-8000-000000000009';
+
+const analiticaMov = (id: string, date: string, cents: bigint) => ({ id, date, cents });
+
+function analiticaPivotRows(): AnaliticaPivotRow[] {
+  const mov = analiticaMov;
+  const base = { sub: null, event: null, eventId: null, nat: null as AnaliticaPivotRow['nat'] };
+  return [
+    // Gasto recurrente: Mercadona bajo Supermercado, tres meses.
+    ...(['2026-01', '2026-02', '2026-03'] as const).map(
+      (month, i): AnaliticaPivotRow => ({
+        ...base,
+        kind: 'gasto',
+        cat: 'Supermercado',
+        catId: CAT_SUPERMERCADO,
+        nat: 'recurrente',
+        prov: 'Mercadona',
+        concept: 'COMPRA TARJ. MERCADONA',
+        month,
+        totalCents: -12000n,
+        count: 1,
+        movs: [mov(`fd000000-0000-4000-8000-00000000010${i + 1}`, `${month}-05`, -12000n)]
+      })
+    ),
+    // Gasto extraordinario puntual: Cine Ideal bajo Ocio.
+    {
+      ...base,
+      kind: 'gasto',
+      cat: 'Ocio',
+      catId: CAT_OCIO,
+      nat: 'extraordinario',
+      prov: 'Cine Ideal',
+      concept: 'ENTRADAS CINE',
+      month: '2026-02',
+      totalCents: -4500n,
+      count: 1,
+      movs: [mov('fd000000-0000-4000-8000-000000000104', '2026-02-14', -4500n)]
+    },
+    // Ingreso recurrente: nómina ACME.
+    ...(['2026-01', '2026-02', '2026-03'] as const).map(
+      (month, i): AnaliticaPivotRow => ({
+        ...base,
+        kind: 'ingreso',
+        cat: 'Nómina',
+        catId: CAT_NOMINA,
+        nat: 'recurrente',
+        prov: 'ACME SL',
+        concept: 'NOMINA ACME',
+        month,
+        totalCents: 300000n,
+        count: 1,
+        movs: [mov(`fd000000-0000-4000-8000-00000000010${i + 5}`, `${month}-28`, 300000n)]
+      })
+    ),
+    // Evento: Vueling bajo Viajes, etiquetado «Semana Santa 2026».
+    {
+      ...base,
+      kind: 'gasto',
+      cat: 'Viajes',
+      catId: CAT_VIAJES,
+      nat: 'extraordinario',
+      prov: 'Vueling',
+      concept: 'BILLETES VLC',
+      event: 'Semana Santa 2026',
+      eventId: 'fc000000-0000-4000-8000-000000000011',
+      month: '2026-03',
+      totalCents: -22000n,
+      count: 1,
+      movs: [mov('fd000000-0000-4000-8000-000000000108', '2026-03-20', -22000n)]
+    },
+    // Internas: dos patas del mismo traspaso, suman 0.
+    {
+      ...base,
+      kind: 'transferencia',
+      cat: 'Traspaso hogar',
+      catId: null,
+      prov: 'Cuenta Común',
+      concept: 'TRASPASO MENSUAL',
+      month: '2026-01',
+      totalCents: -50000n,
+      count: 1,
+      movs: [mov('fd000000-0000-4000-8000-000000000109', '2026-01-02', -50000n)]
+    },
+    {
+      ...base,
+      kind: 'transferencia',
+      cat: 'Traspaso hogar',
+      catId: null,
+      prov: 'Cuenta Nómina',
+      concept: 'TRASPASO MENSUAL',
+      month: '2026-01',
+      totalCents: 50000n,
+      count: 1,
+      movs: [mov('fd000000-0000-4000-8000-000000000110', '2026-01-02', 50000n)]
+    },
+    // Inversión: aportación al Plan índice.
+    {
+      ...base,
+      kind: 'inversion',
+      cat: 'Plan índice',
+      catId: null,
+      prov: 'Plan índice',
+      concept: 'Aportación fondo',
+      month: '2026-02',
+      totalCents: 20000n,
+      count: 1,
+      movs: [mov('fd000000-0000-4000-8000-000000000111', '2026-02-10', 20000n)]
+    }
+  ];
+}
+
+/** Maqueta de Analítica: solo existe sin base de datos (demoOnly la protege). */
+export const getFinanceAnaliticaFixture = demoOnly('finanzas-analitica', (): AnaliticaFixture => {
+  const pivotRows = analiticaPivotRows();
+  return {
+    from: '2026-01-01',
+    to: '2026-03-31',
+    months: ['2026-01', '2026-02', '2026-03'],
+    summary: {
+      incomeCents: 900000n,
+      expenseCents: -62500n,
+      recurringExpenseCents: -36000n,
+      extraordinaryExpenseCents: -26500n,
+      unclassifiedExpenseCents: 0n,
+      savingsCents: 837500n,
+      netSavingsRate: 93,
+      grossSavingsRate: 96,
+      investedCents: 20000n,
+      investmentRate: 2,
+      freeCashFlowCents: 817500n,
+      opsCashFlowCents: 837500n,
+      receivedContributionsCents: 0n,
+      outgoingTransfersCents: 0n,
+      pendingCount: 2
+    },
+    analyticsRows: [
+      {
+        kind: 'ingreso',
+        monthly: {
+          '2026-01': { totalCents: 300000n, recCents: 300000n, extCents: 0n },
+          '2026-02': { totalCents: 300000n, recCents: 300000n, extCents: 0n },
+          '2026-03': { totalCents: 300000n, recCents: 300000n, extCents: 0n }
+        }
+      },
+      {
+        kind: 'gasto',
+        monthly: {
+          '2026-01': { totalCents: -12000n, recCents: -12000n, extCents: 0n },
+          '2026-02': { totalCents: -16500n, recCents: -12000n, extCents: -4500n },
+          '2026-03': { totalCents: -34000n, recCents: -12000n, extCents: -22000n }
+        }
+      },
+      { kind: 'inversion', monthly: { '2026-02': { totalCents: 20000n, recCents: 0n, extCents: 0n } } }
+    ],
+    pivotRows,
+    eventsSummary: [
+      {
+        id: 'fc000000-0000-4000-8000-000000000011',
+        name: 'Semana Santa 2026',
+        txCount: 1,
+        netCents: -22000n,
+        incomeCents: 0n,
+        expenseCents: -22000n
+      },
+      {
+        id: 'fc000000-0000-4000-8000-000000000012',
+        name: 'Cumple Leo',
+        txCount: 0,
+        netCents: 0n,
+        incomeCents: 0n,
+        expenseCents: 0n
+      }
+    ],
+    categories: ANALITICA_CATEGORIES,
+    accounts: ANALITICA_ACCOUNTS,
+    invAccounts: ANALITICA_ACCOUNTS.filter((acc) => acc.kind === 'inversion').map((acc) => ({
+      id: acc.id,
+      name: acc.name
+    }))
+  };
+});
