@@ -147,8 +147,9 @@ function kindedTx(where: string): string {
 export async function readFinanceAccounts(client: PoolClient, householdId: string): Promise<FinanceAccountDto[]> {
   const result = await client.query<FinanceAccountDto>(
     // `bank` es NULL para cuentas sin banco (Efectivo, manuales — 0036_finance.sql);
-    // coalesce a '' para no mentir sobre el tipo `string` del DTO (ver hermana
-    // readFinanceAccountViews, que hace lo mismo por la misma razón).
+    // coalesce a '' para no mentir sobre el tipo `string` de ESTE DTO de cable.
+    // La hermana `readFinanceAccountViews` NO hace lo mismo: conserva el NULL
+    // porque su tipo del dominio es `FinanceBank | null` (Ruling R3).
     `select account.id, account.name, coalesce(account.bank::text, '') as "bank", account.kind::text as "kind",
             account.owner_label as "ownerLabel", (account.archived_at is not null) as "archived"
        from app.finance_accounts account
@@ -451,6 +452,10 @@ export async function readFinanceSeries(
   granularity: "month" | "quarter" | "year",
   months = 12,
 ): Promise<FinanceSeriesPointDto[]> {
+  // El `from` del filtro NO manda aquí: la serie siempre mira `months` cubos
+  // hacia atrás desde `to` (contrato del brief), así que con `granularity:
+  // "year"` y el `months` por defecto la serie anual puede tener uno o dos
+  // puntos aunque el filtro pida un rango de varios años.
   const windowed = { ...filters, from: seriesWindow(filters.to, months) };
   const { where, params } = txConditions(householdId, windowed);
   const bucketExpr =
@@ -505,6 +510,10 @@ export async function readFinanceProviders(
   limit = 10,
 ): Promise<FinanceProviderRowDto[]> {
   const { where, params } = txConditions(householdId, filters);
+  // `limit` puede llegar como `Number(searchParams.get("top"))`: un query param
+  // ausente o no numérico da NaN, y `Math.trunc(NaN)` se propaga a través de
+  // `Math.min/max` hasta un literal `limit NaN` (error de sintaxis de Postgres).
+  const top = Number.isFinite(limit) ? Math.max(1, Math.min(50, Math.trunc(limit))) : 10;
   const result = await client.query<FinanceProviderRowDto>(
     // Se agrupa por `coalesce(provider_norm, provider)`: hay movimientos con
     // proveedor y sin normalizar, y agrupar solo por provider_norm los colapsaría
@@ -531,7 +540,7 @@ export async function readFinanceProviders(
       group by coalesce(kt.provider_norm, kt.provider)
      having sum(kt.amount_cents) < 0
       order by sum(kt.amount_cents) asc
-      limit ${Math.max(1, Math.min(50, Math.trunc(limit)))}`,
+      limit ${top}`,
     params,
   );
   return result.rows;

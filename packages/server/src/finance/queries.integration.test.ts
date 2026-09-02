@@ -156,6 +156,14 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
     ).toBe(BigInt(summary.expenseCents));
     expect(summary.prev).not.toBeNull();
     expect(summary.pendingCount).toBeGreaterThanOrEqual(0);
+    // Valores dorados del fixture (002_finance.sql): roble tiene EXACTAMENTE dos
+    // movimientos en rango — TX1 -2350 (Supermercado, confirmada) y TX2 +180000
+    // (sin categoría, pendiente, recurrence NULL). Sin esto, un resultado vacío
+    // (join mal escrito, filtro de más) satisface igual las aserciones de arriba.
+    expect(summary.incomeCents).toBe("180000");
+    expect(summary.expenseCents).toBe("-2350");
+    expect(summary.unclassifiedExpenseCents).toBe("-2350");
+    expect(summary.pendingCount).toBe(1);
   });
 
   it("series: cubos ordenados, ahorro coherente por cubo", async () => {
@@ -172,6 +180,9 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
     const rows = await as("fixture:roble:admin", ROBLE, (client) => readFinanceBreakdown(client, ROBLE, RANGE));
     const totals = rows.map((row) => BigInt(row.totalCents));
     expect([...totals].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(totals);
+    // Dorado: una fila «Supermercado» (-2350) y una «Sin categorizar» (+180000,
+    // TX2 sin category_id) — dos filas exactas, no «como mucho dos».
+    expect(rows.length).toBe(2);
   });
 
   it("providers: solo gasto, respeta el limit", async () => {
@@ -181,6 +192,16 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
       expect(BigInt(row.totalCents)).toBeLessThan(0n);
       expect(row.providerDisplay.length).toBeGreaterThan(0);
     }
+    // Dorado: el único gasto con proveedor en el fixture es TX1, «Mercado Ejemplo».
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.providerDisplay).toBe("Mercado Ejemplo");
+    expect(rows[0]?.totalCents).toBe("-2350");
+  });
+
+  it("providers: un limit no numérico (Number(param ausente) = NaN) no revienta la consulta", async () => {
+    const rows = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinanceProviders(client, ROBLE, RANGE, Number("no-numerico")));
+    expect(rows.length).toBe(1);
   });
 
   it("events-summary: net = income + expense; event-detail inexistente → null", async () => {
@@ -191,6 +212,12 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
     const missing = await as("fixture:roble:admin", ROBLE, (client) =>
       readFinanceEventDetail(client, ROBLE, "00000000-0000-4000-8000-00000000dead", RANGE));
     expect(missing).toBeNull();
+    // Dorado: el fixture solo tiene un evento («Semana Santa 2026»), enlazado a
+    // TX1 (-2350, gasto) y nada más — un resultado vacío no puede pasar esto.
+    expect(events.length).toBe(1);
+    expect(events[0]).toMatchObject({
+      id: EVENT1, name: "Semana Santa 2026", incomeCents: "0", expenseCents: "-2350", txCount: 1,
+    });
   });
 
   it("analytics: las tres naturalezas y, en cada mes, |recurrente| + |extraordinario| ≤ |total|", async () => {
@@ -204,6 +231,13 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
         expect(abs(totals.recCents) + abs(totals.extCents) <= abs(totals.totalCents)).toBe(true);
       }
     }
+    // Dorado: enero-2026 es el único mes con movimientos del roble — TX2
+    // (+180000, ingreso) y TX1 (-2350, gasto); ninguna cuenta de inversión
+    // tiene movimientos, así que esa banda queda vacía.
+    const [ingreso, gasto, inversion] = rows;
+    expect(ingreso?.monthly["2026-01"]).toEqual({ totalCents: "180000", recCents: "0", extCents: "0" });
+    expect(gasto?.monthly["2026-01"]).toEqual({ totalCents: "-2350", recCents: "0", extCents: "0" });
+    expect(Object.keys(inversion?.monthly ?? { x: 1 })).toEqual([]);
   });
 
   it("pivot: meses de calendario completos y filas con la forma de PivotSourceRow", async () => {
@@ -218,6 +252,9 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
       expect(row.movs.length).toBe(row.count);
       expect(row.movs.reduce((acc, mov) => acc + mov.cents, 0n)).toBe(row.totalCents);
     }
+    // Dorado: TX1 (Casa/Supermercado, gasto) y TX2 (Sin categorizar, ingreso) —
+    // dos filas de enero-2026, ninguna más allá aunque el rango cubra tres meses.
+    expect(rows.length).toBe(2);
   });
 
   it("pivot y analytics del admin de olivo sin concesión: sin filas", async () => {
