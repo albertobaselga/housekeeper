@@ -640,6 +640,13 @@ export const financeAccountUpdatePayloadSchema = z.object({
 export const financeCategoryCreatePayloadSchema = z.object({
   kind: z.literal("finance.category.create"),
   name: z.string().trim().min(1).max(80),
+  /**
+   * PRECEDENCIA (F5-M4): `categoryKind` solo manda en una categoría RAÍZ. Con
+   * `parentId` no nulo el handler lo IGNORA y la hija hereda el `kind` del
+   * padre (`commands/finance.ts`, createFinanceCategory) — el árbol es de dos
+   * niveles y una hija de naturaleza distinta a su madre descuadraría los
+   * totales de Analítica.
+   */
   categoryKind: z.enum(["gasto", "ingreso"]),
   parentId: uuidSchema.nullable(),
 });
@@ -699,6 +706,12 @@ export const financeTransactionsBulkPayloadSchema = z.object({
 
 export const financeAssignConceptRecurrencePayloadSchema = z.object({
   kind: z.literal("finance.transactions.assignConceptRecurrence"),
+  /**
+   * PRECEDENCIA (F5-M4): el selector es `categoryId` O `provider` (+`concept`),
+   * nunca los dos a la vez. Con `categoryId` presente, `matchingFinanceTxIds`
+   * (`commands/finance.ts`) toma esa rama y IGNORA `provider`/`concept`. Sin
+   * ninguno de los dos, el handler rechaza con `finance_selector_required`.
+   */
   provider: z.string().trim().min(1).max(200).optional(),
   concept: z.string().trim().min(1).max(200).optional(),
   categoryId: uuidSchema.optional(),
@@ -763,9 +776,22 @@ export const financeEventAssignTransactionsPayloadSchema = z.object({
 
 export const financeEventAssignConceptPayloadSchema = z.object({
   kind: z.literal("finance.event.assignConcept"),
+  /**
+   * PRECEDENCIA (F5-M4), selector: `categoryId` gana a `provider`/`concept`.
+   * Con `categoryId` presente, `matchingFinanceTxIds` (`commands/finance.ts`)
+   * toma esa rama y los otros dos se IGNORAN. Sin ninguno de los dos, el
+   * handler rechaza con `finance_selector_required`.
+   */
   provider: z.string().trim().min(1).max(200).optional(),
   concept: z.string().trim().min(1).max(200).optional(),
   categoryId: uuidSchema.optional(),
+  /**
+   * PRECEDENCIA (F5-M4), destino: `newEventName` gana a `eventId`. Con
+   * `newEventName` presente, `resolveTargetEventId` (`commands/finance.ts`)
+   * reutiliza el evento que ya se llame así o lo crea, y `eventId` se IGNORA.
+   * `eventId: null` (sin `newEventName`) es la DESasignación: borra la regla y
+   * los vínculos de los movimientos que casan.
+   */
   eventId: uuidSchema.nullable().optional(),
   newEventName: z.string().trim().min(1).max(80).optional(),
 });

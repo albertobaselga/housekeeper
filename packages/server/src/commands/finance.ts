@@ -245,6 +245,7 @@ async function matchingFinanceTxIds(
   householdId: UUID,
   selector: { provider?: string | undefined; concept?: string | undefined; categoryId?: string | undefined },
 ): Promise<string[]> {
+  // Precedencia declarada en el contrato (F5-M4): `categoryId` gana a `provider`/`concept`.
   if (selector.categoryId) {
     const result = await client.query<{ id: string }>(
       `select tx.id
@@ -940,6 +941,7 @@ async function resolveTargetEventId(
   eventId: UUID | null | undefined,
   newEventName: string | undefined,
 ): Promise<UUID | null> {
+  // Precedencia declarada en el contrato (F5-M4): `newEventName` gana a `eventId`.
   if (newEventName !== undefined) {
     const name = newEventName.trim();
     const existing = await client.query<{ id: string }>(
@@ -1113,7 +1115,9 @@ async function createFinanceCategory(
     if (parent.kind === "transferencia") {
       throw new CommandRejectedError("finance_category_is_transfer", "La categoría de transferencias no tiene hijas");
     }
-    kind = parent.kind; // la subcategoría hereda la naturaleza del padre, no el categoryKind del payload
+    // Precedencia declarada en el contrato (F5-M4): con `parentId`, la hija
+    // hereda la naturaleza del padre y el `categoryKind` del payload se ignora.
+    kind = parent.kind;
   }
   const inserted = await client.query<{ id: string }>(
     `insert into app.finance_categories (household_id, name, kind, parent_id)
