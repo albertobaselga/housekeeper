@@ -1,11 +1,13 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { computeDedupHash } from '../../server/src/finance/dedup-hash.ts';
 import { applyMigrations } from './migrate.mjs';
-import { construirSqliteSintetica, GRUPO_TRASPASO, TOTALES } from './home-finance-sintetica.mjs';
+import { construirSqliteSintetica, GRUPO_TRASPASO, SUMAS_CUENTA_MES, TOTALES } from './home-finance-sintetica.mjs';
 import { compararResumenes, leerOrigen, migrar, resumenDestino, resumenOrigen } from './migrar-home-finance.mjs';
 
 const adminUrl = process.env.TEST_DATABASE_URL;
@@ -114,4 +116,116 @@ describe.runIf(Boolean(adminUrl))('migrar() contra Postgres real', () => {
       await client.query('rollback');
     }
   }, 120_000);
+});
+
+describe.runIf(Boolean(adminUrl))('CLI migrar-home-finance', () => {
+  let client; let dir; let backupDir; let rutaSqlite;
+  const HOGAR_CLI = '7f000000-0000-4000-8000-000000000002';
+  const guion = fileURLToPath(new URL('./migrar-home-finance.mjs', import.meta.url));
+  const ejecutar = (extra, hogar = 'hogar-cli') => spawnSync(process.execPath,
+    [guion, '--sqlite', rutaSqlite, '--database-url', adminUrl,
+      '--household', hogar, '--backup-dir', backupDir, ...extra],
+    { encoding: 'utf8' });
+
+  beforeAll(async () => {
+    client = new pg.Client({ connectionString: adminUrl });
+    await client.connect();
+    await reiniciarBase(client);
+    await client.query('set row_security = off');
+    await client.query(`insert into app.households (id, slug, display_name) values
+      ($1, 'hogar-cli', 'Hogar CLI'), ($2, 'hogar-corrupto', 'Hogar corrupto')`,
+      [HOGAR_CLI, '7f000000-0000-4000-8000-000000000003']);
+    dir = await mkdtemp(path.join(os.tmpdir(), 'etl-cli-'));
+    backupDir = path.join(dir, 'copias');
+    await mkdir(backupDir, { recursive: true });
+    rutaSqlite = path.join(dir, 'finanzas-sintetica.db');
+    construirSqliteSintetica(rutaSqlite, { computeDedupHash });
+  }, 180_000);
+
+  afterAll(async () => {
+    await client?.end();
+    if (dir) await rm(dir, { recursive: true, force: true });
+  });
+
+  const contarTx = async (hogar) => (await client.query(
+    `select count(*)::int as n from app.finance_transactions t
+      join app.households h on h.id = t.household_id where h.slug = $1`, [hogar])).rows[0].n;
+
+  it('sin argumentos obligatorios sale con código 2', () => {
+    const r = spawnSync(process.execPath, [guion], { encoding: 'utf8' });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('Uso:');
+  });
+
+  it('--dry-run verifica, hace copia y revierte', async () => {
+    const r = ejecutar(['--dry-run']);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain('DRY-RUN');
+    expect(r.stdout).toContain('Resultado: OK');
+    expect(await contarTx('hogar-cli')).toBe(0);
+    const ficheros = await readdir(backupDir);
+    expect(ficheros.some((f) => /^finanzas-.*\.db$/.test(f))).toBe(true);
+  });
+
+  it('la ejecución real migra, guarda informe y los números casan', async () => {
+    const r = ejecutar([]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(await contarTx('hogar-cli')).toBe(TOTALES.transactions);
+    expect(r.stdout).toContain(`comprobados: ${TOTALES.hashesComprobables}`);
+    const { rows: sumas } = await client.query(
+      `select to_char(t.op_date, 'YYYY-MM') as mes, sum(t.amount_cents)::text as suma
+         from app.finance_transactions t
+         join app.finance_accounts a on a.household_id = t.household_id and a.id = t.account_id
+         join app.households h on h.id = t.household_id
+        where h.slug = 'hogar-cli' and a.bank_ref = '00490001512345678901'
+        group by 1 order by 1`);
+    // Las sumas esperadas salen de la constante de la muestra, no de literales.
+    expect(sumas).toEqual(Object.entries(SUMAS_CUENTA_MES['00490001512345678901'])
+      .map(([mes, suma]) => ({ mes, suma: String(suma) })));
+    const informes = (await readdir(backupDir)).filter((f) => /^informe-migracion-.*\.md$/.test(f)).sort();
+    expect(informes.length).toBeGreaterThan(0);
+    const texto = await readFile(path.join(backupDir, informes.at(-1)), 'utf8');
+    expect(texto).toContain('Resultado: OK');
+    expect(texto).toContain('## Copia de seguridad (PASO 0)');
+  });
+
+  it('reejecutar aborta porque el hogar ya tiene datos', async () => {
+    const r = ejecutar([]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('ya tiene');
+    expect(await contarTx('hogar-cli')).toBe(TOTALES.transactions);
+  });
+
+  it('el aborto también deja informe, con el motivo dentro', async () => {
+    const antes = (await readdir(backupDir)).filter((f) => /^informe-migracion-.*\.md$/.test(f));
+    const r = ejecutar([]);
+    expect(r.status).toBe(1);
+    const despues = (await readdir(backupDir)).filter((f) => /^informe-migracion-.*\.md$/.test(f)).sort();
+    expect(despues.length).toBe(antes.length + 1); // el informe existe justo cuando hace falta
+    const texto = await readFile(path.join(backupDir, despues.at(-1)), 'utf8');
+    expect(texto).toContain('## Aborto');
+    expect(texto).toContain('ya tiene');
+    expect(texto).toContain('Resultado: FALLO');
+  });
+
+  it('--verify-only da OK sobre lo migrado y FALLO sobre un hogar vacío', () => {
+    const bien = ejecutar(['--verify-only']);
+    expect(bien.status).toBe(0);
+    expect(bien.stdout).toContain('Resultado: OK');
+    const mal = ejecutar(['--verify-only'], 'hogar-corrupto');
+    expect(mal.status).toBe(1);
+    expect(mal.stdout).toContain('Resultado: FALLO');
+  });
+
+  it('un dedup_hash corrupto aborta antes de escribir', async () => {
+    const rutaCorrupta = path.join(dir, 'finanzas-corrupta.db');
+    construirSqliteSintetica(rutaCorrupta, { computeDedupHash, corromperHashDeTx: 2 });
+    const r = spawnSync(process.execPath,
+      [guion, '--sqlite', rutaCorrupta, '--database-url', adminUrl,
+        '--household', 'hogar-corrupto', '--backup-dir', backupDir],
+      { encoding: 'utf8' });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain('Resultado: FALLO');
+    expect(await contarTx('hogar-corrupto')).toBe(0);
+  });
 });

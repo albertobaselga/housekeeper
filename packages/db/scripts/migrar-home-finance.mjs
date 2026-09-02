@@ -6,10 +6,16 @@
 // como error también a los .mjs, así que cada tarea añade solo lo que estrena.
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, copyFile, mkdir, readFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
+
+import pg from 'pg';
+
+import { importarModuloTs, rutaDedupHash } from './cargar-ts.mjs';
 
 export class ErrorDeUso extends Error {}
 
@@ -547,4 +553,136 @@ export async function resumenDestino(client, householdId) {
     fechaMin: fechas.rows[0].min,
     fechaMax: fechas.rows[0].max
   };
+}
+
+/** Imprime y guarda el informe. Se llama desde el `finally` de main(): pase lo
+ *  que pase, la ejecución deja artefacto en --backup-dir. */
+export async function emitirInforme(opciones, contexto) {
+  const informe = renderInforme(contexto);
+  console.log(`\n${informe}`);
+  await mkdir(opciones.backupDir, { recursive: true });
+  const rutaInforme = path.join(opciones.backupDir,
+    `informe-migracion-${new Date().toISOString().replace(/[:.]/g, '-')}.md`);
+  await writeFile(rutaInforme, informe, 'utf8');
+  console.log(`Informe guardado en ${rutaInforme}`);
+  return rutaInforme;
+}
+
+async function main() {
+  const opciones = parseArgs(process.argv.slice(2));
+  const modo = opciones.verifyOnly ? 'verify-only' : opciones.dryRun ? 'dry-run' : 'real';
+  // Única guarda que sale por arriba (código 2): si el directorio está dentro de
+  // un repo, no hay dónde escribir el informe, así que no se puede prometer.
+  if (await estaDentroDeUnRepo(opciones.backupDir)) {
+    throw new ErrorDeUso(`El directorio ${opciones.backupDir} está dentro de un repositorio git; la copia y el informe deben vivir fuera de ambos repos.`);
+  }
+  const contexto = {
+    modo, hogar: opciones.household, rutaSqlite: opciones.sqlite,
+    copia: null, comparacion: null,
+    hashes: { comprobados: 0, descartados: 0, noMuestreados: 0, discrepancias: [] },
+    avisos: [], motivoAborto: null
+  };
+  let client = null;
+  try {
+    const origen = leerOrigen(opciones.sqlite);
+    const problemas = validarOrigen(origen);
+    if (problemas.length > 0) {
+      throw new Error(`El origen incumple invariantes del esquema destino:\n- ${problemas.join('\n- ')}`);
+    }
+    const { computeDedupHash } = await importarModuloTs(rutaDedupHash);
+    // Resolución del coordinador: verificación TOTAL (sin muestreo) en la CLI.
+    contexto.hashes = verificarHashes(origen, computeDedupHash, { muestra: Infinity });
+    contexto.avisos = avisosOrigen(origen);
+    const resOrigen = resumenOrigen(origen);
+
+    if (!opciones.verifyOnly) {
+      contexto.copia = await hacerCopiaSeguridad(opciones.sqlite, opciones.backupDir);
+      console.log(`Paso 0 — copia de seguridad: ${contexto.copia.destino} (sha256 ${contexto.copia.sha256})`);
+    }
+
+    client = new pg.Client({ connectionString: opciones.databaseUrl });
+    await client.connect();
+    // Propietario por conexión directa, como las migraciones: en local es
+    // superusuario; en Supabase el runner deja FORCE relajado (0018), así que
+    // row_security=off da acceso de propietario en ambos casos.
+    await client.query('SET row_security = off');
+    const hogares = await client.query('SELECT id FROM app.households WHERE slug = $1', [opciones.household]);
+    if (hogares.rows.length !== 1) {
+      throw new Error(`No existe ningún hogar con slug «${opciones.household}» en la base destino.`);
+    }
+    const householdId = hogares.rows[0].id;
+
+    if (opciones.verifyOnly) {
+      contexto.comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
+    } else {
+      const { rows } = await client.query(
+        `SELECT ((SELECT count(*) FROM app.finance_accounts WHERE household_id = $1)
+               + (SELECT count(*) FROM app.finance_categories WHERE household_id = $1)
+               + (SELECT count(*) FROM app.finance_transactions WHERE household_id = $1))::int AS filas`,
+        [householdId]);
+      if (rows[0].filas > 0 && !opciones.forceEmptyCheck) {
+        throw new Error(`El hogar «${opciones.household}» ya tiene ${rows[0].filas} filas de finanzas; aborto. Usa --verify-only para comparar sin escribir, o --force-empty-check si sabes lo que haces.`);
+      }
+      if (contexto.hashes.discrepancias.length > 0) {
+        console.error('Verificación cruzada de dedup_hash fallida: no se escribe nada en la base destino.');
+      } else {
+        await client.query('BEGIN');
+        await migrar(client, householdId, origen);
+        contexto.comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
+        if (opciones.dryRun || !contexto.comparacion.ok) {
+          await client.query('ROLLBACK');
+          console.log(opciones.dryRun
+            ? 'DRY-RUN: transacción revertida; la base destino queda intacta.'
+            : 'Verificación fallida: transacción revertida; la base destino queda intacta.');
+        } else {
+          await client.query('COMMIT');
+          console.log('Transacción confirmada: datos migrados.');
+        }
+      }
+    }
+  } catch (error) {
+    // Nada de re-lanzar: el motivo entra en el informe y el código de salida.
+    contexto.motivoAborto = error.message ?? String(error);
+    console.error(contexto.motivoAborto);
+    if (client) {
+      try {
+        await client.query('ROLLBACK'); // si no había transacción abierta, es inocuo
+      } catch {
+        // da igual: lo importante es no dejar la transacción a medias
+      }
+    }
+  } finally {
+    // Cerrar la conexión va en SU PROPIO try/catch: si client.end() fallara,
+    // no debe impedir que emitirInforme (más abajo) se llegue a ejecutar —
+    // «el informe se emite SIEMPRE» no admite excepciones por un cierre roto.
+    if (client) {
+      try {
+        await client.end();
+      } catch (error) {
+        console.error(`No se pudo cerrar la conexión: ${error.message ?? error}`);
+      }
+    }
+  }
+  // Segundo try/finally, independiente del de arriba: garantiza que
+  // process.exitCode queda fijado a un valor correcto (0/1) aunque
+  // emitirInforme (o la escritura del informe dentro de ella) lance. Si lanza,
+  // el finally ya ha fijado el código antes de que el error siga propagándose.
+  try {
+    await emitirInforme(opciones, contexto);
+  } finally {
+    process.exitCode = contexto.motivoAborto === null
+      && contexto.hashes.discrepancias.length === 0
+      && contexto.comparacion !== null && contexto.comparacion.ok ? 0 : 1;
+  }
+}
+
+const esEjecucionDirecta =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (esEjecucionDirecta) {
+  try {
+    await main();
+  } catch (error) {
+    console.error(error.message ?? error);
+    process.exitCode = error instanceof ErrorDeUso ? 2 : 1;
+  }
 }
