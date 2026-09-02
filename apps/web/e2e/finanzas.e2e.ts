@@ -56,3 +56,34 @@ test('una ruta hija inventada de Finanzas sí es 404', async ({ page }) => {
   const response = await page.goto(`/h/${HOUSEHOLD}/finanzas/inventada`);
   expect(response?.status()).toBe(404);
 });
+
+test('admin en modo fixture: Movimientos lista el ledger y abre el panel con «Datos del origen»', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Movimientos');
+
+  // Ruling R18: primera fila del corpus demo de getFinanceMovimientosFixture
+  // (fc…0001, amountCents '-8734'). LedgerTable pinta el TÍTULO por
+  // `txTitle` (providerDisplay, aquí «Encina»), no el concepto en bruto: el
+  // concepto no llega a pintarse en ninguna parte de la fila (ver informe).
+  const rows = page.locator('.finance-ledger .finance-row');
+  await expect(rows.first()).toBeVisible();
+  await expect(rows.first()).toContainText('Encina');
+  await expect(rows.first()).toContainText('−87,34 €'); // amountCents '-8734' (menos tipográfico U+2212)
+
+  // Pie del ledger: total de filas y suma con signo de los 5 movimientos de
+  // la fixture (-8734 + 212500 - 50000 + 50000 - 14210 = 189556).
+  const total = page.locator('.ledger-total');
+  await expect(total).toContainText('5 movimientos con estos filtros');
+  await expect(total).toContainText('+1.895,56 €');
+
+  // El panel (FinanceDetailPanel, Task 11) etiqueta el diálogo con el mismo
+  // título que la fila (aria-labelledby → el h2 con `txTitle`), no con
+  // «Detalle»: se usa el nombre accesible real en vez de forzar uno nuevo.
+  await rows.first().click();
+  const panel = page.getByRole('dialog', { name: 'Encina' });
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText('Datos del origen');
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+});
