@@ -67,11 +67,16 @@ const TRANSACCIONES_JULIO = `/api/v1/finance/transactions?household=${HOUSEHOLD}
 async function deshacerSiQueda(page: Page): Promise<void> {
   await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
   const fila = page.locator('tr', { hasText: 'movimientos-e2e.xls' });
-  while ((await fila.count()) > 0) {
-    const restantes = await fila.count();
+  // [Corrección revisión-1, Minor 4] Un solo `count()` por vuelta: se lee al
+  // entrar al bucle y se decrementa en memoria, en vez de volver a contar el
+  // DOM justo antes de deshacer — dos lecturas que en teoría podían discrepar
+  // y en la práctica solo sobraban.
+  let restantes = await fila.count();
+  while (restantes > 0) {
     page.once('dialog', (dialog) => void dialog.accept());
     await fila.first().getByRole('button', { name: 'Deshacer' }).click();
-    await expect(fila).toHaveCount(restantes - 1);
+    restantes -= 1;
+    await expect(fila).toHaveCount(restantes);
   }
 }
 
@@ -149,16 +154,30 @@ test.describe('lo importado se ve y el deshacer lo borra', () => {
     await expect(filas.first()).toContainText('CLARA DEMO');
     await expect(filas.first()).toContainText('850,00');
 
+    // [Corrección revisión-1, Minor 2] Control positivo, con la sesión de
+    // administración todavía viva: la MISMA URL de la API responde 200 antes
+    // de comprobar que la empleada la ve denegada. Sin esto, el 404 de abajo
+    // mediría igual de bien una ruta que hubiese dejado de existir.
+    expect((await page.request.get(TRANSACCIONES_JULIO)).status()).toBe(200);
+
     // Resolución del coordinador (T4): la empleada no ve las filas RECIÉN
     // IMPORTADAS, ni por pantalla ni por la API.
     //
     // Por pantalla: `finance.access` no está entre las capacidades del rol
     // `employee_live_in` (packages/contracts/src/capabilities.ts) — la propia
     // matriz de capacidades ya la excluye, sin depender de ninguna concesión
-    // —, así que el layout del hogar (`h/[householdId]/+layout.server.ts`)
-    // corta con 403 antes de que `finanzas/movimientos/+page.server.ts` llegue
-    // a ejecutarse: `.finance-ledger` no se pinta. No hace falta mirar el
-    // código de estado HTTP para saberlo: basta con que la tabla no exista.
+    // —, así que el layout del hogar (`h/[householdId]/+layout.server.ts:70`)
+    // corta con `error(403, 'Esta parte la lleva la familia.')` antes de que
+    // `finanzas/movimientos/+page.server.ts` llegue a ejecutarse. [Corrección
+    // revisión-1, Minor 3] La resolución dice «404/redirección»; lo que
+    // ocurre de verdad es un 403 con lenguaje de casa, porque el corte lo da
+    // el guard de capacidades sobre un hogar del que la empleada SÍ es
+    // miembro (no hay hogar cuya existencia ocultar). La regla «404 nunca
+    // 403» (Ruling R2) es de los endpoints de la API — se comprueba más
+    // abajo —; aquí se afirma el 403 explícito para que la discrepancia con
+    // el texto de la resolución quede documentada en el propio test, no
+    // callada detrás de un `toHaveCount(0)` que también pasaría con una
+    // redirección al login.
     //
     // Por la API: el mismo doble cerrojo (`requireFinanceAdmin`, packages/
     // server/src/commands/finance.ts) rechaza por rol, y `financeRead`
@@ -167,15 +186,38 @@ test.describe('lo importado se ve y el deshacer lo borra', () => {
     //
     // El segundo reparto de la resolución —un `family_admin` SIN concesión—
     // pasa por el MISMO `requireFinanceAdmin`, solo que por la rama de la
-    // concesión (`finance_enabled()`) en vez de la del rol; esa rama ya la
-    // ejercita `finanzas-concesion.dbe2e.ts` con el mismo código de estado, y
-    // sembrar aquí una segunda cuenta de acceso (como esa batería, por SQL:
-    // no hay cuenta de acceso family_admin sin concesión en el selector de
-    // fixtures) solo repetiría la comprobación de la misma rama de código
-    // sobre otro dato, sin cubrir un riesgo distinto.
+    // concesión (`finance_enabled()`) en vez de la del rol. [Corrección
+    // revisión-1, Important 1] La ronda anterior afirmaba aquí que esa rama
+    // «ya la ejercita `finanzas-concesion.dbe2e.ts` con el mismo código de
+    // estado» — es falso: ese fichero es una batería sobre la tarjeta de
+    // concesiones de Ajustes (siembra una segunda administración por SQL,
+    // intercepta `page.route('**/api/v1/sync', …)` y comprueba con un
+    // `MutationObserver` que la fila no miente mientras el comando viaja); no
+    // contiene ninguna aserción de código de estado HTTP ni ninguna petición
+    // a `/api/v1/finance/*`. La ÚNICA cobertura real de «family_admin sin
+    // concesión → 404» es UNITARIA y con `requireFinanceAdmin` MOCKEADO
+    // (`apps/web/tests/finance-endpoints.test.ts:300-324`): no toca base de
+    // datos, RLS ni sesión real. Hoy no existe ninguna cobertura de extremo a
+    // extremo de esa rama en ninguna batería.
+    //
+    // Decisión de alcance (para que el coordinador la confirme o la
+    // revierta): esta tarea deja esa mitad FUERA de este fichero. No hay
+    // ninguna cuenta de acceso family_admin SIN concesión en el selector de
+    // fixtures dbe2e; cubrirla exige o sembrar una cuenta nueva (infra de
+    // pruebas compartida por 18 specs, fuera de «añade al final») o retirar y
+    // restaurar por SQL la concesión ya sembrada del admin
+    // (`packages/db/fixtures/002_finance.sql`) dentro de este mismo test —
+    // viable, con un `afterEach` que la restaure con garantía aunque el
+    // cuerpo se rompa a mitad, pero con el riesgo de dejar al admin sin
+    // Finanzas para las specs vecinas de la misma base si ese `afterEach` no
+    // llegara a correr. Ninguna de las dos es «añadir al final sin tocar lo
+    // existente»; se deja para que el coordinador la pida explícitamente si
+    // la quiere de extremo a extremo.
     await page.context().clearCookies();
     await loginAs(page, 'employee');
-    await page.goto(MOVIMIENTOS_JULIO);
+    const respuesta = await page.goto(MOVIMIENTOS_JULIO);
+    expect(respuesta?.status()).toBe(403);
+    await expect(page.locator('body')).toContainText('Esta parte la lleva la familia.');
     await expect(page.locator('.finance-ledger')).toHaveCount(0);
     const denegada = await page.request.get(TRANSACCIONES_JULIO);
     expect(denegada.status()).toBe(404);
