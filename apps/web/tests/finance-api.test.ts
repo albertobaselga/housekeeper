@@ -152,6 +152,34 @@ describe('isFinanceImportPreview — guarda de forma de la previsualización (T1
     // Tipo equivocado en un campo presente: `newCount` como cadena.
     expect(isFinanceImportPreview({ ...VALID_PREVIEW, newCount: '3' })).toBe(false);
   });
+
+  // [Rev 0, Minor 2] Antes solo se comprobaba `Array.isArray`: un elemento de
+  // otra forma dentro de `sample`/`unknownRefs` pasaba la guarda entera y
+  // reventaba más abajo (`formatCents(row.amountCents)`,
+  // `row.provider || row.concept`) con el mismo `TypeError` sin contexto que
+  // la guarda existe para evitar.
+  it('un elemento de `sample` con la forma equivocada no pasa la guarda', () => {
+    expect(isFinanceImportPreview({ ...VALID_PREVIEW, sample: [{ opDate: '2026-08-01' }] })).toBe(false);
+    expect(
+      isFinanceImportPreview({
+        ...VALID_PREVIEW,
+        sample: [{ opDate: '2026-08-01', concept: 'Recibo', provider: null, amountCents: -1000 }]
+      })
+    ).toBe(false);
+  });
+
+  it('un `provider` de cadena en `sample` sí pasa (no solo `null`)', () => {
+    expect(
+      isFinanceImportPreview({
+        ...VALID_PREVIEW,
+        sample: [{ opDate: '2026-08-01', concept: 'Recibo', provider: 'Mercadona', amountCents: '-1000' }]
+      })
+    ).toBe(true);
+  });
+
+  it('un elemento de `unknownRefs` que no es cadena no pasa la guarda', () => {
+    expect(isFinanceImportPreview({ ...VALID_PREVIEW, unknownRefs: [42] })).toBe(false);
+  });
 });
 
 describe('isFinanceImportConfirmResult — guarda de forma del resultado de confirmar (T12-R1)', () => {

@@ -43,19 +43,32 @@ export type FinanceDetailMode =
   | { kind: 'grupo'; groupId: string; label: string };
 
 /**
- * [T12-R1, despacho de cierre F5] Guarda de narrowing sin `as` (R7): un
- * `value is T` genérico deja que el llamador elija el tipo esperado sin que
- * la función finja verificar su FORMA completa — `getJson` es genérico sobre
- * DTOs muy distintos (varios de ellos arrays, p. ej. `series`/`breakdown`),
- * así que el único caso real a descartar aquí es que el cuerpo del JSON sea
- * `null`/`undefined` o un primitivo (número, cadena, booleano): lo que de
- * verdad puede llegar en una redirección de sesión o un error de plataforma
- * con un 200. Un objeto con la forma equivocada sigue sin detectarse aquí —
- * para eso están las guardas de forma completa como `isFinanceImportPreview`
- * en `importar/+page.svelte`, que sí conocen sus campos.
+ * [T12-R1, despacho de cierre F5] Guarda de narrowing sin `as` (R7). SIN
+ * genérico a propósito (Rev 0, Minor 1): lo único que de verdad comprueba es
+ * «no es `null` ni un primitivo», así que el tipo que promete —
+ * `Record<string, unknown>` — es exactamente el que verifica. Un array
+ * también pasa (intencionado: lo usa `readErrorMessage` y las guardas de
+ * forma de abajo antes de mirar campos concretos). Para el caso de
+ * `getJson`, que es genérico sobre DTOs cuya forma no conoce, está
+ * `isNonPrimitiveJson` más abajo — nombre que confiesa el hueco en vez de
+ * disfrazarlo de validación.
  */
-export function isRecord<T = Record<string, unknown>>(value: unknown): value is T {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+/**
+ * [Rev 0, Minor 1] El hueco real de `getJson`: `T` es cualquier DTO —
+ * objeto o array— y esta función NO conoce su forma, solo confirma que el
+ * cuerpo del JSON no es `null`/`undefined` ni un primitivo (número, cadena,
+ * booleano) — lo que de verdad puede llegar en una redirección de sesión o
+ * un error de plataforma con un 200. El nombre deja claro, en el punto de
+ * llamada, que no es una validación de forma (a diferencia de `isRecord`,
+ * que si dice `Record<string, unknown>` es porque comprueba justo eso). Para
+ * una forma conocida están las guardas completas como `isFinanceImportPreview`.
+ */
+function isNonPrimitiveJson<T>(value: unknown): value is T {
+  return isRecord(value);
 }
 
 /** Forma de la previsualización de `POST /api/v1/finance/imports/preview`. */
@@ -67,12 +80,29 @@ export interface FinanceImportPreviewDto {
   sample: Array<{ opDate: string; concept: string; provider: string | null; amountCents: string }>;
 }
 
+/** Una fila de muestra de la previsualización, con la forma que de verdad usa la plantilla. */
+function isPreviewSampleRow(value: unknown): value is FinanceImportPreviewDto['sample'][number] {
+  return (
+    isRecord(value) &&
+    typeof value.opDate === 'string' &&
+    typeof value.concept === 'string' &&
+    (value.provider === null || typeof value.provider === 'string') &&
+    typeof value.amountCents === 'string'
+  );
+}
+
 /**
  * A diferencia de `isRecord`, esta guarda SÍ conoce los campos: un objeto
  * bien formado pero vacío, o con un campo del tipo equivocado, también cae —
  * el caso real de una redirección de sesión que devuelve `{}` con 200 (o de
  * un cambio de contrato del servidor que ninguna prueba de tipos detecta
  * porque el cast que sustituye era precisamente el problema, T12-R1).
+ *
+ * [Rev 0, Minor 2] `unknownRefs`/`sample` ya no se quedan en el
+ * `Array.isArray` de fuera: cada elemento se comprueba (cadena para
+ * `unknownRefs`, forma completa de fila para `sample`) — si no, un `sample`
+ * con elementos de otra forma volvía a reventar más abajo con el mismo
+ * `TypeError` sin contexto que esta guarda existe para evitar.
  */
 export function isFinanceImportPreview(value: unknown): value is FinanceImportPreviewDto {
   return (
@@ -81,7 +111,9 @@ export function isFinanceImportPreview(value: unknown): value is FinanceImportPr
     typeof value.newCount === 'number' &&
     typeof value.dupCount === 'number' &&
     Array.isArray(value.unknownRefs) &&
-    Array.isArray(value.sample)
+    value.unknownRefs.every((ref) => typeof ref === 'string') &&
+    Array.isArray(value.sample) &&
+    value.sample.every(isPreviewSampleRow)
   );
 }
 
@@ -111,7 +143,7 @@ async function getJson<T>(fetchFn: typeof fetch, path: string, params: URLSearch
     // no debe escapar como SyntaxError crudo: unifica el contrato de error.
     throw new FinanceApiError(response.status, 'respuesta no válida');
   }
-  if (!isRecord<T>(parsed)) throw new FinanceApiError(response.status, 'respuesta no válida');
+  if (!isNonPrimitiveJson<T>(parsed)) throw new FinanceApiError(response.status, 'respuesta no válida');
   return parsed;
 }
 
