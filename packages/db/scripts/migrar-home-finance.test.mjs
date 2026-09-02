@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { computeDedupHash } from '../../server/src/finance/dedup-hash.ts';
 import { importarModuloTs } from './cargar-ts.mjs';
 import { construirSqliteSintetica, CUENTAS, GRUPO_HUERFANO, GRUPO_TRASPASO, GRUPO_TRASPASO_CANONICO, SUMAS_CUENTA_MES, TOTALES } from './home-finance-sintetica.mjs';
-import { aUuid, avisosOrigen, compararResumenes, ErrorDeUso, hacerCopiaSeguridad, leerOrigen, normText, parseArgs, renderInforme, resumenOrigen, validarOrigen, verificarHashes } from './migrar-home-finance.mjs';
+import { aUuid, avisosOrigen, compararResumenes, ErrorDeUso, hacerCopiaSeguridad, leerOrigen, normText, parseArgs, providerNormOSuNulo, renderInforme, resumenOrigen, validarOrigen, verificarHashes } from './migrar-home-finance.mjs';
 
 describe('parseArgs', () => {
   it('lee flags con valor y banderas', () => {
@@ -69,6 +69,22 @@ describe('aUuid (transfer_group_id: el origen usa uuid4().hex, 32 hex sin guione
     expect(() => aUuid('no-soy-un-uuid', 42)).toThrow(/42.*no-soy-un-uuid/);
     expect(() => aUuid('fc9cabf5d7cb4499abbdead6b78db63', 42)).toThrow(/transfer_group_id no-UUID/);
     expect(() => aUuid('zz9cabf5d7cb4499abbdead6b78db63e', 42)).toThrow(/transfer_group_id no-UUID/);
+  });
+});
+
+describe('providerNormOSuNulo (un solo criterio para transacciones y reglas de evento)', () => {
+  it('normaliza lo que trae contenido', () => {
+    expect(providerNormOSuNulo('Farmacia Ñuñez')).toBe('FARMACIA NUNEZ');
+    expect(providerNormOSuNulo('SUPERMERCADOS ACME')).toBe('SUPERMERCADOS ACME');
+  });
+  it('«sin proveedor» es NULL, y los blancos también son «sin proveedor»', () => {
+    // '' no casaría con ningún finance_provider_aliases (CHECK de longitud ≥ 1
+    // tras btrim): un provider de solo blancos tiene que ser NULL, no ''.
+    expect(providerNormOSuNulo('')).toBe(null);
+    expect(providerNormOSuNulo('   ')).toBe(null);
+    expect(providerNormOSuNulo('\t \n ')).toBe(null);
+    expect(providerNormOSuNulo(null)).toBe(null);
+    expect(providerNormOSuNulo(undefined)).toBe(null);
   });
 });
 

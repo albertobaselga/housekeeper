@@ -136,7 +136,12 @@ export const TRANSACCIONES = [
   // «varias» transacciones y no una sola. Sigue excluida de la comprobación
   // cruzada de hashes por ser cuenta amex (verificarHashes descarta la cuenta
   // entera, no solo la fila con dedup_ref), así que no altera hashesComprobables.
-  { id: 12, account_id: 3, batch_id: 2, op_date: '2026-02-10', value_date: null, concept: 'CINE EJEMPLO MADRID', provider: 'CINE EJEMPLO', amount_cents: -1500n, balance_cents: null, code_common: null, code_own: null, category_id: 9, status: 'confirmada', transfer_group_id: null, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null }
+  { id: 12, account_id: 3, batch_id: 2, op_date: '2026-02-10', value_date: null, concept: 'CINE EJEMPLO MADRID', provider: 'CINE EJEMPLO', amount_cents: -1500n, balance_cents: null, code_common: null, code_own: null, category_id: 9, status: 'confirmada', transfer_group_id: null, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
+  // 13: `provider` de SOLO BLANCOS, dato sucio perfectamente posible en un
+  // extracto bancario. Tiene que acabar en provider_norm NULL («sin proveedor»)
+  // y no en '' («un proveedor vacío»), que no casaría con ningún
+  // finance_provider_aliases (su CHECK exige longitud ≥ 1 tras btrim).
+  { id: 13, account_id: 2, batch_id: 3, op_date: '2026-03-05', value_date: null, concept: 'ADEUDO SIN PROVEEDOR LEGIBLE', provider: '   ', amount_cents: -1100n, balance_cents: 34611n, code_common: null, code_own: null, category_id: null, status: 'confirmada', transfer_group_id: null, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null }
 ];
 
 export const ALIAS = [{ id: 1, provider_norm: 'SUPERMERCADOS ACME', alias: 'Acme' }];
@@ -151,17 +156,17 @@ export const REGLAS_EVENTO = [
 // estos valores como literal: todos los importan de aquí (una sola verdad).
 export const TOTALES = {
   accounts: 5, categories: 10, rules: 4, rulesActivas: 3, importBatches: 4,
-  transactions: 12, providerAliases: 1, events: 1, transactionEvents: 1, eventRules: 2,
-  // comprobables = hash sha256 y cuenta no-amex: 1, 2, 3, 4, 8, 9, 11.
+  transactions: 13, providerAliases: 1, events: 1, transactionEvents: 1, eventRules: 2,
+  // comprobables = hash sha256 y cuenta no-amex: 1, 2, 3, 4, 8, 9, 11, 13.
   // descartados = amex (7, 12) + prefijos manual-/cashpair-/invmirror- (5, 6, 10).
-  hashesComprobables: 7, hashesDescartados: 5, gruposTransferencia: 3,
-  estados: { confirmada: 10, pendiente: 1, sugerida_regla: 1 },
+  hashesComprobables: 8, hashesDescartados: 5, gruposTransferencia: 3,
+  estados: { confirmada: 11, pendiente: 1, sugerida_regla: 1 },
   fechaMin: '2026-01-10', fechaMax: '2026-03-05'
 };
 
 export const SUMAS_CUENTA_MES = {
   '00490001512345678901': { '2026-01': 247450n, '2026-02': -50000n },
-  ES9100190020961234567890: { '2026-02': 43211n, '2026-03': -17500n },
+  ES9100190020961234567890: { '2026-02': 43211n, '2026-03': -18600n },
   'AMEX-SINTETICA-1001': { '2026-01': -1234n, '2026-02': -1500n },
   EFECTIVO: { '2026-02': 0n },
   'INV-SINTETICO': { '2026-03': 10000n }

@@ -78,6 +78,14 @@ describe.runIf(Boolean(adminUrl))('migrar() contra Postgres real', () => {
         [HOGAR, GRUPO_TRASPASO_CANONICO]);
       expect(patas.map((p) => p.importe)).toEqual(['-50000', '50000']);
 
+      // Un provider de solo blancos es «sin proveedor», no «un proveedor
+      // vacío»: el mismo criterio (providerNormOSuNulo) que las reglas de
+      // evento de más abajo, también en la tabla grande.
+      const { rows: [soloBlancos] } = await client.query(
+        `select provider, provider_norm from app.finance_transactions
+          where household_id = $1 and concept = 'ADEUDO SIN PROVEEDOR LEGIBLE'`, [HOGAR]);
+      expect(soloBlancos).toEqual({ provider: '   ', provider_norm: null });
+
       const { rows: [hija] } = await client.query(
         `select h.name from app.finance_categories h
            join app.finance_categories p on p.household_id = h.household_id and p.id = h.parent_id

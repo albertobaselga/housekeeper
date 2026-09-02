@@ -434,15 +434,21 @@ export function aUuid(valor, idTransaccion) {
   throw new Error(`La transacción ${idTransaccion} tiene transfer_group_id no-UUID: ${valor}`);
 }
 
-/** `provider_norm`: cadena vacía (o ausente) → NULL, cualquier otro valor →
- *  normText(). La comparten dos sitios: las transacciones (normalizando
- *  `provider`) y `finance_event_rules` (coalesciendo su propio `provider_norm`,
- *  que en el origen es NOT NULL y usa '' como centinela de «sin proveedor» —
- *  resolución del coordinador: misma función auxiliar en los dos sitios).
- *  Aplicar normText() a un valor ya normalizado es inocuo (la función es
- *  idempotente), así que reutilizarla aquí no altera lo que ya venía limpio. */
+/** `provider_norm`: «sin proveedor» → NULL, cualquier otro valor → normText().
+ *  La comparten dos sitios: las transacciones (normalizando `provider`) y
+ *  `finance_event_rules` (coalesciendo su propio `provider_norm`, que en el
+ *  origen es NOT NULL y usa '' como centinela de «sin proveedor» — resolución
+ *  del coordinador: misma función auxiliar en los dos sitios).
+ *  Se normaliza ANTES de decidir, no después: un `provider` de solo blancos
+ *  ('   ', dato sucio perfectamente posible en un extracto bancario) es «sin
+ *  proveedor», no «un proveedor vacío». La diferencia importa porque '' no casa
+ *  con ningún `finance_provider_aliases` (su CHECK exige longitud ≥ 1 tras
+ *  btrim), así que esas filas quedarían en la fase 4 como un proveedor fantasma.
+ *  Aplicar normText() a un valor ya normalizado es inocuo (es idempotente), así
+ *  que reutilizarla aquí no altera lo que ya venía limpio. */
 export function providerNormOSuNulo(valor) {
-  return valor ? normText(valor) : null;
+  const normalizado = normText(valor ?? '');
+  return normalizado === '' ? null : normalizado;
 }
 
 /** `finance_accounts.bank`: los cuatro bancos reales pasan; las cuentas
