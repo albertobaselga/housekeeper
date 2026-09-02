@@ -1146,15 +1146,22 @@ async function assignConceptToCategory(
       [householdId, ids, payload.categoryId],
     );
   }
+  const ruleType = payload.concept === undefined ? "proveedor_exacto" : "concepto_contiene";
+  const pattern = payload.concept === undefined ? payload.provider : payload.concept;
+  // Simetría con assignConceptToEvent: recategorizar un concepto SUSTITUYE la
+  // regla manual previa del mismo patrón en vez de acumular reglas gemelas
+  // con prioridad 0 entre las que el pipeline elegiría por orden físico
+  // (F6-I1). Solo caen las reglas manuales: las de origen 'agente' y las
+  // creadas desde Ajustes con otra prioridad no son «la misma regla».
+  await client.query(
+    `delete from app.finance_rules
+      where household_id = $1 and rule_type = $2 and pattern = $3 and origin = 'manual' and priority = 0`,
+    [householdId, ruleType, pattern],
+  );
   const inserted = await client.query<{ id: string }>(
     `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin)
      values ($1, $2, $3, $4, 0, 'manual') returning id`,
-    [
-      householdId,
-      payload.concept === undefined ? "proveedor_exacto" : "concepto_contiene",
-      payload.concept === undefined ? payload.provider : payload.concept,
-      payload.categoryId,
-    ],
+    [householdId, ruleType, pattern, payload.categoryId],
   );
   return { resourceId: inserted.rows[0]?.id as UUID };
 }

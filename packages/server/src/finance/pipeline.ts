@@ -379,9 +379,14 @@ async function loadPipelineState(client: PoolClient, householdId: string): Promi
     `select id, parent_id, name, kind from app.finance_categories where household_id = $1`,
     [householdId],
   );
+  // `matchRule` hace un sort estable por (priority, especificidad): en
+  // empate gana el orden de llegada aquí. Con este ORDER BY, ante empate de
+  // prioridad y especificidad gana la regla más reciente (created_at desc),
+  // y el desempate final por id hace el resultado reproducible.
   const ruleRes = await client.query<{ id: string; rule_type: FinanceRuleView["ruleType"]; pattern: string; category_id: string; priority: number }>(
     `select id, rule_type, pattern, category_id, priority
-       from app.finance_rules where household_id = $1`,
+       from app.finance_rules where household_id = $1
+      order by priority desc, created_at desc, id`,
     [householdId],
   );
   // `provider_norm` es NULLABLE en app.finance_event_rules (reglas por categoría).
