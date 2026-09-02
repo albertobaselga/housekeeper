@@ -93,7 +93,7 @@ async function grantFinance(
   // activado se queda sin la raíz `transferencia` y no se pueden vincular
   // transferencias, efectivo ni inversiones.
   await client.query("select app.seed_finance_categories()");
-  return { resourceId: grantId as UUID };
+  return { resourceId: grantId };
 }
 
 async function revokeFinance(
@@ -113,7 +113,7 @@ async function revokeFinance(
   if (!updated.rows[0]) {
     throw new CommandRejectedError("not_granted", "Esa cuenta no tiene Finanzas activado");
   }
-  return { resourceId: updated.rows[0].id as UUID };
+  return { resourceId: updated.rows[0].id };
 }
 
 /**
@@ -460,7 +460,7 @@ async function cashAccountId(client: PoolClient, householdId: UUID): Promise<UUI
       limit 1`,
     [householdId],
   );
-  if (byRef.rows[0]) return byRef.rows[0].id as UUID;
+  if (byRef.rows[0]) return byRef.rows[0].id;
   const byName = await client.query<{ id: string }>(
     `select id from app.finance_accounts
       where household_id = $1 and bank is null and archived_at is null and upper(name) = 'EFECTIVO'
@@ -468,7 +468,7 @@ async function cashAccountId(client: PoolClient, householdId: UUID): Promise<UUI
       limit 1`,
     [householdId],
   );
-  return (byName.rows[0]?.id as UUID | undefined) ?? null;
+  return byName.rows[0]?.id ?? null;
 }
 
 /** Categoría raíz «Efectivo» (gasto) de la contrapartida; se siembra la primera vez. */
@@ -480,7 +480,7 @@ async function cashCategoryId(client: PoolClient, householdId: UUID): Promise<UU
     [householdId],
   );
   const existing = found.rows[0]?.id;
-  if (existing) return existing as UUID;
+  if (existing) return existing;
   const inserted = await client.query<{ id: string }>(
     `insert into app.finance_categories (household_id, name, kind, parent_id)
      values ($1, 'Efectivo', 'gasto', null) returning id`,
@@ -488,7 +488,7 @@ async function cashCategoryId(client: PoolClient, householdId: UUID): Promise<UU
   );
   const id = inserted.rows[0]?.id;
   if (!id) throw new Error("La inserción de la categoría Efectivo no devolvió identificador");
-  return id as UUID;
+  return id;
 }
 
 /** Categoría raíz «transferencia» del hogar (a lo sumo una: índice único
@@ -502,7 +502,7 @@ async function transferCategoryId(client: PoolClient, householdId: UUID): Promis
     [householdId],
   );
   const existing = found.rows[0]?.id;
-  if (existing) return existing as UUID;
+  if (existing) return existing;
   const inserted = await client.query<{ id: string }>(
     `insert into app.finance_categories (household_id, name, kind, parent_id)
      values ($1, 'Transferencias', 'transferencia', null) returning id`,
@@ -510,7 +510,7 @@ async function transferCategoryId(client: PoolClient, householdId: UUID): Promis
   );
   const id = inserted.rows[0]?.id;
   if (!id) throw new Error("La inserción de la categoría Transferencias no devolvió identificador");
-  return id as UUID;
+  return id;
 }
 
 /**
@@ -572,7 +572,7 @@ async function createManualTransaction(
     }
     const counterleg = cashCounterlegFor(
       {
-        id: id as UUID,
+        id,
         accountId: payload.accountId,
         opDate: payload.opDate,
         concept: payload.concept,
@@ -617,7 +617,7 @@ async function createManualTransaction(
   // Y después, la verdad post-escritura compartida: reglas, alias, espejos y
   // recurrencia, respetando los overrides manuales.
   await runPostImportPipeline(client, householdId);
-  return { resourceId: id as UUID };
+  return { resourceId: id };
 }
 
 async function deleteManualTransaction(
@@ -687,7 +687,7 @@ async function investTransaction(
   if ((existing.rowCount ?? 0) > 0) {
     throw new CommandRejectedError("finance_mirror_exists", "Ya existía un espejo para este movimiento");
   }
-  const groupId = randomUUID() as UUID;
+  const groupId = randomUUID();
   const categoryId = await transferCategoryId(client, householdId);
   // Mismo rótulo que detectInvestmentContributions (domain/finance/investments.ts,
   // el que usa el pipeline automático para la MISMA operación): concepto
@@ -760,7 +760,7 @@ async function linkTransfers(
   if (sum !== 0n) {
     throw new CommandRejectedError("finance_transfer_sum_not_zero", "La selección no suma cero");
   }
-  const groupId = randomUUID() as UUID;
+  const groupId = randomUUID();
   const categoryId = await transferCategoryId(client, householdId);
   await client.query(
     `update app.finance_transactions
@@ -862,7 +862,7 @@ async function createFinanceEvent(
   householdId: UUID,
   payload: { id?: UUID | undefined; name: string },
 ): Promise<{ resourceId: UUID }> {
-  const id = (payload.id ?? randomUUID()) as UUID;
+  const id = payload.id ?? randomUUID();
   const clean = await cleanEventName(client, householdId, payload.name, id);
   await client.query(
     `insert into app.finance_events (id, household_id, name) values ($1, $2, $3)
@@ -875,7 +875,7 @@ async function createFinanceEvent(
   );
   const resourceId = result.rows[0]?.id;
   if (!resourceId) throw new Error("La inserción del evento no devolvió identificador");
-  return { resourceId: resourceId as UUID };
+  return { resourceId };
 }
 
 async function deleteFinanceEvent(client: PoolClient, householdId: UUID, eventId: UUID): Promise<Record<string, never>> {
@@ -946,7 +946,7 @@ async function resolveTargetEventId(
       `select id from app.finance_events where household_id = $1 and lower(name) = lower($2)`,
       [householdId, name],
     );
-    if (existing.rows[0]) return existing.rows[0].id as UUID;
+    if (existing.rows[0]) return existing.rows[0].id;
     return (await createFinanceEvent(client, householdId, { name })).resourceId;
   }
   if (eventId != null) return requireFinanceEvent(client, householdId, eventId);
@@ -1122,7 +1122,7 @@ async function createFinanceCategory(
   );
   const id = inserted.rows[0]?.id;
   if (!id) throw new Error("La inserción de la categoría no devolvió identificador");
-  return { resourceId: id as UUID };
+  return { resourceId: id };
 }
 
 async function deleteFinanceCategory(
@@ -1370,7 +1370,12 @@ export const financeCommandHandler: CommandHandler = async (client, membership, 
                values ($1, $2, $3, $4, $5, 'manual') returning id`,
               [envelope.householdId, payload.ruleType, pattern, payload.categoryId, payload.priority],
             );
-      return { resourceId: inserted.rows[0]?.id as UUID };
+      // Misma guarda que los otros diez `insert … returning` del fichero: sin
+      // ella el `?.` podía dar `undefined` y el cast lo tapaba, devolviendo un
+      // `resourceId: undefined` al cliente.
+      const ruleId = inserted.rows[0]?.id;
+      if (!ruleId) throw new Error("La inserción de la regla no devolvió identificador");
+      return { resourceId: ruleId };
     }
     case "finance.rule.delete": {
       const deleted = await client.query(`delete from app.finance_rules where household_id = $1 and id = $2`, [
