@@ -485,7 +485,7 @@ export function mapear(mapa, id, etiqueta) {
   if (id === null || id === undefined) return null;
   const destino = mapa.get(id);
   if (destino === undefined) {
-    throw new Error(`No se puede mapear ${etiqueta}: el id ${id} no existe en el origen (referencia colgada; se habría migrado como NULL sin avisar).`);
+    throw new Error(`No se puede mapear ${etiqueta}: el id ${id} no existe en el origen o aún no se ha insertado (referencia colgada; se habría migrado como NULL sin avisar).`);
   }
   return destino;
 }
@@ -493,6 +493,13 @@ export function mapear(mapa, id, etiqueta) {
 /** Inserta el origen completo bajo el hogar dado. SIEMPRE dentro de una
  *  transacción abierta por quien llama (una sola transacción, spec §9.2). */
 export async function migrar(client, householdId, origen) {
+  // `import_batches.imported_at` viaja de un texto naíf del origen
+  // ('2026-02-01 10:00:00', sin zona) a un `timestamptz`. El origen lo escribe
+  // con `datetime.now` (hora local de la máquina que corre home-finance, en
+  // Europe/Madrid), así que esa es la zona fiel; y va aquí, no en el llamador,
+  // para que la garantía viaje con la función que escribe (la suite Postgres
+  // llama a migrar() directamente). SET LOCAL muere con la transacción.
+  await client.query(`SET LOCAL TIME ZONE 'Europe/Madrid'`);
   const mapas = { cuentas: new Map(), categorias: new Map(), lotes: new Map(), transacciones: new Map(), eventos: new Map() };
   for (const c of origen.accounts) {
     const id = randomUUID();
@@ -688,12 +695,6 @@ async function main() {
         console.error('Verificación cruzada de dedup_hash fallida: no se escribe nada en la base destino.');
       } else {
         await client.query('BEGIN');
-        // `import_batches.imported_at` viaja de un texto naíf del origen
-        // ('2026-02-01 10:00:00', sin zona) a un `timestamptz`: sin fijar la
-        // zona, la hora se interpreta con el TimeZone de la sesión y los lotes
-        // saldrían desplazados según desde qué máquina se migre. Se fija UTC
-        // para que el resultado no dependa de quién ejecuta.
-        await client.query(`SET TIME ZONE 'UTC'`);
         await migrar(client, householdId, origen);
         contexto.comparacion = compararResumenes(resOrigen, await resumenDestino(client, householdId));
         if (opciones.dryRun || !contexto.comparacion.ok) {

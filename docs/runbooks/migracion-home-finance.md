@@ -62,10 +62,14 @@ db.close();" ~/copias-home-finance/finanzas-<fecha>.db
 ## Ensayo local (obligatorio antes de producción)
 
 Todo el ensayo se hace DESDE LA COPIA, nunca desde el fichero vivo. Para
-ensayar sin datos reales, fabrica una base sintética equivalente:
+ensayar sin datos reales, fabrica una base sintética equivalente. Va al
+directorio del ensayo, NO a `~/copias-home-finance`: el `sha256sum` del Paso 0
+recoge `finanzas-*.db` y una sintética ahí añadiría una línea que nunca
+coincide con el original.
 
 ```bash
-node packages/db/scripts/home-finance-sintetica.mjs ~/copias-home-finance/finanzas-sintetica.db
+mkdir -p ~/copias-ensayo-home-finance
+node packages/db/scripts/home-finance-sintetica.mjs ~/copias-ensayo-home-finance/finanzas-sintetica.db
 ```
 
 1. Base de ensayo LIMPIA (recreada de cero en el clúster compartido; no toques
@@ -115,15 +119,15 @@ docker exec -i casaclara-it-pg psql -U ci_admin -d casaclara_ensayo -c \
 
 ```bash
 node packages/db/scripts/migrar-home-finance.mjs \
-  --sqlite ~/copias-home-finance/finanzas-sintetica.db \
+  --sqlite ~/copias-ensayo-home-finance/finanzas-sintetica.db \
   --database-url "$DATABASE_URL" --household hogar-ensayo \
   --backup-dir ~/copias-ensayo-home-finance --dry-run
 node packages/db/scripts/migrar-home-finance.mjs \
-  --sqlite ~/copias-home-finance/finanzas-sintetica.db \
+  --sqlite ~/copias-ensayo-home-finance/finanzas-sintetica.db \
   --database-url "$DATABASE_URL" --household hogar-ensayo \
   --backup-dir ~/copias-ensayo-home-finance
 node packages/db/scripts/migrar-home-finance.mjs \
-  --sqlite ~/copias-home-finance/finanzas-sintetica.db \
+  --sqlite ~/copias-ensayo-home-finance/finanzas-sintetica.db \
   --database-url "$DATABASE_URL" --household hogar-ensayo \
   --backup-dir ~/copias-ensayo-home-finance --verify-only
 ```
