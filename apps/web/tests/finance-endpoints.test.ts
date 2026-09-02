@@ -17,7 +17,7 @@ function statusOf(run: () => unknown): number | null {
   try { run(); return null; } catch (cause) { return (cause as { status?: number }).status ?? null; }
 }
 
-describe('guard de los endpoints GET /api/v1/finance/* (el hook no cubre /api)', () => {
+describe('guard de los endpoints GET /api/v1/finance/* (el hook rellena locals.user también en /api; lo que falta es el guard de hogar/capacidad, Ruling R9)', () => {
   it('sin sesión: 401', () => {
     expect(statusOf(() => requireFinanceRequest({ user: null } as unknown as App.Locals, urlOf(`household=${HOUSEHOLD}`), FAKE_POOL))).toBe(401);
   });

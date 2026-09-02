@@ -170,7 +170,13 @@ function isRecurrence(value: string): value is (typeof RECURRENCES)[number] {
   return (RECURRENCES as readonly string[]).includes(value);
 }
 
-function csvUuids(value: string | null, name: string): string[] {
+/**
+ * Lista de uuids separados por comas, validando cada uno (Ruling R7: sin `as`,
+ * con guarda). Única definición (antes se reimplementaba a mano — split, trim,
+ * filter, un `for` con `isUuid` — en el endpoint de pivot para `dupev`):
+ * `pivot/+server.ts` la importa de aquí en vez de copiarla.
+ */
+export function csvUuids(value: string | null, name: string): string[] {
   if (!value) return [];
   const ids = value
     .split(',')
@@ -227,20 +233,29 @@ export function parseReadFilters(url: URL): FinanceReadFilters {
 }
 
 /**
+ * ¿Trae la petición selección por `ids` o por `group_ids` (aunque vengan
+ * vacíos)? Es el camino del panel de detalle (api.ts:99-102), que nunca manda
+ * from/to. Única definición: antes `transactions/+server.ts` volvía a mirar
+ * `url.searchParams.has(...)` por su cuenta para decidir la página vacía
+ * canónica de R21, la misma regla que ya calculaba este módulo.
+ */
+export function hasIdsSelection(url: URL): boolean {
+  return url.searchParams.has('ids') || url.searchParams.has('group_ids');
+}
+
+/**
  * `ids`/`group_ids` PRESENTES (aunque vengan vacíos) desactivan el rango:
  * es el camino del panel de detalle (api.ts:99-102), que nunca manda from/to.
  * Que la lista quede vacía tras el parseo es asunto del endpoint (Ruling
  * R21: «sin coincidencias», no «sin filtro»), no de este parseo compartido.
  */
 export function parseTransactionsQuery(url: URL): FinanceTransactionsQuery {
-  const idsPresent = url.searchParams.has('ids');
-  const groupIdsPresent = url.searchParams.has('group_ids');
+  const idsSelection = hasIdsSelection(url);
   const ids = csvUuids(url.searchParams.get('ids'), 'ids');
   const groupIds = csvUuids(url.searchParams.get('group_ids'), 'group_ids');
-  const filters =
-    idsPresent || groupIdsPresent
-      ? { from: '1900-01-01', to: '2999-12-31', accountIds: [], eventId: null, excludeEventIds: [] }
-      : parseReadFilters(url);
+  const filters = idsSelection
+    ? { from: '1900-01-01', to: '2999-12-31', accountIds: [], eventId: null, excludeEventIds: [] }
+    : parseReadFilters(url);
   const categoryId = url.searchParams.get('cat');
   if (categoryId && !isUuid(categoryId)) error(400, 'Parámetro cat inválido');
   const recurrenceParam = url.searchParams.get('rec');

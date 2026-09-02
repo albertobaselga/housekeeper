@@ -13,6 +13,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   if (!isGranularity(granularityParam)) error(400, 'Parámetro g inválido');
   // El tope es 240 meses: con g=year, 12 cubos son 120 meses (ver SERIES_MONTHS
   // en finance.server.ts). Un tope de 60 dejaría fuera la vista anual.
+  // months: cantidad de puntos de la serie temporal, nunca céntimos.
   const months = Number(url.searchParams.get('months') ?? '12');
   if (!Number.isInteger(months) || months < 1 || months > 240) error(400, 'Parámetro months inválido');
   return financeRead(locals, url, (client, householdId) =>

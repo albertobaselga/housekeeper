@@ -13,6 +13,7 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
   // Lo malformado se ignora en el load; la API, en cambio, responde 400.
   const category = url.searchParams.get('cat');
   const recurrence = url.searchParams.get('rec');
+  // offset es paginación, no dinero: Number es correcto aquí.
   const offsetRaw = Number(url.searchParams.get('offset') ?? '0');
   // Anotado explícitamente: sin el tipo de destino, el ternario de `recurrence`
   // ensancha a `string | null` dentro del literal (el narrowing de igualdad

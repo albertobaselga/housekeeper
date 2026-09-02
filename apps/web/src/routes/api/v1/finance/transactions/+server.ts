@@ -1,6 +1,6 @@
 import { readFinanceTransactions, type FinanceTransactionsPage } from '@housekeeper/server';
 
-import { financeRead, parseTransactionsQuery } from '$lib/server/finance.server';
+import { financeRead, hasIdsSelection, parseTransactionsQuery } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
 
 /**
@@ -10,14 +10,15 @@ import type { RequestHandler } from './$types';
  * está presente (mira api.ts:99-102); si además los dos quedan vacíos tras el
  * parseo, la respuesta es la página vacía canónica sin tocar
  * `finance_transactions` — pero SIN saltarse el cerrojo de autorización, que
- * sigue viviendo dentro de `financeRead`.
+ * sigue viviendo dentro de `financeRead`. `hasIdsSelection` es la misma regla
+ * de presencia que usa `parseTransactionsQuery`: una sola definición en vez de
+ * mirar `url.searchParams.has(...)` por duplicado aquí y allí.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
-  const idsPresent = url.searchParams.has('ids');
-  const groupIdsPresent = url.searchParams.has('group_ids');
+  const idsSelection = hasIdsSelection(url);
   return financeRead(locals, url, (client, householdId): Promise<FinanceTransactionsPage> => {
     const query = parseTransactionsQuery(url);
-    if ((idsPresent || groupIdsPresent) && query.ids.length === 0 && query.groupIds.length === 0) {
+    if (idsSelection && query.ids.length === 0 && query.groupIds.length === 0) {
       return Promise.resolve({ total: 0, sumCents: '0', limit: query.limit, offset: query.offset, rows: [] });
     }
     return readFinanceTransactions(client, householdId, query);

@@ -52,17 +52,23 @@
   const seriesLabel = $derived(SERIES_LABEL[dashboard.filters.granularity]);
 </script>
 
-{#snippet delta(nowCents: string, prevCents: string | undefined, invert: boolean)}
+{#snippet delta(nowCents: string, prevCents: string | undefined, invert: boolean, signedPrevCents?: string)}
   {#if prevCents !== undefined}
     {@const pct = deltaPct(BigInt(nowCents), BigInt(prevCents))}
+    <!-- El tooltip rotula el importe anterior como su propia tarjeta: para
+         Gastos eso es con signo negativo (`−3.550,00 €`), aunque `prevCents`
+         aquí sea la MAGNITUD que usa el cálculo del pct (ver `magnitude` más
+         arriba). `signedPrevCents` lleva el valor con signo cuando difiere;
+         si no se pasa, `prevCents` ya es el valor real (Ingresos, Ahorro). -->
+    {@const titleCents = signedPrevCents ?? prevCents}
     {#if pct === null}
       <span class="status-chip">sin periodo anterior</span>
     {:else if pct === 0}
       <!-- Igual que el periodo anterior no es ni una bajada ni un aviso. -->
-      <span class="status-chip" title={`anterior: ${formatCents(prevCents)}`}>sin cambios</span>
+      <span class="status-chip" title={`anterior: ${formatCents(titleCents)}`}>sin cambios</span>
     {:else}
       {@const good = invert ? pct < 0 : pct > 0}
-      <span class="status-chip {good ? 'success' : 'warning'}" title={`anterior: ${formatCents(prevCents)}`}>
+      <span class="status-chip {good ? 'success' : 'warning'}" title={`anterior: ${formatCents(titleCents)}`}>
         {pct > 0 ? '▲' : '▼'} {Math.abs(pct)} %
       </span>
     {/if}
@@ -91,7 +97,7 @@
       <article class="card">
         <p class="eyebrow">Gastos</p>
         <p class="cifra kpi-neg">{formatCents(summary.expenseCents)}</p>
-        {@render delta(magnitude(summary.expenseCents), prev ? magnitude(prev.expenseCents) : undefined, true)}
+        {@render delta(magnitude(summary.expenseCents), prev ? magnitude(prev.expenseCents) : undefined, true, prev?.expenseCents)}
         <p class="kpi-note">♻ {formatCents(summary.recurringExpenseCents)} · ✦ {formatCents(summary.extraordinaryExpenseCents)}{summary.unclassifiedExpenseCents !== '0' ? ` · — ${formatCents(summary.unclassifiedExpenseCents)}` : ''}</p>
       </article>
       <article class="card">
