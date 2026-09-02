@@ -8,6 +8,18 @@ export { formatCents, dateLabel } from '$lib/employment/model';
 export const MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'] as const;
 export const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'] as const;
 
+/**
+ * Etiqueta visible del estado de un movimiento. Única definición (Ruling R12
+ * de la Task 11): el ledger y el panel de detalle la importan de aquí en vez
+ * de declarar cada uno la suya, que divergirían en la primera corrección.
+ */
+export const STATUS_LABEL: Record<string, string> = {
+  pendiente: 'pendiente',
+  sugerida_regla: 'regla',
+  sugerida_agente: 'agente',
+  confirmada: 'confirmada'
+};
+
 export function formatPct(value: number | null): string {
   return value === null ? '—' : `${value.toLocaleString('es-ES')} %`;
 }

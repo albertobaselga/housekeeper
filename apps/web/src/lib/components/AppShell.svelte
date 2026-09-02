@@ -1,8 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { navigating, page } from '$app/state';
-  import { onMount, tick, type Snippet } from 'svelte';
-  import type { Action } from 'svelte/action';
+  import { onMount, type Snippet } from 'svelte';
   import type { Capability } from '$lib/auth/capabilities';
   import { ROLE_LABELS } from '$lib/auth/role-labels';
   import { householdPath, type HouseholdModule } from '$lib/auth/routing';
@@ -10,6 +9,7 @@
   import { startSyncMonitor, syncStatus } from '$lib/offline/sync';
   import type { InstallOffer } from '$lib/pwa/install';
   import InstallBanner from './InstallBanner.svelte';
+  import { modalDialog } from './modal-dialog';
   import NavIcon from './NavIcon.svelte';
   import PushCheck from './PushCheck.svelte';
 
@@ -147,54 +147,6 @@
     searchOpen = false;
     pillOpen = false;
   });
-
-  /**
-   * Diálogo accesible mínimo: foco inicial, ciclo de Tab dentro del nodo,
-   * Escape cierra, bloqueo de scroll del fondo y foco de vuelta al disparador.
-   */
-  const modalDialog: Action<HTMLElement, { onClose: () => void }> = (node, options) => {
-    const previous = document.activeElement as HTMLElement | null;
-    const focusables = () =>
-      Array.from(
-        node.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])'
-        )
-      );
-    void tick().then(() => {
-      (node.querySelector<HTMLElement>('[data-autofocus]') ?? focusables()[0] ?? node).focus();
-    });
-    const onKeydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        options.onClose();
-        return;
-      }
-      if (event.key !== 'Tab') return;
-      const items = focusables();
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      const current = document.activeElement;
-      if (event.shiftKey && (current === first || current === node)) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && current === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    node.addEventListener('keydown', onKeydown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return {
-      destroy() {
-        node.removeEventListener('keydown', onKeydown);
-        document.body.style.overflow = previousOverflow;
-        previous?.focus?.();
-      }
-    };
-  };
 
   function openSearch(): void {
     searchQuery = '';
