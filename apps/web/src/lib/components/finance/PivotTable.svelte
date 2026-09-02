@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidate, replaceState } from '$app/navigation';
+  import { goto, invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import {
     buildPivotTree,
@@ -57,11 +57,19 @@
   // la suerte del `Set.has`).
   const dupEventIds = $derived(parseIdList(page.url.searchParams.get('dupev')).filter(isUuid));
 
+  // `replaceState` de `$app/navigation` (routing superficial) solo actualiza
+  // `page.state`, NUNCA `page.url` (fuente de `dims`/`chips`/`dupEventIds`
+  // arriba): con ella la barra de direcciones cambia pero el árbol se queda
+  // congelado con el valor anterior del parámetro — bug real que T14 destapó
+  // (nada lo cubría hasta el e2e de fixture). `goto` con `replaceState: true`
+  // sí actualiza `page.url` reactivamente y no añade entrada al historial; es
+  // el mismo patrón que ya usa `toggleExcluded` más abajo en +page.svelte para
+  // `?exev=`.
   function setShallowParam(key: string, value: string): void {
     const url = new URL(page.url);
     if (value) url.searchParams.set(key, value);
     else url.searchParams.delete(key);
-    replaceState(url, {});
+    void goto(url, { replaceState: true, noScroll: true, keepFocus: true });
   }
   // serializeDims (fase 4) devuelve null para el orden por defecto ⇒ URL limpia.
   const setDims = (next: PivotDimension[]) => setShallowParam('dims', serializeDims(next) ?? '');
