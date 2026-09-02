@@ -13,7 +13,7 @@ export * from "./amex.js";
 
 export * from "./investments.js";
 
-// cash (Task 7)
+export * from "./cash.js";
 
 // recurrence (Task 8)
 
