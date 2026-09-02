@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 import { HOUSEHOLD, loginAs } from './helpers';
 
@@ -49,28 +49,57 @@ test('importar: previsualizar, dar de alta la cuenta, confirmar y deshacer', asy
 
 // [FASE 7, T4] Ampliación: lo importado tiene que VERSE en Movimientos bajo
 // RLS, y el deshacer tiene que dejarlo en cero. El ciclo de importación en sí
-// ya lo cubre el test de arriba (fase 5): aquí solo se comprueba el efecto
-// sobre los datos que ve la administración con concesión.
+// ya lo cubre el test de arriba (fase 5): aquí se comprueba el efecto sobre
+// los datos que ve la administración con concesión — y, por resolución del
+// coordinador, que quien NO tiene concesión no ve esas MISMAS filas recién
+// importadas, ni por pantalla ni por la API.
 const MOVIMIENTOS_JULIO = `/h/${HOUSEHOLD}/finanzas/movimientos?from=2026-07-01&to=2026-07-31&q=ALQUILER+JULIO`;
+const TRANSACCIONES_JULIO = `/api/v1/finance/transactions?household=${HOUSEHOLD}&from=2026-07-01&to=2026-07-31&q=${encodeURIComponent('ALQUILER JULIO')}`;
 
-async function deshacerSiQueda(page: import('@playwright/test').Page): Promise<void> {
+/**
+ * Limpieza del hook: idempotente y a prueba de más de un lote homónimo. Antes
+ * deshacía `fila.first()` pero afirmaba `toHaveCount(0)` sobre TODAS las filas
+ * con ese nombre de fichero — con dos lotes (p. ej. un reintento de Playwright
+ * que dejó uno a medio deshacer), el hook deshacía uno y reventaba en la
+ * aserción, marcando en rojo un cuerpo que había pasado. Ahora deshace de uno
+ * en uno hasta que no quede ninguno.
+ */
+async function deshacerSiQueda(page: Page): Promise<void> {
   await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
   const fila = page.locator('tr', { hasText: 'movimientos-e2e.xls' });
-  if (await fila.count()) {
+  while ((await fila.count()) > 0) {
+    const restantes = await fila.count();
     page.once('dialog', (dialog) => void dialog.accept());
     await fila.first().getByRole('button', { name: 'Deshacer' }).click();
-    await expect(page.locator('tr', { hasText: 'movimientos-e2e.xls' })).toHaveCount(0);
+    await expect(fila).toHaveCount(restantes - 1);
   }
 }
 
+/**
+ * El deshacer como ACCIÓN BAJO PRUEBA (no como limpieza, que es
+ * `deshacerSiQueda`): afirma primero que la fila está. Si no lo estuviera, el
+ * fallo real señala este sitio en vez de aparecer tres líneas después como
+ * «esperaba 0 filas, había 1».
+ */
+async function deshacerLote(page: Page): Promise<void> {
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
+  const fila = page.locator('tr', { hasText: 'movimientos-e2e.xls' });
+  await expect(fila).toBeVisible();
+  page.once('dialog', (dialog) => void dialog.accept());
+  await fila.getByRole('button', { name: 'Deshacer' }).click();
+  await expect(fila).toHaveCount(0);
+}
+
 test.describe('lo importado se ve y el deshacer lo borra', () => {
-  // Nada de `loginAs` aquí: el `page` del hook es el MISMO del cuerpo del
-  // test (fixture de Playwright compartida entre el test y sus hooks), que ya
-  // se autenticó como admin en su primera línea. Repetir el login rompía la
-  // limpieza — `/login` con sesión viva redirige directo a Hoy (véase
-  // `routes/login/+page.server.ts`) y el selector de cuentas nunca se pinta,
-  // así que `loginAs` fallaba buscando una pantalla que no iba a aparecer.
   test.afterEach(async ({ page }) => {
+    // El cuerpo cambia de sesión a mitad (comprobación de denegación de la
+    // empleada, más abajo) y puede romperse ANTES de restaurar admin. Limpiar
+    // cookies antes de entrar deja siempre el selector de cuentas —tanto si la
+    // sesión viva era admin como si era la empleada—, así que el `loginAs` de
+    // aquí ya no choca con «`/login` con sesión viva redirige directo a Hoy»
+    // (routes/login/+page.server.ts): sin cookies no hay sesión viva.
+    await page.context().clearCookies();
+    await loginAs(page, 'admin');
     await deshacerSiQueda(page);
   });
 
@@ -78,7 +107,11 @@ test.describe('lo importado se ve y el deshacer lo borra', () => {
     await loginAs(page, 'admin');
 
     // Punto de partida: el hogar no tiene todavía el movimiento del extracto.
+    // Se ancla primero a `.finance-ledger` (LedgerTable.svelte la pinta
+    // siempre, con o sin filas): sin esto, un `.finance-row` en 0 pasaría
+    // igual si la pantalla no fuese la de Movimientos.
     await page.goto(MOVIMIENTOS_JULIO);
+    await expect(page.locator('.finance-ledger')).toBeVisible();
     await expect(page.locator('.finance-ledger .finance-row')).toHaveCount(0);
 
     // Importar el mismo extracto sintético de la fase 5 (en memoria, sin
@@ -116,9 +149,46 @@ test.describe('lo importado se ve y el deshacer lo borra', () => {
     await expect(filas.first()).toContainText('CLARA DEMO');
     await expect(filas.first()).toContainText('850,00');
 
-    // Deshacer: el lote se va con sus transacciones (ON DELETE CASCADE).
-    await deshacerSiQueda(page);
+    // Resolución del coordinador (T4): la empleada no ve las filas RECIÉN
+    // IMPORTADAS, ni por pantalla ni por la API.
+    //
+    // Por pantalla: `finance.access` no está entre las capacidades del rol
+    // `employee_live_in` (packages/contracts/src/capabilities.ts) — la propia
+    // matriz de capacidades ya la excluye, sin depender de ninguna concesión
+    // —, así que el layout del hogar (`h/[householdId]/+layout.server.ts`)
+    // corta con 403 antes de que `finanzas/movimientos/+page.server.ts` llegue
+    // a ejecutarse: `.finance-ledger` no se pinta. No hace falta mirar el
+    // código de estado HTTP para saberlo: basta con que la tabla no exista.
+    //
+    // Por la API: el mismo doble cerrojo (`requireFinanceAdmin`, packages/
+    // server/src/commands/finance.ts) rechaza por rol, y `financeRead`
+    // (finance.server.ts) lo traduce SIEMPRE a 404 —nunca a 403, Ruling R2—
+    // para no revelar que el hogar existe.
+    //
+    // El segundo reparto de la resolución —un `family_admin` SIN concesión—
+    // pasa por el MISMO `requireFinanceAdmin`, solo que por la rama de la
+    // concesión (`finance_enabled()`) en vez de la del rol; esa rama ya la
+    // ejercita `finanzas-concesion.dbe2e.ts` con el mismo código de estado, y
+    // sembrar aquí una segunda cuenta de acceso (como esa batería, por SQL:
+    // no hay cuenta de acceso family_admin sin concesión en el selector de
+    // fixtures) solo repetiría la comprobación de la misma rama de código
+    // sobre otro dato, sin cubrir un riesgo distinto.
+    await page.context().clearCookies();
+    await loginAs(page, 'employee');
     await page.goto(MOVIMIENTOS_JULIO);
+    await expect(page.locator('.finance-ledger')).toHaveCount(0);
+    const denegada = await page.request.get(TRANSACCIONES_JULIO);
+    expect(denegada.status()).toBe(404);
+
+    // Se restaura la sesión de administración: el deshacer de abajo (y, si el
+    // test se rompiera antes de llegar aquí, el `afterEach`) la necesitan.
+    await page.context().clearCookies();
+    await loginAs(page, 'admin');
+
+    // Deshacer: el lote se va con sus transacciones (ON DELETE CASCADE).
+    await deshacerLote(page);
+    await page.goto(MOVIMIENTOS_JULIO);
+    await expect(page.locator('.finance-ledger')).toBeVisible();
     await expect(page.locator('.finance-ledger .finance-row')).toHaveCount(0);
   });
 });
