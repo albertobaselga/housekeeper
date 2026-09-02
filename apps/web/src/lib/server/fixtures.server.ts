@@ -892,6 +892,23 @@ export const getFinanceRevisionFixture = demoOnly(
         categoryId: 'fc200000-0000-4000-8000-000000000001',
         recurrence: 'recurrente',
         transferGroupId: null
+      },
+      // [FASE 5 · despacho de cierre, F5-I7 (2)] Movimiento SIN proveedor (un
+      // apunte manual): es la fila en la que «Crear regla al confirmar» tiene
+      // que salir apagada, porque el handler rechaza la regla sin proveedor.
+      // Sin ella, la maqueta no ejercitaba esa rama en ninguna parte.
+      {
+        id: 'fc100000-0000-4000-8000-000000000003',
+        opDate: range.to,
+        accountName: 'Efectivo (demo)',
+        concept: 'AJUSTE DE CAJA DEMO',
+        provider: null,
+        providerDisplay: null,
+        amountCents: '-1500',
+        status: 'pendiente',
+        categoryId: null,
+        recurrence: null,
+        transferGroupId: null
       }
     ],
     categories: [
@@ -900,7 +917,7 @@ export const getFinanceRevisionFixture = demoOnly(
     // [FASE 5 · despacho de cierre, F5-I1] Tantos pendientes como filas: la
     // maqueta cabe entera en una página, así que el aviso de «hay más» de la
     // pantalla queda apagado (es `totalPending > rows.length` quien lo enciende).
-    totalPending: 2
+    totalPending: 3
   })
 );
 

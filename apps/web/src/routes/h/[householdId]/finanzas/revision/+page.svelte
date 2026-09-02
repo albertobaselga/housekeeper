@@ -185,8 +185,19 @@
                   `<label>` (sr-only), sin duplicar el nombre accesible con un
                   `aria-label` a la vez en el input y en su envoltorio.
                 -->
-                <label class="rule-toggle">
+                <!--
+                  [FASE 5 · despacho de cierre, F5-I7 (2)] La casilla se
+                  ofrecía en TODAS las filas, pero el handler exige proveedor
+                  para `ruleType: 'proveedor_exacto'` y rechaza con
+                  `invalid_payload` («El movimiento no tiene proveedor para la
+                  regla», commands/finance.ts:364): en una fila sin proveedor
+                  —un manual, o un importado con el campo vacío— marcarla
+                  convertía «Confirmar» en un rechazo silencioso, con la fila
+                  reapareciendo por el `revert` y nada confirmado.
+                -->
+                <label class="rule-toggle" title={row.provider ? 'Crear regla al confirmar' : 'Sin proveedor no se puede crear una regla'}>
                   <input type="checkbox"
+                    disabled={!row.provider}
                     checked={ruleFor.includes(row.id)}
                     onchange={(event) => {
                       const on = event.currentTarget.checked;
