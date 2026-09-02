@@ -301,4 +301,72 @@ describe.runIf(Boolean(adminUrl))("comandos de eventos y alias de proveedores de
     });
     expect(createdEvent).toBe("Evento Implicito IT");
   });
+
+  // F5-I4: la restricción global de la rama dice que un id de otro hogar (o ya
+  // borrado) se RECHAZA, nunca se ignora en silencio. Misma semántica de todo o
+  // nada que `finance.transactions.bulk`, y en los dos sentidos: añadir y quitar.
+  it("assignTransactions rechaza un id que no existe en el hogar sin escribir ni borrar nada", async () => {
+    const missingTx = "ad300000-0000-4000-8000-0000000000ff";
+    const target = await run(ADMIN, { kind: "finance.event.create", name: "Todo o Nada IT" });
+    expect(target.status).toBe("accepted");
+    const targetId = target.resourceId as string;
+
+    const addBad = await run(ADMIN, {
+      kind: "finance.event.assignTransactions",
+      eventId: targetId,
+      transactionIds: [FIN.tx1, missingTx],
+      action: "add",
+    });
+    expect(addBad).toMatchObject({ status: "rejected", errorCode: "finance_transaction_not_found" });
+    // Ni siquiera el id válido de la selección quedó asignado.
+    expect(await linkCount(targetId)).toBe(0);
+
+    const addGood = await run(ADMIN, {
+      kind: "finance.event.assignTransactions",
+      eventId: targetId,
+      transactionIds: [FIN.tx1],
+      action: "add",
+    });
+    expect(addGood.status).toBe("accepted");
+    expect(await linkCount(targetId)).toBe(1);
+
+    // En el camino `remove` el rowCount del delete no sirve de comprobación (un
+    // movimiento existente puede no estar asignado): la existencia se comprueba
+    // ANTES, y el vínculo bueno sobrevive al rechazo.
+    const removeBad = await run(ADMIN, {
+      kind: "finance.event.assignTransactions",
+      eventId: targetId,
+      transactionIds: [FIN.tx1, missingTx],
+      action: "remove",
+    });
+    expect(removeBad).toMatchObject({ status: "rejected", errorCode: "finance_transaction_not_found" });
+    expect(await linkCount(targetId)).toBe(1);
+  });
+
+  it("assignConcept rechaza un categoryId que no existe en el hogar sin borrar la regla previa", async () => {
+    const missingCategory = "ad200000-0000-4000-8000-0000000000ff";
+    const linksBefore = await linkCount(categoryEventId);
+    const rulesBefore = await ruleCountForEvent(categoryEventId);
+
+    // Desasignar (eventId: null) con una categoría ajena: hoy el selector no
+    // casa con nada y el comando se acusaba `ok` sin haber validado nada.
+    const unassign = await run(ADMIN, {
+      kind: "finance.event.assignConcept",
+      categoryId: missingCategory,
+      eventId: null,
+    });
+    expect(unassign).toMatchObject({ status: "rejected", errorCode: "finance_category_not_found" });
+
+    // Y asignando a un evento real: se rechaza igual, y sin haber borrado antes
+    // la regla del evento (la guarda va POR DELANTE del delete).
+    const assign = await run(ADMIN, {
+      kind: "finance.event.assignConcept",
+      categoryId: missingCategory,
+      eventId: categoryEventId,
+    });
+    expect(assign).toMatchObject({ status: "rejected", errorCode: "finance_category_not_found" });
+
+    expect(await linkCount(categoryEventId)).toBe(linksBefore);
+    expect(await ruleCountForEvent(categoryEventId)).toBe(rulesBefore);
+  });
 });

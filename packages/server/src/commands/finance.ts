@@ -418,6 +418,8 @@ async function assignConceptRecurrence(
   householdId: UUID,
   payload: FinanceAssignConceptRecurrencePayload,
 ): Promise<Record<string, never>> {
+  // Decisión (F5-I4): un selector que no casa con nada es un no-op ACEPTADO, no
+  // un error — a diferencia de los ids explícitos, que sí se rechazan.
   const ids = await matchingFinanceTxIds(client, householdId, payload);
   if (ids.length > 0) {
     await client.query(
@@ -891,24 +893,43 @@ async function assignEventTransactions(
   payload: FinanceEventAssignTransactionsPayload,
 ): Promise<Record<string, never>> {
   await requireFinanceEvent(client, householdId, payload.eventId);
+  // Todo o nada, la misma semántica que `bulkUpdateFinanceTransactions`
+  // (:397-412): un id ajeno, borrado o inexistente rechaza el comando entero en
+  // vez de ignorarse en silencio. La comprobación de existencia va ANTES de
+  // escribir Y antes de borrar: en el camino `remove` el `rowCount` del delete
+  // no sirve de comprobación (un movimiento que existe puede no estar asignado
+  // a este evento), así que se verifica con un `select` y solo entonces se
+  // borra. Ids DISTINTOS, no la longitud cruda, para no penalizar duplicados.
+  const distinctIds = [...new Set(payload.transactionIds)];
+  const found = await client.query(
+    `select id from app.finance_transactions where household_id = $1 and id = any($2::uuid[])`,
+    [householdId, distinctIds],
+  );
+  if ((found.rowCount ?? 0) !== distinctIds.length) {
+    throw new CommandRejectedError(
+      "finance_transaction_not_found",
+      (found.rowCount ?? 0) === 0
+        ? "Ningún movimiento de la selección existe"
+        : "Algún movimiento de la selección no existe en este hogar",
+    );
+  }
   if (payload.action === "remove") {
     await client.query(
       `delete from app.finance_transaction_events
         where household_id = $1 and event_id = $2 and transaction_id = any($3::uuid[])`,
-      [householdId, payload.eventId, payload.transactionIds],
+      [householdId, payload.eventId, distinctIds],
     );
     return {};
   }
-  // R22: una sola sentencia por conjuntos (nunca un bucle), filtrando a las
-  // transacciones que de verdad son del hogar — un id ajeno o inexistente en
-  // `transactionIds` se ignora en vez de reventar el comando entero.
+  // R22: una sola sentencia por conjuntos, nunca un bucle. Ya no hace falta
+  // filtrar por hogar dentro del insert: la comprobación de arriba garantiza
+  // que los ids son de este hogar (y sin ella, filtrar era justo lo que se
+  // tragaba los ajenos en silencio).
   await client.query(
     `insert into app.finance_transaction_events (household_id, transaction_id, event_id)
-     select $1, tx.id, $2
-       from app.finance_transactions as tx
-      where tx.household_id = $1 and tx.id = any($3::uuid[])
+     select $1, unnest($3::uuid[]), $2
      on conflict do nothing`,
-    [householdId, payload.eventId, payload.transactionIds],
+    [householdId, payload.eventId, distinctIds],
   );
   return {};
 }
@@ -951,6 +972,13 @@ async function assignConceptToEvent(
   householdId: UUID,
   payload: FinanceEventAssignConceptPayload,
 ): Promise<{ resourceId?: UUID }> {
+  // La guarda de la categoría va POR DELANTE de todo lo que escribe (el evento
+  // implícito de `newEventName`, el `delete` de la regla): un categoryId de otro
+  // hogar se rechaza sin haber tocado nada, en vez de acusar `ok` porque el
+  // selector no casó con ninguna fila (F5-I4).
+  if (payload.categoryId) {
+    await requireFinanceCategory(client, householdId, payload.categoryId);
+  }
   const targetEventId = await resolveTargetEventId(client, householdId, payload.eventId, payload.newEventName);
   const txIds = await matchingFinanceTxIds(client, householdId, payload);
 
@@ -965,7 +993,6 @@ async function assignConceptToEvent(
       payload.categoryId,
     ]);
     if (targetEventId !== null) {
-      await requireFinanceCategory(client, householdId, payload.categoryId);
       await client.query(
         `insert into app.finance_event_rules (household_id, category_id, event_id) values ($1, $2, $3)`,
         [householdId, payload.categoryId, targetEventId],
@@ -1028,6 +1055,8 @@ async function updateProviderAlias(
   if (!providerNorm) throw new CommandRejectedError("invalid_payload", "El proveedor no puede estar vacío");
   const display = payload.alias.trim();
   if (!display) {
+    // Decisión (F5-I4): borrar un alias que no existe es un no-op ACEPTADO, no
+    // un error — el selector es un proveedor, no un id de fila.
     await client.query(`delete from app.finance_provider_aliases where household_id = $1 and provider_norm = $2`, [
       householdId,
       providerNorm,
