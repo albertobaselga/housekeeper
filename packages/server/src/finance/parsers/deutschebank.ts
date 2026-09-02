@@ -34,7 +34,7 @@ export function parseDeutsche(bytes: Uint8Array): ParsedRow[] {
   let headers: string[] = [];
   for (let r = 0; r < grid.length; r += 1) {
     const cells = (grid[r] as unknown[]).map((c) => String(c ?? "").trim());
-    if (cells[1] === "Cuenta:") iban = cells[2] ?? null;
+    if (cells[1] === "Cuenta:") iban = cells[2]?.trim() || null; // "" no es un IBAN válido
     if (cells[1] === "date" && cells.includes("amount")) {
       headerRow = r;
       headers = cells;

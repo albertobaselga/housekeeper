@@ -5,13 +5,29 @@ import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } fr
 const DATE_RX = /^\d{2}\/\d{2}\/\d{4}$/;
 const TRANSFER_RX = /^TRANSFERENCIA(?:\s+INMEDIATA)?\s+(?:A\s+FAVOR\s+DE|DE)\s+(.*)/i;
 
+/** Subconjunto de la tabla de entidades HTML con nombre que puede aparecer de
+ * verdad en un extracto español (acentos, ñ, símbolos de puntuación y moneda).
+ * `html.parser.HTMLParser` del origen decodifica la tabla HTML5 completa
+ * (~2000 entradas); no la replicamos entera a propósito porque un extracto
+ * bancario no trae `&hearts;` ni jeroglíficos — solo las que sí pueden salir
+ * de un exportador que escapó un `<td>` con tildes. Cualquier entidad con
+ * nombre fuera de esta lista se deja literal, igual que el origen deja las
+ * inválidas. */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú", uuml: "ü", ntilde: "ñ",
+  Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú", Uuml: "Ü", Ntilde: "Ñ",
+  iexcl: "¡", iquest: "¿", euro: "€", ordf: "ª", ordm: "º",
+  ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", mdash: "—", ndash: "–",
+};
+
 function decodeEntities(s: string): string {
-  return s
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(Number(n)));
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole: string, ref: string) => {
+    const r = ref.toLowerCase();
+    if (r.startsWith("#x")) return String.fromCodePoint(Number.parseInt(r.slice(2), 16));
+    if (r.startsWith("#")) return String.fromCodePoint(Number(r.slice(1)));
+    return NAMED_ENTITIES[ref] ?? NAMED_ENTITIES[r] ?? whole;
+  });
 }
 
 /** Aplana el HTML de OpenBank a filas de celdas de texto (una lista por <tr>). */
@@ -40,6 +56,13 @@ function obProvider(concept: string): string {
 /** Port de parsers/openbank.py::parse (HTML disfrazado de .xls, iso-8859-1). */
 export function parseOpenbank(bytes: Uint8Array): ParsedRow[] {
   const html = new TextDecoder("iso-8859-1").decode(bytes);
+  // Filtrar las celdas vacías (no solo las separadoras de maquetación) colapsa
+  // también una "Fecha Valor" vacía y desplaza el resto de columnas: la fila
+  // puede acabar con menos de 5 celdas y perderse en silencio más abajo, o con
+  // las columnas corridas si tiene 6+. Es el mismo comportamiento de
+  // openbank.py (usa "-" y no vacío para "sin fecha valor" en los extractos
+  // reales), así que la verificación cruzada de la fase 3 no lo nota: ambos
+  // backends pierden la misma fila. Deliberado, no un descuido.
   const cellRows = htmlTableRows(html)
     .map((row) => row.filter((c) => c.trim() !== ""))
     .filter((row) => row.length > 0);
