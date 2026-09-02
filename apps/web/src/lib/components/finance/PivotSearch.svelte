@@ -143,15 +143,22 @@
 
 <style>
   .buscador { position: relative; flex: 1 1 14rem; max-width: 24rem; }
-  input { width: 100%; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); padding: var(--space-2); font-size: max(1em, 1rem); }
+  /*
+    [F5-INT-1, despacho de cierre] `min-height: var(--row-data)` (44 px, R33):
+    a 384×42 el buscador quedaba 2 px por debajo del piso de
+    mobile-densidad.dbe2e.ts (A3) en «Finanzas · analítica». Arreglo por la
+    causa, como `CategorySelect`/`RecurrenceChip`: el propio control crece,
+    nada se convierte en no-interactivo.
+  */
+  input { width: 100%; min-height: var(--row-data); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); padding: var(--space-2); font-size: max(1em, 1rem); }
   .desplegable { position: absolute; z-index: 30; inset-inline: 0; top: 100%; background: var(--surface-strong); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-over); padding: var(--space-2); max-height: 18rem; overflow-y: auto; }
   .grupo { color: var(--ink-faint); font-size: var(--text-micro); text-transform: uppercase; letter-spacing: .04em; margin: var(--space-2) 0 var(--space-1); }
-  .sugerencia, .mas { display: flex; justify-content: space-between; gap: var(--space-2); width: 100%; border: 0; background: transparent; cursor: pointer; text-align: left; padding: var(--space-1) var(--space-2); border-radius: var(--r-sm); font-size: var(--text-meta); }
+  .sugerencia, .mas { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; text-align: left; padding: var(--space-1) var(--space-2); border-radius: var(--r-sm); font-size: var(--text-meta); }
   .sugerencia:hover, .sugerencia:focus-visible, .mas:hover { background: var(--primary-pale); }
   .sugerencia small { color: var(--ink-soft); }
   .sin-resultados { color: var(--ink-soft); font-size: var(--text-meta); padding: var(--space-2); }
   .chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
   .chip { border: 1px solid var(--primary); border-radius: var(--r-full); background: var(--primary-soft); padding: var(--space-1) var(--space-2); font-size: var(--text-meta); font-weight: 700; }
-  .chip button { border: 0; background: transparent; cursor: pointer; padding: 0 var(--space-1); }
-  .limpiar { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); text-decoration: underline; }
+  .chip button { display: inline-flex; align-items: center; justify-content: center; min-width: var(--row-data); min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; padding: 0 var(--space-1); }
+  .limpiar { display: inline-flex; align-items: center; min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); text-decoration: underline; }
 </style>

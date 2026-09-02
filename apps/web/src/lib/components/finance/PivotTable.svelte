@@ -658,45 +658,71 @@
     ondragover={dropCatId !== null ? (e) => e.preventDefault() : undefined}
     ondrop={dropCatId !== null ? (e) => { e.preventDefault(); void onDropCategory(e, dropCatId, node.key); } : undefined}>
     <td class="arbol" style={`padding-left: calc(var(--space-3) + ${node.depth} * var(--space-4));`}>
-      <!-- El disparador de expansión es un BOTÓN: con teclado y lector de
-           pantalla el árbol tiene que ser operable (spec §8, axe 0 serious).
-           El onclick del <tr> queda solo como atajo de ratón. -->
-      {#if hasChildren}
-        <button type="button" class="flecha" aria-expanded={isExpanded}
-          aria-label={`desplegar ${node.label}`}
-          onclick={(e) => { e.stopPropagation(); toggle(node.key); }}>{isExpanded ? '▾' : '▸'}</button>
-      {:else}
-        <span class="flecha" aria-hidden="true"></span>
-      {/if}
-      <span class="asa" draggable={isDraggable} title="arrastrar" aria-hidden="true"
-        style:visibility={isDraggable ? 'visible' : 'hidden'}
-        onclick={(e) => e.stopPropagation()}
-        ondragstart={isDraggable ? (e) => onDragStart(e, node, nodeDims) : undefined}
-        ondragend={isDraggable ? onDragEnd : undefined}>⠿</span>
-      <input type="checkbox" class="marca" style:visibility={item ? 'visible' : 'hidden'}
-        tabindex={item ? 0 : -1} checked={item ? selected.has(node.key) : false}
-        aria-label={`seleccionar ${node.label}`} data-fila={node.key}
-        onclick={(e) => {
-          // El clic nativo cambia `checked` en el DOM ANTES de correr este
-          // manejador. En el camino de rango (Shift+clic) una fila que YA
-          // estaba seleccionada sigue seleccionada: el valor reactivo no
-          // cambia, Svelte no repinta (`set_checked` cachea el último valor
-          // escrito), y la casilla queda desmarcada mientras el ítem sigue en
-          // `selected`. `preventDefault()` cancela la activación nativa; los
-          // «canceled activation steps» del checkbox restauran la
-          // `checkedness` previa — justo la que Svelte tiene cacheada — así
-          // que el pintado queda enteramente en manos de `checked={...}`.
-          e.preventDefault();
-          e.stopPropagation();
-          if (item) clickItem(item, siblings, e.shiftKey);
-        }} />
-      {#if canOpen}
-        <button type="button" class="abrir" title="abrir ficha"
-          onclick={(e) => { e.stopPropagation(); openLeaf(node); }}>{node.label}</button>
-      {:else}
-        <span class={natClass}>{node.label}</span>
-      {/if}
-      <small>({node.count})</small>
+      <!--
+        [F5-INT-1, despacho de cierre] `.arbol-inner` fuerza `gap: var(--space-2)`
+        (8 px) entre CADA control de la fila (flecha, asa, marca, abrir/label):
+        antes el espacio entre ellos era el texto en blanco incidental del
+        propio marcado — con flecha/marca ya a 44 px de alto, dos controles a
+        menos de 8 px habría sido la MISMA regresión que la altura, solo que en
+        el eje horizontal. La `<td>` sigue siendo la celda con
+        `position: sticky` de siempre; el div de dentro es puramente de layout.
+      -->
+      <div class="arbol-inner">
+        <!-- El disparador de expansión es un BOTÓN: con teclado y lector de
+             pantalla el árbol tiene que ser operable (spec §8, axe 0 serious).
+             El onclick del <tr> queda solo como atajo de ratón. -->
+        {#if hasChildren}
+          <button type="button" class="flecha" aria-expanded={isExpanded}
+            aria-label={`desplegar ${node.label}`}
+            onclick={(e) => { e.stopPropagation(); toggle(node.key); }}>{isExpanded ? '▾' : '▸'}</button>
+        {:else}
+          <span class="flecha" aria-hidden="true"></span>
+        {/if}
+        <span class="asa" draggable={isDraggable} title="arrastrar" aria-hidden="true"
+          style:visibility={isDraggable ? 'visible' : 'hidden'}
+          onclick={(e) => e.stopPropagation()}
+          ondragstart={isDraggable ? (e) => onDragStart(e, node, nodeDims) : undefined}
+          ondragend={isDraggable ? onDragEnd : undefined}>⠿</span>
+        <!--
+          [F5-INT-1] La MARCA nativa mide 13×13 (mobile-densidad.dbe2e.ts mide,
+          para checkbox/radio, el `<label>` que la envuelve — mismo patrón que
+          `LedgerTable.select-toggle`/R33): sin `<label>`, la prueba caía al
+          propio input. El `<label>` va SIN texto propio (ni `.sr-only`): el
+          `aria-label` del input ya da el nombre accesible sin duplicarlo (gana
+          sobre la asociación nativa del `<label>` en el cálculo del nombre
+          accesible) y, a diferencia de un `.sr-only` con el texto en el DOM,
+          no cuenta como prosa para A4 — con el nombre de un evento largo
+          («seleccionar Semana Santa 2026») el texto visible-pero-clipado sí
+          disparaba «frase por debajo del piso tipográfico» al concatenarse con
+          el resto del contenido de la fila.
+        -->
+        <label class="marca-toggle" style:visibility={item ? 'visible' : 'hidden'}>
+          <input type="checkbox" class="marca"
+            tabindex={item ? 0 : -1} checked={item ? selected.has(node.key) : false}
+            aria-label={`seleccionar ${node.label}`} data-fila={node.key}
+            onclick={(e) => {
+              // El clic nativo cambia `checked` en el DOM ANTES de correr este
+              // manejador. En el camino de rango (Shift+clic) una fila que YA
+              // estaba seleccionada sigue seleccionada: el valor reactivo no
+              // cambia, Svelte no repinta (`set_checked` cachea el último valor
+              // escrito), y la casilla queda desmarcada mientras el ítem sigue en
+              // `selected`. `preventDefault()` cancela la activación nativa; los
+              // «canceled activation steps» del checkbox restauran la
+              // `checkedness` previa — justo la que Svelte tiene cacheada — así
+              // que el pintado queda enteramente en manos de `checked={...}`.
+              e.preventDefault();
+              e.stopPropagation();
+              if (item) clickItem(item, siblings, e.shiftKey);
+            }} />
+        </label>
+        {#if canOpen}
+          <button type="button" class="abrir" title="abrir ficha"
+            onclick={(e) => { e.stopPropagation(); openLeaf(node); }}>{node.label}</button>
+        {:else}
+          <span class={natClass}>{node.label}</span>
+        {/if}
+        <small>({node.count})</small>
+      </div>
     </td>
     <td class="importe cifra {natClass}">{cellText(node.totalCents)}</td>
     <td class="importe cifra {natClass}">{cellText(node.avgCents)}</td>
@@ -797,22 +823,37 @@
             ondragover={(e) => e.preventDefault()}
             ondrop={(e) => { e.preventDefault(); void onDropEvent(e, event.eventId, event.name, key); }}>
             <td class="arbol">
-              {#if event.children.length > 0}
-                <button type="button" class="flecha" aria-expanded={evExpanded}
-                  aria-label={`desplegar ${event.name}`}
-                  onclick={(e) => { e.stopPropagation(); toggle(key); }}>{evExpanded ? '▾' : '▸'}</button>
-              {:else}
-                <span class="flecha" aria-hidden="true"></span>
-              {/if}
-              <!-- F6-I3: la casilla de `dupev` solo tenía `title`, y un `title`
-                   como única etiqueta es `label-title-only` de axe (serio): el
-                   lector no lo anuncia de forma fiable y con teclado no
-                   aparece. El `title` se queda como explicación larga. -->
-              <input type="checkbox" checked={dupEventIds.includes(event.eventId)} disabled={event.children.length === 0}
-                aria-label={`ver ${event.name} también en gastos e ingresos`}
-                title="Ver los movimientos de este evento también dentro de sus categorías en GASTOS/INGRESOS"
-                onclick={(e) => e.stopPropagation()} onchange={() => toggleDupEvent(event.eventId)} />
-              🎉 {event.name} <small>({event.count})</small>
+              <div class="arbol-inner">
+                {#if event.children.length > 0}
+                  <button type="button" class="flecha" aria-expanded={evExpanded}
+                    aria-label={`desplegar ${event.name}`}
+                    onclick={(e) => { e.stopPropagation(); toggle(key); }}>{evExpanded ? '▾' : '▸'}</button>
+                {:else}
+                  <span class="flecha" aria-hidden="true"></span>
+                {/if}
+                <!--
+                  F6-I3: la casilla de `dupev` solo tenía `title`, y un `title`
+                  como única etiqueta es `label-title-only` de axe (serio): el
+                  lector no lo anuncia de forma fiable y con teclado no
+                  aparece. `aria-label` sigue dando el nombre accesible (F6-I3
+                  queda cerrado igual); el `title` se queda como explicación
+                  larga. [F5-INT-1] El `<label>` que envuelve va SIN texto
+                  propio: es lo que mide mobile-densidad.dbe2e.ts para
+                  checkbox/radio (cierra la diana de 13×13), pero un
+                  `.sr-only` con el nombre del evento («ver Semana Santa 2026
+                  también en gastos e ingresos») añadía prosa real al DOM que
+                  A4 sí cuenta —a diferencia de `aria-label`, que no es texto—
+                  y disparaba «frase por debajo del piso tipográfico» al
+                  concatenarse con el resto de la fila.
+                -->
+                <label class="marca-toggle"
+                  title="Ver los movimientos de este evento también dentro de sus categorías en GASTOS/INGRESOS">
+                  <input type="checkbox" checked={dupEventIds.includes(event.eventId)} disabled={event.children.length === 0}
+                    aria-label={`ver ${event.name} también en gastos e ingresos`}
+                    onclick={(e) => e.stopPropagation()} onchange={() => toggleDupEvent(event.eventId)} />
+                </label>
+                🎉 {event.name} <small>({event.count})</small>
+              </div>
             </td>
             <td class="importe cifra">{cellText(event.netCents)}</td>
             <td class="importe cifra">{cellText(event.avgCents)}</td>
@@ -878,21 +919,56 @@
   .dims { display: flex; gap: var(--space-2); flex-wrap: wrap; }
   .chip { border: 1px solid var(--line); border-radius: var(--r-full); background: var(--surface); padding: var(--space-1) var(--space-2); font-size: var(--text-meta); }
   .chip.activa { border-color: var(--primary); background: var(--primary-soft); font-weight: 700; }
-  .chip button { border: 0; background: transparent; cursor: pointer; padding: 0 var(--space-1); }
+  /*
+    [F5-INT-1, despacho de cierre] `min-width`/`min-height: var(--row-data)`
+    (44 px, R33): `.chip` (el `<span>` contenedor) ya llega a 44 px de alto
+    por la regla GLOBAL `.chip` de app.css (`min-height: var(--row-data)`,
+    sin `min-width`), pero esa regla no alcanza a los `<button>` de DENTRO
+    (◀/▶/×), que no llevan la clase `chip` — de ahí que solo ellos aparecieran
+    en mobile-densidad.dbe2e.ts. Arreglo por la causa: el propio botón crece,
+    nada se convierte en no-interactivo (T13-M6 lo prohíbe expresamente).
+  */
+  .chip button { display: inline-flex; align-items: center; justify-content: center; min-width: var(--row-data); min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; padding: 0 var(--space-1); }
   .chip button:disabled { opacity: .35; cursor: default; }
   .pivot-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
   table.pivot { border-collapse: collapse; width: 100%; font-size: var(--text-meta); }
   .pivot th, .pivot td { padding: var(--space-1) var(--space-2); border-top: 1px solid var(--line); text-align: left; white-space: nowrap; }
-  .pivot thead th { border-top: 0; }
-  .pivot thead button { border: 0; background: transparent; cursor: pointer; font: inherit; color: var(--ink-faint); font-size: var(--text-micro); text-transform: uppercase; letter-spacing: .04em; padding: 0; }
+  /*
+    [F5-INT-1] Las cabeceras ordenables son un `<button>` dentro de un `<th>`
+    sin padding propio: el botón ocupa la celda ENTERA (`display: flex; width:
+    100%; min-height: var(--row-data)`), así que la fila de cabecera crece
+    exactamente a 44 px — ni más (el padding ya no está por duplicado en el
+    `<th>`), ni menos.
+  */
+  .pivot thead th { border-top: 0; padding: 0; }
+  .pivot thead button { display: flex; align-items: center; width: 100%; min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0 var(--space-2); color: var(--ink-faint); font-size: var(--text-micro); text-transform: uppercase; letter-spacing: .04em; }
+  .pivot thead th.importe button { justify-content: flex-end; }
   .pivot .importe { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
   .pivot .arbol { position: sticky; left: 0; background: inherit; }
+  /* [F5-INT-1] Ver el comentario junto a `.arbol-inner` en el marcado: fuerza
+     8 px entre cada control de la fila (flecha/marca/enlace), en vez de
+     confiar en el espacio en blanco incidental del propio marcado. */
+  .arbol-inner { display: flex; align-items: center; gap: var(--space-2); }
   .pivot tr { background: var(--surface); }
   .pivot tr.clicable { cursor: pointer; }
-  .flecha { display: inline-block; width: var(--space-4); color: var(--ink-faint); border: 0; background: transparent; font: inherit; padding: 0; text-align: left; }
-  button.flecha { cursor: pointer; }
-  .abrir { border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0; text-decoration: underline dotted; }
-  .asa { cursor: grab; color: var(--ink-faint); margin-right: var(--space-1); }
+  /*
+    [F5-INT-1] `min-width` en la clase compartida (span de leyenda Y botón de
+    verdad): las filas sin hijos usan el `<span>` para que la indentación no
+    baile entre una fila expandible y una que no lo es. Solo el `<button>`
+    necesita además la ALTURA de diana (el span no es un control).
+  */
+  .flecha { display: inline-flex; align-items: center; justify-content: center; min-width: var(--row-data); color: var(--ink-faint); border: 0; background: transparent; font: inherit; padding: 0; }
+  button.flecha { min-height: var(--row-data); cursor: pointer; }
+  /* [F5-INT-1] `min-width`/`min-height`: una hoja abierta solo con un enlace
+     corto (categoría de nombre breve) no debía depender de la longitud del
+     texto para alcanzar el piso de 44×44. */
+  .abrir { display: inline-flex; align-items: center; justify-content: center; min-width: var(--row-data); min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0 var(--space-1); text-decoration: underline dotted; }
+  .asa { cursor: grab; color: var(--ink-faint); }
+  /* [F5-INT-1] Mismo patrón que `LedgerTable.select-toggle` (R33): la MARCA
+     nativa mide 13×13, así que la diana real es el `<label>` que la envuelve
+     (lo que mobile-densidad.dbe2e.ts mide para checkbox/radio). Se comparte
+     entre la marca de selección del árbol y el `dupev` de cada evento. */
+  .marca-toggle { display: inline-flex; align-items: center; justify-content: center; min-width: var(--row-data); min-height: var(--row-data); }
   tr.dnd-target { outline: 2px solid var(--primary); outline-offset: -2px; }
   tr.dnd-dimmed { opacity: .45; }
   /* T13-M6: `fixed`, no `absolute`. `.pivot-scroll` lleva `overflow-x: auto` y
@@ -920,8 +996,9 @@
   .suave { color: var(--ink-soft); }
   .vacio, .nota { color: var(--ink-soft); font-size: var(--text-meta); margin-top: var(--space-2); }
   small { color: var(--ink-faint); }
-  .limpiar { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); text-decoration: underline; }
-  .marca { margin-right: var(--space-1); }
+  /* [F5-INT-1] `min-height`: enlace de texto que hoy solo aparece sin
+     resultados de búsqueda, pero es un control real y cuenta igual. */
+  .limpiar { display: inline-flex; align-items: center; min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); text-decoration: underline; }
   .pivot-toast { position: fixed; z-index: 50; bottom: calc(var(--bottom-nav-h) + var(--space-6) + var(--space-6)); inset-inline: 0; margin-inline: auto; width: fit-content; max-width: calc(100% - var(--space-6)); display: flex; align-items: center; gap: var(--space-3); background: var(--primary); color: var(--ink-on-primary); border-radius: var(--r-md); box-shadow: var(--shadow-over); padding: var(--space-2) var(--space-3); font-size: var(--text-meta); }
   .pivot-toast button { border: 0; background: transparent; color: var(--ink-on-primary); cursor: pointer; font-weight: 700; text-decoration: underline; }
 

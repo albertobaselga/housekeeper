@@ -124,7 +124,19 @@
         <tbody>
           {#each a.eventsSummary as ev (ev.id)}
             <tr class:excluida={excludedEventIds.includes(ev.id)}>
-              <td><label><input type="checkbox" checked={!excludedEventIds.includes(ev.id)} onchange={() => toggleExcluded(ev.id)} />
+              <!--
+                [F5-INT-1, despacho de cierre — excepción acotada]
+                `mobile-densidad.dbe2e.ts` mide, para un checkbox, el `<label>`
+                que lo envuelve: sin altura propia esta etiqueta salía a 179×17,
+                por debajo del piso de 44 px (A3). Este fichero no está en la
+                lista de permitidos de esta tarea (Importar/api.ts/calendar/
+                LedgerTable/EventPicker/PivotTable/PivotSearch), pero tampoco lo
+                reclama ninguna otra tarea de la ola (T15 lo excluye
+                igual que lo excluye T16) y F5-INT-1 exige el dbe2e en VERDE en
+                TODAS las rutas: una única clase, sin tocar lógica ni `load`.
+                Anotado en el informe.
+              -->
+              <td><label class="evento-toggle"><input type="checkbox" checked={!excludedEventIds.includes(ev.id)} onchange={() => toggleExcluded(ev.id)} />
                 🎉 {ev.name} <small>({ev.txCount})</small></label></td>
               <td class="importe cifra {ev.netCents >= 0n ? 'pos' : 'neg'}">{formatCents(ev.netCents)}</td>
               <td class="importe cifra pos">{formatCents(ev.incomeCents)}</td>
@@ -229,6 +241,19 @@
   .kpi-grid.compact .kpi { padding: var(--space-2); }
   .cifra.pos { color: var(--success); }
   .cifra.neg { color: var(--danger); }
+  /*
+    [F5-INT-1, despacho de cierre — misma excepción acotada que `.evento-toggle`]
+    `mobile-densidad.dbe2e.ts` A5 (máximo 3 pesos por pantalla) solo se
+    alcanzaba a comprobar en esta ruta desde que A3/A4 dejaron de fallar
+    antes: un `<strong>` SIN su propia clase, dentro de una celda `.cifra`
+    (peso 700), hereda ese 700 y el `strong` del UA de Chromium no es
+    `font-weight: bold` sino `bolder` (RELATIVO) — la tabla CSS de «bolder»
+    manda 700→900, así que «Resumen mensual» sumaba un cuarto peso a la
+    pantalla sin que ninguna regla de este fichero lo pidiera nunca. La cifra
+    YA se veía en negrita (700, la de `.cifra`); esto solo hace explícito el
+    peso que el diseño siempre quiso, sin escalarlo por herencia.
+  */
+  .cifra strong { font-weight: 700; }
   .media-rotulo { color: var(--ink-faint); font-size: var(--text-micro); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; margin-top: var(--space-5); }
   h2 { font-size: var(--text-title); margin-top: var(--space-6); }
   h2 small { color: var(--ink-soft); font-weight: 400; font-size: var(--text-meta); margin-left: var(--space-2); }
@@ -236,6 +261,9 @@
   .tabla-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); margin-top: var(--space-3); }
   .tabla-finanzas { border-collapse: collapse; width: 100%; font-size: var(--text-meta); }
   .tabla-finanzas th, .tabla-finanzas td { padding: var(--space-2) var(--space-3); border-top: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  /* [F5-INT-1] Ver el comentario junto al marcado: la MARCA nativa mide
+     13×13, la diana real es el `<label>` que la envuelve. */
+  .evento-toggle { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--row-data); }
   .tabla-finanzas thead th { border-top: 0; color: var(--ink-faint); font-size: var(--text-micro); text-transform: uppercase; letter-spacing: .04em; }
   .tabla-finanzas .importe { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
   .tabla-finanzas tr.excluida { opacity: .5; }
