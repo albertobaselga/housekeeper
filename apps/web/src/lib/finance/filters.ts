@@ -20,6 +20,14 @@ export interface FinanceFilters {
 
 const GRANULARITIES: readonly FinanceGranularity[] = ['month', 'quarter', 'year'];
 
+// Guarda de tipo sobre la lista anterior, sin `as` (R7): antes `parseFilters`
+// asertaba `(granularity as FinanceGranularity)` sobre un valor crudo de la
+// URL, y `series/+server.ts` reimplementaba esta misma comprobación en vez de
+// importarla (m2). Única definición.
+export function isGranularity(value: string): value is FinanceGranularity {
+  return (GRANULARITIES as readonly string[]).includes(value);
+}
+
 // Exportado a propósito: las tareas 7 y 8 importan este patrón de fecha ISO
 // en vez de copiar el regex (resolución del coordinador de la fase 4).
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -110,14 +118,12 @@ export function parseFilters(params: URLSearchParams, today: string): FinanceFil
   const fallback = ytdRange(today);
   const from = params.get('from') ?? '';
   const to = params.get('to') ?? '';
-  const granularity = params.get('g');
+  const granularityParam = params.get('g') ?? '';
   const eventIdParam = params.get('ev');
   return {
     from: DATE_PATTERN.test(from) ? from : fallback.from,
     to: DATE_PATTERN.test(to) ? to : fallback.to,
-    granularity: (GRANULARITIES as readonly string[]).includes(granularity ?? '')
-      ? (granularity as FinanceGranularity)
-      : 'month',
+    granularity: isGranularity(granularityParam) ? granularityParam : 'month',
     // Cada trozo se valida por separado (mismo criterio de «descartar lo
     // malformado» que from/to/g): un `acc` con un id que no es UUID llegaría a
     // `tx.account_id = any($n::uuid[])` y Postgres respondería 22P02, que el

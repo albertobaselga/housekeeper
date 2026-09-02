@@ -1,7 +1,7 @@
 import type { Pool } from 'pg';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { parseReadFilters, parseTransactionsQuery, requireFinanceRequest } from '../src/lib/server/finance.server';
+import { intParam, parseReadFilters, parseTransactionsQuery, requireFinanceRequest } from '../src/lib/server/finance.server';
 
 // Pool inyectado: el guard no debe depender de si DATABASE_URL está puesta en
 // el proceso de vitest. `FAKE_POOL` solo tiene que existir; nunca se usa.
@@ -15,6 +15,41 @@ const urlOf = (query: string): URL => new URL(`https://casa.local/api/v1/finance
 
 function statusOf(run: () => unknown): number | null {
   try { run(); return null; } catch (cause) { return (cause as { status?: number }).status ?? null; }
+}
+
+// Helpers compartidos por los describe de más abajo (guard pool-null, m11,
+// R21, I2): un evento con sesión y household válidos sobre
+// `/api/v1/finance/x`, y el status HTTP tanto si el handler responde como si
+// lanza (los `+server.ts` propagan `error(...)` como excepción).
+type AnyGet = (event: unknown) => Promise<Response>;
+
+const withUser = (query: string, params: Record<string, string> = {}): {
+  locals: { user: typeof USER };
+  url: URL;
+  params: Record<string, string>;
+} => ({
+  locals: { user: USER },
+  url: new URL(`https://casa.local/api/v1/finance/x?household=${HOUSEHOLD}&${query}`),
+  params
+});
+
+const anonRequest = (query: string, params: Record<string, string> = {}): {
+  locals: { user: null };
+  url: URL;
+  params: Record<string, string>;
+} => ({
+  locals: { user: null },
+  url: new URL(`https://casa.local/api/v1/finance/x?household=${HOUSEHOLD}&${query}`),
+  params
+});
+
+async function statusOfResponse(run: () => Promise<Response>): Promise<number> {
+  try {
+    const response = await run();
+    return response.status;
+  } catch (cause) {
+    return (cause as { status?: number }).status ?? 0;
+  }
 }
 
 describe('guard de los endpoints GET /api/v1/finance/* (el hook rellena locals.user también en /api; lo que falta es el guard de hogar/capacidad, Ruling R9)', () => {
@@ -35,6 +70,31 @@ describe('guard de los endpoints GET /api/v1/finance/* (el hook rellena locals.u
     const request = requireFinanceRequest({ user: USER } as unknown as App.Locals, urlOf(`household=${HOUSEHOLD}`), FAKE_POOL);
     expect(request.householdId).toBe(HOUSEHOLD);
     expect(request.user.id).toBe('u1');
+  });
+});
+
+/**
+ * m1: antes `transactions` clampeaba `limit`/`offset` en silencio (este mismo
+ * `intParam`) mientras `providers` y `series` reimplementaban a mano una
+ * validación que respondía 400. Una política explícita por llamada
+ * (`onOutOfRange`) unifica las dos sin cambiar el comportamiento visible de
+ * ninguna: un caso por política.
+ */
+describe('intParam: una única validación de entero, con política explícita (m1)', () => {
+  it("'clamp' (por defecto, lo que ya hacía transactions): fuera de rango se acerca al límite, no falla", () => {
+    expect(intParam(urlOf('limit=9999'), 'limit', 100, 1, 500)).toBe(500);
+    expect(intParam(urlOf('offset=-3'), 'offset', 0, 0, 1_000_000)).toBe(0);
+  });
+
+  it("'reject' (lo que ya hacían providers/series): fuera de rango es 400", () => {
+    expect(statusOf(() => intParam(urlOf('limit=999'), 'limit', 10, 1, 50, { onOutOfRange: 'reject' }))).toBe(400);
+    expect(intParam(urlOf('limit=30'), 'limit', 10, 1, 50, { onOutOfRange: 'reject' })).toBe(30);
+  });
+
+  it('ausente: siempre el fallback, en cualquier política; no entero: 400 en las dos', () => {
+    expect(intParam(urlOf(''), 'limit', 10, 1, 50)).toBe(10);
+    expect(intParam(urlOf(''), 'limit', 10, 1, 50, { onOutOfRange: 'reject' })).toBe(10);
+    expect(statusOf(() => intParam(urlOf('limit=patata'), 'limit', 10, 1, 50))).toBe(400);
   });
 });
 
@@ -79,26 +139,6 @@ describe('endpoints GET /api/v1/finance/*: guard y parseo por ruta (pool null �
   });
 
   const noUser = { locals: { user: null }, url: urlOf(`household=${HOUSEHOLD}`), params: {} };
-  const withUser = (query: string, params: Record<string, string> = {}): {
-    locals: { user: typeof USER };
-    url: URL;
-    params: Record<string, string>;
-  } => ({
-    locals: { user: USER },
-    url: new URL(`https://casa.local/api/v1/finance/x?household=${HOUSEHOLD}&${query}`),
-    params
-  });
-
-  async function statusOfResponse(run: () => Promise<Response>): Promise<number> {
-    try {
-      const response = await run();
-      return response.status;
-    } catch (cause) {
-      return (cause as { status?: number }).status ?? 0;
-    }
-  }
-
-  type AnyGet = (event: unknown) => Promise<Response>;
 
   it('sin usuario: 401 (summary y transactions)', async () => {
     const { GET: summaryGet } = await import('../src/routes/api/v1/finance/summary/+server');
@@ -107,28 +147,26 @@ describe('endpoints GET /api/v1/finance/*: guard y parseo por ruta (pool null �
     expect(await statusOfResponse(() => (transactionsGet as AnyGet)(noUser))).toBe(401);
   });
 
-  it('series: g inválida → 400 (antes de tocar financeRead)', async () => {
+  // m11: `series`, `pivot` y `events/[id]` validaban sus parámetros propios
+  // ANTES de `financeRead`, así que un anónimo recibía 400/404 (revelando que
+  // el parámetro es lo que falla) donde los demás endpoints le dan 401. Con la
+  // validación movida dentro del closure, `requireFinanceRequest` corta antes
+  // de que el parámetro se mire siquiera: 401 en los tres, igual que summary.
+  it('anónimo con su propio parámetro inválido: 401 igualmente (series/pivot/events, antes 400/404)', async () => {
     const { GET: seriesGet } = await import('../src/routes/api/v1/finance/series/+server');
-    const request = withUser('from=2026-01-01&to=2026-01-31&g=semana');
-    expect(await statusOfResponse(() => (seriesGet as AnyGet)(request))).toBe(400);
-  });
-
-  it('pivot: dupev con id no UUID → 400', async () => {
     const { GET: pivotGet } = await import('../src/routes/api/v1/finance/pivot/+server');
-    const request = withUser('from=2026-01-01&to=2026-01-31&dupev=no-es-un-uuid');
-    expect(await statusOfResponse(() => (pivotGet as AnyGet)(request))).toBe(400);
+    const { GET: eventDetailGet } = await import('../src/routes/api/v1/finance/events/[id]/+server');
+    expect(await statusOfResponse(() => (seriesGet as AnyGet)(anonRequest('g=semana')))).toBe(401);
+    expect(await statusOfResponse(() => (pivotGet as AnyGet)(anonRequest('dupev=no-es-un-uuid')))).toBe(401);
+    expect(await statusOfResponse(() => (eventDetailGet as AnyGet)(anonRequest('', { id: 'no-es-un-uuid' })))).toBe(401);
   });
 
-  it('providers: limit fuera de rango → 400', async () => {
+  // m11 (brief) solo mueve series/pivot/events[id]: providers queda tal cual,
+  // validando `limit` antes de `financeRead` (mismo 400 de siempre).
+  it('providers: limit fuera de rango → 400 (validación fuera del cerrojo, sin cambios de m11)', async () => {
     const { GET: providersGet } = await import('../src/routes/api/v1/finance/providers/+server');
     const request = withUser('from=2026-01-01&to=2026-01-31&limit=999');
     expect(await statusOfResponse(() => (providersGet as AnyGet)(request))).toBe(400);
-  });
-
-  it('events/[id]: id no UUID → 404', async () => {
-    const { GET: eventDetailGet } = await import('../src/routes/api/v1/finance/events/[id]/+server');
-    const request = withUser('from=2026-01-01&to=2026-01-31', { id: 'no-es-un-uuid' });
-    expect(await statusOfResponse(() => (eventDetailGet as AnyGet)(request))).toBe(404);
   });
 
   it('sin pool: breakdown, analytics y events-summary devuelven 503 honesto', async () => {
@@ -139,6 +177,51 @@ describe('endpoints GET /api/v1/finance/*: guard y parseo por ruta (pool null �
     expect(await statusOfResponse(() => (breakdownGet as AnyGet)(request))).toBe(503);
     expect(await statusOfResponse(() => (analyticsGet as AnyGet)(request))).toBe(503);
     expect(await statusOfResponse(() => (eventsSummaryGet as AnyGet)(request))).toBe(503);
+  });
+});
+
+/**
+ * m11: con sesión y hogar válidos (cerrojo de autorización simulado, sin
+ * Postgres real: mismo patrón que R21), la validación propia de
+ * series/pivot/events ya no se adelanta a `financeRead` — vive dentro del
+ * closure, así que solo se ejecuta tras pasar el guard. El resultado visible
+ * para quien SÍ tiene sesión y hogar no cambia: 400/400/404, igual que antes.
+ */
+describe('series/pivot/events: la validación propia vive dentro del cerrojo (m11)', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock('$lib/server/db.server', () => ({ getDatabasePool: () => ({}) }));
+    vi.doMock('@housekeeper/server', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@housekeeper/server')>();
+      return {
+        ...actual,
+        requireFinanceAdmin: async () => {},
+        withAuthorizedTransaction: async (
+          _pool: unknown,
+          _principal: unknown,
+          _householdId: string,
+          operation: (client: unknown, membership: unknown) => Promise<unknown>
+        ) => operation({}, { id: 'm1', householdId: HOUSEHOLD, role: 'family_admin', expiresAt: null })
+      };
+    });
+  });
+
+  it('series: g inválida, con sesión y hogar válidos → 400 (ya no antes del cerrojo)', async () => {
+    const { GET: seriesGet } = await import('../src/routes/api/v1/finance/series/+server');
+    const request = withUser('from=2026-01-01&to=2026-01-31&g=semana');
+    expect(await statusOfResponse(() => (seriesGet as AnyGet)(request))).toBe(400);
+  });
+
+  it('pivot: dupev con id no UUID, con sesión y hogar válidos → 400 (ya no antes del cerrojo)', async () => {
+    const { GET: pivotGet } = await import('../src/routes/api/v1/finance/pivot/+server');
+    const request = withUser('from=2026-01-01&to=2026-01-31&dupev=no-es-un-uuid');
+    expect(await statusOfResponse(() => (pivotGet as AnyGet)(request))).toBe(400);
+  });
+
+  it('events/[id]: id no UUID, con sesión y hogar válidos → 404 «Evento no encontrado» (ya no antes del cerrojo)', async () => {
+    const { GET: eventDetailGet } = await import('../src/routes/api/v1/finance/events/[id]/+server');
+    const request = withUser('from=2026-01-01&to=2026-01-31', { id: 'no-es-un-uuid' });
+    expect(await statusOfResponse(() => (eventDetailGet as AnyGet)(request))).toBe(404);
   });
 });
 

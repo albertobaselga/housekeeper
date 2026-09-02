@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DATE_PATTERN,
   apiQuery,
+  isGranularity,
   isUuid,
   mergeFilters,
   mergeParams,
@@ -140,5 +141,18 @@ describe('isUuid y DATE_PATTERN: exportados para que otras tareas no copien el r
     expect(DATE_PATTERN.test('ayer')).toBe(false);
     expect(DATE_PATTERN.test('2026-8-31')).toBe(false);
     expect(DATE_PATTERN.test('')).toBe(false);
+  });
+
+  // m2: única guarda de granularidad (antes `parseFilters` asertaba `as
+  // FinanceGranularity` sobre un valor crudo de la URL, y `series/+server.ts`
+  // reimplementaba la misma comprobación en vez de importar esta).
+  it('isGranularity reconoce month/quarter/year y rechaza el resto', () => {
+    expect(isGranularity('year')).toBe(true);
+    expect(isGranularity('week')).toBe(false);
+    expect(isGranularity('')).toBe(false);
+  });
+
+  it('parseFilters con g=week (no es una granularidad válida) cae al valor por defecto', () => {
+    expect(parseFilters(new URLSearchParams('g=week'), TODAY).granularity).toBe('month');
   });
 });

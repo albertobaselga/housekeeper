@@ -186,11 +186,30 @@ export function csvUuids(value: string | null, name: string): string[] {
   return ids;
 }
 
-function intParam(url: URL, name: string, fallback: number, min: number, max: number): number {
+/**
+ * Única validación de entero de los GET /api/v1/finance/* (m1): antes
+ * `transactions` clampeaba en silencio (este `intParam`) mientras `providers`
+ * (`limit`) y `series` (`months`) reimplementaban a mano una validación que
+ * respondía 400 — dos políticas incompatibles para el mismo tipo de
+ * parámetro. `onOutOfRange` las unifica sin cambiar el comportamiento visible
+ * de ninguna: `'clamp'` (por defecto, lo que ya hacía `transactions` con
+ * `limit`/`offset`) o `'reject'` (400, lo que ya hacían `providers`/`series`).
+ */
+export function intParam(
+  url: URL,
+  name: string,
+  fallback: number,
+  min: number,
+  max: number,
+  options: { onOutOfRange: 'clamp' | 'reject' } = { onOutOfRange: 'clamp' }
+): number {
   const raw = url.searchParams.get(name);
   if (raw === null || raw === '') return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value)) error(400, `Parámetro ${name} inválido`);
+  if (options.onOutOfRange === 'reject' && (value < min || value > max)) {
+    error(400, `Parámetro ${name} inválido`);
+  }
   return Math.min(max, Math.max(min, value));
 }
 
