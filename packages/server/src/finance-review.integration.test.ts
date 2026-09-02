@@ -447,4 +447,45 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
       });
     }
   });
+
+  // F5-I7(1): `provider` es `text` sin tope y `concept` admite hasta 500, pero
+  // `finance_rules.pattern` tiene CHECK BETWEEN 1 AND 200 (0036_finance.sql:184).
+  // Sin recortar, un proveedor de banco largo lanza 23514 y revierte el comando
+  // ENTERO: se perdería también la confirmación y la categoría que iban con él.
+  it("confirmar con regla recorta el patrón a 200 caracteres en vez de reventar el comando", async () => {
+    const longTxId = "ab300000-0000-4000-8000-000000000004";
+    const longProvider = "PROVEEDOR LARGUISIMO IT ".padEnd(250, "X");
+    expect(longProvider).toHaveLength(250);
+    await adminPool.query(
+      `insert into app.finance_transactions
+         (household_id, id, account_id, batch_id, op_date, concept, provider, provider_norm,
+          amount_cents, category_id, status, transfer_group_id, dedup_hash, recurrence,
+          recurrence_manual, raw, currency_code) values
+       ($1, $2, $3, null, current_date, 'RECIBO PROVEEDOR LARGUISIMO IT', $4, $4, -1100, null,
+        'pendiente', null, 'it-rev-largo-0001', null, false, '{}'::jsonb, 'EUR')`,
+      [HH, longTxId, FIN.account, longProvider],
+    );
+
+    const ack = await run(ADMIN, {
+      kind: "finance.transaction.update",
+      transactionId: longTxId,
+      status: "confirmada",
+      categoryId: FIN.catSub,
+      createRule: { ruleType: "proveedor_exacto" },
+    });
+    expect(ack.status).toBe("accepted");
+    // El cambio que viajaba en el mismo comando sobrevive: no hubo rollback.
+    const row = await txRow(longTxId);
+    expect(row).toMatchObject({ status: "confirmada", category_id: FIN.catSub });
+
+    const rule = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select length(pattern)::int as length, pattern, category_id from app.finance_rules
+          where household_id = $1 and rule_type = 'proveedor_exacto' and pattern = $2`,
+        [HH, longProvider.slice(0, 200)],
+      );
+      return loaded.rows[0];
+    });
+    expect(rule).toMatchObject({ length: 200, category_id: FIN.catSub });
+  });
 });

@@ -1170,15 +1170,21 @@ async function replaceManualRule(
   pattern: string,
   categoryId: UUID,
 ): Promise<UUID> {
+  // El patrón nace de `tx.provider` (columna `text`, sin tope) o de
+  // `tx.concept` (CHECK <= 500), y `finance_rules.pattern` tiene CHECK BETWEEN
+  // 1 AND 200 (0036_finance.sql:184): sin recortar, un proveedor de banco largo
+  // lanza 23514 y revierte el comando entero —también el cambio de estado y de
+  // categoría que viajaba con él—. Mismo recorte que `finance.rule.create`.
+  const clipped = pattern.slice(0, 200);
   await client.query(
     `delete from app.finance_rules
       where household_id = $1 and rule_type = $2 and pattern = $3 and origin = 'manual' and priority = 0`,
-    [householdId, ruleType, pattern],
+    [householdId, ruleType, clipped],
   );
   const inserted = await client.query<{ id: string }>(
     `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin)
      values ($1, $2, $3, $4, 0, 'manual') returning id`,
-    [householdId, ruleType, pattern, categoryId],
+    [householdId, ruleType, clipped, categoryId],
   );
   const ruleId = inserted.rows[0]?.id;
   if (!ruleId) throw new Error("La regla manual no devolvió identificador");
