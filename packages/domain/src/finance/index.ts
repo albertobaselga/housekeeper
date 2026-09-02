@@ -1,7 +1,7 @@
 export * from "./types.js";
 export * from "./text.js";
 
-// dedup (Task 2)
+export * from "./dedup.js";
 
 // provider-norm (Task 3)
 
