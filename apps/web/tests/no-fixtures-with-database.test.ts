@@ -113,7 +113,8 @@ const CASES: LoadCase[] = [
   { module: '../src/routes/h/[householdId]/finanzas/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/finanzas/movimientos/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/finanzas/analitica/+page.server.ts' },
-  { module: '../src/routes/h/[householdId]/finanzas/eventos/+page.server.ts' }
+  { module: '../src/routes/h/[householdId]/finanzas/eventos/+page.server.ts' },
+  { module: '../src/routes/h/[householdId]/finanzas/importar/+page.server.ts' }
 ];
 
 type LoadFn = (event: Record<string, unknown>) => unknown;

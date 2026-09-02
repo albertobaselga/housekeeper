@@ -642,3 +642,55 @@ export async function loadFinanceEventos(
     return unreadable(log, 'finance eventos', cause);
   }
 }
+
+// ── Importar (Task 12) ───────────────────────────────────────────────────────
+
+export interface FinanceImportBatchRow {
+  id: string;
+  filename: string;
+  bank: string;
+  importedAt: string;
+  newCount: number;
+  dupCount: number;
+}
+
+export interface FinanceImportarData {
+  batches: FinanceImportBatchRow[];
+}
+
+/**
+ * Historial de importaciones del hogar, lo más reciente primero.
+ *
+ * [Ajuste sobre el brief] El brief solo capturaba `AuthorizationError` en el
+ * catch. Las cuatro lecturas hermanas de este mismo fichero (dashboard,
+ * movimientos, revisión, eventos) capturan también `CommandRejectedError`
+ * —lo que lanza `requireFinanceAdmin` cuando quien mira no es
+ * `family_admin` o no tiene Finanzas concedido (Ruling R2)—, así que se
+ * alinea aquí con esas cuatro: lo contrario habría dejado que un
+ * `family_member` autenticado sin concesión disparase un `log.error` de
+ * avería en vez de la fixture/página vacía, por cada visita a Importar.
+ */
+export async function loadFinanceImportar(
+  user: { id: string },
+  householdId: string,
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceImportarData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const result = await client.query<FinanceImportBatchRow>(
+        `select id, filename, bank, imported_at::text as "importedAt",
+                new_count as "newCount", dup_count as "dupCount"
+           from app.finance_import_batches
+          where household_id = $1
+          order by imported_at desc`,
+        [householdId]
+      );
+      return { batches: result.rows };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) return null;
+    return unreadable(log, 'finance importar', cause);
+  }
+}

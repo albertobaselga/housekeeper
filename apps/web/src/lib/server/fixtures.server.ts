@@ -9,6 +9,7 @@ import { demoOnly, fixturesAllowed } from './data-source.server';
 import type {
   FinanceDashboardData,
   FinanceEventosData,
+  FinanceImportarData,
   FinanceMovimientosData,
   FinanceRevisionData
 } from './finance.server';
@@ -927,6 +928,27 @@ export const getFinanceEventosFixture = demoOnly(
         incomeCents: '0',
         netCents: '-42000',
         totalCount: 3
+      }
+    ]
+  })
+);
+
+export const getFinanceImportarFixture = demoOnly(
+  'finanzas/importar',
+  // [Ajuste sobre el brief] El id de ejemplo del brief (`fc400000…0001`) ya
+  // identifica una categoría dentro de esta misma maqueta (el desglose del
+  // evento demo, arriba): son formas distintas y ningún código las compara,
+  // pero reutilizar el mismo id para dos entidades del mismo corpus es
+  // confuso de leer y de depurar, así que este lote usa un id propio.
+  (): FinanceImportarData => ({
+    batches: [
+      {
+        id: 'fc500000-0000-4000-8000-000000000001',
+        filename: 'movimientos-demo.xls',
+        bank: 'openbank',
+        importedAt: '2026-08-01T10:00:00',
+        newCount: 12,
+        dupCount: 0
       }
     ]
   })
