@@ -9,7 +9,7 @@ export * from "./rules.js";
 
 export * from "./transfers.js";
 
-// amex (Task 6)
+export * from "./amex.js";
 
 // investments (Task 7)
 
