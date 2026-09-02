@@ -2,8 +2,10 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import pg from 'pg';
 
+import { withAuthorizedTransaction } from '@housekeeper/server';
+
 import { E2E_APP_LOGIN, E2E_APP_PASSWORD } from '../playwright.db.config';
-import { HOUSEHOLD, loginAs } from './helpers';
+import { E2E_SEED, HOUSEHOLD, loginAs } from './helpers';
 
 /**
  * La tarjeta de concesiones de Finanzas, medida por lo que VE LA PERSONA.
@@ -411,21 +413,29 @@ test.describe('la tarjeta de concesiones no miente · móvil de 390', () => {
 // la lista fija de `$lib/server/fixtures.server.ts` (comprobado leyendo ese
 // fichero: `listDemoUsers`/`getDemoUser` solo conocen las cinco cuentas de
 // `ACCOUNT_EMAILS`). No hay, por tanto, una pestaña en la que «entrar como
-// ADMIN2» para leer un 200/403 de su navegación de verdad — y dar de alta una
+// ADMIN2» para leer un 200/403 de SU navegación real — y dar de alta una
 // sexta cuenta demo solo para esta prueba sería tocar producción para una
 // tarea que pide SOLO añadir un test a este fichero.
 //
-// Se comprueba en su lugar el mismo cerrojo que consulta el layout del hogar
+// Se comprueba con ADMIN2 el mismo cerrojo que consulta el layout del hogar
 // antes de decidir esos 200/403 y antes de construir las capacidades de las
 // que sale la entrada de navegación (`[householdId]/+layout.server.ts`:
 // `financeGranted` decide las dos cosas a la vez) — `app.finance_enabled()`,
 // bajo RLS real y con el MISMO login de aplicación sin privilegios con el que
 // corre el servidor bajo prueba (`e2e_housekeeper_web`, `nobypassrls`). No es
-// una prueba escrita aparte que pueda divergir del cerrojo real: son las
-// mismas tres llamadas que hace `financeAccessGranted()`
-// (`finance-access.server.ts`) — fijar `app.user_id`, resolver la membresía
-// viva y fijar el contexto del hogar — reproducidas aquí en SQL porque ese
-// módulo vive en `$lib/server` y no es código de prueba.
+// una prueba escrita aparte que pueda divergir del cerrojo real: es el MISMO
+// helper que llama `financeAccessGranted()` (`finance-access.server.ts`) —
+// `withAuthorizedTransaction`, que fija `app.user_id`, resuelve la membresía
+// viva y fija el contexto del hogar antes de preguntar al cerrojo.
+//
+// [ronda 1 · corrección Important 1] Eso deja, aun así, un hueco: la
+// trazabilidad de navegador («sin concesión, la ruta cierra Y el menú la
+// retira») que la Task 2 asignó expresamente a esta tarea («el modo fixture da
+// concesión demo a la cuenta admin y no sabe quitársela»). Como ADMIN2 no
+// puede entrar, ese tramo se mide con Alberto —la única cuenta que sí puede—,
+// moviendo SU concesión por SQL (no por la tarjeta, para no disparar «Quitarme
+// Finanzas ahora») dentro del test de arriba, con restauración en un `finally`
+// para no envenenar a las specs que corren después sobre esta misma base.
 
 /** El login de aplicación (sin privilegios), igual que usa el servidor bajo prueba — no el admin del `onDatabase` de arriba, que se salta la RLS a propósito. */
 function appConnectionString(): string {
@@ -436,38 +446,29 @@ function appConnectionString(): string {
 }
 
 /**
- * ¿Ve `userId` el módulo de Finanzas ahora mismo? Mismos tres pasos que
- * `withAuthorizedTransaction` (`packages/server/src/database.ts`), que es lo
- * que `financeAccessGranted()` llama de verdad en el servidor: fijar la
- * identidad, resolver la membresía viva del hogar y fijar su contexto — y
- * solo entonces preguntarle al cerrojo. Bajo RLS real: sin este contexto,
+ * ¿Ve `userId` el módulo de Finanzas ahora mismo? Llama al MISMO helper que usa
+ * el servidor real —`withAuthorizedTransaction` (`packages/server/src/database.ts`),
+ * lo que invoca `financeAccessGranted()` en `finance-access.server.ts`—: fija la
+ * identidad, resuelve la membresía viva del hogar y fija su contexto, y solo
+ * entonces pregunta al cerrojo. Bajo RLS real: sin este contexto,
  * `finance_module_grants` no le enseña ni una fila a nadie.
+ *
+ * [ronda 1 · corrección Minor 3] Antes esto reproducía esos tres pasos a mano
+ * en SQL: una copia que podía divergir en silencio del camino real si mañana
+ * cambiara cómo se resuelve la membresía viva. Llamar al helper de verdad — ya
+ * dependencia de `apps/web` (`finance-access.server.ts` lo usa) — cierra ese
+ * riesgo sin perder nada: mismo `set_config`, misma consulta, mismo
+ * `set_household_context`.
  */
 async function financeEnabledFor(userId: string): Promise<boolean> {
-  const client = new pg.Client({ connectionString: appConnectionString() });
-  await client.connect();
+  const pool = new pg.Pool({ connectionString: appConnectionString() });
   try {
-    await client.query('begin');
-    await client.query("select set_config('app.user_id', $1, true)", [userId]);
-    const membership = await client.query<{ id: string; household_id: string }>(
-      `select id, household_id from app.household_memberships
-        where user_id = $1 and household_id = $2
-          and starts_at <= now() and revoked_at is null
-          and (expires_at is null or expires_at > now())
-        limit 1`,
-      [userId, HOUSEHOLD]
-    );
-    const row = membership.rows[0];
-    if (!row) throw new Error(`Sin membresía viva de ${userId} en ${HOUSEHOLD}`);
-    await client.query('select app.set_household_context($1, $2)', [row.household_id, row.id]);
-    const result = await client.query<{ enabled: boolean }>('select app.finance_enabled() as enabled');
-    await client.query('commit');
-    return Boolean(result.rows[0]?.enabled);
-  } catch (cause) {
-    await client.query('rollback');
-    throw cause;
+    return await withAuthorizedTransaction(pool, { userId }, HOUSEHOLD, async (client) => {
+      const result = await client.query<{ enabled: boolean }>('select app.finance_enabled() as enabled');
+      return Boolean(result.rows[0]?.enabled);
+    });
   } finally {
-    await client.end();
+    await pool.end();
   }
 }
 
@@ -477,7 +478,7 @@ test('la concesión cambia lo visible', async ({ page }) => {
   // Apagada de partida (el `beforeEach` de arriba lo garantiza): ni la fila lo
   // dice ni el cerrojo real se lo concede — lo que ADMIN2 encontraría al abrir
   // /h/<id>/finanzas si pudiera entrar con su propia cuenta.
-  await expect(row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true })).toBeVisible();
+  await expectRowSays(row, 'apagado');
   expect(await financeEnabledFor(ADMIN2_USER)).toBe(false);
 
   // Conceder desde SU fila (no la de Alberto): sin diálogo de por medio.
@@ -486,15 +487,63 @@ test('la concesión cambia lo visible', async ({ page }) => {
     timeout: 15_000
   });
   // El acuse no es de adorno: el mismo cerrojo que le abriría la navegación y
-  // la entrada de menú a ADMIN2 ya dice que sí.
-  await expect(row.getByRole('button', { name: `Desactivar Finanzas a ${ADMIN2_NAME}`, exact: true })).toBeVisible();
+  // la entrada de menú a ADMIN2 ya dice que sí. `expectRowSays` afirma las TRES
+  // superficies a la vez (chip, frase, botón), no solo el botón.
+  await expectRowSays(row, 'activado');
   expect(await financeEnabledFor(ADMIN2_USER)).toBe(true);
+
+  // [ronda 1 · corrección Minor 2] Antes del segundo clic, esperar a que el
+  // acuse del PRIMER comando haya desaparecido: `ActionStatus` lo mantiene
+  // unos 4s, así que sin esta espera la aserción de abajo podría darse por
+  // buena leyendo el «Guardado ✓» de la concesión, no el de la revocación.
+  await expect(page.locator(TARJETA).locator('.success-message')).toHaveCount(0);
 
   // Revocar: vuelve a lo de antes, tanto en la tarjeta como en el cerrojo real.
   await row.getByRole('button', { name: `Desactivar Finanzas a ${ADMIN2_NAME}`, exact: true }).click();
   await expect(page.locator(TARJETA).locator('.success-message')).toContainText('Guardado ✓', {
     timeout: 15_000
   });
-  await expect(row.getByRole('button', { name: `Activar Finanzas a ${ADMIN2_NAME}`, exact: true })).toBeVisible();
+  await expectRowSays(row, 'apagado');
   expect(await financeEnabledFor(ADMIN2_USER)).toBe(false);
+
+  // ───────────────────────────────────────────────────────────────────────
+  // [ronda 1 · corrección Important 1] Lo de arriba mide el cerrojo con
+  // ADMIN2 como sujeto porque es la única fila que se puede tocar sin el
+  // diálogo de autorrevocación — pero ADMIN2 no puede iniciar sesión (no está
+  // en el selector de cuentas demo: ver el bloque de comentarios más abajo),
+  // así que nadie comprobaba, desde el NAVEGADOR, que perder la concesión
+  // cierra la ruta y retira la entrada de menú. Esa trazabilidad es de esta
+  // tarea: la Task 2 la declaró expresamente fuera de su alcance («el modo
+  // fixture da concesión demo a la cuenta admin y no sabe quitársela»). Aquí
+  // el sujeto es Alberto —la única cuenta que puede entrar— y la concesión se
+  // mueve por SQL, no por la tarjeta, para no pasar por «Quitarme Finanzas
+  // ahora».
+  const ADMIN_MEMBERSHIP = E2E_SEED.memberships.admin;
+  try {
+    await onDatabase(`
+      UPDATE app.finance_module_grants
+         SET revoked_at = now(), revoked_by_membership_id = '${ADMIN_MEMBERSHIP}'
+       WHERE membership_id = '${ADMIN_MEMBERSHIP}' AND revoked_at IS NULL;
+    `);
+    // Sin concesión: 403 aunque el rol siga siendo family_admin (doble
+    // cerrojo) — la respuesta HTTP que recibiría una persona real, no una
+    // consulta a la base.
+    expect((await page.goto(`/h/${HOUSEHOLD}/finanzas`))?.status()).toBe(403);
+    // Y la navegación deja de ofrecer el módulo.
+    await page.goto(`/h/${HOUSEHOLD}/today`);
+    await expect(page.getByRole('link', { name: 'Finanzas' })).toHaveCount(0);
+  } finally {
+    // No es opcional: sin este `finally`, un fallo a mitad deja a Alberto sin
+    // Finanzas y tumba finanzas-revision.dbe2e, finanzas-importar.dbe2e y
+    // mobile-densidad, que corren después sobre esta misma base compartida.
+    await onDatabase(`
+      UPDATE app.finance_module_grants
+         SET revoked_at = NULL, revoked_by_membership_id = NULL
+       WHERE membership_id = '${ADMIN_MEMBERSHIP}' AND revoked_at IS NOT NULL;
+    `);
+  }
+  // Restaurada: la ruta vuelve a responder y el enlace reaparece.
+  expect((await page.goto(`/h/${HOUSEHOLD}/finanzas`))?.status()).toBe(200);
+  await page.goto(`/h/${HOUSEHOLD}/today`);
+  await expect(page.getByRole('link', { name: 'Finanzas' })).not.toHaveCount(0);
 });
