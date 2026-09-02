@@ -3,7 +3,7 @@ export * from "./text.js";
 
 export * from "./dedup.js";
 
-// provider-norm (Task 3)
+export * from "./provider-norm.js";
 
 // rules (Task 4)
 
