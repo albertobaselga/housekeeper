@@ -33,6 +33,11 @@ const FIN = {
   catGasto: "ac200000-0000-4000-8000-000000000001",
   batch: "ac500000-0000-4000-8000-000000000001",
   txImported: "ac300000-0000-4000-8000-000000000001",
+  // Lote y cargo propios del caso F5-I6(a) (espejo de inversión + import.undo):
+  // se siembran a mano en el propio `it` para no alterar el lote de arriba, que
+  // usan los casos de inversión/desvinculación anteriores.
+  batchUndo: "ac500000-0000-4000-8000-000000000002",
+  txUndo: "ac300000-0000-4000-8000-000000000002",
 } as const;
 
 const SEED = `
@@ -322,5 +327,93 @@ describe.runIf(Boolean(adminUrl))("comandos de doble entrada de finanzas (manual
     expect(alreadyLinked).toMatchObject({ status: "rejected", errorCode: "finance_already_linked" });
     const unlink = await run(ADMIN, { kind: "finance.transfers.unlink", transferGroupId: good.resourceId as string });
     expect(unlink.status).toBe("accepted");
+  });
+
+  // F5-I6(a): el espejo de inversión hereda el batch_id del cargo real (como
+  // ya hace el espejo del pipeline), así que deshacer el lote se lo lleva por
+  // el CASCADE de 0036 y no queda medio grupo de transferencia huérfano —
+  // dinero categorizado como transferencia que ni Analítica ni el pivot suman.
+  it("deshacer el lote de un cargo marcado como inversión no deja el espejo huérfano", async () => {
+    await adminPool.query(
+      `insert into app.finance_import_batches (household_id, id, filename, bank, new_count, dup_count)
+       values ($1, $2, 'ledger-it-undo.xls', 'caixabank', 1, 0)`,
+      [HH, FIN.batchUndo],
+    );
+    await adminPool.query(
+      `insert into app.finance_transactions
+         (household_id, id, account_id, batch_id, op_date, concept, provider, provider_norm,
+          amount_cents, category_id, status, transfer_group_id, dedup_hash, recurrence,
+          recurrence_manual, raw, currency_code)
+       values ($1, $2, $3, $4, current_date - 3, 'CARGO A DESHACER IT', 'CARGO UNDO IT',
+               'CARGO UNDO IT', -7700, null, 'pendiente', null, 'it-led-undo-0001', null,
+               false, '{}'::jsonb, 'EUR')`,
+      [HH, FIN.txUndo, FIN.accountA, FIN.batchUndo],
+    );
+
+    const ack = await run(ADMIN, {
+      kind: "finance.transaction.invest",
+      transactionId: FIN.txUndo,
+      accountId: FIN.fund,
+    });
+    expect(ack.status).toBe("accepted");
+    const groupId = ack.resourceId as string;
+
+    const legs = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select dedup_hash, batch_id from app.finance_transactions
+          where household_id = $1 and transfer_group_id = $2 order by amount_cents`,
+        [HH, groupId],
+      );
+      return loaded.rows;
+    });
+    expect(legs).toHaveLength(2);
+    // Las DOS patas cuelgan del mismo lote: el cargo real y su espejo.
+    for (const leg of legs) expect(leg.batch_id).toBe(FIN.batchUndo);
+
+    expect((await run(ADMIN, { kind: "finance.import.undo", batchId: FIN.batchUndo })).status).toBe("accepted");
+    const left = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select count(*)::int as n from app.finance_transactions
+          where household_id = $1 and transfer_group_id = $2`,
+        [HH, groupId],
+      );
+      return loaded.rows[0].n as number;
+    });
+    expect(left).toBe(0);
+  });
+
+  // F5-I6(b): un manual vinculado como transferencia no se borra a la ligera —
+  // dejaría a su pareja sola en el grupo, con la categoría `transferencia` que
+  // Analítica excluye de ingreso y gasto (descuadre invisible).
+  it("rechaza borrar un manual vinculado a una transferencia y deja las dos patas en su sitio", async () => {
+    const cargo = await run(ADMIN, {
+      kind: "finance.transaction.manual.create", accountId: FIN.accountA, opDate: "2026-08-20",
+      concept: "Traspaso IT vinculado salida", amountCents: "-3300",
+    });
+    const abono = await run(ADMIN, {
+      kind: "finance.transaction.manual.create", accountId: FIN.accountB, opDate: "2026-08-20",
+      concept: "Traspaso IT vinculado entrada", amountCents: "3300",
+    });
+    const linked = await run(ADMIN, {
+      kind: "finance.transfers.link",
+      transactionIds: [cargo.resourceId as string, abono.resourceId as string],
+    });
+    expect(linked.status).toBe("accepted");
+
+    const rejected = await run(ADMIN, {
+      kind: "finance.transaction.manual.delete",
+      transactionId: cargo.resourceId as string,
+    });
+    expect(rejected).toMatchObject({ status: "rejected", errorCode: "finance_already_linked" });
+
+    const stillThere = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select count(*)::int as n from app.finance_transactions
+          where household_id = $1 and transfer_group_id = $2`,
+        [HH, linked.resourceId],
+      );
+      return loaded.rows[0].n as number;
+    });
+    expect(stillThere).toBe(2);
   });
 });

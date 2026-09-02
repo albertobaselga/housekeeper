@@ -630,6 +630,16 @@ async function deleteManualTransaction(
   if (tx.batch_id !== null || !tx.dedup_hash.startsWith("manual-")) {
     throw new CommandRejectedError("finance_not_manual", "Solo se pueden borrar movimientos manuales");
   }
+  // Borrarlo dejaría a su pareja sola en el grupo, con la categoría
+  // `transferencia` que Analítica y el pivot excluyen de ingreso y gasto: el
+  // descuadre no saldría en ningún total. Primero se desvincula (el botón `⇄`
+  // de Movimientos), y entonces sí se borra.
+  if (tx.transfer_group_id !== null) {
+    throw new CommandRejectedError(
+      "finance_already_linked",
+      "Desvincula la transferencia antes de borrar el movimiento",
+    );
+  }
   const counter = await client.query<{ id: string }>(
     `select id from app.finance_transactions where household_id = $1 and dedup_hash = $2`,
     [householdId, `cashpair-${tx.dedup_hash}`],
@@ -684,15 +694,21 @@ async function investTransaction(
   // el usuario ve la misma etiqueta se dispare a mano o lo detecte el pipeline.
   const mirrorConcept = `Aportación a ${account.name} — ${tx.provider ?? ""}`;
   const mirrorProvider = account.name;
+  // El espejo hereda el `batch_id` del cargo real, exactamente como el espejo
+  // que inserta el pipeline (`finance/pipeline.ts`, «hereda el batch_id de su
+  // cargo — deshacer el lote lo arrastra»): así el CASCADE de `import.undo` se
+  // lleva las dos patas y nunca queda medio grupo de transferencia huérfano.
+  // Para un cargo manual el `batch_id` es NULL y el espejo también.
   await client.query(
     `insert into app.finance_transactions
        (household_id, account_id, batch_id, op_date, concept, provider, provider_norm,
         amount_cents, category_id, status, transfer_group_id, dedup_hash,
         recurrence, recurrence_manual, raw, currency_code)
-     values ($1, $2, null, $3, $4, $5, $6, $7, $8, 'confirmada', $9, $10, null, false, '{}'::jsonb, 'EUR')`,
+     values ($1, $2, $3::uuid, $4, $5, $6, $7, $8, $9, 'confirmada', $10, $11, null, false, '{}'::jsonb, 'EUR')`,
     [
       householdId,
       payload.accountId,
+      tx.batch_id,
       tx.op_date,
       mirrorConcept,
       mirrorProvider,
