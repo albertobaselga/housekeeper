@@ -190,6 +190,20 @@ describe('plan de deshacer una recategorización', () => {
     expect(plan.bulkRestores).toEqual([]);
   });
 
+  it('todas las categorías previas eran null (el caso más habitual: recategorizar lo sin clasificar) → plan sin nada que restaurar', () => {
+    // Regresión I2: si el llamador ofreciera «Deshacer» aquí, `runCategoryUndo`
+    // mandaría un lote vacío y el toast diría «No hay nada que asignar»
+    // (acuse con sent===0), engañoso tras pulsar «Deshacer». El plan en sí ya
+    // deja claro que no hay reasignaciones ni restauraciones posibles — el
+    // llamador debe leer justo esto (`reassignments`/`bulkRestores` vacíos)
+    // para decidir NO ofrecer el botón.
+    const movIdsByKey = new Map([['/cat:X/prov:P', ['t4']]]);
+    const plan = planCategoryUndo([item({ key: '/cat:X/prov:P', provider: 'P', count: 1 })], movIdsByKey, txCat);
+    expect(plan.reassignments).toEqual([]);
+    expect(plan.bulkRestores).toEqual([]);
+    expect(plan.skipped).toBe(1);
+  });
+
   it('mezcla de un nodo de concepto y una hoja de movimiento: el nodo revierte el concepto, la hoja (provider vacío) va por ids', () => {
     // El nodo de concepto (provider 'P', categoría previa única t1/t2 → c1) debe
     // ir a `reassignments`. La hoja de movimiento (provider '', igual que

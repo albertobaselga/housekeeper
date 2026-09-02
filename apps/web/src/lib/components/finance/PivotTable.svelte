@@ -191,9 +191,19 @@
       ...plan.reassignments.map((r) => assignConceptToCategory(r.provider, r.concept, r.categoryId)),
       ...plan.bulkRestores.map((g) => bulkByIds(g.transactionIds, { categoryId: g.categoryId }))
     ];
-    const r = await submit(payloads);
     const aviso = plan.bulkRestores.length > 0 ? ' · las reglas creadas se conservan (bórralas en Ajustes)' : '';
     const saltos = plan.skipped > 0 ? ` · ${plan.skipped} sin categoría previa` : '';
+    // Defensa en profundidad: `applyCategoryAssignment` ya no ofrece «Deshacer»
+    // cuando el plan no tiene nada que restaurar (ver `puedeDeshacer`), así que
+    // este lote no debería llegar vacío. Si llegara (plan construido en otro
+    // punto en el futuro), `acuse` con lote vacío devolvería su `vacio` por
+    // defecto («No hay nada que asignar»), que aquí sería engañoso: el usuario
+    // pulsó «Deshacer», no «asignar». El mensaje honesto es este.
+    if (payloads.length === 0) {
+      toast = { message: `No se pudo deshacer: ${plan.skipped} sin categoría previa` };
+      return;
+    }
+    const r = await submit(payloads);
     toast = { message: acuse(r, `Deshecho${aviso}${saltos}`) };
   }
 
@@ -270,6 +280,14 @@
       ...conceptItems.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
       ...(transactionIds.length ? [bulkByIds(transactionIds, { categoryId })] : [])
     ]);
+    // El caso MÁS habitual al recategorizar es partir de "sin clasificar"
+    // (categoría previa null en TODOS los movimientos): `planCategoryUndo`
+    // entonces sale con `reassignments: []` y `bulkRestores: []` (todo cae en
+    // `skipped`), y no hay nada que un "Deshacer" pudiera restaurar. Sin esta
+    // guarda, `runCategoryUndo` mandaría un lote vacío y `acuse` (que mira
+    // `sent === 0` antes que nada) devolvería «No hay nada que asignar» — el
+    // mismo fallo que ya se corrigió para la hoja suelta, con otro disparador.
+    const puedeDeshacer = plan.reassignments.length > 0 || plan.bulkRestores.length > 0;
     toast = {
       // Con 0 movidos, summarizeCategoryDrop ya explica POR QUÉ no se movió nada
       // («las categorías no pueden soltarse sobre otra categoría»): ese texto es
@@ -279,7 +297,7 @@
         summarizeCategoryDrop(movidos, catPathOf(categoryId), omitidos),
         summarizeCategoryDrop(0, catPathOf(categoryId), omitidos)
       ),
-      ...(r.ok && movidos > 0 ? { onUndo: () => runCategoryUndo(plan) } : {})
+      ...(r.ok && movidos > 0 && puedeDeshacer ? { onUndo: () => runCategoryUndo(plan) } : {})
     };
   }
 
@@ -372,7 +390,20 @@
       <input type="checkbox" class="marca" style:visibility={item ? 'visible' : 'hidden'}
         tabindex={item ? 0 : -1} checked={item ? selected.has(node.key) : false}
         aria-label={`seleccionar ${node.label}`}
-        onclick={(e) => { e.stopPropagation(); if (item) clickItem(item, siblings, e.shiftKey); }} />
+        onclick={(e) => {
+          // El clic nativo cambia `checked` en el DOM ANTES de correr este
+          // manejador. En el camino de rango (Shift+clic) una fila que YA
+          // estaba seleccionada sigue seleccionada: el valor reactivo no
+          // cambia, Svelte no repinta (`set_checked` cachea el último valor
+          // escrito), y la casilla queda desmarcada mientras el ítem sigue en
+          // `selected`. `preventDefault()` cancela la activación nativa; los
+          // «canceled activation steps» del checkbox restauran la
+          // `checkedness` previa — justo la que Svelte tiene cacheada — así
+          // que el pintado queda enteramente en manos de `checked={...}`.
+          e.preventDefault();
+          e.stopPropagation();
+          if (item) clickItem(item, siblings, e.shiftKey);
+        }} />
       {#if canOpen}
         <button type="button" class="abrir" title="abrir ficha"
           onclick={(e) => { e.stopPropagation(); openLeaf(node); }}>{node.label}</button>

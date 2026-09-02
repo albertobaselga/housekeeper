@@ -5,6 +5,8 @@
     concepts, movs, events, categories, invAccounts, categoryOnlySelection = false,
     onMoveToEvent, onNewEvent, onMoveToCategory, onSetRecurrence, onInvest, onOpenPanel, onClear
   }: {
+    // R6: contadores de presentación (cuántos ítems/movimientos hay en la
+    // selección), no importes — Number es correcto aquí, nunca céntimos.
     concepts: number;
     movs: number;
     events: AnaliticaEventSummary[];

@@ -104,6 +104,32 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
     expect(table).toMatch(/buildTxCategoryIndex\(\s*rows\.flatMap/);
   });
 
+  it('I1: el checkbox cancela la activación nativa antes de leer shiftKey (evita que Svelte deje de repintar un valor sin cambio neto)', () => {
+    // Sin `preventDefault()`, un Shift+clic que reafirma una fila YA
+    // seleccionada (p.ej. reajustar el rango) no cambia `selected.has(key)`:
+    // Svelte no repinta el `checked` nativo que el navegador ya cambió, y la
+    // casilla queda desmarcada mientras el ítem sigue en la selección.
+    expect(table).toMatch(
+      /onclick={\(e\) => \{[\s\S]*e\.preventDefault\(\);[\s\S]*e\.stopPropagation\(\);[\s\S]*if \(item\) clickItem\(item, siblings, e\.shiftKey\);[\s\S]*\}\}/
+    );
+  });
+
+  it('I2: "Deshacer" de una recategorización no se ofrece cuando el plan no puede restaurar nada (todas las previas eran null)', () => {
+    // El caso más habitual al recategorizar es partir de "sin clasificar":
+    // `planCategoryUndo` sale con reassignments/bulkRestores vacíos y todo en
+    // `skipped`. Sin esta guarda, `onUndo` se ofrecía igual (con `movidos > 0`,
+    // que solo cuenta lo ENVIADO, no lo restaurable) y `runCategoryUndo`
+    // mandaba un lote vacío que `acuse` acusaba como «No hay nada que asignar».
+    expect(table).toMatch(
+      /const puedeDeshacer = plan\.reassignments\.length > 0 \|\| plan\.bulkRestores\.length > 0;/
+    );
+    expect(table).toMatch(/r\.ok && movidos > 0 && puedeDeshacer \? \{ onUndo: \(\) => runCategoryUndo\(plan\) \} : \{\}/);
+    // Defensa en profundidad en runCategoryUndo: si el lote saliera vacío de
+    // todos modos, el acuse no puede ser el genérico "No hay nada que asignar".
+    expect(table).toMatch(/if \(payloads\.length === 0\)/);
+    expect(table).not.toMatch(/if \(payloads\.length === 0\) \{\s*toast = \{ message: 'No hay nada que asignar' \}/);
+  });
+
   it('el plan de deshacer de una recategorización cubre TAMBIÉN una hoja de movimiento suelta, no solo conceptos', () => {
     // Defecto del snippet del brief: `planCategoryUndo(conceptItems, …)` con
     // `conceptItems = items.filter(txId == null && categoryId == null)`
