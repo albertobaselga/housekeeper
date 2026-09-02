@@ -4,7 +4,7 @@
 // PASO 0 innegociable: copia de seguridad datada del .db FUERA de ambos repos.
 // Imports EXACTOS de esta tarea: `pnpm lint` aplica @typescript-eslint/no-unused-vars
 // como error también a los .mjs, así que cada tarea añade solo lo que estrena.
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, copyFile, mkdir, readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -396,4 +396,155 @@ export function renderInforme({ modo, hogar, rutaSqlite, copia, comparacion, has
   l.push('', '## Avisos', '', ...(avisos.length ? avisos.map((a) => `- ${a}`) : ['- (ninguno)']));
   l.push('', `Resultado: ${ok ? 'OK' : 'FALLO'}`, '');
   return l.join('\n');
+}
+
+const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** `provider_norm`: cadena vacía (o ausente) → NULL, cualquier otro valor →
+ *  normText(). La comparten dos sitios: las transacciones (normalizando
+ *  `provider`) y `finance_event_rules` (coalesciendo su propio `provider_norm`,
+ *  que en el origen es NOT NULL y usa '' como centinela de «sin proveedor» —
+ *  resolución del coordinador: misma función auxiliar en los dos sitios).
+ *  Aplicar normText() a un valor ya normalizado es inocuo (la función es
+ *  idempotente), así que reutilizarla aquí no altera lo que ya venía limpio. */
+export function providerNormOSuNulo(valor) {
+  return valor ? normText(valor) : null;
+}
+
+/** `finance_accounts.bank`: los cuatro bancos reales pasan; las cuentas
+ *  virtuales del origen (efectivo/inversion/manual) van a NULL; cualquier otro
+ *  valor es un dato que nadie previó y la migración se para AQUÍ, con nombre y
+ *  apellidos, en vez de reventar con un CHECK de Postgres a mitad de escritura. */
+export function bancoDeCuenta(cuenta) {
+  if (!(cuenta.bank in BANCOS_CUENTA_ORIGEN)) {
+    throw new Error(`La cuenta ${cuenta.id} («${cuenta.name}») tiene bank «${cuenta.bank}», que no está contemplado (${Object.keys(BANCOS_CUENTA_ORIGEN).join(', ')}). Amplía BANCOS_CUENTA_ORIGEN o corrige el origen antes de migrar.`);
+  }
+  return BANCOS_CUENTA_ORIGEN[cuenta.bank];
+}
+
+/** `finance_import_batches.bank`: el destino admite los cuatro bancos y
+ *  además 'manual' (resolución canónica 6), así que se pasa tal cual. */
+export function bancoDeLote(lote) {
+  if (!BANCOS_LOTE_DESTINO.includes(lote.bank)) {
+    throw new Error(`El lote ${lote.id} («${lote.filename}») tiene bank «${lote.bank}», que el destino no admite (${BANCOS_LOTE_DESTINO.join(', ')}).`);
+  }
+  return lote.bank;
+}
+
+/** Inserta el origen completo bajo el hogar dado. SIEMPRE dentro de una
+ *  transacción abierta por quien llama (una sola transacción, spec §9.2). */
+export async function migrar(client, householdId, origen) {
+  const mapas = { cuentas: new Map(), categorias: new Map(), lotes: new Map(), transacciones: new Map(), eventos: new Map() };
+  for (const c of origen.accounts) {
+    const id = randomUUID();
+    mapas.cuentas.set(c.id, id);
+    await client.query(
+      `INSERT INTO app.finance_accounts (household_id, id, name, bank, kind, owner_label, bank_ref, owner_aliases, transfer_refs)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)`,
+      [householdId, id, c.name, bancoDeCuenta(c), c.kind, c.owner, c.bank_ref, c.owner_aliases, c.transfer_refs]);
+  }
+  const padres = origen.categories.filter((c) => c.parent_id === null);
+  const hijas = origen.categories.filter((c) => c.parent_id !== null);
+  for (const c of [...padres, ...hijas]) {
+    const id = randomUUID();
+    mapas.categorias.set(c.id, id);
+    await client.query(
+      `INSERT INTO app.finance_categories (household_id, id, parent_id, name, kind)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [householdId, id, c.parent_id === null ? null : mapas.categorias.get(c.parent_id), c.name, c.kind]);
+  }
+  for (const r of origen.rules) {
+    if (!r.active) continue; // el destino no conserva reglas apagadas (aviso en el informe)
+    await client.query(
+      `INSERT INTO app.finance_rules (household_id, id, rule_type, pattern, category_id, priority, origin)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [householdId, randomUUID(), r.match_type, r.pattern, mapas.categorias.get(r.category_id), r.priority, r.origin]);
+  }
+  for (const b of origen.importBatches) {
+    const id = randomUUID();
+    mapas.lotes.set(b.id, id);
+    await client.query(
+      `INSERT INTO app.finance_import_batches (household_id, id, filename, bank, imported_at, new_count, dup_count)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [householdId, id, b.filename, bancoDeLote(b), b.imported_at, b.new_count, b.dup_count]);
+  }
+  for (const t of origen.transactions) {
+    if (t.transfer_group_id !== null && !esUuid.test(t.transfer_group_id)) {
+      throw new Error(`La transacción ${t.id} tiene transfer_group_id no-UUID: ${t.transfer_group_id}`);
+    }
+    const id = randomUUID();
+    mapas.transacciones.set(t.id, id);
+    await client.query(
+      `INSERT INTO app.finance_transactions (household_id, id, account_id, batch_id, op_date, value_date,
+         concept, provider, provider_norm, amount_cents, balance_cents, code_common, code_own,
+         category_id, status, transfer_group_id, dedup_hash, recurrence, recurrence_manual,
+         bank_category, raw, currency_code)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21::jsonb, 'EUR')`,
+      [householdId, id, mapas.cuentas.get(t.account_id), mapas.lotes.get(t.batch_id),
+        t.op_date, t.value_date, t.concept, t.provider, providerNormOSuNulo(t.provider),
+        String(t.amount_cents), t.balance_cents === null ? null : String(t.balance_cents),
+        t.code_common, t.code_own, t.category_id === null ? null : mapas.categorias.get(t.category_id),
+        t.status, t.transfer_group_id, t.dedup_hash, t.recurrence, t.recurrence_manual,
+        // `leerOrigen` ya coalesce raw a '{}'; el ?? es la red por si migrar()
+        // recibe un origen construido a mano (la columna es NOT NULL en 0036).
+        t.bank_category, t.raw ?? '{}']);
+  }
+  for (const a of origen.providerAliases) {
+    await client.query(
+      `INSERT INTO app.finance_provider_aliases (household_id, id, provider_norm, display)
+       VALUES ($1, $2, $3, $4)`,
+      [householdId, randomUUID(), a.provider_norm, a.alias]);
+  }
+  for (const e of origen.events) {
+    const id = randomUUID();
+    mapas.eventos.set(e.id, id);
+    await client.query(
+      `INSERT INTO app.finance_events (household_id, id, name) VALUES ($1, $2, $3)`,
+      [householdId, id, e.name]);
+  }
+  for (const v of origen.transactionEvents) {
+    await client.query(
+      `INSERT INTO app.finance_transaction_events (household_id, id, transaction_id, event_id)
+       VALUES ($1, $2, $3, $4)`,
+      [householdId, randomUUID(), mapas.transacciones.get(v.transaction_id), mapas.eventos.get(v.event_id)]);
+  }
+  for (const v of origen.eventRules) {
+    await client.query(
+      `INSERT INTO app.finance_event_rules (household_id, id, provider_norm, concept_norm, category_id, event_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [householdId, randomUUID(), providerNormOSuNulo(v.provider_norm), v.concept_norm,
+        v.category_id === null ? null : mapas.categorias.get(v.category_id), mapas.eventos.get(v.event_id)]);
+  }
+}
+
+export async function resumenDestino(client, householdId) {
+  const conteos = {};
+  for (const tabla of TABLAS_DESTINO) {
+    const { rows } = await client.query(
+      `SELECT count(*)::int AS n FROM app.${tabla} WHERE household_id = $1`, [householdId]);
+    conteos[tabla] = rows[0].n;
+  }
+  const sumas = await client.query(
+    `SELECT a.bank_ref, to_char(t.op_date, 'YYYY-MM') AS mes, sum(t.amount_cents)::text AS suma
+       FROM app.finance_transactions t
+       JOIN app.finance_accounts a ON a.household_id = t.household_id AND a.id = t.account_id
+      WHERE t.household_id = $1 GROUP BY 1, 2`, [householdId]);
+  const gruposQ = await client.query(
+    `SELECT transfer_group_id::text AS grupo, count(*)::int AS patas, sum(amount_cents)::text AS suma
+       FROM app.finance_transactions
+      WHERE household_id = $1 AND transfer_group_id IS NOT NULL GROUP BY 1`, [householdId]);
+  const estadosQ = await client.query(
+    `SELECT status::text AS estado, count(*)::int AS n
+       FROM app.finance_transactions WHERE household_id = $1 GROUP BY 1`, [householdId]);
+  const fechas = await client.query(
+    `SELECT min(op_date)::text AS min, max(op_date)::text AS max
+       FROM app.finance_transactions WHERE household_id = $1`, [householdId]);
+  return {
+    conteos,
+    sumasCuentaMes: new Map(sumas.rows.map((f) => [`${f.bank_ref}|${f.mes}`, BigInt(f.suma)])),
+    grupos: new Map(gruposQ.rows.map((f) => [f.grupo, { patas: f.patas, suma: BigInt(f.suma) }])),
+    estados: new Map(estadosQ.rows.map((f) => [f.estado, f.n])),
+    fechaMin: fechas.rows[0].min,
+    fechaMax: fechas.rows[0].max
+  };
 }
