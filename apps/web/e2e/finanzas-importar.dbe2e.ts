@@ -1,6 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { HOUSEHOLD, loginAs } from './helpers';
+import pg from 'pg';
+
+import { E2E_SEED, HOUSEHOLD, loginAs } from './helpers';
 
 test.skip(!process.env.E2E_DATABASE_URL, 'Requiere E2E_DATABASE_URL (usa pnpm test:e2e:db)');
 
@@ -51,26 +53,91 @@ test('importar: previsualizar, dar de alta la cuenta, confirmar y deshacer', asy
 // RLS, y el deshacer tiene que dejarlo en cero. El ciclo de importación en sí
 // ya lo cubre el test de arriba (fase 5): aquí se comprueba el efecto sobre
 // los datos que ve la administración con concesión — y, por resolución del
-// coordinador, que quien NO tiene concesión no ve esas MISMAS filas recién
-// importadas, ni por pantalla ni por la API.
+// coordinador, que quien NO tiene Finanzas no ve esas MISMAS filas recién
+// importadas, ni por pantalla ni por la API, en los dos repartos de la
+// resolución: la empleada (le falta la capacidad por rol) y la administración
+// sin concesión (tiene la capacidad y le falta el segundo cerrojo).
 const MOVIMIENTOS_JULIO = `/h/${HOUSEHOLD}/finanzas/movimientos?from=2026-07-01&to=2026-07-31&q=ALQUILER+JULIO`;
 const TRANSACCIONES_JULIO = `/api/v1/finance/transactions?household=${HOUSEHOLD}&from=2026-07-01&to=2026-07-31&q=${encodeURIComponent('ALQUILER JULIO')}`;
 
 /**
- * Limpieza del hook: idempotente y a prueba de más de un lote homónimo. Antes
- * deshacía `fila.first()` pero afirmaba `toHaveCount(0)` sobre TODAS las filas
- * con ese nombre de fichero — con dos lotes (p. ej. un reintento de Playwright
- * que dejó uno a medio deshacer), el hook deshacía uno y reventaba en la
- * aserción, marcando en rojo un cuerpo que había pasado. Ahora deshace de uno
- * en uno hasta que no quede ninguno.
+ * El único movimiento que casa con el filtro: −850,00 € del extracto sintético,
+ * en CÉNTIMOS y como cadena (la API serializa el `bigint` así; nunca `number`,
+ * que es coma flotante y aquí es dinero).
+ */
+const ALQUILER_JULIO_CENTS = '-85000';
+
+/**
+ * La concesión de Finanzas de la administración del roble: la fila que siembra
+ * `packages/db/fixtures/002_finance.sql:10-12`, con este identificador exacto.
+ * Retirarla y devolverla es lo que permite medir de extremo a extremo la rama
+ * «family_admin CON la capacidad por rol pero SIN concesión» — el segundo
+ * cerrojo, `app.finance_enabled()` (packages/db/migrations/0036_finance.sql) —.
+ * No hay ninguna cuenta de ese tipo en el selector de fixtures dbe2e, y sembrar
+ * una nueva tocaría infraestructura compartida por las 18 specs; retirar y
+ * restaurar la ya sembrada cabe entero en este fichero, con el patrón de
+ * `finanzas-concesion.dbe2e.ts` (`SET LOCAL row_security = off`, restauración
+ * que empieza por borrar, garantizada en el `afterEach`).
+ */
+const CONCESION_ADMIN = 'f1900000-0000-4000-8000-000000000001';
+const ADMIN_MEMBERSHIP = E2E_SEED.memberships.admin;
+
+async function onDatabase(sql: string): Promise<void> {
+  const client = new pg.Client({ connectionString: process.env.E2E_DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(`BEGIN; SET LOCAL row_security = off;\n${sql}\nCOMMIT;`);
+  } finally {
+    await client.end();
+  }
+}
+
+/** Deja a la administración con el rol intacto y el segundo cerrojo apagado. */
+const RETIRAR_CONCESION = `
+  DELETE FROM app.finance_module_grants
+   WHERE household_id = '${HOUSEHOLD}' AND membership_id = '${ADMIN_MEMBERSHIP}';
+`;
+
+/**
+ * Devuelve la concesión EXACTA de la fixture. Empieza por borrar para ser
+ * idempotente: da igual si el cuerpo del test murió con la concesión retirada,
+ * con ella puesta o entre medias — al salir hay una sola fila viva y es la de
+ * siempre, así que las specs vecinas de la misma base encuentran el hogar como
+ * estaba.
+ */
+const RESTAURAR_CONCESION = `
+  ${RETIRAR_CONCESION}
+  INSERT INTO app.finance_module_grants (id, household_id, membership_id, granted_by_membership_id)
+    VALUES ('${CONCESION_ADMIN}', '${HOUSEHOLD}', '${ADMIN_MEMBERSHIP}', '${ADMIN_MEMBERSHIP}');
+`;
+
+/**
+ * Lee la página de movimientos de la API sin `as` ni `!`: si la forma no es la
+ * esperada, el fallo señala aquí en vez de colarse como un `undefined` que casa
+ * con cualquier cosa.
+ */
+function paginaDeMovimientos(cuerpo: unknown): { total: number; sumCents: string } {
+  if (typeof cuerpo !== 'object' || cuerpo === null) throw new Error('La API no devolvió un objeto');
+  if (!('total' in cuerpo) || typeof cuerpo.total !== 'number') {
+    throw new Error('Respuesta de movimientos sin `total` numérico');
+  }
+  if (!('sumCents' in cuerpo) || typeof cuerpo.sumCents !== 'string') {
+    throw new Error('Respuesta de movimientos sin `sumCents` en céntimos');
+  }
+  return { total: cuerpo.total, sumCents: cuerpo.sumCents };
+}
+
+/**
+ * Limpieza del hook: idempotente y a prueba de más de un lote homónimo. Deshace
+ * de uno en uno hasta que no queda ninguno, con un solo `count()` por vuelta —
+ * se lee al entrar al bucle y se decrementa en memoria—. Con dos lotes (un
+ * reintento de Playwright que dejó uno a medio deshacer), deshacer solo el
+ * primero y afirmar cero sobre TODAS las filas homónimas marcaría en rojo un
+ * cuerpo que había pasado.
  */
 async function deshacerSiQueda(page: Page): Promise<void> {
   await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
   const fila = page.locator('tr', { hasText: 'movimientos-e2e.xls' });
-  // [Corrección revisión-1, Minor 4] Un solo `count()` por vuelta: se lee al
-  // entrar al bucle y se decrementa en memoria, en vez de volver a contar el
-  // DOM justo antes de deshacer — dos lecturas que en teoría podían discrepar
-  // y en la práctica solo sobraban.
   let restantes = await fila.count();
   while (restantes > 0) {
     page.once('dialog', (dialog) => void dialog.accept());
@@ -97,6 +164,12 @@ async function deshacerLote(page: Page): Promise<void> {
 
 test.describe('lo importado se ve y el deshacer lo borra', () => {
   test.afterEach(async ({ page }) => {
+    // La concesión, PRIMERO y siempre: el resto de la limpieza deshace el lote
+    // por la pantalla de Importar, que exige Finanzas abierto. Si el cuerpo
+    // muriera con la concesión retirada, sin esta línea el propio hook se
+    // estrellaría contra un 403 y dejaría el lote sembrado para las specs
+    // vecinas de la misma base.
+    await onDatabase(RESTAURAR_CONCESION);
     // El cuerpo cambia de sesión a mitad (comprobación de denegación de la
     // empleada, más abajo) y puede romperse ANTES de restaurar admin. Limpiar
     // cookies antes de entrar deja siempre el selector de cuentas —tanto si la
@@ -154,65 +227,41 @@ test.describe('lo importado se ve y el deshacer lo borra', () => {
     await expect(filas.first()).toContainText('CLARA DEMO');
     await expect(filas.first()).toContainText('850,00');
 
-    // [Corrección revisión-1, Minor 2] Control positivo, con la sesión de
-    // administración todavía viva: la MISMA URL de la API responde 200 antes
-    // de comprobar que la empleada la ve denegada. Sin esto, el 404 de abajo
-    // mediría igual de bien una ruta que hubiese dejado de existir.
-    expect((await page.request.get(TRANSACCIONES_JULIO)).status()).toBe(200);
+    // Control positivo, con la sesión de administración todavía viva: la MISMA
+    // URL de la API responde 200 Y trae exactamente el movimiento importado.
+    // Sin leer el cuerpo, un 200 con cero filas serviría igual de control y los
+    // 404 de abajo medirían lo mismo que mediría una ruta que hubiese dejado de
+    // existir. `sumCents` es la comprobación de que la fila es LA fila: el
+    // importe del extracto, en céntimos.
+    const concedida = await page.request.get(TRANSACCIONES_JULIO);
+    expect(concedida.status()).toBe(200);
+    expect(paginaDeMovimientos(await concedida.json())).toEqual({
+      total: 1,
+      sumCents: ALQUILER_JULIO_CENTS
+    });
 
-    // Resolución del coordinador (T4): la empleada no ve las filas RECIÉN
-    // IMPORTADAS, ni por pantalla ni por la API.
+    // Resolución del coordinador (T4), primer reparto: la empleada no ve las
+    // filas RECIÉN IMPORTADAS, ni por pantalla ni por la API.
     //
     // Por pantalla: `finance.access` no está entre las capacidades del rol
     // `employee_live_in` (packages/contracts/src/capabilities.ts) — la propia
     // matriz de capacidades ya la excluye, sin depender de ninguna concesión
     // —, así que el layout del hogar (`h/[householdId]/+layout.server.ts:70`)
     // corta con `error(403, 'Esta parte la lleva la familia.')` antes de que
-    // `finanzas/movimientos/+page.server.ts` llegue a ejecutarse. [Corrección
-    // revisión-1, Minor 3] La resolución dice «404/redirección»; lo que
-    // ocurre de verdad es un 403 con lenguaje de casa, porque el corte lo da
-    // el guard de capacidades sobre un hogar del que la empleada SÍ es
-    // miembro (no hay hogar cuya existencia ocultar). La regla «404 nunca
-    // 403» (Ruling R2) es de los endpoints de la API — se comprueba más
-    // abajo —; aquí se afirma el 403 explícito para que la discrepancia con
-    // el texto de la resolución quede documentada en el propio test, no
-    // callada detrás de un `toHaveCount(0)` que también pasaría con una
-    // redirección al login.
+    // `finanzas/movimientos/+page.server.ts` llegue a ejecutarse. La
+    // resolución dice «404/redirección»; lo que ocurre de verdad es un 403 con
+    // lenguaje de casa, porque el corte lo da el guard de capacidades sobre un
+    // hogar del que la empleada SÍ es miembro (no hay hogar cuya existencia
+    // ocultar). La regla «404 nunca 403» (Ruling R2) es de los endpoints de la
+    // API — se comprueba justo debajo —; aquí se afirma el 403 explícito para
+    // que la discrepancia con el texto de la resolución quede documentada en
+    // el propio test, no callada detrás de un `toHaveCount(0)` que también
+    // pasaría con una redirección al login.
     //
     // Por la API: el mismo doble cerrojo (`requireFinanceAdmin`, packages/
     // server/src/commands/finance.ts) rechaza por rol, y `financeRead`
     // (finance.server.ts) lo traduce SIEMPRE a 404 —nunca a 403, Ruling R2—
     // para no revelar que el hogar existe.
-    //
-    // El segundo reparto de la resolución —un `family_admin` SIN concesión—
-    // pasa por el MISMO `requireFinanceAdmin`, solo que por la rama de la
-    // concesión (`finance_enabled()`) en vez de la del rol. [Corrección
-    // revisión-1, Important 1] La ronda anterior afirmaba aquí que esa rama
-    // «ya la ejercita `finanzas-concesion.dbe2e.ts` con el mismo código de
-    // estado» — es falso: ese fichero es una batería sobre la tarjeta de
-    // concesiones de Ajustes (siembra una segunda administración por SQL,
-    // intercepta `page.route('**/api/v1/sync', …)` y comprueba con un
-    // `MutationObserver` que la fila no miente mientras el comando viaja); no
-    // contiene ninguna aserción de código de estado HTTP ni ninguna petición
-    // a `/api/v1/finance/*`. La ÚNICA cobertura real de «family_admin sin
-    // concesión → 404» es UNITARIA y con `requireFinanceAdmin` MOCKEADO
-    // (`apps/web/tests/finance-endpoints.test.ts:300-324`): no toca base de
-    // datos, RLS ni sesión real. Hoy no existe ninguna cobertura de extremo a
-    // extremo de esa rama en ninguna batería.
-    //
-    // Decisión de alcance (para que el coordinador la confirme o la
-    // revierta): esta tarea deja esa mitad FUERA de este fichero. No hay
-    // ninguna cuenta de acceso family_admin SIN concesión en el selector de
-    // fixtures dbe2e; cubrirla exige o sembrar una cuenta nueva (infra de
-    // pruebas compartida por 18 specs, fuera de «añade al final») o retirar y
-    // restaurar por SQL la concesión ya sembrada del admin
-    // (`packages/db/fixtures/002_finance.sql`) dentro de este mismo test —
-    // viable, con un `afterEach` que la restaure con garantía aunque el
-    // cuerpo se rompa a mitad, pero con el riesgo de dejar al admin sin
-    // Finanzas para las specs vecinas de la misma base si ese `afterEach` no
-    // llegara a correr. Ninguna de las dos es «añadir al final sin tocar lo
-    // existente»; se deja para que el coordinador la pida explícitamente si
-    // la quiere de extremo a extremo.
     await page.context().clearCookies();
     await loginAs(page, 'employee');
     const respuesta = await page.goto(MOVIMIENTOS_JULIO);
@@ -222,10 +271,46 @@ test.describe('lo importado se ve y el deshacer lo borra', () => {
     const denegada = await page.request.get(TRANSACCIONES_JULIO);
     expect(denegada.status()).toBe(404);
 
-    // Se restaura la sesión de administración: el deshacer de abajo (y, si el
-    // test se rompiera antes de llegar aquí, el `afterEach`) la necesitan.
+    // Se restaura la sesión de administración: el segundo reparto de la
+    // resolución y el deshacer de abajo (y, si el test se rompiera antes de
+    // llegar aquí, el `afterEach`) la necesitan.
     await page.context().clearCookies();
     await loginAs(page, 'admin');
+
+    // Resolución del coordinador (T4), segundo reparto: una administración CON
+    // la capacidad por rol pero SIN concesión viva tampoco ve esas MISMAS
+    // filas. Es la rama que el producto puede romper de verdad: la de la
+    // empleada la corta la matriz de capacidades (estática), mientras que esta
+    // depende de una consulta viva a `finance_module_grants` — el layout la
+    // hace con `financeAccessGranted` y la API dentro de la transacción
+    // autorizada, vía `app.finance_enabled()` —, que es justo el mecanismo que
+    // un refactor puede dejar sin efecto. La única otra cobertura que tiene es
+    // UNITARIA y con `requireFinanceAdmin` MOCKEADO
+    // (`apps/web/tests/finance-endpoints.test.ts:300-324`): no toca base de
+    // datos, RLS ni sesión real.
+    //
+    // Se mide sobre la MISMA cuenta que acaba de importar, con la MISMA sesión
+    // y las MISMAS URLs: lo único que cambia entre el 200 de arriba y el
+    // 403/404 de aquí es la fila de la concesión, así que eso es exactamente
+    // lo que se está midiendo.
+    await onDatabase(RETIRAR_CONCESION);
+    const sinConcesion = await page.goto(MOVIMIENTOS_JULIO);
+    expect(sinConcesion?.status()).toBe(403);
+    await expect(page.locator('body')).toContainText('Esta parte la lleva la familia.');
+    await expect(page.locator('.finance-ledger')).toHaveCount(0);
+    expect((await page.request.get(TRANSACCIONES_JULIO)).status()).toBe(404);
+
+    // Devuelta la concesión, la misma sesión vuelve a ver la misma fila con el
+    // mismo importe. Cierra el control por los dos lados: el 404 de arriba no
+    // podía venir de una sesión caducada ni de un lote que hubiese
+    // desaparecido por el camino.
+    await onDatabase(RESTAURAR_CONCESION);
+    const recuperada = await page.request.get(TRANSACCIONES_JULIO);
+    expect(recuperada.status()).toBe(200);
+    expect(paginaDeMovimientos(await recuperada.json())).toEqual({
+      total: 1,
+      sumCents: ALQUILER_JULIO_CENTS
+    });
 
     // Deshacer: el lote se va con sus transacciones (ON DELETE CASCADE).
     await deshacerLote(page);
