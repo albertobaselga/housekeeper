@@ -29,6 +29,8 @@ function tx(overrides: Partial<FinanceTxDto> = {}): FinanceTxDto {
     bankCategory: 'Supermercados',
     eventIds: [],
     raw: null,
+    dedupHash: 'hash-tx-1',
+    batchId: null,
     ...overrides
   };
 }

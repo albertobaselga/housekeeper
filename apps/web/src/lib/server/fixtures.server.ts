@@ -547,7 +547,8 @@ const FINANCE_TXS: FinanceTxDto[] = [
     categoryId: 'fb000000-0000-4000-8000-000000000002', categoryName: 'Supermercado',
     status: 'confirmada', transferGroupId: null, recurrence: 'recurrente' as const, recurrenceManual: false,
     bankCategory: 'Alimentación', eventIds: [],
-    raw: { 'Fecha operación': '28/08/2026', 'Concepto': 'COMPRA SUPERMERCADOS ENCINA MADRID', 'Importe': '-87,34', 'Saldo': '2.156,00' }
+    raw: { 'Fecha operación': '28/08/2026', 'Concepto': 'COMPRA SUPERMERCADOS ENCINA MADRID', 'Importe': '-87,34', 'Saldo': '2.156,00' },
+    dedupHash: 'demo-fixture-tx-0001', batchId: 'fb100000-0000-4000-8000-000000000001'
   },
   {
     id: 'fc000000-0000-4000-8000-000000000002', accountId: FINANCE_ACCOUNTS[1]!.id, accountName: 'Cuenta nómina',
@@ -557,7 +558,8 @@ const FINANCE_TXS: FinanceTxDto[] = [
     categoryId: 'fb000000-0000-4000-8000-000000000005', categoryName: 'Nómina',
     status: 'confirmada', transferGroupId: null, recurrence: 'recurrente' as const, recurrenceManual: false,
     bankCategory: null, eventIds: [],
-    raw: { 'Fecha operación': '25/08/2026', 'Concepto': 'NOMINA AGOSTO TALLERES ROBLE SL', 'Importe': '2.125,00' }
+    raw: { 'Fecha operación': '25/08/2026', 'Concepto': 'NOMINA AGOSTO TALLERES ROBLE SL', 'Importe': '2.125,00' },
+    dedupHash: 'demo-fixture-tx-0002', batchId: 'fb100000-0000-4000-8000-000000000001'
   },
   {
     id: 'fc000000-0000-4000-8000-000000000003', accountId: FINANCE_ACCOUNTS[1]!.id, accountName: 'Cuenta nómina',
@@ -566,7 +568,8 @@ const FINANCE_TXS: FinanceTxDto[] = [
     amountCents: '-50000', balanceCents: null, codeCommon: null, codeOwn: null,
     categoryId: 'fb000000-0000-4000-8000-000000000006', categoryName: 'Transferencias',
     status: 'confirmada', transferGroupId: 'fd000000-0000-4000-8000-000000000001', recurrence: null, recurrenceManual: false,
-    bankCategory: null, eventIds: [], raw: null
+    bankCategory: null, eventIds: [], raw: null,
+    dedupHash: 'demo-fixture-tx-0003', batchId: null
   },
   {
     id: 'fc000000-0000-4000-8000-000000000004', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
@@ -576,7 +579,8 @@ const FINANCE_TXS: FinanceTxDto[] = [
     categoryId: 'fb000000-0000-4000-8000-000000000006', categoryName: 'Transferencias',
     status: 'confirmada', transferGroupId: 'fd000000-0000-4000-8000-000000000001', recurrence: null, recurrenceManual: false,
     bankCategory: null, eventIds: [],
-    raw: { 'Fecha operación': '20/08/2026', 'Concepto': 'TRANSFERENCIA DE CUENTA NOMINA', 'Importe': '500,00' }
+    raw: { 'Fecha operación': '20/08/2026', 'Concepto': 'TRANSFERENCIA DE CUENTA NOMINA', 'Importe': '500,00' },
+    dedupHash: 'demo-fixture-tx-0004', batchId: null
   },
   {
     id: 'fc000000-0000-4000-8000-000000000005', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
@@ -586,7 +590,8 @@ const FINANCE_TXS: FinanceTxDto[] = [
     categoryId: 'fb000000-0000-4000-8000-000000000003', categoryName: 'Suministros',
     status: 'sugerida_regla', transferGroupId: null, recurrence: 'recurrente' as const, recurrenceManual: false,
     bankCategory: 'Hogar', eventIds: [],
-    raw: { 'Fecha operación': '12/08/2026', 'Concepto': 'RECIBO LUZ DEL VALLE SA', 'Importe': '-142,10' }
+    raw: { 'Fecha operación': '12/08/2026', 'Concepto': 'RECIBO LUZ DEL VALLE SA', 'Importe': '-142,10' },
+    dedupHash: 'demo-fixture-tx-0005', batchId: 'fb100000-0000-4000-8000-000000000001'
   }
 ];
 
