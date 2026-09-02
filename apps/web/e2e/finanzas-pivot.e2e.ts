@@ -73,10 +73,11 @@ test('el atajo «/» enfoca el buscador y un chip filtra el pivot expandiéndolo
   const buscador = page.getByLabel('Buscar', { exact: true });
   await expect(buscador).toBeFocused();
   await buscador.fill('merca');
-  // Las sugerencias son <button role="option">: el `role` explícito manda
-  // sobre el rol nativo del elemento (PivotSearch.svelte), así que el locator
-  // real es por 'option', no por 'button' como asumía el brief.
-  await page.getByRole('option', { name: /Mercadona/ }).first().click();
+  // F6-I3: las sugerencias son botones normales dentro de un grupo etiquetado
+  // (antes declaraban `role="option"` dentro de un `listbox` inválido). Se
+  // acotan al panel porque «Mercadona» también es el botón «abrir ficha» de su
+  // propia fila del árbol.
+  await page.getByTestId('pivot-sugerencias').getByRole('button', { name: /Mercadona/ }).first().click();
   await expect(page.getByText('🔍 Proveedor: Mercadona')).toBeVisible();
   await expect(tabla).toContainText('Mercadona'); // búsqueda activa fuerza expansión
   // El aserto negativo muerde: «Viajes» se pintaba y el chip lo saca del árbol.

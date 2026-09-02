@@ -99,7 +99,16 @@
     onfocus={() => (open = true)} onkeydown={onKeydown} />
 
   {#if showDropdown}
-    <div class="desplegable" role="listbox" aria-label="Sugerencias">
+    <!-- F6-I3: marcado honesto. Esto NO es un listbox: contenía `<p>` de
+         encabezado (que `aria-required-children` de axe prohíbe dentro de
+         `listbox`, impacto crítico) y no lo poseía ningún `combobox`, así que
+         al abrirse no se anunciaba nada y los botones se leían como «opción».
+         O se implementa el patrón completo de combobox (estado de apertura,
+         panel controlado, descendiente activo y flechas) o se dice la verdad:
+         un grupo etiquetado de botones, navegable con Tab. `role="group"` y no
+         un `<div>` desnudo porque `aria-label` sobre un elemento de rol
+         genérico es lo que axe marca como `aria-prohibited-attr`. -->
+    <div class="desplegable" role="group" aria-label="Sugerencias" data-testid="pivot-sugerencias">
       {#if groups.length === 0}
         <p class="sin-resultados">Sin resultados para «{debounced}»</p>
       {:else}
@@ -107,13 +116,13 @@
           {@const cap = expandedGroups.has(g.group) ? g.items.length : MAX_PER_GROUP}
           <p class="grupo">{g.group}</p>
           {#each g.items.slice(0, cap) as item (item.chip.type + item.chip.value + (item.chip.prov ?? ''))}
-            <button type="button" class="sugerencia" role="option" aria-selected="false"
+            <button type="button" class="sugerencia"
               onmousedown={(e) => e.preventDefault()} onclick={() => addChip(item.chip)}>
               <span>{item.label}</span><small>{item.detail}</small>
             </button>
           {/each}
           {#if g.items.length > cap}
-            <button type="button" class="mas" role="option" aria-selected="false" onmousedown={(e) => e.preventDefault()}
+            <button type="button" class="mas" onmousedown={(e) => e.preventDefault()}
               onclick={() => (expandedGroups = new Set(expandedGroups).add(g.group))}>{g.items.length - cap} más…</button>
           {/if}
         {/each}

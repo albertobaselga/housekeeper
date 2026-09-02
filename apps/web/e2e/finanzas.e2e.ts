@@ -230,21 +230,46 @@ test('admin en modo fixture: arrastrar una categoría a EVENTOS abre el popover 
   await expect(toast).toContainText('Guardado en este dispositivo');
 });
 
-test('admin en modo fixture: arrastrar una categoría sobre otra la recategoriza con Deshacer', async ({ page }) => {
+test('admin en modo fixture: arrastrar un proveedor a otra categoría lo recategoriza con Deshacer', async ({ page }) => {
   await loginAs(page, 'admin');
-  await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
-  await expect(page.locator('[data-testid="pivot-table"]')).toBeVisible();
+  // dims=cat,prov: hace falta la dimensión de proveedor para que «Mercadona»
+  // llegue a pintarse (la maqueta no tiene subcategorías).
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica?dims=cat,prov`);
+  const tabla = page.locator('[data-testid="pivot-table"]');
+  await expect(tabla).toBeVisible();
+  await tabla.getByRole('button', { name: 'desplegar Supermercado' }).click();
 
-  const ocioAsa = page.locator('tr', { hasText: 'Ocio' }).first().locator('.asa');
-  const supermercadoRow = page.locator('tr', { hasText: 'Supermercado' }).first();
-  await expect(supermercadoRow).not.toHaveClass(/dnd-target/);
+  const mercadonaAsa = tabla.locator('tr', { hasText: 'Mercadona' }).first().locator('.asa');
+  const ocioRow = tabla.locator('tr', { hasText: 'Ocio' }).first();
+  await expect(ocioRow).not.toHaveClass(/dnd-target/);
 
-  await nativeDragDrop(page, ocioAsa, supermercadoRow);
+  await nativeDragDrop(page, mercadonaAsa, ocioRow);
 
   const toast = page.locator('[data-testid="pivot-toast"]');
   await expect(toast).toBeVisible();
-  // catPathOf resuelve la ruta completa (categoryPath, fase 4): Supermercado
-  // cuelga de Casa.
-  await expect(toast).toContainText('→ Casa › Supermercado · regla creada');
+  // catPathOf resuelve la ruta completa (categoryPath, fase 4); «Ocio» cuelga
+  // de la raíz, así que su ruta es su propio nombre.
+  await expect(toast).toContainText('→ Ocio · regla creada');
+  // Las tres compras de Mercadona venían de Supermercado (categoría previa
+  // única), así que el plan de deshacer puede restaurarlas.
   await expect(page.getByRole('button', { name: 'Deshacer' })).toBeVisible();
+});
+
+// F6-M6: antes, una categoría con un ÚNICO proveedor (aquí «Ocio», solo Cine
+// Ideal) se arrastraba como proveedor y soltarla sobre otra categoría creaba
+// regla, mientras que la misma categoría con dos proveedores se rechazaba: el
+// gesto dependía de cuántos proveedores hubiera dentro, que no se ve.
+test('admin en modo fixture: una categoría sobre otra categoría no se mueve, y el acuse lo explica', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
+  const tabla = page.locator('[data-testid="pivot-table"]');
+  await expect(tabla).toBeVisible();
+
+  const ocioAsa = tabla.locator('tr', { hasText: 'Ocio' }).first().locator('.asa');
+  const supermercadoRow = tabla.locator('tr', { hasText: 'Supermercado' }).first();
+  await nativeDragDrop(page, ocioAsa, supermercadoRow);
+
+  const toast = page.locator('[data-testid="pivot-toast"]');
+  await expect(toast).toContainText('las categorías no pueden soltarse sobre otra categoría');
+  await expect(page.getByRole('button', { name: 'Deshacer' })).toHaveCount(0);
 });

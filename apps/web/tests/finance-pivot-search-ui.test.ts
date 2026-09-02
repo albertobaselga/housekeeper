@@ -54,10 +54,21 @@ describe('PivotSearch: el desplegable se cierra al perder el foco (M3)', () => {
   });
 });
 
-describe('PivotSearch: sugerencias con ARIA de listbox válido (M2)', () => {
-  it('cada botón de sugerencia y "más" declara role="option"', () => {
-    expect(search).toMatch(/class="sugerencia" role="option"/);
-    expect(search).toMatch(/class="mas" role="option"/);
+describe('PivotSearch: marcado honesto del desplegable (F6-I3)', () => {
+  it('sin roles de listbox/option: son botones dentro de un grupo etiquetado', () => {
+    // `aria-required-children` de axe (impacto crítico) exige que un `listbox`
+    // solo contenga `option`/`group`, y aquí había dos `<p>` de encabezado.
+    // Además ningún `combobox` poseía ese listbox, así que el panel no se
+    // anunciaba y los botones se leían como «opción» sin flechas que usar.
+    expect(search).not.toContain('role="listbox"');
+    expect(search).not.toContain('role="option"');
+    expect(search).not.toContain('aria-selected');
+    // `aria-expanded` en un <input> sin `role="combobox"` es lo que axe marca
+    // como `aria-allowed-attr`: no se pone.
+    expect(search).not.toContain('aria-expanded');
+    expect(search).toContain('role="group" aria-label="Sugerencias"');
+    expect(search).toMatch(/<button type="button" class="sugerencia"/);
+    expect(search).toMatch(/<button type="button" class="mas"/);
   });
 });
 

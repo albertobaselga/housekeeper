@@ -389,9 +389,19 @@
    * decide si abre hacia abajo o hacia arriba, y evita medir en dos pasadas.
    */
   const POPOVER_H = 56;
+  const POPOVER_W = 320;
+  const POPOVER_MARGEN = 8;
   function posicionaPopover(fila: HTMLElement): { left: number; top: number } {
     const r = fila.getBoundingClientRect();
-    return { left: r.left, top: r.bottom + POPOVER_H <= window.innerHeight ? r.bottom : r.top - POPOVER_H };
+    // La banda es una `<tr>` tan ancha como la tabla, que puede estar
+    // desplazada horizontalmente dentro de `.pivot-scroll`: su `left` sale
+    // negativo y el popover se iría fuera de la ventana. Se acota a la
+    // ventana en los dos ejes.
+    const acotado = (v: number, max: number) => Math.max(POPOVER_MARGEN, Math.min(v, max - POPOVER_MARGEN));
+    return {
+      left: acotado(r.left, window.innerWidth - POPOVER_W),
+      top: acotado(r.bottom + POPOVER_H <= window.innerHeight ? r.bottom : r.top - POPOVER_H, window.innerHeight - POPOVER_H)
+    };
   }
 
   function cancelNewEventDrop(): void {
@@ -718,7 +728,12 @@
               {:else}
                 <span class="flecha" aria-hidden="true"></span>
               {/if}
+              <!-- F6-I3: la casilla de `dupev` solo tenía `title`, y un `title`
+                   como única etiqueta es `label-title-only` de axe (serio): el
+                   lector no lo anuncia de forma fiable y con teclado no
+                   aparece. El `title` se queda como explicación larga. -->
               <input type="checkbox" checked={dupEventIds.includes(event.eventId)} disabled={event.children.length === 0}
+                aria-label={`ver ${event.name} también en gastos e ingresos`}
                 title="Ver los movimientos de este evento también dentro de sus categorías en GASTOS/INGRESOS"
                 onclick={(e) => e.stopPropagation()} onchange={() => toggleDupEvent(event.eventId)} />
               🎉 {event.name} <small>({event.count})</small>
