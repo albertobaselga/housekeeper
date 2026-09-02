@@ -3,8 +3,16 @@
   import { page } from '$app/state';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import FinanceFilterBar from '$lib/components/finance/FinanceFilterBar.svelte';
+  import NatureStackChart from '$lib/components/finance/NatureStackChart.svelte';
   import { formatCents } from '$lib/finance/format';
-  import { buildNatureChartData, monthsInRange, pctOf, perMonth } from '$lib/finance/chart-data';
+  import {
+    buildNatureChartData,
+    monthLabel,
+    monthsInRange,
+    pctOf,
+    perMonth,
+    SUMMARY_ROWS
+  } from '$lib/finance/chart-data';
   import { isUuid, rangeLabel } from '$lib/finance/filters';
   import { parseIdList, serializeIdList } from '$lib/finance/pivot-state';
   import type { PageData } from './$types';
@@ -127,6 +135,44 @@
     </div>
   {/if}
 </section>
+
+{#if chartPoints.length === 0 || a.pivotRows.length === 0}
+  <p class="vacio">No hay movimientos en este periodo.</p>
+{:else}
+  <section aria-labelledby="evolucion-titulo">
+    <h2 id="evolucion-titulo">Evolución</h2>
+    <div class="tarjeta"><NatureStackChart points={chartPoints} /></div>
+  </section>
+
+  <section aria-labelledby="resumen-titulo">
+    <h2 id="resumen-titulo">Resumen mensual <small>media sobre {monthCount} {monthCount === 1 ? 'mes completo' : 'meses completos'}</small></h2>
+    <div class="tabla-scroll">
+      <table class="tabla-finanzas" data-testid="resumen-mensual">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            {#each chartPoints as p (p.month)}<th class="importe">{monthLabel(p.month)}</th>{/each}
+            <th class="importe">Acumulado</th>
+            <th class="importe">Media/mes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each SUMMARY_ROWS as row (row.label)}
+            {@const total = chartPoints.reduce((acc, p) => acc + row.value(p), 0n)}
+            <tr class:destacada={row.strong} class:separada={row.sep}>
+              <td>{row.label}</td>
+              {#each chartPoints as p (p.month)}
+                <td class="importe cifra {row.cls}">{formatCents(row.value(p))}</td>
+              {/each}
+              <td class="importe cifra {row.cls}"><strong>{formatCents(total)}</strong></td>
+              <td class="importe cifra {row.cls}"><strong>{formatCents(perMonth(total, monthCount))}</strong></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{/if}
 </div>
 
 <style>
@@ -148,4 +194,7 @@
   .tabla-finanzas .importe { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
   .tabla-finanzas tr.excluida { opacity: .5; }
   .tabla-finanzas .subtotal { background: var(--canvas); font-weight: 500; }
+  .tarjeta { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); padding: var(--pad-card); margin-top: var(--space-3); }
+  .tabla-finanzas tr.destacada { background: var(--canvas); font-weight: 700; }
+  .tabla-finanzas tr.separada td { border-top: 2px solid var(--line-strong); }
 </style>
