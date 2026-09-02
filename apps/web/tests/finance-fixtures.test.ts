@@ -50,4 +50,25 @@ describe('fixtures sintéticas de finanzas (modo demo)', () => {
     expect(eventos.openId).toBeNull();
     expect(eventos.detail).toBeNull();
   });
+
+  // [FASE 5, T11 · revisión ronda 1, Minor 7] Antes `openId`/`detail` de la
+  // maqueta ignoraban por completo el `open` recibido: en demo el botón «▾»
+  // no hacía nada, y cada fila traía una `categoryId` que el keyeo del `each`
+  // (Important 1) necesita para no chocar.
+  it('el evento demo abierto sí trae desglose, con categoryId único por fila', () => {
+    const eventId = getFinanceEventosFixture({ from: FILTERS.from, to: FILTERS.to }).summary[0]?.id;
+    expect(eventId).toBeDefined();
+
+    const opened = getFinanceEventosFixture({ from: FILTERS.from, to: FILTERS.to }, eventId ?? null);
+    expect(opened.openId).toBe(eventId);
+    expect(opened.detail).not.toBeNull();
+    expect(opened.detail?.length).toBeGreaterThan(0);
+    const ids = (opened.detail ?? []).map((line) => line.categoryId);
+    expect(new Set(ids).size).toBe(ids.length); // sin duplicados: la key del `each` depende de esto.
+
+    // Un `open` que no coincide con el único evento demo no inventa un
+    // desglose que no le corresponde.
+    const other = getFinanceEventosFixture({ from: FILTERS.from, to: FILTERS.to }, 'fc999999-0000-4000-8000-000000000009');
+    expect(other.detail).toBeNull();
+  });
 });

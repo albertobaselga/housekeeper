@@ -898,16 +898,29 @@ export const getFinanceRevisionFixture = demoOnly(
   })
 );
 
+const DEMO_EVENT_ID = 'fc300000-0000-4000-8000-000000000001';
+
 export const getFinanceEventosFixture = demoOnly(
   'finanzas/eventos',
-  (range: { from: string; to: string }): FinanceEventosData => ({
+  // [FASE 5, T11 · revisión ronda 1, Minor 7] La maqueta fijaba `openId: null`
+  // y `detail: null` pasase lo que pasase: en demo el botón «▾» no hacía
+  // nada, y parecía roto. Ahora respeta el `open` recibido (igual que el
+  // cargador real) y ofrece un desglose falso cuando coincide con el único
+  // evento demo.
+  (range: { from: string; to: string }, openId: string | null = null): FinanceEventosData => ({
     from: range.from,
     to: range.to,
-    openId: null,
-    detail: null,
+    openId,
+    detail:
+      openId === DEMO_EVENT_ID
+        ? [
+            { categoryId: 'fc400000-0000-4000-8000-000000000001', name: 'Alojamiento (demo)', count: 2, totalCents: '-30000' },
+            { categoryId: null, name: 'Sin categorizar', count: 1, totalCents: '-12000' }
+          ]
+        : null,
     summary: [
       {
-        id: 'fc300000-0000-4000-8000-000000000001',
+        id: DEMO_EVENT_ID,
         name: 'Semana Santa (demo)',
         txCount: 3,
         expenseCents: '-42000',

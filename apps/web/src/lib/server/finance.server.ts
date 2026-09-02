@@ -564,7 +564,18 @@ export interface FinanceEventosData {
   to: string;
   openId: string | null;
   summary: FinanceEventSummaryRow[];
-  detail: Array<{ name: string; count: number; totalCents: string }> | null;
+  // `categoryId` (no lo traía el brief) es imprescindible como key de fila en
+  // Svelte: `readFinanceBreakdown` agrupa por `(category_id, name, parent_id)`
+  // (packages/server/src/finance/queries.ts:501), y el esquema solo garantiza
+  // nombre único por `(household_id, parent_id, name)`
+  // (packages/db/migrations/0036_finance.sql:134) — dos subcategorías con el
+  // mismo nombre bajo padres distintos son legales, igual que "Sin
+  // categorizar" conviviendo con una categoría real de ese nombre. Keyear por
+  // `name` deja a Svelte 5 lanzar `each_key_duplicate` EN PRODUCCIÓN
+  // (each.js:352-357 no lo guarda tras `if (DEV)`), tumbando el render de toda
+  // la página al abrir un evento con esas categorías. [FASE 5, T11 · revisión
+  // ronda 1, Important 1]
+  detail: Array<{ categoryId: string | null; name: string; count: number; totalCents: string }> | null;
 }
 
 /**
