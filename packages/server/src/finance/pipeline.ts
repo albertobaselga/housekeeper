@@ -427,28 +427,103 @@ async function persistPipelineChanges(
       [householdId, cat.id, cat.parentId, cat.name, cat.kind],
     );
   }
-  for (const [id, u] of changes.updatedTxs) {
-    await client.query(
-      `update app.finance_transactions
-          set category_id = $3, status = $4, transfer_group_id = $5, recurrence = $6
-        where household_id = $1 and id = $2`,
-      [householdId, id, u.categoryId, u.status, u.transferGroupId, u.recurrence],
+  // UNA sola sentencia para todas las filas cambiadas. `updatedTxs` no está
+  // acotado —el paso 7 emite un veredicto por cada transacción del hogar cuyo
+  // valor cambie, y la primera pasada tras migrar años de datos son decenas de
+  // miles—, así que un UPDATE por fila serían decenas de miles de idas y vueltas
+  // seguidas dentro de la transacción autorizada; la fase 5 llama a esto desde el
+  // handler HTTP de confirmación de importación, con límite de ejecución.
+  if (changes.updatedTxs.size > 0) {
+    const ids: string[] = [];
+    const categoryIds: (string | null)[] = [];
+    const statuses: string[] = [];
+    const transferGroupIds: (string | null)[] = [];
+    const recurrences: (string | null)[] = [];
+    for (const [id, u] of changes.updatedTxs) {
+      ids.push(id);
+      categoryIds.push(u.categoryId);
+      statuses.push(u.status);
+      transferGroupIds.push(u.transferGroupId);
+      recurrences.push(u.recurrence);
+    }
+    const updated = await client.query(
+      `update app.finance_transactions t
+          set category_id = u.category_id, status = u.status,
+              transfer_group_id = u.transfer_group_id, recurrence = u.recurrence
+         from unnest($2::uuid[], $3::uuid[], $4::text[], $5::uuid[], $6::text[])
+              as u(id, category_id, status, transfer_group_id, recurrence)
+        where t.household_id = $1 and t.id = u.id`,
+      [householdId, ids, categoryIds, statuses, transferGroupIds, recurrences],
     );
+    // Sin esto, una fila que ya no exista (o que sea de otro hogar) se traduce en
+    // un UPDATE de menos filas SIN error, y el informe seguiría contándola.
+    if (updated.rowCount !== ids.length) {
+      throw new Error(
+        `el pipeline actualizó ${updated.rowCount ?? 0} de ${ids.length} transacciones del hogar`,
+      );
+    }
   }
-  for (const t of changes.insertedTxs) {
-    await client.query(
+  // Los espejos se insertan DESPUÉS de los UPDATE, y de ahí la invariante que
+  // sostiene todo esto: un espejo NUNCA aparece en `updatedTxs`. Los pasos 5 a 8
+  // lo ven en `state.txs` pero ninguno lo toca (transferencias y recurrencia
+  // saltan los agrupados, efectivo exige importe negativo y el espejo es
+  // positivo); si algún paso futuro lo tocara, su UPDATE se ejecutaría antes de
+  // que la fila existiera y se perdería en silencio. El `join` con la fila origen
+  // hereda su `batch_id`: deshacer el lote arrastra también el espejo.
+  if (changes.insertedTxs.length > 0) {
+    const ids: string[] = [];
+    const accountIds: string[] = [];
+    const sourceTxIds: string[] = [];
+    const opDates: string[] = [];
+    const concepts: string[] = [];
+    const providers: string[] = [];
+    const providerNorms: string[] = [];
+    const amountCents: string[] = [];
+    const categoryIds: string[] = [];
+    const statuses: string[] = [];
+    const transferGroupIds: string[] = [];
+    const dedupHashes: string[] = [];
+    for (const t of changes.insertedTxs) {
+      ids.push(t.id);
+      accountIds.push(t.accountId);
+      sourceTxIds.push(t.sourceTxId);
+      opDates.push(t.opDate);
+      concepts.push(t.concept);
+      providers.push(t.provider);
+      providerNorms.push(t.providerNorm);
+      amountCents.push(t.amountCents.toString()); // bigint viaja como texto; el cast va en SQL
+      categoryIds.push(t.categoryId);
+      statuses.push(t.status);
+      transferGroupIds.push(t.transferGroupId);
+      dedupHashes.push(t.dedupHash);
+    }
+    const inserted = await client.query(
       `insert into app.finance_transactions
          (household_id, id, account_id, batch_id, op_date, concept, provider,
           provider_norm, amount_cents, category_id, status, transfer_group_id,
           dedup_hash, recurrence_manual, raw)
-       select $1, $2, $3, src.batch_id, $4::date, $5, $6, $7, $8::bigint, $9, $10,
-              $11, $12, false, '{}'::jsonb
-         from app.finance_transactions src
-        where src.household_id = $1 and src.id = $13`,
-      [householdId, t.id, t.accountId, t.opDate, t.concept, t.provider, t.providerNorm,
-        String(t.amountCents), t.categoryId, t.status, t.transferGroupId, t.dedupHash,
-        t.sourceTxId],
+       select $1, n.id, n.account_id, src.batch_id, n.op_date, n.concept, n.provider,
+              n.provider_norm, n.amount_cents, n.category_id, n.status,
+              n.transfer_group_id, n.dedup_hash, false, '{}'::jsonb
+         from unnest($2::uuid[], $3::uuid[], $4::uuid[], $5::date[], $6::text[],
+                     $7::text[], $8::text[], $9::bigint[], $10::uuid[], $11::text[],
+                     $12::uuid[], $13::text[])
+              as n(id, account_id, source_tx_id, op_date, concept, provider,
+                   provider_norm, amount_cents, category_id, status,
+                   transfer_group_id, dedup_hash)
+         join app.finance_transactions src
+           on src.household_id = $1 and src.id = n.source_tx_id`,
+      [householdId, ids, accountIds, sourceTxIds, opDates, concepts, providers,
+        providerNorms, amountCents, categoryIds, statuses, transferGroupIds, dedupHashes],
     );
+    // El `join` no inserta nada si la fila origen no existe: sin esta comprobación
+    // el cargo se quedaría en un grupo de transferencia de una sola pata mientras
+    // el informe anuncia «inversiones: N».
+    if (inserted.rowCount !== ids.length) {
+      throw new Error(
+        `el pipeline insertó ${inserted.rowCount ?? 0} de ${ids.length} espejos de inversión`,
+      );
+    }
   }
   for (const a of changes.insertedAliases) {
     await client.query(

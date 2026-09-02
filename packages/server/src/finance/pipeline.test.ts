@@ -138,40 +138,135 @@ describe("runPipelineSteps: los 8 pasos en el orden del origen", () => {
   });
 });
 
+interface FakeTxRow {
+  id: string; account_id: string; op_date: string; concept: string;
+  provider: string | null; provider_norm: string | null; amount_cents: string;
+  category_id: string | null; status: string; transfer_group_id: string | null;
+  recurrence: string | null; recurrence_manual: boolean; dedup_hash: string;
+  code_common: string | null; code_own: string | null; category_kind: string | null;
+}
+interface FakeAccountRow {
+  id: string; name: string; bank: string | null; kind: string;
+  bank_ref: string | null; owner_aliases: string[] | null; transfer_refs: string[] | null;
+}
+interface FakeRuleRow {
+  id: string; rule_type: string; pattern: string; category_id: string; priority: number;
+}
+interface FakeCategoryRow { id: string; parent_id: string | null; name: string; kind: string }
+interface Write { sql: string; params: unknown[] }
+
+/** Cliente de mentira: responde a los SELECT del `loadPipelineState` y apunta las
+ * escrituras. `rowCount` se calcula del propio parámetro para que las
+ * comprobaciones de recuento del persistidor vean un servidor coherente. */
+function fakeClient(
+  data: {
+    txs: FakeTxRow[]; accounts: FakeAccountRow[]; categories: FakeCategoryRow[];
+    rules: FakeRuleRow[];
+  },
+  writes: Write[],
+  rowCountOverride?: number,
+): PoolClient {
+  return {
+    query: async (sql: string, params: unknown[] = []) => {
+      const s = sql.trim().toLowerCase();
+      if (s.startsWith("select")) {
+        if (s.includes("from app.finance_transactions")) return { rows: data.txs };
+        if (s.includes("from app.finance_accounts")) return { rows: data.accounts };
+        if (s.includes("from app.finance_categories")) return { rows: data.categories };
+        if (s.includes("from app.finance_rules")) return { rows: data.rules };
+        if (s.includes("from app.finance_event_rules")) return { rows: [] };
+        if (s.includes("from app.finance_provider_aliases")) return { rows: [] };
+        if (s.includes("from app.finance_transaction_events")) return { rows: [] };
+      }
+      writes.push({ sql, params });
+      const ids = params[1];
+      const natural = Array.isArray(ids) ? ids.length : 1;
+      return { rows: [], rowCount: rowCountOverride ?? natural };
+    },
+  } as unknown as PoolClient;
+}
+
+const ONE_TX: FakeTxRow = {
+  id: "iber1", account_id: "a1", op_date: "2026-06-10", concept: "RECIBO LUZ",
+  provider: "IBERDROLA CLIENTES", provider_norm: "IBERDROLA CLIENTES",
+  amount_cents: "-5512", category_id: null, status: "pendiente",
+  transfer_group_id: null, recurrence: null, recurrence_manual: false,
+  dedup_hash: "h1", code_common: "03", code_own: null, category_kind: null,
+};
+const ONE_ACCOUNT: FakeAccountRow = {
+  id: "a1", name: "Caixa", bank: "caixabank", kind: "comun", bank_ref: "r1",
+  owner_aliases: [], transfer_refs: [],
+};
+const TWO_CATEGORIES: FakeCategoryRow[] = [
+  { id: "cat-casa", parent_id: null, name: "Casa", kind: "gasto" },
+  { id: "cat-tr", parent_id: null, name: "Transferencias internas", kind: "transferencia" },
+];
+const ONE_RULE: FakeRuleRow = {
+  id: "r1", rule_type: "proveedor_exacto", pattern: "IBERDROLA CLIENTES",
+  category_id: "cat-casa", priority: 0,
+};
+
 describe("runPostImportPipeline: carga y persistencia SQL (cliente simulado)", () => {
-  it("carga el estado, ejecuta los pasos y emite los UPDATE", async () => {
-    const writes: { sql: string; params: unknown[] }[] = [];
-    const txRow = {
-      id: "iber1", account_id: "a1", op_date: "2026-06-10", concept: "RECIBO LUZ",
-      provider: "IBERDROLA CLIENTES", provider_norm: "IBERDROLA CLIENTES",
-      amount_cents: "-5512", category_id: null, status: "pendiente",
-      transfer_group_id: null, recurrence: null, recurrence_manual: false,
-      dedup_hash: "h1", code_common: "03", code_own: null, category_kind: null,
-    };
-    const client = {
-      query: async (sql: string, params: unknown[] = []) => {
-        const s = sql.trim().toLowerCase();
-        if (s.startsWith("select")) {
-          if (s.includes("from app.finance_transactions")) return { rows: [txRow] };
-          if (s.includes("from app.finance_accounts"))
-            return { rows: [{ id: "a1", name: "Caixa", bank: "caixabank", kind: "comun", bank_ref: "r1", owner_aliases: [], transfer_refs: [] }] };
-          if (s.includes("from app.finance_categories"))
-            return { rows: [{ id: "cat-casa", parent_id: null, name: "Casa", kind: "gasto" }, { id: "cat-tr", parent_id: null, name: "Transferencias internas", kind: "transferencia" }] };
-          if (s.includes("from app.finance_rules"))
-            return { rows: [{ id: "r1", rule_type: "proveedor_exacto", pattern: "IBERDROLA CLIENTES", category_id: "cat-casa", priority: 0 }] };
-          if (s.includes("from app.finance_event_rules")) return { rows: [] };
-          if (s.includes("from app.finance_provider_aliases")) return { rows: [] };
-          if (s.includes("from app.finance_transaction_events")) return { rows: [] };
-        }
-        writes.push({ sql, params });
-        return { rows: [], rowCount: 1 };
-      },
-    } as unknown as PoolClient;
+  it("carga el estado, ejecuta los pasos y emite el UPDATE por conjuntos", async () => {
+    const writes: Write[] = [];
+    const client = fakeClient(
+      { txs: [ONE_TX], accounts: [ONE_ACCOUNT], categories: TWO_CATEGORIES, rules: [ONE_RULE] },
+      writes,
+    );
 
     const report = await runPostImportPipeline(client, "hh-1");
     expect(report.steps[0]).toEqual({ name: "reglas", affected: 1 });
     const update = writes.find((w) => w.sql.includes("update app.finance_transactions"));
-    expect(update?.params).toEqual(["hh-1", "iber1", "cat-casa", "sugerida_regla", null, "extraordinario"]);
+    expect(update?.params).toEqual([
+      "hh-1", ["iber1"], ["cat-casa"], ["sugerida_regla"], [null], ["extraordinario"],
+    ]);
+  });
+
+  it("una sola sentencia para N filas actualizadas y una sola para los espejos", async () => {
+    // 4 filas a actualizar y 2 espejos en la misma pasada: la persistencia no
+    // puede degenerar en 6 idas y vueltas dentro de la transacción autorizada.
+    const txs: FakeTxRow[] = [
+      { ...ONE_TX, id: "t-regla", concept: "COMPRA", provider: "Mercado Ejemplo", provider_norm: "MERCADO EJEMPLO", amount_cents: "-2350", dedup_hash: "h-regla", code_common: null },
+      { ...ONE_TX, id: "t-inv1", concept: "TRASPASO FONDO GLOBAL MAYO", provider: null, provider_norm: null, amount_cents: "-12000", dedup_hash: "h-inv1", code_common: null },
+      { ...ONE_TX, id: "t-inv2", concept: "TRASPASO FONDO GLOBAL JUNIO", provider: null, provider_norm: null, amount_cents: "-13000", dedup_hash: "h-inv2", code_common: null },
+      { ...ONE_TX, id: "t-otro", concept: "OTRA COSA", provider: "Otro", provider_norm: "OTRO", amount_cents: "-400", dedup_hash: "h-otro", code_common: null },
+    ];
+    const accounts: FakeAccountRow[] = [
+      ONE_ACCOUNT,
+      { id: "inv1", name: "Fondo Global", bank: null, kind: "inversion", bank_ref: "INV-1", owner_aliases: [], transfer_refs: ["FONDO GLOBAL"] },
+    ];
+    const rules: FakeRuleRow[] = [
+      { id: "r1", rule_type: "proveedor_exacto", pattern: "MERCADO EJEMPLO", category_id: "cat-casa", priority: 0 },
+    ];
+    const writes: Write[] = [];
+    const client = fakeClient({ txs, accounts, categories: TWO_CATEGORIES, rules }, writes);
+
+    await runPostImportPipeline(client, "hh-1");
+
+    const updates = writes.filter((w) => w.sql.includes("update app.finance_transactions"));
+    const inserts = writes.filter((w) => w.sql.includes("insert into app.finance_transactions"));
+    expect(updates).toHaveLength(1);
+    expect(inserts).toHaveLength(1);
+    const updateParams = updates[0]?.params ?? [];
+    expect(updateParams[0]).toBe("hh-1");
+    expect(updateParams[1]).toEqual(["t-regla", "t-inv1", "t-inv2", "t-otro"]);
+    expect(updateParams).toHaveLength(6); // hogar + id + las 4 columnas del bucle
+    for (const column of updateParams.slice(1)) expect(column).toHaveLength(4);
+    // Los importes de los espejos viajan como texto y el cast va en SQL.
+    expect(inserts[0]?.params[1]).toEqual([expect.any(String), expect.any(String)]);
+    expect(inserts[0]?.sql).toContain("::bigint[]");
+    // Invariante de orden (m1): los espejos se insertan DESPUÉS de los UPDATE.
+    expect(writes.indexOf(updates[0] as Write)).toBeLessThan(writes.indexOf(inserts[0] as Write));
+  });
+
+  it("si el UPDATE no toca todas las filas esperadas, aborta con el recuento", async () => {
+    const writes: Write[] = [];
+    const client = fakeClient(
+      { txs: [ONE_TX], accounts: [ONE_ACCOUNT], categories: TWO_CATEGORIES, rules: [ONE_RULE] },
+      writes,
+      0,
+    );
+    await expect(runPostImportPipeline(client, "hh-1")).rejects.toThrow(/0 de 1/);
   });
 });
 
