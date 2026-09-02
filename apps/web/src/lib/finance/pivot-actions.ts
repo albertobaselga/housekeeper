@@ -15,7 +15,7 @@ import type {
 import { financeCommand } from './commands';
 import { queueCommand, type QueueCommandOptions, type QueueCommandResult } from '$lib/offline/queue-command';
 
-import type { SelectableItem } from './pivot-state';
+import { resolveSelectionIds, type SelectableItem } from './pivot-state';
 
 /**
  * Comandos de sync que dispara el pivot (dnd y barra de acciones) y el plan de
@@ -140,6 +140,122 @@ export function createEventPayload(name: string, id: string = crypto.randomUUID(
   return { kind: 'finance.event.create', id, name };
 }
 
+// ── Composición de payloads (F6-I4 + T12-M1) ─────────────────────────────────
+// La capa que COMPONE —quién va por concepto y quién por id exacto, en qué
+// orden se encadena «crear evento» con «asignarle movimientos», qué se cuenta
+// para el acuse— vivía entera dentro de `PivotTable.svelte`, donde no la
+// tocaba ninguna prueba de ningún nivel y donde la misma partición estaba
+// escrita tres veces. Aquí es pura, se prueba con los casos de siempre
+// (concepto solo, hoja sola, mezcla, categoría agregada) y el componente solo
+// encadena.
+
+export interface TxSplit {
+  /** Ítems que viajan POR CONCEPTO: proveedor(+concepto) o categoría entera. */
+  concepts: SelectableItem[];
+  /** Hojas de la dimensión Movimiento: la identidad es el id exacto. */
+  transactionIds: string[];
+  /** Movimientos que representan TODOS los ítems, para el acuse. */
+  movs: number;
+}
+
+/**
+ * Partición canónica de una selección o de un arrastre. `txId` es lo que
+ * decide: una hoja de movimiento NUNCA puede ir por `ConceptTarget` (se
+ * construye con `provider: ''`, que el servidor rechaza por `min(1)`).
+ */
+export function splitByTx(items: readonly SelectableItem[]): TxSplit {
+  return {
+    concepts: items.filter((i) => i.txId == null),
+    transactionIds: items.flatMap((i) => (i.txId != null ? [i.txId] : [])),
+    movs: items.reduce((sum, i) => sum + i.count, 0)
+  };
+}
+
+export function eventAssignPayloads(
+  items: readonly SelectableItem[],
+  eventId: string
+): FinanceWritePayloadV1[] {
+  const { concepts, transactionIds } = splitByTx(items);
+  return [
+    ...concepts.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
+    ...(transactionIds.length > 0 ? [assignTransactionsToEvent(eventId, transactionIds, 'add')] : [])
+  ];
+}
+
+/**
+ * Evento nuevo: el id lo genera el LLAMADOR y viaja en el primer comando, de
+ * modo que los siguientes pueden usarlo sin esperar al ACK. Así los
+ * movimientos sueltos (hojas con `txId`) también se asignan — antes se perdían
+ * en silencio con un toast de éxito.
+ */
+export function newEventPayloads(
+  items: readonly SelectableItem[],
+  name: string,
+  eventId: string
+): FinanceWritePayloadV1[] {
+  return [createEventPayload(name, eventId), ...eventAssignPayloads(items, eventId)];
+}
+
+export function undoEventPayloads(
+  items: readonly SelectableItem[],
+  eventId: string
+): FinanceWritePayloadV1[] {
+  const { concepts, transactionIds } = splitByTx(items);
+  return [
+    ...concepts.map((i) => undoEventAssign(conceptTargetOf(i))),
+    ...(transactionIds.length > 0 ? [assignTransactionsToEvent(eventId, transactionIds, 'remove')] : [])
+  ];
+}
+
+/** Naturaleza: por concepto va `assignConceptRecurrence`; una hoja, `transaction.update`. */
+export function recurrencePayloads(
+  items: readonly SelectableItem[],
+  recurrence: FinanceCommandRecurrence
+): FinanceWritePayloadV1[] {
+  const { concepts, transactionIds } = splitByTx(items);
+  return [
+    ...concepts.map((i) => assignConceptRecurrence(conceptTargetOf(i), recurrence)),
+    ...transactionIds.map((id) => updateTransactionRecurrence(id, recurrence))
+  ];
+}
+
+export interface CategorySplit {
+  /** Conceptos sin categoría propia: los únicos que se recategorizan por regla. */
+  concepts: SelectableItem[];
+  /** Ids exactos (hojas de movimiento), deduplicados. */
+  transactionIds: string[];
+  /** Nodos categoría/subcategoría: el servidor no recategoriza una categoría. */
+  omitted: number;
+  /** Movimientos que de verdad se mueven, para el acuse. */
+  moved: number;
+}
+
+export function splitForCategory(
+  items: readonly SelectableItem[],
+  movIdsByKey: ReadonlyMap<string, string[]>
+): CategorySplit {
+  const concepts = items.filter((i) => i.txId == null && i.categoryId == null);
+  const transactionIds = resolveSelectionIds(items.filter((i) => i.txId != null), movIdsByKey);
+  return {
+    concepts,
+    transactionIds,
+    omitted: items.filter((i) => i.categoryId != null).length,
+    moved: concepts.reduce((sum, i) => sum + i.count, 0) + transactionIds.length
+  };
+}
+
+export function categoryAssignPayloads(
+  items: readonly SelectableItem[],
+  categoryId: string,
+  movIdsByKey: ReadonlyMap<string, string[]>
+): FinanceWritePayloadV1[] {
+  const { concepts, transactionIds } = splitForCategory(items, movIdsByKey);
+  return [
+    ...concepts.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
+    ...(transactionIds.length > 0 ? [bulkByIds(transactionIds, { categoryId })] : [])
+  ];
+}
+
 // ── Deshacer una recategorización ────────────────────────────────────────────
 // El ACK de sync no devuelve «categorías previas», así que el plan se captura
 // EN EL CLIENTE antes de soltar: las filas del pivot ya saben la categoría de
@@ -204,6 +320,14 @@ export function planCategoryUndo(
     for (const [categoryId, transactionIds] of groups) plan.bulkRestores.push({ transactionIds, categoryId });
   }
   return plan;
+}
+
+/** Los comandos que ejecutan un `CategoryUndo` ya planificado. */
+export function categoryUndoPayloads(plan: CategoryUndo): FinanceWritePayloadV1[] {
+  return [
+    ...plan.reassignments.map((r) => assignConceptToCategory(r.provider, r.concept, r.categoryId)),
+    ...plan.bulkRestores.map((g) => bulkByIds(g.transactionIds, { categoryId: g.categoryId }))
+  ];
 }
 
 // ── Envío en cadena de la barra de acciones (R14) ────────────────────────────

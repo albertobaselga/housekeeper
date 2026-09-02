@@ -83,6 +83,35 @@ test('el atajo «/» enfoca el buscador y un chip filtra el pivot expandiéndolo
   await expect(tabla).not.toContainText('Viajes');
 });
 
+// F6-I4, cobertura pendiente: marcar/quitar una partida (`exev`) no lo
+// ejercitaba ningún test de ningún nivel. En modo fixture la maqueta ignora
+// `exev` para los KPIs del servidor (los datos son fijos), así que lo que se
+// afirma es lo que SÍ depende del parámetro: la URL, el rótulo de partidas
+// excluidas y los subtotales «Seleccionado»/«No seleccionado», que se calculan
+// en el cliente a partir de la misma lista.
+test('excluir una partida cambia la URL, el rótulo y los subtotales de la tabla', async ({ page }) => {
+  const tabla = page.getByTestId('partidas-tabla');
+  const seleccionado = tabla.locator('tr', { hasText: 'Seleccionado' }).first();
+  const noSeleccionado = tabla.locator('tr', { hasText: 'No seleccionado' }).first();
+  await expect(seleccionado).toContainText('−220,00 €');
+  await expect(noSeleccionado).toContainText('0,00 €');
+  await expect(page).not.toHaveURL(/exev=/);
+
+  const casilla = tabla.locator('tr', { hasText: 'Semana Santa 2026' }).getByRole('checkbox');
+  await expect(casilla).toBeChecked();
+  await casilla.uncheck();
+
+  await expect(page).toHaveURL(/exev=fc000000-0000-4000-8000-000000000011/);
+  await expect(page.getByText('1 partida excluida de los KPIs')).toBeVisible();
+  await expect(noSeleccionado).toContainText('−220,00 €');
+  await expect(seleccionado).toContainText('0,00 €');
+
+  // Y vuelve: el parámetro desaparece de la URL en vez de quedarse vacío.
+  await casilla.check();
+  await expect(page).not.toHaveURL(/exev=/);
+  await expect(page.getByText('1 partida excluida de los KPIs')).toHaveCount(0);
+});
+
 test('las dims son reordenables y persisten en la URL', async ({ page }) => {
   await page.getByRole('button', { name: 'Naturaleza' }).click(); // añade la dim nat
   await expect(page).toHaveURL(/dims=cat%2Cprov%2Cnat|dims=cat,prov,nat/);

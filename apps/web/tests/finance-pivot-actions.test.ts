@@ -24,14 +24,22 @@ import {
   assignTransactionsToEvent,
   buildTxCategoryIndex,
   bulkByIds,
+  categoryAssignPayloads,
+  categoryUndoPayloads,
   COLA,
   conceptTargetOf,
   createEventPayload,
+  eventAssignPayloads,
   investTransaction,
+  newEventPayloads,
   planCategoryUndo,
+  recurrencePayloads,
   sendAll,
   sendFinanceCommand,
+  splitByTx,
+  splitForCategory,
   undoEventAssign,
+  undoEventPayloads,
   updateTransactionRecurrence,
   type SendOutcome,
   type TxCategoryRow
@@ -144,6 +152,117 @@ describe('constructores de payloads (kinds canónicos del doc de interfaces)', (
       id: 'ev-1',
       name: 'Boda'
     });
+  });
+});
+
+describe('composición de payloads (F6-I4 + T12-M1): la capa que vivía dentro del .svelte', () => {
+  // Los cuatro casos que ya usa el resto del fichero: concepto solo, hoja
+  // sola, mezcla y categoría agregada.
+  const concepto = item({ key: '/cat:X/prov:P', provider: 'Mercadona', concept: 'COMPRA', count: 3 });
+  const hoja = item({ key: '/cat:X/movement:t9', provider: '', txId: 't9', count: 1 });
+  const categoria = item({ key: '/cat:X', provider: '', categoryId: 'c1', label: 'Ocio', count: 9 });
+
+  it('splitByTx separa conceptos de hojas y suma los movimientos de todos', () => {
+    expect(splitByTx([concepto])).toEqual({ concepts: [concepto], transactionIds: [], movs: 3 });
+    expect(splitByTx([hoja])).toEqual({ concepts: [], transactionIds: ['t9'], movs: 1 });
+    expect(splitByTx([concepto, hoja])).toEqual({
+      concepts: [concepto], transactionIds: ['t9'], movs: 4
+    });
+    expect(splitByTx([])).toEqual({ concepts: [], transactionIds: [], movs: 0 });
+  });
+
+  it('eventAssignPayloads: el concepto va por regla y la hoja por id exacto (transactionIds, nunca txIds)', () => {
+    expect(eventAssignPayloads([concepto], 'e1')).toEqual([
+      { kind: 'finance.event.assignConcept', provider: 'Mercadona', concept: 'COMPRA', eventId: 'e1' }
+    ]);
+    expect(eventAssignPayloads([hoja], 'e1')).toEqual([
+      { kind: 'finance.event.assignTransactions', eventId: 'e1', transactionIds: ['t9'], action: 'add' }
+    ]);
+    expect(eventAssignPayloads([concepto, hoja], 'e1')).toEqual([
+      { kind: 'finance.event.assignConcept', provider: 'Mercadona', concept: 'COMPRA', eventId: 'e1' },
+      { kind: 'finance.event.assignTransactions', eventId: 'e1', transactionIds: ['t9'], action: 'add' }
+    ]);
+    // Categoría agregada: un solo comando por la categoría entera.
+    expect(eventAssignPayloads([categoria], 'e1')).toEqual([
+      { kind: 'finance.event.assignConcept', categoryId: 'c1', eventId: 'e1' }
+    ]);
+    expect(eventAssignPayloads([], 'e1')).toEqual([]);
+  });
+
+  it('newEventPayloads encadena crear + asignar con el MISMO id, y el crear va primero', () => {
+    // Sin el id de cliente en el primer comando, las asignaciones no tendrían a
+    // qué apuntar hasta el ACK; y sin `eventAssignPayloads` detrás, la hoja
+    // suelta se perdía en silencio con un toast de éxito.
+    expect(newEventPayloads([concepto, hoja], 'Boda', 'ev-1')).toEqual([
+      { kind: 'finance.event.create', id: 'ev-1', name: 'Boda' },
+      { kind: 'finance.event.assignConcept', provider: 'Mercadona', concept: 'COMPRA', eventId: 'ev-1' },
+      { kind: 'finance.event.assignTransactions', eventId: 'ev-1', transactionIds: ['t9'], action: 'add' }
+    ]);
+  });
+
+  it('undoEventPayloads: eventId null para el concepto y "remove" para las hojas', () => {
+    expect(undoEventPayloads([concepto, hoja], 'e1')).toEqual([
+      { kind: 'finance.event.assignConcept', provider: 'Mercadona', concept: 'COMPRA', eventId: null },
+      { kind: 'finance.event.assignTransactions', eventId: 'e1', transactionIds: ['t9'], action: 'remove' }
+    ]);
+  });
+
+  it('recurrencePayloads: por concepto assignConceptRecurrence; por hoja transaction.update', () => {
+    expect(recurrencePayloads([concepto, hoja], 'recurrente')).toEqual([
+      {
+        kind: 'finance.transactions.assignConceptRecurrence',
+        provider: 'Mercadona', concept: 'COMPRA', recurrence: 'recurrente'
+      },
+      { kind: 'finance.transaction.update', transactionId: 't9', recurrence: 'recurrente' }
+    ]);
+  });
+
+  it('splitForCategory: la categoría agregada se omite y las hojas se resuelven por movIdsByKey', () => {
+    const movIdsByKey = new Map([
+      ['/cat:X', ['t1', 't2']],
+      ['/cat:X/prov:P', ['t1']]
+    ]);
+    expect(splitForCategory([concepto, hoja, categoria], movIdsByKey)).toEqual({
+      concepts: [concepto],
+      transactionIds: ['t9'],
+      omitted: 1,
+      moved: 4
+    });
+    // Solo una categoría: no se mueve nada y se cuenta como omitida (el
+    // servidor no recategoriza una categoría sobre otra).
+    expect(splitForCategory([categoria], movIdsByKey)).toEqual({
+      concepts: [], transactionIds: [], omitted: 1, moved: 0
+    });
+  });
+
+  it('categoryAssignPayloads: una regla por concepto y UN bulk con todos los ids', () => {
+    const movIdsByKey = new Map([['/cat:X/prov:P', ['t1']]]);
+    expect(categoryAssignPayloads([concepto], 'c2', movIdsByKey)).toEqual([
+      { kind: 'finance.category.assignConcept', provider: 'Mercadona', concept: 'COMPRA', categoryId: 'c2' }
+    ]);
+    expect(categoryAssignPayloads([hoja], 'c2', movIdsByKey)).toEqual([
+      { kind: 'finance.transactions.bulk', transactionIds: ['t9'], categoryId: 'c2' }
+    ]);
+    expect(categoryAssignPayloads([concepto, hoja], 'c2', movIdsByKey)).toEqual([
+      { kind: 'finance.category.assignConcept', provider: 'Mercadona', concept: 'COMPRA', categoryId: 'c2' },
+      { kind: 'finance.transactions.bulk', transactionIds: ['t9'], categoryId: 'c2' }
+    ]);
+    // Categoría agregada sola: nada que mandar (el acuse lo explica aparte).
+    expect(categoryAssignPayloads([categoria], 'c2', movIdsByKey)).toEqual([]);
+  });
+
+  it('categoryUndoPayloads: reasignaciones primero, restauraciones por ids después', () => {
+    expect(
+      categoryUndoPayloads({
+        reassignments: [{ provider: 'P', concept: null, categoryId: 'c1' }],
+        bulkRestores: [{ transactionIds: ['t3'], categoryId: 'c2' }],
+        skipped: 1
+      })
+    ).toEqual([
+      { kind: 'finance.category.assignConcept', provider: 'P', categoryId: 'c1' },
+      { kind: 'finance.transactions.bulk', transactionIds: ['t3'], categoryId: 'c2' }
+    ]);
+    expect(categoryUndoPayloads({ reassignments: [], bulkRestores: [], skipped: 3 })).toEqual([]);
   });
 });
 

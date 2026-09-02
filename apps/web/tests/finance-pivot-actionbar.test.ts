@@ -89,13 +89,31 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
     expect(table).toMatch(/toast = null; devolverFoco\(\);/);
   });
 
-  it('R27: createEventPayload(name, id) — nunca (id, name)', () => {
-    expect(table).toMatch(/createEventPayload\(name, eventId\)/);
-    expect(table).not.toMatch(/createEventPayload\(eventId, name\)/);
+  it('F6-I4/T12-M1: los payloads los componen funciones puras de pivot-actions, no el .svelte', () => {
+    // La partición `txId != null` estaba escrita tres veces dentro del
+    // componente y la composición de payloads de evento dos, sin ninguna
+    // prueba de ningún nivel. Ahora el componente solo encadena.
+    for (const compositor of [
+      'eventAssignPayloads(items, eventId)',
+      'undoEventPayloads(items, eventId)',
+      'newEventPayloads(items, name, eventId)',
+      'categoryAssignPayloads(items, categoryId, movIdsByKey)',
+      'recurrencePayloads(items, rec)',
+      'categoryUndoPayloads(plan)'
+    ]) {
+      expect(table).toContain(compositor);
+    }
+    // Y ya no arma ningún payload a mano.
+    expect(table).not.toMatch(/kind: 'finance\./);
+    expect(table).not.toMatch(/assignConceptToEvent\(/);
+    expect(table).not.toMatch(/createEventPayload\(/);
+    expect(table).not.toMatch(/bulkByIds\(/);
   });
 
-  it('sin non-null assertion sobre txId: usa una guarda de tipo o flatMap', () => {
+  it('sin non-null assertion sobre txId: la partición vive en splitByTx/splitForCategory', () => {
     expect(table).not.toMatch(/\.txId!/);
+    expect(table).toContain('splitByTx(items)');
+    expect(table).toContain('splitForCategory(items, movIdsByKey)');
   });
 
   it('shift+clic selecciona un rango de hermanos; clic simple alterna', () => {

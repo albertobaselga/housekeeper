@@ -58,6 +58,30 @@ test('arrastrar a un evento existente da acuse honesto con el resumen de la regl
   await expect(toast).toContainText('Guardado en este dispositivo');
 });
 
+// F6-I4, cobertura pendiente: el submit del popover con nombre («crear evento
+// → asignarle los movimientos», la cadena más delicada de la fase) no lo
+// ejercitaba ningún test de ningún nivel — los e2e llegaban hasta abrir el
+// popover y cerrarlo con Escape.
+test('soltar sobre EVENTOS, escribir un nombre y «Crear y asignar» encadena crear+asignar con acuse', async ({ page }) => {
+  const tabla = page.getByTestId('pivot-table');
+  const asa = tabla.locator('tr', { hasText: 'Mercadona' }).first().locator('[title="arrastrar"]');
+  await nativeDragDrop(page, asa, page.getByTestId('pivot-banda-eventos'));
+
+  const campo = page.getByPlaceholder('＋ nuevo evento…');
+  await expect(campo).toBeVisible();
+  await campo.fill('Vuelta al cole');
+  await page.getByRole('button', { name: 'Crear y asignar' }).click();
+
+  // Mismo resumen que la barra de acciones (summarizeEventDrop): los 3
+  // movimientos de Mercadona son un único concepto con proveedor único.
+  const toast = page.getByTestId('pivot-toast');
+  await expect(toast).toContainText('3 movimientos → Vuelta al cole · regla creada');
+  // Sin base de datos el sync no confirma: el acuse lo dice, no finge éxito.
+  await expect(toast).toContainText('Guardado en este dispositivo');
+  // El popover se cierra al aplicar.
+  await expect(campo).toHaveCount(0);
+});
+
 // Cobertura pendiente de la revisión de la Task 13 (task-13-review-0.md, M3,
 // punto 2): `dnd-target`/`dnd-dimmed` son clases EFÍMERAS (solo existen
 // mientras `dragging !== null`, entre el `dragstart` y el `drop`) — un test

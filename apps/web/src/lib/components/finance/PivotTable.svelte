@@ -22,9 +22,9 @@
     type DragPayload, type PivotNodeLike, type PivotSortKey, type SelectableItem, type SortDir
   } from '$lib/finance/pivot-state';
   import {
-    acuse, assignConceptRecurrence, assignConceptToCategory, assignConceptToEvent, assignTransactionsToEvent,
-    buildTxCategoryIndex, bulkByIds, conceptTargetOf, createEventPayload, investTransaction,
-    planCategoryUndo, sendAll, undoEventAssign, updateTransactionRecurrence,
+    acuse, buildTxCategoryIndex, categoryAssignPayloads, categoryUndoPayloads, eventAssignPayloads,
+    investTransaction, newEventPayloads, planCategoryUndo, recurrencePayloads, sendAll, splitByTx,
+    splitForCategory, undoEventPayloads,
     type CategoryUndo
   } from '$lib/finance/pivot-actions';
   import type { AnaliticaCategory, AnaliticaEventSummary, AnaliticaPivotRow } from '$lib/finance/analitica-data';
@@ -155,6 +155,7 @@
   const selectionMovs = $derived(selectionList.reduce((s, i) => s + i.count, 0));
   const clearSelection = () => { selected = new Map(); lastKey = null; };
 
+
   // F6-M3: al cerrar el aviso (con «Deshacer» o con «✕») el elemento enfocado
   // desaparece del DOM y el foco cae al <body>; con teclado o lector se pierde
   // el sitio en una tabla larga. Se recuerda la fila que originó la acción y se
@@ -166,11 +167,6 @@
     const destino = anchorKey !== null ? tablaEl?.querySelector(`[data-fila="${CSS.escape(anchorKey)}"]`) : null;
     if (destino instanceof HTMLElement) destino.focus();
     else tablaEl?.focus();
-  }
-
-  /** Guarda de tipo: evita el `!` sobre `txId` (prohibido) en los aplicadores de abajo. */
-  function hasTxId(item: SelectableItem): item is SelectableItem & { txId: string } {
-    return item.txId != null;
   }
 
   function clickItem(item: SelectableItem, siblings: SelectableItem[], shiftKey: boolean): void {
@@ -281,10 +277,7 @@
   }
 
   async function runCategoryUndo(plan: CategoryUndo): Promise<void> {
-    const payloads = [
-      ...plan.reassignments.map((r) => assignConceptToCategory(r.provider, r.concept, r.categoryId)),
-      ...plan.bulkRestores.map((g) => bulkByIds(g.transactionIds, { categoryId: g.categoryId }))
-    ];
+    const payloads = categoryUndoPayloads(plan);
     // F6-I1: el aviso es INCONDICIONAL. El servidor no revierte la regla por
     // ninguno de los dos caminos: `finance.category.assignConcept` siempre
     // INSERTA una regla nueva (nunca borra ni actualiza la anterior), así que
@@ -306,26 +299,21 @@
   // ── Aplicadores compartidos ───────────────────────────────────────────────
   // La barra de acciones y el drag-and-drop (tarea 13) son dos caminos para el
   // MISMO gesto: comparten estas tres funciones para que no puedan divergir.
+  // F6-I4 + T12-M1: los payloads los COMPONEN funciones puras de
+  // `pivot-actions.ts` (probadas allí); aquí solo queda el acuse y el
+  // «Deshacer», que son estado del componente.
 
   async function applyEventAssignment(
     items: readonly SelectableItem[], eventId: string, eventName: string, omitted: number
   ): Promise<void> {
-    const transactionIds = items.filter(hasTxId).map((i) => i.txId);
-    const conceptItems = items.filter((i) => i.txId == null);
-    const movs = items.reduce((s, i) => s + i.count, 0);
-    const r = await submit([
-      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
-      ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'add')] : [])
-    ]);
+    const { concepts, transactionIds, movs } = splitByTx(items);
+    const r = await submit(eventAssignPayloads(items, eventId));
     toast = {
       message: acuse(r, summarizeEventDrop(movs, eventName, omitted)),
-      ...(r.ok && (conceptItems.length > 0 || transactionIds.length > 0)
+      ...(r.ok && (concepts.length > 0 || transactionIds.length > 0)
         ? {
             onUndo: async () => {
-              const u = await submit([
-                ...conceptItems.map((i) => undoEventAssign(conceptTargetOf(i))),
-                ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'remove')] : [])
-              ]);
+              const u = await submit(undoEventPayloads(items, eventId));
               toast = { message: acuse(u, 'Deshecho') };
             }
           }
@@ -344,38 +332,26 @@
     const existing = events.find((e) => e.name.toLocaleLowerCase() === name.toLocaleLowerCase());
     if (existing) return applyEventAssignment(items, existing.id, existing.name, omitted);
     const eventId = crypto.randomUUID();
-    const transactionIds = items.filter(hasTxId).map((i) => i.txId);
-    const conceptItems = items.filter((i) => i.txId == null);
-    const movs = items.reduce((s, i) => s + i.count, 0);
-    // R27: la firma real es createEventPayload(name, id?) — el id va SEGUNDO.
-    const r = await submit([
-      createEventPayload(name, eventId),
-      ...conceptItems.map((i) => assignConceptToEvent(conceptTargetOf(i), { eventId })),
-      ...(transactionIds.length ? [assignTransactionsToEvent(eventId, transactionIds, 'add')] : [])
-    ]);
-    toast = { message: acuse(r, summarizeEventDrop(movs, name, omitted)) };
+    const r = await submit(newEventPayloads(items, name, eventId));
+    toast = { message: acuse(r, summarizeEventDrop(splitByTx(items).movs, name, omitted)) };
   }
 
   async function applyCategoryAssignment(
     items: readonly SelectableItem[], categoryId: string, omitted: number
   ): Promise<void> {
-    const transactionIds = resolveSelectionIds(items.filter(hasTxId), movIdsByKey);
-    const conceptItems = items.filter((i) => i.txId == null && i.categoryId == null);
-    const omitidos = omitted + items.filter((i) => i.categoryId != null).length;
+    const reparto = splitForCategory(items, movIdsByKey);
+    const omitidos = omitted + reparto.omitted;
     // El plan de deshacer cubre TODO lo que de verdad se mueve (conceptos Y
-    // hojas de movimiento sueltas), no solo `conceptItems`: una hoja (`txId`
-    // set, `provider: ''`) también se indexa por id exacto en
+    // hojas de movimiento sueltas), no solo `reparto.concepts`: una hoja
+    // (`txId` set, `provider: ''`) también se indexa por id exacto en
     // `planCategoryUndo` (ver el caso "mezcla" de `finance-pivot-actions.test.ts`).
     // Omitirla dejaría el plan vacío al recategorizar una única hoja y
     // «Deshacer» no restauraría nada, con un acuse engañoso («No hay nada que
     // asignar», por `sent === 0`).
     const undoItems = items.filter((i) => i.categoryId == null);
     const plan = planCategoryUndo(undoItems, movIdsByKey, txCatIndex);
-    const movidos = conceptItems.reduce((s, i) => s + i.count, 0) + transactionIds.length;
-    const r = await submit([
-      ...conceptItems.map((i) => assignConceptToCategory(i.provider, i.concept, categoryId)),
-      ...(transactionIds.length ? [bulkByIds(transactionIds, { categoryId })] : [])
-    ]);
+    const movidos = reparto.moved;
+    const r = await submit(categoryAssignPayloads(items, categoryId, movIdsByKey));
     // El caso MÁS habitual al recategorizar es partir de "sin clasificar"
     // (categoría previa null en TODOS los movimientos): `planCategoryUndo`
     // entonces sale con `reassignments: []` y `bulkRestores: []` (todo cae en
@@ -491,12 +467,7 @@
     return run(async () => {
       // Por concepto: assignConceptRecurrence. Hoja suelta: transaction.update
       // (finance.transactions.bulk NO admite recurrence, resolución nº 5).
-      const transactionIds = items.filter(hasTxId).map((i) => i.txId);
-      const conceptItems = items.filter((i) => i.txId == null);
-      const r = await submit([
-        ...conceptItems.map((i) => assignConceptRecurrence(conceptTargetOf(i), rec)),
-        ...transactionIds.map((id) => updateTransactionRecurrence(id, rec))
-      ]);
+      const r = await submit(recurrencePayloads(items, rec));
       const label = rec === 'recurrente' ? '♻ recurrente' : '✦ extraordinario';
       toast = { message: acuse(r, `${movs} movimiento${movs === 1 ? '' : 's'} → ${label}`) };
       clearSelection();
