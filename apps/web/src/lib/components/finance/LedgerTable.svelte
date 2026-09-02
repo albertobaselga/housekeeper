@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import type { FinanceTxDto } from '@housekeeper/server';
   import { isManualTransaction, ledgerRowMeta, txTitle } from '$lib/finance/detail';
   import { formatCents } from '$lib/finance/format';
@@ -100,8 +101,18 @@
               onclick={() => onUnlink(groupId)}>⇄</button>
           {/if}
           {#if tx.provider}
+            <!--
+              [F5-M7, despacho de cierre] Ruta ABSOLUTA, como el mismo enlace
+              en `revision/+page.svelte:140`: la relativa (`ajustes?prov=…`)
+              solo resolvía bien desde `/h/<id>/finanzas/movimientos` — el
+              único sitio que hoy monta este componente — y rompía desde
+              cualquier ruta con barra final o subruta. `page.params` (no un
+              prop nuevo): el componente no recibe `householdId` y las tres
+              pantallas que lo montan (`revision`/`movimientos`/`eventos`)
+              están fuera de los ficheros que esta tarea puede tocar.
+            -->
             <a class="button secondary small-button" title="Editar alias del proveedor"
-              href={`ajustes?prov=${encodeURIComponent(tx.provider)}`}>✎</a>
+              href={`/h/${page.params.householdId}/finanzas/ajustes?prov=${encodeURIComponent(tx.provider)}`}>✎</a>
           {/if}
           {#if onDeleteManual && isManualTransaction(tx)}
             <button class="button danger small-button" type="button" onclick={() => onDeleteManual(tx.id)}>Borrar</button>

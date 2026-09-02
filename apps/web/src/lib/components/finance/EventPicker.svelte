@@ -13,6 +13,17 @@
 
   let open = $state(false);
   let newName = $state('');
+  // [F5-M8, despacho de cierre] El botón que abre el popover, para devolverle
+  // el foco al cerrarse (regla única de foco de la fase 5): sin esto, Escape
+  // y «Cerrar» dejaban el foco en el elemento que desaparece del DOM (o en el
+  // propio botón «Cerrar», que también se desmonta), y con teclado o lector
+  // de pantalla se perdía el sitio en la fila de `LedgerTable`.
+  let triggerButton = $state<HTMLButtonElement | null>(null);
+
+  function closePanel(): void {
+    open = false;
+    triggerButton?.focus();
+  }
 
   const panelId = $props.id();
 
@@ -34,7 +45,7 @@
 <svelte:window
   onkeydown={open
     ? (event) => {
-        if (event.key === 'Escape') open = false;
+        if (event.key === 'Escape') closePanel();
       }
     : undefined}
 />
@@ -42,6 +53,7 @@
 <span class="event-picker">
   <button
     type="button"
+    bind:this={triggerButton}
     class="button secondary small-button"
     aria-expanded={open}
     aria-controls={panelId}
@@ -74,7 +86,7 @@
         <input aria-label="Nuevo evento" placeholder="Nuevo evento…" bind:value={newName} />
         <button class="button secondary small-button" type="submit">+</button>
       </form>
-      <button class="button secondary small-button" type="button" onclick={() => (open = false)}>Cerrar</button>
+      <button class="button secondary small-button" type="button" onclick={closePanel}>Cerrar</button>
     </div>
   {/if}
 </span>
