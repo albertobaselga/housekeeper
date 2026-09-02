@@ -55,9 +55,16 @@ export interface FinanceTransactionsPage {
 // puramente mecánicos (partir/componer ISO, sumar meses) que solo usa
 // seriesWindow, propio de esta lectura SQL.
 
+// `??`/desestructuración con default solo cubren el elemento AUSENTE, no el
+// malformado: "agosto".split("-").map(Number) da [NaN], que pasaría de largo y
+// llegaría a SQL como fecha inválida. finiteOr cierra también ese caso.
+function finiteOr(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
 function splitIso(iso: string): [number, number, number] {
-  const [year = 1970, month = 1, day = 1] = iso.split("-").map(Number);
-  return [year, month, day];
+  const [year, month, day] = iso.split("-").map(Number);
+  return [finiteOr(year, 1970), finiteOr(month, 1), finiteOr(day, 1)];
 }
 
 function isoOf(year: number, month: number, day: number): string {
@@ -111,7 +118,10 @@ function txConditions(householdId: string, filters: FinanceReadFilters): SqlFilt
 
 export async function readFinanceAccounts(client: PoolClient, householdId: string): Promise<FinanceAccountDto[]> {
   const result = await client.query<FinanceAccountDto>(
-    `select account.id, account.name, account.bank::text as "bank", account.kind::text as "kind",
+    // `bank` es NULL para cuentas sin banco (Efectivo, manuales — 0036_finance.sql);
+    // coalesce a '' para no mentir sobre el tipo `string` del DTO (ver hermana
+    // readFinanceAccountViews, que hace lo mismo por la misma razón).
+    `select account.id, account.name, coalesce(account.bank::text, '') as "bank", account.kind::text as "kind",
             account.owner_label as "ownerLabel", (account.archived_at is not null) as "archived"
        from app.finance_accounts account
       where account.household_id = $1
@@ -126,6 +136,9 @@ export async function readFinanceCategories(client: PoolClient, householdId: str
     `select category.id, category.name, category.parent_id as "parentId", category.kind::text as "kind"
        from app.finance_categories category
       where category.household_id = $1
+      -- Orden plano, no de árbol: las raíces salen alfabéticas primero, luego
+      -- bloques de hijas agrupadas por parent_id (uuid, sin orden visual). Si
+      -- fase 5 necesita un árbol presentable, lo construye en memoria.
       order by category.parent_id nulls first, category.name`,
     [householdId],
   );
@@ -144,11 +157,11 @@ export async function readFinanceEvents(client: PoolClient, householdId: string)
 // ── Movimientos con paginación explícita (§7: nunca truncar en silencio) ─────
 
 /**
- * Alias del proveedor como subconsulta ESCALAR, nunca como join: el doc de
- * interfaces no declara `(household_id, provider_norm)` único en
- * `finance_provider_aliases`, y un join con dos alias del mismo `provider_norm`
- * duplicaría filas inflando `total` y `sumCents` — justo el «total veraz» que
- * esta lectura promete.
+ * Alias del proveedor como subconsulta ESCALAR, nunca como join: el `limit 1`
+ * deja el resultado inmune a la forma de la tabla aunque el UNIQUE
+ * `(household_id, provider_norm)` de 0036_finance.sql ya lo garantice hoy — un
+ * join con dos filas del mismo `provider_norm` duplicaría filas inflando
+ * `total` y `sumCents` — justo el «total veraz» que esta lectura promete.
  */
 const ALIAS_DISPLAY = `(select a.display
                           from app.finance_provider_aliases a
@@ -162,13 +175,18 @@ export async function readFinanceTransactions(
   query: FinanceTransactionsQuery,
 ): Promise<FinanceTransactionsPage> {
   const byIds = query.ids.length > 0 || query.groupIds.length > 0;
-  const params: unknown[] = [householdId];
-  const where: string[] = ["tx.household_id = $1"];
+  // Cada rama construye sus propios `params`/`where` de cero: nada de mutar un
+  // array ya inicializado para la otra rama (length = 0 obligaba a leer dos
+  // veces para ver qué sobrevivía).
+  let params: unknown[];
+  let where: string[];
   if (byIds) {
     // Petición exacta (panel de detalle): sin rango ni filtros de periodo. Los
     // dos criterios se unen con OR dentro del MISMO paréntesis: la semántica es
     // «estos movimientos O los de estos grupos»; con AND casi siempre saldría
     // cero filas cuando el cliente combinara ambos (trampa latente para fase 5).
+    params = [householdId];
+    where = ["tx.household_id = $1"];
     const exact: string[] = [];
     if (query.ids.length > 0) {
       params.push(query.ids);
@@ -181,10 +199,8 @@ export async function readFinanceTransactions(
     where.push(`(${exact.join(" or ")})`);
   } else {
     const base = txConditions(householdId, query);
-    params.length = 0;
-    params.push(...base.params);
-    where.length = 0;
-    where.push(base.where);
+    params = [...base.params];
+    where = [base.where];
   }
   if (query.q) {
     params.push(`%${query.q}%`);

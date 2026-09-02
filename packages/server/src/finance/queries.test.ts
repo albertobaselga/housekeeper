@@ -10,4 +10,8 @@ describe("seriesWindow: N cubos hacia atrás desde el final del rango", () => {
     expect(seriesWindow("2026-08-31", 12)).toBe("2025-09-01");
     expect(seriesWindow("2026-02-15", 1)).toBe("2026-02-01");
   });
+
+  it("no propaga NaN con una fecha malformada: cae a 1970-01-01 en vez de 'NaN-NaN-01'", () => {
+    expect(seriesWindow("agosto", 1)).toBe("1970-01-01");
+  });
 });

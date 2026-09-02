@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AuthorizationError, withAuthorizedTransaction } from "../database.js";
 import {
   readFinanceAccounts,
+  readFinanceCategories,
+  readFinanceEvents,
   readFinanceTransactions,
   type FinanceTransactionsQuery,
 } from "./queries.js";
@@ -15,6 +17,12 @@ const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const APP_LOGIN = "it_housekeeper_app_login";
 const ROBLE = "10000000-0000-4000-8000-000000000001";
 const OLIVO = "20000000-0000-4000-8000-000000000001";
+
+// Fixture (002_finance.sql): TX1 está enlazada al evento EVENT1 y su
+// `provider_norm` tiene alias; TX2 no tiene evento ni alias.
+const TX1 = "f1e00000-0000-4000-8000-000000000001";
+const TX2 = "f1e00000-0000-4000-8000-000000000002";
+const EVENT1 = "f1f00000-0000-4000-8000-000000000001";
 
 const WIDE: FinanceTransactionsQuery = {
   from: "2020-01-01", to: "2030-12-31", accountIds: [], eventId: null, excludeEventIds: [],
@@ -64,6 +72,50 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
       readFinanceTransactions(client, ROBLE, { ...WIDE, offset: all.total + 100 }));
     expect(beyond.rows).toHaveLength(0);
     expect(beyond.total).toBe(all.total);
+  });
+
+  it("eventIds y providerDisplay llegan poblados desde las tablas de apoyo", async () => {
+    const page = await as("fixture:roble:admin", ROBLE, (client) => readFinanceTransactions(client, ROBLE, WIDE));
+    const tx1 = page.rows.find((row) => row.id === TX1);
+    const tx2 = page.rows.find((row) => row.id === TX2);
+    expect(tx1?.eventIds).toEqual([EVENT1]);
+    expect(tx1?.providerDisplay).toBe("Mercado Ejemplo");
+    expect(tx2?.eventIds).toEqual([]);
+    expect(tx2?.providerDisplay).toBe("Empresa Fixture");
+  });
+
+  it("eventId y excludeEventIds filtran conjuntos complementarios ($n no se desplaza)", async () => {
+    const withEvent = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinanceTransactions(client, ROBLE, { ...WIDE, eventId: EVENT1 }));
+    expect(withEvent.rows.map((row) => row.id)).toEqual([TX1]);
+
+    const withoutEvent = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinanceTransactions(client, ROBLE, { ...WIDE, excludeEventIds: [EVENT1] }));
+    const withoutEventIds = withoutEvent.rows.map((row) => row.id);
+    expect(withoutEventIds).not.toContain(TX1);
+    expect(withoutEventIds).toContain(TX2);
+
+    const all = await as("fixture:roble:admin", ROBLE, (client) => readFinanceTransactions(client, ROBLE, WIDE));
+    expect(withEvent.total + withoutEvent.total).toBe(all.total);
+  });
+
+  it("q busca por concepto/proveedor/alias, y la petición exacta por ids toma la rama de $n distinta", async () => {
+    const byAlias = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinanceTransactions(client, ROBLE, { ...WIDE, q: "mercado" }));
+    expect(byAlias.rows.map((row) => row.id)).toEqual([TX1]);
+
+    const byIds = await as("fixture:roble:admin", ROBLE, (client) =>
+      readFinanceTransactions(client, ROBLE, { ...WIDE, ids: [TX1], groupIds: [] }));
+    expect(byIds.rows.map((row) => row.id)).toEqual([TX1]);
+  });
+
+  it("readFinanceCategories y readFinanceEvents devuelven los catálogos del hogar", async () => {
+    const categories = await as("fixture:roble:admin", ROBLE, (client) => readFinanceCategories(client, ROBLE));
+    expect(categories.some((c) => c.name === "Casa" && c.parentId === null)).toBe(true);
+    expect(categories.some((c) => c.name === "Supermercado" && c.parentId !== null)).toBe(true);
+
+    const events = await as("fixture:roble:admin", ROBLE, (client) => readFinanceEvents(client, ROBLE));
+    expect(events).toEqual([{ id: EVENT1, name: "Semana Santa 2026" }]);
   });
 
   it("el admin de olivo SIN concesión ve cero filas aunque su hogar tiene datos", async () => {
