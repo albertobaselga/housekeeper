@@ -20,10 +20,9 @@ export interface FinanceFilters {
 
 const GRANULARITIES: readonly FinanceGranularity[] = ['month', 'quarter', 'year'];
 
-// Guarda de tipo sobre la lista anterior, sin `as` (R7): antes `parseFilters`
-// asertaba `(granularity as FinanceGranularity)` sobre un valor crudo de la
-// URL, y `series/+server.ts` reimplementaba esta misma comprobación en vez de
-// importarla (m2). Única definición.
+// Guarda de tipo sobre la lista anterior (R7): estrecha un valor CRUDO de la
+// URL a la unión de granularidades comprobándolo de verdad, en un solo sitio.
+// `series/+server.ts` la importa en vez de reimplementar la comprobación (m2).
 export function isGranularity(value: string): value is FinanceGranularity {
   return (GRANULARITIES as readonly string[]).includes(value);
 }
@@ -76,17 +75,65 @@ export function rangeOfMonths(anchor: string, months: number): { from: string; t
 }
 
 /**
- * ISO de hace `months` meses respecto de `today` (por defecto, ahora mismo en
- * UTC): el mismo día del mes salvo que el mes destino sea más corto, en cuyo
- * caso clampa al último día real de ese mes en vez de desbordar al mes
- * siguiente (31/8 − 6 tenía que dar 28/2, y con aritmética cruda de `Date`
- * daba 3/3). Reutiliza `addMonths`/`daysInMonth`/`isoOf` en vez de reabrir el
- * mismo cálculo con `setUTCMonth`. [FASE 5, T10 · corrección Minor 7 — antes
- * vivía inline en `revision/+page.server.ts` sin el clamp].
+ * ISO de hace `months` meses respecto de la fecha ISO `today`: el mismo día del
+ * mes salvo que el mes destino sea más corto, en cuyo caso clampa al último día
+ * real de ese mes en vez de desbordar al siguiente (31/8 − 6 tenía que dar
+ * 28/2, y con aritmética cruda de `Date` daba 3/3).
+ *
+ * [FASE 5 · despacho de cierre, F5-M3] Toma la fecha como CADENA ISO —no como
+ * `Date`— porque quien la llama trabaja ya con la fecha local del hogar
+ * (`todayLocal()`, Europe/Madrid): con un `Date` había que volver a decidir
+ * zona horaria en cada sitio, y en dos de ellos se decidió UTC.
+ */
+export function monthsAgoOf(today: string, months: number): string {
+  const [year, month, day] = split(today);
+  const [targetYear, targetMonth] = addMonths(year, month, -months);
+  return isoOf(targetYear, targetMonth, Math.min(day, daysInMonth(targetYear, targetMonth)));
+}
+
+/**
+ * Igual, tomando un `Date` en UTC. [FASE 5, T10 · corrección Minor 7 — antes
+ * vivía inline en `revision/+page.server.ts` sin el clamp]. Se conserva para
+ * quien todavía parte de un `Date`; el camino de las pantallas es
+ * `parseDateRange`, que ancla el «hoy» en la zona del hogar.
  */
 export function monthsAgoISO(months: number, today: Date = new Date()): string {
-  const [year, month] = addMonths(today.getUTCFullYear(), today.getUTCMonth() + 1, -months);
-  return isoOf(year, month, Math.min(today.getUTCDate(), daysInMonth(year, month)));
+  return monthsAgoOf(isoOf(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate()), months);
+}
+
+/**
+ * ¿Es una fecha ISO REAL? `DATE_PATTERN` solo mira la forma: `2026-13-40` la
+ * pasa y llegaba tal cual a `op_date between $2 and $3`, donde Postgres
+ * responde 22008 y el `catch` de los cargadores lo confunde con una avería
+ * (503 en pantalla y un `log.error` por visita, desde una URL que cualquiera
+ * puede escribir o enlazar).
+ */
+function isCalendarDate(value: string): boolean {
+  if (!DATE_PATTERN.test(value)) return false;
+  const [year, month, day] = split(value);
+  if (month < 1 || month > 12) return false;
+  return day >= 1 && day <= daysInMonth(year, month);
+}
+
+export type DateRange = { from: string; to: string };
+
+/**
+ * Rango [from, to] saneado de la URL: fechas ISO REALES o el valor por
+ * omisión (los últimos `defaultMonths` meses hasta `today`); si `to` queda por
+ * detrás de `from`, se ancla en `from` (N3), que es lo que pasaba con un
+ * `?from=` futuro. Única definición: Revisión y Eventos la comparten en vez de
+ * repetir cada una su media validación (F5-I2 + T11-R3).
+ */
+export function parseDateRange(
+  params: URLSearchParams,
+  today: string = todayLocal(),
+  defaultMonths = 6
+): DateRange {
+  const fromParam = params.get('from') ?? '';
+  const toParam = params.get('to') ?? '';
+  const from = isCalendarDate(fromParam) ? fromParam : monthsAgoOf(today, defaultMonths);
+  const to = isCalendarDate(toParam) ? toParam : today;
+  return { from, to: to < from ? from : to };
 }
 
 export function spanMonths(filters: Pick<FinanceFilters, 'from' | 'to'>): number {
@@ -134,13 +181,17 @@ export function parseFilters(params: URLSearchParams, today: string): FinanceFil
   const to = params.get('to') ?? '';
   const granularityParam = params.get('g') ?? '';
   const eventIdParam = params.get('ev');
-  const validFrom = DATE_PATTERN.test(from) ? from : fallback.from;
-  // m10(a): `to < from` es tan malformado como un `to` que no encaja en
-  // DATE_PATTERN (mismo criterio de «descartar»): sin este descarte,
-  // spanMonths sale negativo, rangeLabel se pinta al revés y la consulta
-  // devuelve cero filas sin decir por qué. La comparación lexicográfica de
-  // cadenas ISO (YYYY-MM-DD) ya ordena como fechas.
-  const validTo = DATE_PATTERN.test(to) && to >= validFrom ? to : fallback.to;
+  const validFrom = isCalendarDate(from) ? from : fallback.from;
+  // m10(a): `to < from` es tan malformado como un `to` que no encaja en el
+  // calendario (mismo criterio de «descartar»): sin este descarte, spanMonths
+  // sale negativo, rangeLabel se pinta al revés y la consulta devuelve cero
+  // filas sin decir por qué. La comparación lexicográfica de cadenas ISO
+  // (YYYY-MM-DD) ya ordena como fechas.
+  const candidateTo = isCalendarDate(to) && to >= validFrom ? to : fallback.to;
+  // N3: y el propio valor por omisión puede quedar DETRÁS de un `from` futuro
+  // (`?from=2027-03-01` con hoy en 2026), que es exactamente el rango
+  // invertido que el descarte de arriba venía a evitar.
+  const validTo = candidateTo < validFrom ? validFrom : candidateTo;
   return {
     from: validFrom,
     to: validTo,

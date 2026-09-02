@@ -344,7 +344,7 @@ describe('I2: requireFinanceAdmin es el cerrojo aplicativo, no una comprobación
         readFinanceTransactions: vi.fn(async () => { throw new Error('no debería llamarse'); })
       };
     });
-    const { loadFinanceDashboard, loadFinanceMovimientos, loadFinanceAjustes } = await import(
+    const { loadFinanceDashboard, loadFinanceMovimientos, loadFinanceAjustes, loadFinanceRevision } = await import(
       '../src/lib/server/finance.server'
     );
     const filters = { from: '2026-01-01', to: '2026-01-31', granularity: 'month' as const, accountIds: [], eventId: null };
@@ -358,6 +358,13 @@ describe('I2: requireFinanceAdmin es el cerrojo aplicativo, no una comprobación
     expect(movimientos).toBeNull();
     const ajustes = await loadFinanceAjustes({ id: 'u1' }, HOUSEHOLD, FAKE_POOL);
     expect(ajustes).toBeNull();
+    // N4: la bandeja de Revisión entra en el mismo contrato, con un rango
+    // válido EXPLÍCITO (no uno derivado de la fecha de hoy, que haría depender
+    // el caso del día en que se ejecute).
+    const revision = await loadFinanceRevision(
+      { id: 'u1' }, HOUSEHOLD, { from: '2026-01-01', to: '2026-01-31' }, FAKE_POOL
+    );
+    expect(revision).toBeNull();
     expect(errorSpy).not.toHaveBeenCalled();
   });
 

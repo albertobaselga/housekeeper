@@ -309,6 +309,9 @@ export function intParam(
   options: { onOutOfRange: 'clamp' | 'reject' } = { onOutOfRange: 'clamp' }
 ): number {
   const raw = url.searchParams.get(name);
+  // N2 (declarado deliberado): `?limit=` VACÍO se trata como ausente —vale el
+  // valor por omisión—, no como un 400; es lo que emite un formulario que no
+  // rellena la clave, y `Number('')` es 0, que sí sería un tope real.
   if (raw === null || raw === '') return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value)) error(400, `Parámetro ${name} inválido`);

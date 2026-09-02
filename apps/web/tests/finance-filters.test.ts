@@ -9,6 +9,7 @@ import {
   mergeParams,
   monthRange,
   monthsAgoISO,
+  parseDateRange,
   parseFilters,
   presetRanges,
   rangeLabel,
@@ -185,5 +186,77 @@ describe('monthsAgoISO (rango rodante de la bandeja de Revisión)', () => {
 
   it('cruza el cambio de año', () => {
     expect(monthsAgoISO(2, new Date(Date.UTC(2026, 0, 15)))).toBe('2025-11-15');
+  });
+});
+
+// [FASE 5 · despacho de cierre, F5-I2 + T11-R3 + F5-M3 + N3] Revisión mandaba
+// `from`/`to` CRUDOS de la URL a Postgres (22007 → `unreadable` → 503 en
+// pantalla y un `log.error` por visita, desde un enlace mal escrito), Eventos
+// validaba la forma pero no el calendario ni `to >= from`, y las dos calculaban
+// «hoy» en UTC en vez de en Europe/Madrid (de madrugada, el `to` por omisión
+// era ayer). Un solo saneado para las dos.
+describe('parseDateRange: el rango de la URL, saneado en un solo sitio', () => {
+  it('sin parámetros: los últimos 6 meses hasta hoy', () => {
+    expect(parseDateRange(new URLSearchParams(), TODAY)).toEqual({ from: '2026-02-28', to: TODAY });
+  });
+
+  it('una fecha con forma correcta pero imposible (2026-13-40) cae al valor por omisión', () => {
+    // DATE_PATTERN la acepta —solo mira la FORMA—, y así llegaba a Postgres.
+    expect(DATE_PATTERN.test('2026-13-40')).toBe(true);
+    expect(parseDateRange(new URLSearchParams('from=2026-13-40&to=2026-02-30'), TODAY)).toEqual({
+      from: '2026-02-28',
+      to: TODAY
+    });
+  });
+
+  it('«ayer» y demás basura caen igual, sin llegar nunca a la consulta', () => {
+    expect(parseDateRange(new URLSearchParams('from=ayer&to=hoy'), TODAY)).toEqual({
+      from: '2026-02-28',
+      to: TODAY
+    });
+  });
+
+  it('un rango válido pasa tal cual', () => {
+    expect(parseDateRange(new URLSearchParams('from=2026-04-01&to=2026-04-30'), TODAY)).toEqual({
+      from: '2026-04-01',
+      to: '2026-04-30'
+    });
+  });
+
+  it('to < from: el rango se cierra en from, nunca al revés (N3)', () => {
+    expect(parseDateRange(new URLSearchParams('from=2026-05-01&to=2026-04-01'), TODAY)).toEqual({
+      from: '2026-05-01',
+      to: '2026-05-01'
+    });
+  });
+
+  it('un from futuro tampoco invierte el rango: el to por omisión se ancla en from', () => {
+    expect(parseDateRange(new URLSearchParams('from=2027-01-01'), TODAY)).toEqual({
+      from: '2027-01-01',
+      to: '2027-01-01'
+    });
+  });
+
+  it('la ventana por omisión es un parámetro, no una constante escondida', () => {
+    expect(parseDateRange(new URLSearchParams(), TODAY, 1)).toEqual({ from: '2026-07-31', to: TODAY });
+  });
+});
+
+// N3 en `parseFilters`: hasta ahora un `from` futuro dejaba el `to` por
+// omisión (hoy) POR DEBAJO del from — spanMonths negativo y cero filas sin
+// explicación.
+describe('parseFilters: el rango nunca queda invertido', () => {
+  it('from futuro: el to por omisión se ancla en from en vez de quedar detrás', () => {
+    expect(parseFilters(new URLSearchParams('from=2027-03-01'), TODAY)).toMatchObject({
+      from: '2027-03-01',
+      to: '2027-03-01'
+    });
+  });
+
+  it('una fecha imposible con forma correcta se descarta como cualquier otra basura', () => {
+    expect(parseFilters(new URLSearchParams('from=2026-02-30'), TODAY)).toMatchObject({
+      from: '2026-01-01',
+      to: TODAY
+    });
   });
 });
