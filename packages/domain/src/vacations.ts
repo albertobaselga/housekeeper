@@ -467,7 +467,7 @@ export const DEFAULT_VACATION_CARRYOVER_MONTHS = 6;
  * Lee la política de `agreement_versions.terms`.
  *
  * Tolerante a propósito: lo que la base admite lo garantiza su CHECK de forma
- * (migración 0034), y una fila anterior —o de una instalación que se saltara la
+ * (migración 0036), y una fila anterior —o de una instalación que se saltara la
  * restricción— tiene que seguir dando la respuesta por omisión en vez de
  * reventar la pantalla o el comando. Un `terms` ilegible NO es «no hay
  * caducidad»: es «no se pactó otra cosa», que son seis meses.

@@ -381,7 +381,7 @@ export interface VacationVoidPayloadV1 {
 
 /**
  * `aggregateType: "leave_request"` — qué se hace con los días que quedaron sin
- * disfrutar al cerrarse un año de CONTRATO (migración 0035).
+ * disfrutar al cerrarse un año de CONTRATO (migración 0037).
  *
  * Las tres salidas nombran el año por su ordinal y nada más: los días, la
  * versión del acuerdo y el importe los recalcula el servidor al decidir y los

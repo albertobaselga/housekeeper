@@ -1874,7 +1874,7 @@ export function buildPendingExtraViews(
  * Los gastos que esperan decisión. El importe solo viaja si quien mira puede
  * verlo, y `seesAmounts` es una ENTRADA explícita decidida por el papel, igual
  * que en la portada: es defensa en profundidad, porque la fuga de verdad ya la
- * corta la RLS de 0036 —a la familia no administradora no le llega ni la fila—.
+ * corta la RLS de 0038 —a la familia no administradora no le llega ni la fila—.
  *
  * Solo el importe: la descripción y el justificante son igual de sensibles y
  * por eso se cortan en la BASE. Repetir aquí esa decisión crearía dos sitios
@@ -1941,7 +1941,7 @@ export function annualVacationDaysInForce(
 
 /**
  * La política de caducidad de los días arrastrados, leída de
- * `agreement_versions.terms` (migración 0034, apartado 4.2 del diseño).
+ * `agreement_versions.terms` (migración 0036, apartado 4.2 del diseño).
  *
  * La implementación vive en el dominio, no aquí: la necesitan también los
  * comandos del servidor, que son quienes calculan la fecha límite CONGELADA de

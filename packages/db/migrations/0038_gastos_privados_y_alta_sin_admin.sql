@@ -10,7 +10,7 @@ BEGIN;
 -- no ve el dinero. Se cumple tabla por tabla —`agreement_versions`,
 -- `settlements`, `settlement_lines`, `payments`, `advances`,
 -- `compensation_accounts`, `manual_adjustments` (0022) y los arrastres de
--- vacaciones (0035) usan todos `include_family_member => false`—. Los gastos
+-- vacaciones (0037) usan todos `include_family_member => false`—. Los gastos
 -- eran LA excepción: `expenses_read` (0005) pasaba `true`, y con ella la
 -- familia no administradora leía la descripción, la fecha y el IMPORTE de lo
 -- que la empleada se había adelantado de su bolsillo, más el enlace al

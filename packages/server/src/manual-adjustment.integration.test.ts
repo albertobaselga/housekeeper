@@ -514,7 +514,7 @@ describe.runIf(Boolean(adminUrl))("conceptos apuntados a mano sobre Postgres rea
   });
 
   it("un concepto nacido de un arrastre lo dice, y anularlo no puede soltar ese hilo", async () => {
-    // La 0035 abre un hueco nuevo: `vacation_carryover_id`. El disparador de
+    // La 0037 abre un hueco nuevo: `vacation_carryover_id`. El disparador de
     // 0022 enumera columna a columna lo que la anulación no puede tocar, así
     // que si alguien añade una columna y se olvida de la lista, la anulación se
     // convierte en una puerta para reescribirla — y con ella, para mover un
@@ -579,7 +579,7 @@ describe.runIf(Boolean(adminUrl))("conceptos apuntados a mano sobre Postgres rea
     expect(kept.rows[0]).toEqual({ status: "voided", vacation_carryover_id: carryoverId });
 
     // Y soltar el hilo a mano, con o sin anulación de por medio, lo rechaza la
-    // base: es lo que la 0035 tuvo que reescribir en el disparador de 0022.
+    // base: es lo que la 0037 tuvo que reescribir en el disparador de 0022.
     await expect(
       adminPool.query("update app.manual_adjustments set vacation_carryover_id = null where id = $1", [
         adjustmentId,

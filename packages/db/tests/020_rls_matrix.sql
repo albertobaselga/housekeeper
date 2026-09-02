@@ -281,7 +281,7 @@ $assert_admin_no_olivo$;
 -- family_member: sees the agreement relationship, the PUBLISHED guide (drafts
 -- belong to whoever administers it since migration 0026), menu and every
 -- routine audience, but NO salary-bearing rows (agreement versions,
--- settlements, lines, payments) and NO expenses (migration 0036: an expense
+-- settlements, lines, payments) and NO expenses (migration 0038: an expense
 -- carries an amount, and amounts do not reach the non-administering family).
 SELECT set_config('app.user_id', 'fixture:roble:family', true);
 SELECT set_config('app.household_id', '', true);
@@ -306,7 +306,7 @@ BEGIN
   -- The financial core stays invisible: the member sees the relationship but
   -- never the money (AC-12 / control 1 of the baseline).
   --
-  -- `expenses` belongs in this list since migration 0036 and not in the one
+  -- `expenses` belongs in this list since migration 0038 and not in the one
   -- above. It used to be the single exception in the whole schema —
   -- `expenses_read` passed `include_family_member => true`— and it leaked the
   -- description, the date and the AMOUNT of what the employee had advanced out

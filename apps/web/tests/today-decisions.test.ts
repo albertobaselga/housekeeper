@@ -155,7 +155,7 @@ describe('buildTodayDecisions por rol', () => {
   });
 
   it('family_member: los huecos del menú y nada más; los gastos llevan importe', () => {
-    // Con la migración 0036 la RLS ya no le devuelve ni un gasto, así que en la
+    // Con la migración 0038 la RLS ya no le devuelve ni un gasto, así que en la
     // práctica `pendingExpenses` llega vacío. Se le pasan igualmente para fijar
     // aquí la otra mitad de la regla: aunque una consulta futura se los trajera,
     // esta lista no los pinta. El detalle de un gasto es su importe.

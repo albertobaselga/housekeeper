@@ -342,7 +342,7 @@ async function loadCarryoverProposal(
  *
  * El cerrojo consultivo del espacio 6 se toma ANTES de mirar si el año ya está
  * decidido, para que dos administradores a la vez no vean los dos «sin decidir»
- * y generen dos pagos por los mismos días. La restricción única de la 0035 es la
+ * y generen dos pagos por los mismos días. La restricción única de la 0037 es la
  * otra mitad de esa garantía: si el cerrojo faltara, seguiría sin haber dos
  * filas, sólo que la segunda fallaría con un error feo en vez de con este.
  */
@@ -380,7 +380,7 @@ async function decideVacationCarryover(
 
   // El identificador se genera aquí porque las dos filas se nombran la una a la
   // otra: el concepto nace apuntando a un arrastre que todavía no existe, y la
-  // clave ajena aplazada de la 0035 lo comprueba al COMMIT.
+  // clave ajena aplazada de la 0037 lo comprueba al COMMIT.
   const carryoverId = randomUUID();
   let manualAdjustmentId: string | null = null;
 

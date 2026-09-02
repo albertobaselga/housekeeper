@@ -10,7 +10,7 @@
 --   2. Que ese permiso sea SOLO de quien administra. Una empleada no crea
 --      perfiles ni membresías, y no puede darse a sí misma un papel mejor.
 --   2 bis. Que quien administra tampoco pueda crear a OTRA administradora desde
---      la aplicación (migración 0036). Es una puerta distinta de la anterior:
+--      la aplicación (migración 0038). Es una puerta distinta de la anterior:
 --      aquí el permiso existe y lo que se limita es el papel que se concede.
 --   3. Que la obligación de cambiar la contraseña provisional no se pueda
 --      quitar sola: la enciende quien administra, la apaga la propia persona y
@@ -117,7 +117,7 @@ ROLLBACK;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Ni siquiera quien administra crea otra administradora DESDE LA APLICACIÓN
--- (migración 0036). Hasta entonces `memberships_admin_insert` sólo miraba quién
+-- (migración 0038). Hasta entonces `memberships_admin_insert` sólo miraba quién
 -- escribía, nunca el papel que se concedía, y la promesa «esta puerta no crea
 -- administradoras» vivía entera en una comparación de cadenas de TypeScript
 -- (`HIREABLE_ROLES`). Se comprobó contra el banco real que por el rol

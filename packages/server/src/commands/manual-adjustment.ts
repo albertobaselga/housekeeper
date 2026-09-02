@@ -46,7 +46,7 @@ export interface ManualAdjustmentDraft {
   amountCents: string;
   addsToPay: boolean;
   /**
-   * Arrastre de vacaciones que lo originó, cuando lo hay (migración 0035). Sin
+   * Arrastre de vacaciones que lo originó, cuando lo hay (migración 0037). Sin
    * él, «Vacaciones del segundo año no disfrutadas» sería indistinguible de una
    * gratificación cualquiera y nada impediría apuntarlo dos veces.
    */

@@ -257,7 +257,7 @@ export async function loadVacationOverview(
           }));
 
         // Lo que ya se decidió sobre los días de años cerrados. La RLS de la
-        // 0035 sólo se lo devuelve a quien administra y a la propia empleada:
+        // 0037 sólo se lo devuelve a quien administra y a la propia empleada:
         // la fila lleva importe, y los importes no llegan a la familia no
         // administradora.
         const carryovers = await client.query<{

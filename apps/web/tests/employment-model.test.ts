@@ -913,7 +913,7 @@ describe('trabajo y gastos pendientes de acción', () => {
   });
 
   it('a quien no ve importes no le viaja la cifra, ni siquiera en crudo', () => {
-    // Defensa en profundidad: la RLS de 0036 ya no le devuelve la fila a la
+    // Defensa en profundidad: la RLS de 0038 ya no le devuelve la fila a la
     // familia no administradora. Si por lo que sea llegara, la ausencia por
     // permiso se serializa como ausencia y no como número que alguien pinte.
     const views = buildPendingExpenseViews(
@@ -934,7 +934,7 @@ describe('trabajo y gastos pendientes de acción', () => {
 
 describe('la caducidad de los días de vacaciones arrastrados', () => {
   it('ausente son seis meses, que es lo que se les venía aplicando', () => {
-    // Todas las versiones anteriores a la 0034 tienen `terms` en `{}`: leerlas
+    // Todas las versiones anteriores a la 0036 tienen `terms` en `{}`: leerlas
     // como seis meses es lo que hace que la migración no tenga que tocar ni una
     // fila ya firmada.
     expect(readVacationCarryoverExpiry({})).toEqual({ mode: 'months', months: 6 });
@@ -954,7 +954,7 @@ describe('la caducidad de los días de vacaciones arrastrados', () => {
   });
 
   it('lo que no sea una de las dos formas cae en el defecto, no revienta la pantalla', () => {
-    // La CHECK de la 0034 impide escribir basura ahí, pero una fila anterior a
+    // La CHECK de la 0036 impide escribir basura ahí, pero una fila anterior a
     // la restricción tiene que seguir dando una respuesta: la política por
     // omisión, que es la que de hecho se le aplicaba.
     expect(readVacationCarryoverExpiry({ vacationCarryoverExpiry: 'seis meses' })).toEqual({

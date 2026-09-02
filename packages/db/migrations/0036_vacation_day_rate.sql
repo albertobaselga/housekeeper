@@ -61,7 +61,7 @@ ALTER TABLE app.agreement_versions
     CHECK (unused_vacation_day_rate_cents >= 0);
 
 COMMENT ON COLUMN app.agreement_versions.unused_vacation_day_rate_cents IS
-  'Importe en céntimos por día de vacaciones NO disfrutado, pactado en esta versión. NULL = no se pactó, que es la verdad de los contratos anteriores a la 0034: sin tarifa no hay compensación y la aplicación no estima ninguna. Nunca se escribe 0 por omisión, porque esta tabla es inmutable y ese 0 diría para siempre que se acordó pagar cero euros por día.';
+  'Importe en céntimos por día de vacaciones NO disfrutado, pactado en esta versión. NULL = no se pactó, que es la verdad de los contratos anteriores a la 0036: sin tarifa no hay compensación y la aplicación no estima ninguna. Nunca se escribe 0 por omisión, porque esta tabla es inmutable y ese 0 diría para siempre que se acordó pagar cero euros por día.';
 
 -- ── 2 · La política de caducidad de los días arrastrados ─────────────────────
 /*

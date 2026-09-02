@@ -187,7 +187,7 @@ Cubre los puntos 7 y 8. Fuente: `inv-3.md` e `inv-5.md`.
    camino llamado **«Cambiar las condiciones»** que explica que se apilan con
    fecha de aplicación, y el historial de versiones plegado. El `h1` sigue siendo
    «Condiciones del contrato» (lo esperan `app-title.ts` y dos pruebas).
-8. **Las dos condiciones nuevas del contrato, con su migración `0034`**, que se
+8. **Las dos condiciones nuevas del contrato, con su migración `0036`**, que se
    mueven aquí desde la tarea E: son condiciones pactadas, y quien rediseña la
    pantalla del contrato es quien tiene que poder pactarlas.
    - `app.agreement_versions.unused_vacation_day_rate_cents` — el importe por
@@ -226,7 +226,7 @@ Segunda mitad del punto 4. Fuente: `inv-1.md`, apartados 4.2 a 4.4 del diseño.
 - Las pruebas de integración de vacaciones y de conceptos.
 
 **Qué hace:**
-1. Migración 0034 con `app.vacation_carryovers`: estados `proposed` → `carried`
+1. Migración 0037 con `app.vacation_carryovers`: estados `proposed` → `carried`
    | `compensated` | `rejected`, y `carried` → `compensated` | `expired`.
    Append-only con el mismo patrón que 0020 y 0022: trigger que prohíbe el
    DELETE, enumera columna a columna lo que no puede cambiar, toma cerrojo
@@ -345,6 +345,6 @@ ficheros no basta si la unidad que se rompe es un contrato entre módulos.
 
 Con las tres tandas dentro: `pnpm typecheck`, `pnpm lint`, `pnpm test`,
 `pnpm --filter @casa-clara/web verify:bundle` y la batería de base de datos.
-Después, merge a `main`, despliegue y **aplicar la migración 0034 en Supabase por
+Después, merge a `main`, despliegue y **aplicar las migraciones 0036, 0037 y 0038 en Supabase por
 conexión directa al 5432** (el pooler del 6543 no conserva los cerrojos de
 sesión que necesita el runner).

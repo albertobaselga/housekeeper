@@ -223,7 +223,7 @@ function readTerms(form: FormData): AgreementTermsInputV1 | { message: string } 
   const schedule = readSchedule(form);
   if (schedule !== null && 'message' in schedule) return schedule;
 
-  // Las dos condiciones de vacaciones que estrenó la 0034. Aquí SIEMPRE se
+  // Las dos condiciones de vacaciones que estrenó la 0036. Aquí SIEMPRE se
   // preguntan, porque cambiar las condiciones es el acto en el que se sabe todo;
   // en el alta son opcionales. La tarifa vacía se guarda como null —«no se
   // pactó»— y nunca como cero: la fila es inmutable y ese cero diría para

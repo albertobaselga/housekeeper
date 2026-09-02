@@ -35,7 +35,7 @@ BEGIN;
 --
 -- 2. EL IMPORTE PUEDE NO EXISTIR, Y ESO SE DICE. `compensation_cents` es
 --    NULLABLE porque el precio del día de vacaciones no disfrutado se PACTA
---    (columna `unused_vacation_day_rate_cents` de la 0034) y los contratos
+--    (columna `unused_vacation_day_rate_cents` de la 0036) y los contratos
 --    firmados antes no lo pactaron. Sin tarifa se puede arrastrar o rechazar,
 --    pero no compensar: un cero diría que se acordó pagar cero euros, que es
 --    falso. El importe viaja siempre con la frase que lo explica.

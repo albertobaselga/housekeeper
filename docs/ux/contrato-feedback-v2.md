@@ -246,7 +246,7 @@ ningún contrato existente necesita tocarse.
 
 ### 4.3 Qué se guarda y cómo se decide
 
-Tabla nueva `app.vacation_carryovers` (migración 0034). No columnas en las que ya
+Tabla nueva `app.vacation_carryovers` (migración 0037). No columnas en las que ya
 hay: un arrastre no es un periodo disfrutado (`vacation_periods`) ni es lo pactado
 (`agreement_versions`, que además es inmutable). Es un hecho con decisión,
 autoría, motivo y consecuencia económica, y se construye con el mismo patrón

@@ -103,7 +103,7 @@ describe.runIf(Boolean(adminUrl))('justificante visible en la cuenta del mes cer
   });
 
   it('quien no ve la cuenta tampoco ve el justificante', async () => {
-    // `FAMILY_USER` está en esta lista desde la migración 0036, no en la de
+    // `FAMILY_USER` está en esta lista desde la migración 0038, no en la de
     // arriba. Un justificante es la foto de una compra con su importe encima, y
     // la familia no administradora no ve importes. La consulta parte de
     // `app.expenses`, así que la puerta se cierra sola: `expenses_read` ya no la

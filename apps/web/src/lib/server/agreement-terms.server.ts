@@ -356,7 +356,7 @@ export async function loadAgreementAdmin(
         );
         const state: AgreementVersionAdminView['state'] =
           version.effectiveFrom > today ? 'futura' : later.length > 0 ? 'historica' : 'vigente';
-        // Ausente en `terms` son seis meses: las versiones anteriores a la 0034
+        // Ausente en `terms` son seis meses: las versiones anteriores a la 0036
         // no la pactaron y esa es la política que se les venía aplicando.
         const carryoverExpiry = readVacationCarryoverExpiry(version.terms);
         const list = byAgreement.get(version.agreementId) ?? [];
@@ -477,13 +477,13 @@ async function insertVersion(
       creditMinutes,
       terms.contractedWeeklyMinutes,
       terms.annualVacationDays,
-      // null de verdad, nunca '0': la columna de la 0034 es NULLABLE porque
+      // null de verdad, nunca '0': la columna de la 0036 es NULLABLE porque
       // «no se pactó» y «se pactó cero» son cosas distintas y la fila es
       // inmutable, así que un cero por omisión no se podría corregir jamás.
       terms.unusedVacationDayRateCents,
       // `terms` deja de ser el `{}` que nadie escribía: aquí entra la política
       // de caducidad de los días arrastrados, con la forma que la CHECK de la
-      // 0034 admite y el esquema zod valida.
+      // 0036 admite y el esquema zod valida.
       //
       // Se MEZCLA sobre los términos de la versión anterior (el `||` de arriba),
       // no se reemplaza el jsonb entero. Hoy da igual porque sólo hay una clave,

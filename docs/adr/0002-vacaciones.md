@@ -238,7 +238,7 @@ descontaría **dos veces**.
 
 ### 2 · Tabla nueva, y por qué no columnas
 
-Migración **0035**: `app.vacation_carryovers`. Un arrastre no cabe en nada de lo
+Migración **0037**: `app.vacation_carryovers`. Un arrastre no cabe en nada de lo
 que ya existía:
 
 - `app.vacation_periods` guarda días **disfrutados**; un arrastre no es un
@@ -246,7 +246,7 @@ que ya existía:
 - `app.agreement_versions` guarda lo **pactado**, y además es inmutable; un
   arrastre es un hecho de un año concreto, no un cambio de contrato.
 - Un cálculo derivado tampoco vale, y ésta es la razón de fondo: **un derivado no
-  puede recordar que alguien dijo que no**. Antes de la 0035 el derecho se
+  puede recordar que alguien dijo que no**. Antes de la 0037 el derecho se
   reiniciaba por aritmética y la casa no podía distinguir «se decidió que se
   perdían» de «a nadie se le ocurrió mirarlo».
 
@@ -302,7 +302,7 @@ sigue contando lo que le han apuntado o anulado, y nada más.
   que tocarlo.
 - **Precio del día:** *«el precio del día de vacaciones no disfrutado tiene otro
   valor que se cierra en el contrato, no se auto calcula»*. Es una tarifa más de
-  las condiciones (`unused_vacation_day_rate_cents`, migración 0034), hermana del
+  las condiciones (`unused_vacation_day_rate_cents`, migración 0036), hermana del
   precio de la hora extra y del día de descanso trabajado. **La columna es
   NULLABLE a propósito:** vacía dice «no se pactó», que es la verdad de los
   contratos anteriores; un cero por omisión dejaría escrito en una tabla inmutable

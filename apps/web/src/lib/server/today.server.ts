@@ -413,7 +413,7 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
    * empleada se había adelantado —y encima con un «Revisar» que esa persona no
    * puede ejecutar, porque aprobar un gasto no está entre sus capacidades—.
    *
-   * Quien corta el dato de verdad es la RLS (migración 0036: `expenses_read`
+   * Quien corta el dato de verdad es la RLS (migración 0038: `expenses_read`
    * pasó a `include_family_member => false`, así que `facts.pendingExpenses`
    * llega vacío). Esto es la defensa de arriba, para que la pantalla no vuelva a
    * afirmar un derecho que la base ya no concede.

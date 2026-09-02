@@ -188,7 +188,7 @@ export const vacationVoidPayloadSchema = z.object({
 
 /**
  * Las tres salidas del arrastre de un año de contrato que se cierra con días
- * sin disfrutar (migración 0035, apartado 4.3 del diseño).
+ * sin disfrutar (migración 0037, apartado 4.3 del diseño).
  *
  * Ninguna lleva los días ni el importe: los recalcula el servidor al decidir,
  * desde los periodos y la versión vigente del acuerdo, y los CONGELA en la
@@ -427,7 +427,7 @@ export const agreementScheduleInputSchema = z
  * exactamente para eso.
  *
  * `never` no lleva número: decir «nunca expiran, a los 6 meses» sería dos
- * respuestas a la vez, y la CHECK de la 0034 tampoco lo admitiría.
+ * respuestas a la vez, y la CHECK de la 0036 tampoco lo admitiría.
  */
 export const vacationCarryoverExpirySchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("months"), months: z.number().int().min(1).max(120) }),
@@ -445,7 +445,7 @@ export const DEFAULT_VACATION_CARRYOVER_EXPIRY = { mode: "months", months: 6 } a
  * «null» no es un hueco por rellenar, es una respuesta.
  *
  * `unusedVacationDayRateCents` es nullable por el mismo motivo y por uno más:
- * la columna de la 0034 es NULLABLE a propósito, porque un cero por omisión
+ * la columna de la 0036 es NULLABLE a propósito, porque un cero por omisión
  * dejaría escrito en una tabla inmutable que se acordó pagar cero euros por
  * día de vacaciones no disfrutado. Vacío dice la verdad: no se pactó.
  */

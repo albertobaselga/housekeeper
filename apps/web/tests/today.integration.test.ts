@@ -279,7 +279,7 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(keys).toContain('menu-unconfirmed');
     expect(keys.some((key) => key.startsWith('extra-'))).toBe(false);
     expect(keys.some((key) => key.startsWith('liquidacion-'))).toBe(false);
-    // Los gastos SALIERON de esta lista con la migración 0036. Antes estaban, y
+    // Los gastos SALIERON de esta lista con la migración 0038. Antes estaban, y
     // el detalle traía el importe formateado: la portada era el segundo sitio
     // por el que la familia no administradora leía lo que la empleada se había
     // adelantado. Lo corta la RLS —`expenses_read` ya no incluye a
