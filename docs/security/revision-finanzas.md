@@ -92,28 +92,41 @@ Restrictiva, no permisiva: las permisivas de una misma orden se combinan con
 concesión veía cero movimientos por la vía normal y, acto seguido, leía
 concepto, proveedor, importe y saldo de cada uno en la auditoría.
 
-## Producción (Supabase): una desviación esperada y el control que sí vale allí
+## Producción (Supabase): lo que se esperaba y lo que se midió
 
-En el despliegue de producción, el propietario del esquema **no puede puentear
-la RLS**, así que el runner intercala `0018_rls_force_compat.sql` entre
-migraciones y levanta el **forzado** (no la RLS) de las tablas que le
-pertenecen (`0018_rls_force_compat.sql:45-56`: `ALTER TABLE … NO FORCE ROW
-LEVEL SECURITY` para cada tabla de `app`/`app_private` cuyo propietario alcanza
-el usuario en curso). Consecuencia, medida en la **simulación del despliegue**
-—no en la base de pruebas de esta página, que sí corre con propietario
-privilegiado—: las 10 tablas `app.finance_*` quedan allí con
-`relrowsecurity = true` y `relforcerowsecurity = false`.
+Antes de tocar producción, el despliegue se ensayó en una base desechable con
+un propietario **sin** `BYPASSRLS`, porque ese era el modelo de privilegios que
+se daba por hecho en Supabase. En ese modelo el runner intercala
+`0018_rls_force_compat.sql` entre migraciones y levanta el **forzado** (no la
+RLS) de las tablas que le pertenecen (`0018_rls_force_compat.sql:45-56`:
+`ALTER TABLE … NO FORCE ROW LEVEL SECURITY`), y las 10 tablas `app.finance_*`
+quedan con `relrowsecurity = true` y `relforcerowsecurity = false`.
 
-**Es lo esperado, no un hallazgo.** `FORCE ROW LEVEL SECURITY` solo cambia algo
-para el **propietario** de la tabla, y el rol de aplicación nunca lo es: se
-conecta como `casa_clara_app_login` (miembro de `casa_clara_app`), que no es
-propietario, no es superusuario y tiene `rolbypassrls = f` —comprobado en el
-control 10—. Para él, las políticas se aplican con o sin `FORCE`. Ver
+Al aplicar de verdad (2026-09-02 23:04 UTC) se midió otra cosa, **a favor**: el
+propietario `postgres` de Supabase tiene `rolbypassrls = t` (sin ser
+superusuario), el runner no tuvo que intercalar la 0018 y las 10 tablas
+quedaron con `relforcerowsecurity = true`, igual que en la base de pruebas de
+esta página. Medido en producción con la consulta del control 9:
+
+| Tabla `app.finance_*` (las 10) | `relrowsecurity` | `relforcerowsecurity` |
+|---|---|---|
+| todas | `true` | `true` |
+
+| Rol | `rolbypassrls` | `rolsuper` |
+|---|---|---|
+| `postgres` (propietario) | `t` | `f` |
+| `casa_clara_app`, `casa_clara_app_login`, `casa_clara_worker` | `f` | `f` |
+
+Cualquiera de los dos resultados es aceptable, y conviene saber por qué: `FORCE
+ROW LEVEL SECURITY` solo cambia algo para el **propietario** de la tabla, y el
+rol de aplicación nunca lo es: se conecta como `casa_clara_app_login` (miembro
+de `casa_clara_app`), que no es propietario, no es superusuario y tiene
+`rolbypassrls = f`. Para él las políticas se aplican con o sin `FORCE`. Ver
 `docs/despliegue/supabase-esquema.md` §2, fila 1.
 
-Por eso, **en Supabase el control 9 no se comprueba con `relforcerowsecurity`**,
-que allí siempre saldrá `false` y no significa nada. El control equivalente que
-sí vale es el veredicto negativo de arriba, que no depende del forzado:
+Por eso, en Supabase el control 9 no se apoya en `relforcerowsecurity` —que
+depende del propietario que tenga el proyecto— sino en el veredicto negativo de
+arriba, que no depende del forzado, y en la sonda con el rol real:
 
 ```sql
 -- Debe devolver 0 filas, también en producción.
@@ -126,11 +139,19 @@ SELECT tablename, policyname, cmd, qual
 -- Y, complementario: el rol de aplicación sigue sin poder puentear la RLS.
 SELECT rolname, rolbypassrls, rolsuper FROM pg_roles
  WHERE rolname IN ('casa_clara_app', 'casa_clara_app_login');
+
+-- Sonda final con el rol de aplicación, sin contexto de sesión: 0|0|0.
+SET ROLE casa_clara_app;
+SELECT (SELECT count(*) FROM app.finance_transactions)
+    || '|' || (SELECT count(*) FROM app.finance_categories)
+    || '|' || (SELECT count(*) FROM app.finance_module_grants);
+RESET ROLE;
 ```
 
-En producción se espera, pues: `relrowsecurity = true` en las 10 tablas,
-`relforcerowsecurity = false` en las 10, cero políticas sin
-`app.finance_enabled()`, y `rolbypassrls = f`.
+Resultado en producción tras migrar los datos: `0|0|0` sin contexto; con el
+contexto de una administradora **sin** concesión, `app.finance_enabled() =
+false` y 0 filas; con el del administrador **con** concesión, `true` y las
+1111 transacciones.
 
 ## El control 5, con precisión
 
