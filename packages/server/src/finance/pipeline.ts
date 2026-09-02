@@ -536,6 +536,9 @@ async function persistPipelineChanges(
       [householdId, a.providerNorm, a.display],
     );
   }
+  // Inserta fila a fila a propósito: el número de vínculos por lote es una
+  // constante pequeña (decenas). Se medirá en producción antes de pasarlo a
+  // un INSERT por conjuntos.
   for (const te of changes.insertedTxEvents) {
     await client.query(
       `insert into app.finance_transaction_events (household_id, transaction_id, event_id)
