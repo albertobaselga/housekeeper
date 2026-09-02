@@ -432,3 +432,63 @@ export function parseChips(q: string | null): SearchChip[] {
   }
   return chips;
 }
+
+// ── Drag and drop: payload, ghost y resúmenes; codecs exev/dupev ─────────────
+
+export interface DragPayload {
+  items: SelectableItem[];
+  concepts: number;
+  movs: number;
+  /** Hojas descartadas por no tener proveedor único (arrastre en bloque). */
+  omitted: number;
+}
+
+export function buildDragPayload(items: SelectableItem[], omitted = 0): DragPayload {
+  return { items, concepts: items.length, movs: items.reduce((s, i) => s + i.count, 0), omitted };
+}
+
+export function dragGhostLabel(payload: DragPayload): string {
+  if (payload.items.length === 1) {
+    const it = payload.items[0];
+    return `${it.label ?? it.concept ?? it.provider} (${it.count} movs)`;
+  }
+  return `${payload.concepts} conceptos (${payload.movs} movs)`;
+}
+
+/**
+ * Elemento offscreen para setDragImage; se elimina en el siguiente tick (el
+ * navegador ya habrá tomado la instantánea). El estilo vive en la clase GLOBAL
+ * `pivot-drag-ghost` (PivotTable.svelte) para pasar el linter de tokens.
+ */
+export function createDragGhostElement(label: string): HTMLDivElement {
+  const el = document.createElement('div');
+  el.textContent = label;
+  el.className = 'pivot-drag-ghost';
+  document.body.appendChild(el);
+  window.setTimeout(() => el.remove(), 0);
+  return el;
+}
+
+const plural = (n: number, s: string, p: string) => (n === 1 ? s : p);
+
+export function summarizeEventDrop(movs: number, eventName: string, omitted = 0): string {
+  const base = `${movs} ${plural(movs, 'movimiento', 'movimientos')} → ${eventName} · regla creada`;
+  return omitted > 0 ? `${base} · ${omitted} sin proveedor ${plural(omitted, 'omitido', 'omitidos')}` : base;
+}
+
+export function summarizeCategoryDrop(movs: number, categoryPath: string, omitted = 0): string {
+  const suffix = omitted > 0 ? ` · ${omitted} ${plural(omitted, 'omitido', 'omitidos')}` : '';
+  if (movs === 0) return `Nada que mover (las categorías no pueden soltarse sobre otra categoría)${suffix}`;
+  return `${movs} ${plural(movs, 'movimiento', 'movimientos')} → ${categoryPath} · regla creada${suffix}`;
+}
+
+// exev (partidas excluidas de KPIs/gráfica) y dupev (eventos duplicados en
+// GASTOS/INGRESOS): CSV de ids en la URL, merge no destructivo como dims/q.
+export function parseIdList(raw: string | null): string[] {
+  if (!raw) return [];
+  return [...new Set(raw.split(',').filter((s) => s.length > 0))];
+}
+
+export function serializeIdList(ids: readonly string[]): string {
+  return ids.join(',');
+}
