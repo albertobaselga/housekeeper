@@ -12,6 +12,16 @@ import {
 
 import { getDatabasePool } from './db.server';
 
+/**
+ * Tope de tamaño del extracto ANTES de materializarlo en memoria (mismo criterio
+ * que `MAX_ATTACHMENT_BYTES` en attachments.server.ts): un extracto real de unos
+ * cientos de movimientos no se acerca ni de lejos a esto, y sin tope cualquier
+ * `family_admin` autenticado podría forzar a la función serverless a cargar un
+ * fichero arbitrariamente grande antes de que `parseStatement` tenga ocasión de
+ * rechazarlo.
+ */
+export const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+
 export interface ImportPreviewResult {
   bank: FinanceBank;
   newCount: number;
@@ -57,24 +67,23 @@ function hashOf(row: ParsedRow): string {
  * es UNIQUE por hogar, así que dos apuntes idénticos en el mismo extracto
  * reventarían la transacción entera con un 23505 y no se importaría nada.
  * Preview y confirm cuentan con esta misma función para que la previsualización
- * no mienta: los colapsados suman a `dupCount`.
+ * no mienta: los colapsados suman a `dupCount`. Cada fila fresca lleva su hash
+ * ya calculado (en vez de un array paralelo indexado) para no necesitar `!`
+ * al leerlo de vuelta bajo `noUncheckedIndexedAccess` (Ruling R7).
  */
 function splitFreshRows(
   rows: readonly ParsedRow[],
-  hashes: readonly string[],
   known: ReadonlySet<string>
-): { fresh: ParsedRow[]; freshHashes: string[]; dupCount: number } {
+): { fresh: Array<{ row: ParsedRow; hash: string }>; dupCount: number } {
   const seen = new Set<string>();
-  const fresh: ParsedRow[] = [];
-  const freshHashes: string[] = [];
-  rows.forEach((row, index) => {
-    const hash = hashes[index]!;
-    if (known.has(hash) || seen.has(hash)) return;
+  const fresh: Array<{ row: ParsedRow; hash: string }> = [];
+  for (const row of rows) {
+    const hash = hashOf(row);
+    if (known.has(hash) || seen.has(hash)) continue;
     seen.add(hash);
-    fresh.push(row);
-    freshHashes.push(hash);
-  });
-  return { fresh, freshHashes, dupCount: rows.length - fresh.length };
+    fresh.push({ row, hash });
+  }
+  return { fresh, dupCount: rows.length - fresh.length };
 }
 
 /**
@@ -104,7 +113,7 @@ export async function previewImport(
       [householdId]
     );
     const knownRefs = new Set(accounts.rows.map((row) => row.bank_ref));
-    const { fresh, dupCount } = splitFreshRows(statement.rows, hashes, known);
+    const { fresh, dupCount } = splitFreshRows(statement.rows, known);
     return {
       bank: statement.bank,
       newCount: fresh.length,
@@ -138,11 +147,16 @@ export async function confirmImport(
   const statement = parseStatement(bytes, filename);
   return withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
     await requireFinanceAdmin(client, membership);
+    // `on conflict … do nothing`: reconfirmar el mismo extracto con las MISMAS
+    // `newAccounts` (doble clic, reintento tras un timeout) es el camino
+    // determinista que el propio módulo promete, no un 23505 sin capturar
+    // sobre `UNIQUE (household_id, bank_ref)` (0036_finance.sql:118).
     for (const account of newAccounts) {
       await client.query(
         `insert into app.finance_accounts
            (household_id, name, bank, kind, owner_label, bank_ref, owner_aliases, transfer_refs)
-         values ($1, $2, $3, $4, $5, $6, '[]'::jsonb, '[]'::jsonb)`,
+         values ($1, $2, $3, $4, $5, $6, '[]'::jsonb, '[]'::jsonb)
+         on conflict (household_id, bank_ref) do nothing`,
         [householdId, account.name, statement.bank, account.kind, account.ownerLabel, account.bankRef]
       );
     }
@@ -161,7 +175,7 @@ export async function confirmImport(
       [householdId, hashes]
     );
     const known = new Set(existing.rows.map((row) => row.dedup_hash));
-    const { fresh, freshHashes, dupCount } = splitFreshRows(statement.rows, hashes, known);
+    const { fresh, dupCount } = splitFreshRows(statement.rows, known);
     if (fresh.length === 0) return { batchId: null, newCount: 0, dupCount };
 
     const batch = await client.query<{ id: string }>(
@@ -172,14 +186,14 @@ export async function confirmImport(
     const batchId = batch.rows[0]?.id;
     if (!batchId) throw new Error('La inserción del lote no devolvió identificador');
 
-    for (const [index, row] of fresh.entries()) {
+    for (const { row, hash } of fresh) {
       await client.query(
         `insert into app.finance_transactions
            (household_id, account_id, batch_id, op_date, value_date, concept, provider, provider_norm,
             amount_cents, balance_cents, code_common, code_own, category_id, status, transfer_group_id,
-            dedup_hash, recurrence, recurrence_manual, raw, currency_code)
+            dedup_hash, recurrence, recurrence_manual, raw, currency_code, bank_category)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, null, 'pendiente', null,
-                 $13, null, false, $14::jsonb, 'EUR')`,
+                 $13, null, false, $14::jsonb, 'EUR', $15)`,
         [
           householdId,
           accountByRef.get(row.accountRef),
@@ -193,8 +207,9 @@ export async function confirmImport(
           row.balanceCents === null ? null : row.balanceCents.toString(),
           row.codeCommon,
           row.codeOwn,
-          freshHashes[index]!,
-          JSON.stringify(row.raw)
+          hash,
+          JSON.stringify(row.raw),
+          row.bankCategory
         ]
       );
     }

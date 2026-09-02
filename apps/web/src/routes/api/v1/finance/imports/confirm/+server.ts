@@ -1,10 +1,18 @@
-import { error, json } from '@sveltejs/kit';
+import { error, isHttpError, json } from '@sveltejs/kit';
 
-import { AuthorizationError, CommandRejectedError, FinanceParserError } from '@housekeeper/server';
+import { AuthorizationError, CommandRejectedError, FinanceParserError, createLogger, errorCode } from '@housekeeper/server';
 
-import { ImportUncoveredAccountsError, confirmImport, type NewAccountInput } from '$lib/server/finance-imports.server';
+import {
+  ImportUncoveredAccountsError,
+  MAX_IMPORT_BYTES,
+  confirmImport,
+  type NewAccountInput
+} from '$lib/server/finance-imports.server';
+import { DATA_UNAVAILABLE_MESSAGE, DATA_UNAVAILABLE_STATUS } from '$lib/server/data-source.server';
 import { requireFinanceRequest } from '$lib/server/finance.server';
 import type { RequestHandler } from './$types';
+
+const log = createLogger('web:finance-imports');
 
 // `zod` no es dependencia directa de @housekeeper/web (pnpm no la hoisteaba
 // desde @housekeeper/contracts): en vez de añadir una dependencia nueva para
@@ -33,7 +41,14 @@ function isNewAccountInput(value: unknown): value is NewAccountInput {
   );
 }
 
-/** `{ newAccounts: [] }` por defecto: confirmar sin cuentas nuevas es válido. */
+/**
+ * `{ newAccounts: [] }` por defecto: confirmar sin cuentas nuevas es válido.
+ * Divergencia observable respecto del brief: el esquema Zod original exigía
+ * la clave `newAccounts` explícita y `payload='{}'` habría fallado; aquí
+ * `undefined` se trata igual que `[]`. Es el comportamiento que se quiere
+ * (el cliente puede omitir la clave si no da de alta ninguna cuenta) y queda
+ * escrito aquí para que la Task 12 no lo descubra por sorpresa.
+ */
 function parseNewAccounts(payload: unknown): NewAccountInput[] | null {
   if (!isRecord(payload)) return null;
   const { newAccounts } = payload;
@@ -62,10 +77,20 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
   if (origin && origin !== url.origin) error(403, 'Origen no permitido');
   const { user, householdId, pool } = requireFinanceRequest(locals, url);
 
+  // Tope de tamaño ANTES de tocar el cuerpo: mismo criterio que el adjunto
+  // (`content-length` declarado, no el real, que aún no se ha leído).
+  const declaredLength = Number(request.headers.get('content-length') ?? '0');
+  if (declaredLength > MAX_IMPORT_BYTES) {
+    error(413, `El extracto supera el máximo de ${Math.round(MAX_IMPORT_BYTES / 1024 / 1024)} MB`);
+  }
+
   const form = await request.formData().catch(() => null);
   if (!form) error(400, 'No se pudo leer el fichero');
   const file = form.get('file');
   if (!(file instanceof File)) error(422, 'No llegó ningún fichero');
+  if (file.size > MAX_IMPORT_BYTES) {
+    error(413, `El extracto supera el máximo de ${Math.round(MAX_IMPORT_BYTES / 1024 / 1024)} MB`);
+  }
   const bytes = new Uint8Array(await file.arrayBuffer());
 
   const rawPayload = form.get('payload');
@@ -88,6 +113,10 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
     if (cause instanceof ImportUncoveredAccountsError) error(422, cause.message);
     if (cause instanceof AuthorizationError) error(404, 'Hogar no encontrado');
     if (cause instanceof CommandRejectedError) error(404, 'Hogar no encontrado');
-    throw cause;
+    if (isHttpError(cause)) throw cause;
+    // Simetría con `financeRead` (finance.server.ts): un fallo inesperado no
+    // sale como 500 pelado y sin rastro, sale como el mismo 503 honesto.
+    log.error('finance import unavailable', { code: errorCode(cause) });
+    error(DATA_UNAVAILABLE_STATUS, DATA_UNAVAILABLE_MESSAGE);
   }
 };
