@@ -1,9 +1,11 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
+import { error, isHttpError, json } from '@sveltejs/kit';
 
 import {
   AuthorizationError,
   CommandRejectedError,
   createLogger,
+  errorCode,
   requireFinanceAdmin,
   withAuthorizedTransaction,
   readFinanceAccounts,
@@ -22,11 +24,13 @@ import {
   type FinanceReadFilters,
   type FinanceSeriesPointDto,
   type FinanceSummaryDto,
-  type FinanceTransactionsPage
+  type FinanceTransactionsPage,
+  type FinanceTransactionsQuery
 } from '@housekeeper/server';
 
-import type { FinanceFilters } from '$lib/finance/filters';
-import { unreadable } from './data-source.server';
+import { belongsToHousehold } from '$lib/auth/membership';
+import { DATE_PATTERN, isUuid, type FinanceFilters } from '$lib/finance/filters';
+import { DATA_UNAVAILABLE_MESSAGE, DATA_UNAVAILABLE_STATUS, unreadable } from './data-source.server';
 import { getDatabasePool } from './db.server';
 
 const log = createLogger('web:finance');
@@ -144,5 +148,144 @@ export async function loadFinanceMovimientos(
   } catch (cause) {
     if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) return null;
     return unreadable(log, 'finance movimientos', cause);
+  }
+}
+
+// ── Guard y parseo de los GET /api/v1/finance/* (§7, Task 8) ────────────────
+//
+// `isUuid`/`DATE_PATTERN` vienen de $lib/finance/filters (Ruling R12): ese
+// regex y esa comprobación ya existían para las páginas de servidor y no se
+// copian aquí. `g`, `rec` y `status` se validan con guardas de tipo sobre
+// listas constantes, nunca con `as` (Ruling R7).
+
+const TX_STATUSES = ['pendiente', 'sugerida_regla', 'sugerida_agente', 'confirmada'] as const;
+
+function isTxStatus(value: string): value is (typeof TX_STATUSES)[number] {
+  return (TX_STATUSES as readonly string[]).includes(value);
+}
+
+const RECURRENCES = ['recurrente', 'extraordinario'] as const;
+
+function isRecurrence(value: string): value is (typeof RECURRENCES)[number] {
+  return (RECURRENCES as readonly string[]).includes(value);
+}
+
+function csvUuids(value: string | null, name: string): string[] {
+  if (!value) return [];
+  const ids = value
+    .split(',')
+    .map((piece) => piece.trim())
+    .filter(Boolean);
+  for (const id of ids) if (!isUuid(id)) error(400, `Parámetro ${name} inválido`);
+  return ids;
+}
+
+function intParam(url: URL, name: string, fallback: number, min: number, max: number): number {
+  const raw = url.searchParams.get(name);
+  if (raw === null || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value)) error(400, `Parámetro ${name} inválido`);
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Guard común de los GET /api/v1/finance/* (§7): el hook rellena locals.user
+ * también en /api; lo que salta para /api es el guard de hogar/capacidad, así
+ * que sesión, hogar y membresía se comprueban aquí, explícitos y en este
+ * orden. Sin base de datos no hay lectura REST que servir: 503 honesto, nunca
+ * una maqueta (regla de data-source.server.ts). El pool entra por parámetro
+ * —mismo patrón que los loaders— para que el test del 503 pueda pasar `null`
+ * explícito en vez de confiar en que DATABASE_URL esté vacía en el proceso de
+ * vitest.
+ */
+export function requireFinanceRequest(
+  locals: App.Locals,
+  url: URL,
+  pool: Pool | null = getDatabasePool()
+): { user: { id: string }; householdId: string; pool: Pool } {
+  if (!locals.user) error(401, 'Inicia sesión para continuar');
+  const householdId = url.searchParams.get('household') ?? '';
+  if (!isUuid(householdId)) error(400, 'Falta el hogar (household)');
+  if (!belongsToHousehold(locals.user, householdId)) error(404, 'Hogar no encontrado');
+  if (!pool) error(DATA_UNAVAILABLE_STATUS, DATA_UNAVAILABLE_MESSAGE);
+  return { user: { id: locals.user.id }, householdId, pool };
+}
+
+export function parseReadFilters(url: URL): FinanceReadFilters {
+  const from = url.searchParams.get('from') ?? '';
+  const to = url.searchParams.get('to') ?? '';
+  if (!DATE_PATTERN.test(from) || !DATE_PATTERN.test(to)) error(400, 'Rango de fechas inválido (from/to)');
+  const eventId = url.searchParams.get('ev');
+  if (eventId && !isUuid(eventId)) error(400, 'Parámetro ev inválido');
+  return {
+    from,
+    to,
+    accountIds: csvUuids(url.searchParams.get('acc'), 'acc'),
+    eventId: eventId || null,
+    excludeEventIds: csvUuids(url.searchParams.get('exev'), 'exev')
+  };
+}
+
+/**
+ * `ids`/`group_ids` PRESENTES (aunque vengan vacíos) desactivan el rango:
+ * es el camino del panel de detalle (api.ts:99-102), que nunca manda from/to.
+ * Que la lista quede vacía tras el parseo es asunto del endpoint (Ruling
+ * R21: «sin coincidencias», no «sin filtro»), no de este parseo compartido.
+ */
+export function parseTransactionsQuery(url: URL): FinanceTransactionsQuery {
+  const idsPresent = url.searchParams.has('ids');
+  const groupIdsPresent = url.searchParams.has('group_ids');
+  const ids = csvUuids(url.searchParams.get('ids'), 'ids');
+  const groupIds = csvUuids(url.searchParams.get('group_ids'), 'group_ids');
+  const filters =
+    idsPresent || groupIdsPresent
+      ? { from: '1900-01-01', to: '2999-12-31', accountIds: [], eventId: null, excludeEventIds: [] }
+      : parseReadFilters(url);
+  const categoryId = url.searchParams.get('cat');
+  if (categoryId && !isUuid(categoryId)) error(400, 'Parámetro cat inválido');
+  const recurrenceParam = url.searchParams.get('rec');
+  let recurrence: 'recurrente' | 'extraordinario' | null = null;
+  if (recurrenceParam !== null) {
+    if (!isRecurrence(recurrenceParam)) error(400, 'Parámetro rec inválido');
+    recurrence = recurrenceParam;
+  }
+  const statusParam = url.searchParams.get('status');
+  let status: string | null = null;
+  if (statusParam !== null) {
+    if (!isTxStatus(statusParam)) error(400, 'Parámetro status inválido');
+    status = statusParam;
+  }
+  return {
+    ...filters,
+    q: url.searchParams.get('q') || null,
+    categoryId: categoryId || null,
+    recurrence,
+    status,
+    ids,
+    groupIds,
+    limit: intParam(url, 'limit', 100, 1, 500),
+    offset: intParam(url, 'offset', 0, 0, 1_000_000)
+  };
+}
+
+/** Ejecuta una lectura autorizada y responde JSON sin caché. */
+export async function financeRead<T>(
+  locals: App.Locals,
+  url: URL,
+  reader: (client: PoolClient, householdId: string) => Promise<T>
+): Promise<Response> {
+  const { user, householdId, pool } = requireFinanceRequest(locals, url);
+  try {
+    const payload = await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      return reader(client, householdId);
+    });
+    return json(payload, { headers: { 'cache-control': 'no-store' } });
+  } catch (cause) {
+    // Sin membresía o sin concesión: 404, indistinguible de inexistente (Ruling R2).
+    if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) error(404, 'Hogar no encontrado');
+    if (isHttpError(cause)) throw cause;
+    log.error('finance api unavailable', { code: errorCode(cause) });
+    error(DATA_UNAVAILABLE_STATUS, DATA_UNAVAILABLE_MESSAGE);
   }
 }
