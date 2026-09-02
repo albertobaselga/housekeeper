@@ -95,20 +95,36 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    DATABASE_URL="$DIRECTA" pnpm db:migrate
    ```
 
-   Criterio de salida: **17/17 migraciones aplicadas**. Repetir el comando debe
+   Criterio de salida: la última migración aplicada es `0037_finance_endurecimiento.sql`
+   y el runner no deja ninguna pendiente (imprime el recuento al terminar; la
+   numeración tiene huecos históricos, así que el número total no es el del
+   último fichero). Repetir el comando debe
    aplicar 0: la idempotencia es parte del contrato.
 3. **Suites SQL y RLS** contra el proyecto real, no contra una sonda local:
+
+   **SOLO PARA UN PROYECTO RECIÉN CREADO Y VACÍO**: `run-sql-tests.mjs` hace
+   `DROP SCHEMA app CASCADE` y recarga fixtures; contra una base poblada borra
+   la casa entera.
 
    ```bash
    TEST_DATABASE_URL="$DIRECTA" pnpm test:db
    TEST_DATABASE_URL="$DIRECTA" pnpm test:rls
    ```
 
-   Criterio de salida: **5/5 suites en verde**. Si la matriz RLS falla, PARAR:
+   Criterio de salida: **todas las suites de `packages/db/tests/` en `ok`**,
+   incluida la de RLS de finanzas (`030_finance_rls.sql`); el runner imprime
+   cuántas ha ejecutado. Si la matriz RLS falla, PARAR:
    es el aislamiento entre roles lo que está fallando.
 4. **Better Auth**: crear el esquema `casa_auth`, el rol
    `casa_clara_auth_login` con `alter role … set search_path to casa_auth`, y
    correr `runAuthMigrations`.
+5. **Finanzas no añade variables de entorno**: SheetJS vive solo en el servidor
+   y los extractos no se persisten, así que no hay bucket ni clave nuevos. Lo
+   único que traen la 0036 y la 0037 es el esquema, su RLS de doble cerrojo y
+   el endurecimiento. La carga de los datos históricos es una migración única
+   aparte, con su propio runbook:
+   [`../runbooks/migracion-home-finance.md`](../runbooks/migracion-home-finance.md) —
+   **no se ejecuta sin confirmación explícita del propietario**.
 
 ---
 
@@ -555,6 +571,9 @@ Una vez creado el hogar:
 - [ ] `GET https://casa.ejemplo.es/api/health` → `{"status":"ok",…}`
 - [ ] Login con nombre y contraseña, y las pantallas de Hoy, Guía, Calendario
       y Menú. No hay correo en el camino de acceso ni en ningún otro sitio.
+- [ ] Con una concesión de Finanzas activa (Ajustes → tarjeta Finanzas), el
+      Dashboard de `/h/<hogar>/finanzas` responde y pinta los KPIs; una cuenta
+      sin concesión no ve el módulo en la navegación y recibe 403 por URL directa.
 - [ ] Subir un justificante y volver a verlo desde la cuenta del mes.
 - [ ] El banner de datos sintéticos **no** aparece, y el acceso demo con
       contraseña devuelve 403.
