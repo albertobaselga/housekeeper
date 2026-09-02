@@ -4,6 +4,7 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import { useAppContext } from '$lib/auth/context';
+  import { mergeAccountDraft } from '$lib/finance/account-drafts';
   import { financeCommand } from '$lib/finance/commands';
   import { formatCents } from '$lib/finance/format';
   import { OptimisticActions } from '$lib/offline/optimistic';
@@ -16,17 +17,25 @@
   const actionStatus = optimistic.status;
   $effect(() => optimistic.start());
 
-  // svelte-ignore state_referenced_locally -- valor inicial del filtro (enlace ✎ de otras páginas)
-  let providerFilter = $state(page.url.searchParams.get('prov') ?? '');
+  let providerFilter = $state('');
+  // El filtro también llega por enlace ✎ desde Movimientos/Revisión: como es
+  // navegación de cliente sobre esta misma instancia del componente, un
+  // `$state` sembrado solo al montar (M5) se queda con el valor de la
+  // primera visita para siempre. El efecto vuelve a leer la URL cada vez que
+  // cambia (esta navegación u otra posterior) sin pisar lo que el usuario
+  // haya tecleado él mismo: solo escribe cuando `page.url` es la causa.
+  $effect(() => {
+    providerFilter = page.url.searchParams.get('prov') ?? '';
+  });
   let newSub = $state<{ parentId: string; name: string } | null>(null);
 
-  const accounts = $derived(data.ajustes?.accounts ?? []);
-  const categories = $derived(data.ajustes?.categories ?? []);
+  const accounts = $derived(data.ajustes.accounts);
+  const categories = $derived(data.ajustes.categories);
+  const rules = $derived(data.ajustes.rules);
+  const providers = $derived(data.ajustes.providers);
   const parents = $derived(categories.filter((cat) => cat.parentId === null));
   const providerRows = $derived(
-    (data.ajustes?.providers ?? []).filter((row) =>
-      (row.provider ?? '').toLowerCase().includes(providerFilter.toLowerCase())
-    )
+    providers.filter((row) => (row.provider ?? '').toLowerCase().includes(providerFilter.toLowerCase()))
   );
 
   // Guardas sin `as` (Ruling R7): las dos vienen de un `<select>` con opciones
@@ -40,9 +49,27 @@
     return value === 'gasto' || value === 'ingreso';
   }
 
+  /*
+   * Important 1 (revisión ronda 1): `account` es la última fila cargada del
+   * servidor, no lo que se lleva editado en pantalla. Con la cola offline, el
+   * primer `onblur` deja el resultado en `queued` (sin `invalidate`, así que
+   * `account` no se refresca) y el segundo `onblur` de la misma fila partía
+   * de esa foto vieja: el primer campo editado se perdía en silencio. Un
+   * borrador por cuenta acumula los parches pendientes y se suelta en
+   * `settle` (cuando `synced`/reconciliación trae datos frescos).
+   */
+  let drafts = $state<Record<string, Partial<(typeof accounts)[number]>>>({});
+
   function saveAccount(account: (typeof accounts)[number], patch: Partial<(typeof accounts)[number]>): void {
-    const next = { ...account, ...patch };
-    if (!isAccountKind(next.kind)) return;
+    const next = mergeAccountDraft(account, drafts[account.id], patch);
+    if (!isAccountKind(next.kind)) {
+      // M4: antes se abandonaba con un `return` mudo. Hoy es inalcanzable
+      // (el <select> solo ofrece los tres valores válidos), pero si un cuarto
+      // tipo apareciera, quien edita necesita saber por qué no se guardó.
+      actionStatus.set({ tone: 'error', text: 'No reconocemos el tipo de esta cuenta: no se ha guardado el cambio.' });
+      return;
+    }
+    drafts[account.id] = { ...drafts[account.id], ...patch };
     void optimistic.run(
       financeCommand(context.household.id, {
         kind: 'finance.account.update',
@@ -52,12 +79,22 @@
         ownerLabel: next.ownerLabel,
         ownerAliases: next.ownerAliases,
         transferRefs: next.transferRefs
-      })
+      }),
+      { settle: () => { delete drafts[account.id]; } }
     );
   }
 
   function addSubcategory(parent: { id: string; kind: string }, name: string): void {
-    if (!isCategoryKind(parent.kind)) return;
+    if (!isCategoryKind(parent.kind)) {
+      // M4: mismo motivo que en saveAccount — hoy inalcanzable (los padres
+      // vienen de `gasto`/`ingreso`/`transferencia`, y `transferencia` ni
+      // siquiera pinta el botón «+ sub»), pero silencioso si cambiara.
+      actionStatus.set({
+        tone: 'error',
+        text: 'No reconocemos el tipo de esta categoría: no se ha creado la subcategoría.'
+      });
+      return;
+    }
     void optimistic.run(
       financeCommand(context.household.id, {
         kind: 'finance.category.create',
@@ -95,16 +132,14 @@
   <FinanceNav pendingReviewCount={data.pendingReviewCount} />
   <ActionStatus status={actionStatus} />
 
-  {#if !data.ajustes}
-    <p class="empty-state">Ahora mismo no podemos leer los ajustes.</p>
-  {:else if accounts.length === 0 && categories.length === 0}
+  {#if accounts.length === 0 && categories.length === 0 && rules.length === 0 && providers.length === 0}
     <p class="empty-state">Aún no hay cuentas ni categorías que configurar.</p>
   {:else}
     <section>
       <h2>Cuentas</h2>
       <div class="ajustes-scroll">
         <table class="wiki-table">
-          <thead><tr><th>Nombre</th><th>Banco</th><th>Ref</th><th>Tipo</th><th>Titular</th><th>Alias de titulares (;)</th><th>Refs transferencia (,)</th></tr></thead>
+          <thead><tr><th>Nombre</th><th>Banco</th><th>Referencia</th><th>Tipo</th><th>Titular</th><th>Alias de titulares (;)</th><th>Referencias transferencia (,)</th></tr></thead>
           <tbody>
             {#each accounts as account (account.id)}
               <tr>
@@ -170,7 +205,7 @@
         <table class="wiki-table">
           <thead><tr><th>Patrón</th><th>Tipo</th><th>Categoría</th><th>Origen</th><th></th></tr></thead>
           <tbody>
-            {#each data.ajustes.rules as rule (rule.id)}
+            {#each rules as rule (rule.id)}
               <tr>
                 <td class="cifra">{rule.pattern}</td>
                 <td>{rule.ruleType}</td>
@@ -191,7 +226,7 @@
       </label>
       <div class="ajustes-scroll">
         <table class="wiki-table">
-          <thead><tr><th>Proveedor</th><th>Alias</th><th>Nº mov</th><th>Total</th></tr></thead>
+          <thead><tr><th>Proveedor</th><th>Alias</th><th>Movimientos</th><th>Total</th></tr></thead>
           <tbody>
             {#each providerRows as row (row.providerNorm)}
               <tr>

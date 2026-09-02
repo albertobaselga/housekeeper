@@ -344,7 +344,9 @@ describe('I2: requireFinanceAdmin es el cerrojo aplicativo, no una comprobación
         readFinanceTransactions: vi.fn(async () => { throw new Error('no debería llamarse'); })
       };
     });
-    const { loadFinanceDashboard, loadFinanceMovimientos } = await import('../src/lib/server/finance.server');
+    const { loadFinanceDashboard, loadFinanceMovimientos, loadFinanceAjustes } = await import(
+      '../src/lib/server/finance.server'
+    );
     const filters = { from: '2026-01-01', to: '2026-01-31', granularity: 'month' as const, accountIds: [], eventId: null };
     const dashboard = await loadFinanceDashboard({ id: 'u1' }, HOUSEHOLD, filters, FAKE_POOL);
     expect(dashboard).toBeNull();
@@ -354,6 +356,32 @@ describe('I2: requireFinanceAdmin es el cerrojo aplicativo, no una comprobación
       FAKE_POOL
     );
     expect(movimientos).toBeNull();
+    const ajustes = await loadFinanceAjustes({ id: 'u1' }, HOUSEHOLD, FAKE_POOL);
+    expect(ajustes).toBeNull();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('CommandRejectedError en requireFinanceAdmin → loadFinanceAjustes también devuelve null (desviación del brief, M7), sin llamar al logger de avería', async () => {
+    const errorSpy = vi.fn();
+    vi.doMock('@housekeeper/server', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@housekeeper/server')>();
+      return {
+        ...actual,
+        createLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: errorSpy }),
+        requireFinanceAdmin: async () => {
+          throw new actual.CommandRejectedError('finance_not_granted', 'Tu cuenta no tiene Finanzas activado');
+        },
+        withAuthorizedTransaction: async (
+          _pool: unknown,
+          _principal: unknown,
+          _householdId: string,
+          operation: (client: unknown, membership: unknown) => Promise<unknown>
+        ) => operation({}, { id: 'm1', householdId: HOUSEHOLD, role: 'family_admin', expiresAt: null })
+      };
+    });
+    const { loadFinanceAjustes } = await import('../src/lib/server/finance.server');
+    const ajustes = await loadFinanceAjustes({ id: 'u1' }, HOUSEHOLD, FAKE_POOL);
+    expect(ajustes).toBeNull();
     expect(errorSpy).not.toHaveBeenCalled();
   });
 });

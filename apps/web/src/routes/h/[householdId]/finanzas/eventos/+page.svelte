@@ -74,7 +74,7 @@
     <div class="eventos-scroll">
       <table class="wiki-table">
         <thead>
-          <tr><th>Evento</th><th>Movs</th><th>Gasto</th><th>Ingreso</th><th>Neto</th><th></th></tr>
+          <tr><th>Evento</th><th>Movimientos</th><th>Gasto</th><th>Ingreso</th><th>Neto</th><th></th></tr>
         </thead>
         <tbody>
           {#each summary as entry (entry.id)}
@@ -151,7 +151,7 @@
           <p class="empty-state">Este evento no tiene movimientos en el rango visible.</p>
         {:else}
           <table class="wiki-table">
-            <thead><tr><th>Categoría</th><th>Movs</th><th>Total</th></tr></thead>
+            <thead><tr><th>Categoría</th><th>Movimientos</th><th>Total</th></tr></thead>
             <tbody>
               <!--
                 Important 1: `readFinanceBreakdown` agrupa por

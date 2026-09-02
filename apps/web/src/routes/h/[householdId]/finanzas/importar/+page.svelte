@@ -248,7 +248,7 @@
     {:else}
       <div class="importar-scroll">
         <table class="wiki-table">
-          <thead><tr><th>Fecha</th><th>Fichero</th><th>Banco</th><th>Nuevas</th><th>Dup</th><th></th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Fichero</th><th>Banco</th><th>Nuevas</th><th>Duplicados</th><th></th></tr></thead>
           <tbody>
             {#each data.importar.batches as batch (batch.id)}
               <tr>
