@@ -6,6 +6,8 @@
  * romper la navegación cruzada entre pantallas.
  */
 
+import { MONTHS_LONG, MONTHS_SHORT } from './format';
+
 export type FinanceGranularity = 'month' | 'quarter' | 'year';
 
 export interface FinanceFilters {
@@ -23,10 +25,6 @@ const GRANULARITIES: readonly FinanceGranularity[] = ['month', 'quarter', 'year'
 export const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-// MONTHS_* locales: los mueve la Task 2
-export const MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'] as const;
-export const MONTHS_SHORT = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'] as const;
 
 // Exportado a propósito: las tareas 7 y 8 importan esta comprobación de UUID
 // en vez de copiar el regex (resolución del coordinador de la fase 4).
