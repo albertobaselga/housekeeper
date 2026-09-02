@@ -204,8 +204,12 @@ export function planCategoryUndo(
 // `sendAll`/`acuse` viven aquí, puros y testeables, para que el componente
 // (T12) solo tenga que llamarlos: nada de lógica de outcome dentro de Svelte.
 
-/** Copy único para «se guardó local y se reenviará solo» (outcome `queued`). */
-export const COLA = 'Guardado en este dispositivo; se enviará al recuperar conexión';
+/**
+ * Copy único para «se guardó local y se reenviará solo» (outcome `queued`).
+ * Es el mismo texto que emite el outbox (`MESSAGES.queued` en
+ * `$lib/offline/queue-command`): las dos pantallas deben decir lo mismo.
+ */
+export const COLA = 'Guardado en este dispositivo; se enviará al recuperar la conexión.';
 
 export interface SendOutcome {
   ok: boolean;
