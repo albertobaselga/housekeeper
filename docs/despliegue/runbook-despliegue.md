@@ -135,6 +135,12 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    aparte, con su propio runbook:
    [`../runbooks/migracion-home-finance.md`](../runbooks/migracion-home-finance.md) —
    **no se ejecuta sin confirmación explícita del propietario**.
+   Una sola salvedad de red: SheetJS dejó de publicar en npm en la 0.18.5
+   (con dos avisos *high* sin parche allí), así que `packages/server` lo toma
+   del CDN del proyecto, `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`,
+   con su `sha512` anclado en `pnpm-lock.yaml`. `pnpm install` necesita salida
+   a ese dominio; si el hash no cuadra, pnpm se niega (`ERR_PNPM_TARBALL_INTEGRITY`)
+   y eso es lo correcto: no se instala nada distinto de lo revisado.
 
 ---
 

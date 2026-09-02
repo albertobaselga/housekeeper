@@ -22,6 +22,12 @@ corepack enable
 pnpm install --frozen-lockfile
 ```
 
+El install necesita salida a `cdn.sheetjs.com` además de al registro de npm:
+SheetJS (`xlsx`, los parsers de extractos de Finanzas) se toma de ahí en la
+0.20.3 porque npm se quedó en la 0.18.5 con avisos *high*. El `sha512` está
+anclado en el lockfile; un `ERR_PNPM_TARBALL_INTEGRITY` significa que el CDN
+sirvió otra cosa, no que haya que «arreglar» el hash.
+
 ### Modo demo, sin base de datos
 
 ```bash
