@@ -72,6 +72,17 @@ describe("buildPivotTree (port de pivotTree.buildPivotSections)", () => {
     expect(grupo?.children[0]?.children[0]?.children[0]?.movs).toHaveLength(1);
   });
 
+  it("INVERSIÓN baja cuenta→concepto→movimiento ignorando las dims del usuario", () => {
+    const rows = [row({ kind: "inversion", cat: "Fondo Indexado", concept: "APORTACION", totalCents: 5000n })];
+    const tree = buildPivotTree(rows, ["cat", "sub"], { monthsCount: 1 });
+    const cuenta = tree.inversiones[0];
+    expect(cuenta?.key).toBe("inversiones/cat:Fondo Indexado");
+    expect(cuenta?.children[0]?.label).toBe("APORTACION");
+    const mov = cuenta?.children[0]?.children[0];
+    expect(mov?.movs).toHaveLength(1);
+    expect(mov?.children).toHaveLength(0);
+  });
+
   it("sortPivotTree reordena gastos/ingresos/eventos por columna y collectNodeMovIds resuelve ids", () => {
     const rows = [
       row({ cat: "Aaa", totalCents: -1000n }),
