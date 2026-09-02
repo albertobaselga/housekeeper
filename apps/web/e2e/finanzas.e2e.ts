@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 import { HOUSEHOLD, loginAs } from './helpers';
 
@@ -188,4 +188,77 @@ test('Movimientos: «+ Añadir manual» abre y cierra el formulario', async ({ p
   await expect(form.locator('legend')).toContainText('Añadir movimiento manual');
   await form.getByRole('button', { name: 'Cancelar' }).click();
   await expect(page.locator('.action-form')).toHaveCount(0);
+});
+
+// Task 13: drag-and-drop nativo del pivot de Analítica. `locator.dragTo()`
+// simula el arrastre por eventos de RATÓN, y Chromium bajo CDP no siempre los
+// traduce a la máquina de estados nativa de HTML5 DnD (dragstart/dragover/
+// drop) — es una limitación conocida de Playwright con d&d nativo, no del
+// marcado. La técnica que SÍ funciona (documentada por Playwright para este
+// caso) es despachar los eventos de arrastre a mano compartiendo un único
+// `DataTransfer` real entre origen y destino: los handlers de PivotTable
+// reciben un `DragEvent` con `dataTransfer` genuino (setDragImage/setData
+// funcionan) exactamente como en un arrastre real, solo que el gesto de
+// ratón que los dispara lo escribe la prueba en vez del sistema operativo.
+async function nativeDragDrop(page: Page, source: Locator, target: Locator): Promise<void> {
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await source.dispatchEvent('dragstart', { dataTransfer });
+  await target.dispatchEvent('dragenter', { dataTransfer });
+  await target.dispatchEvent('dragover', { dataTransfer });
+  await target.dispatchEvent('drop', { dataTransfer });
+  await source.dispatchEvent('dragend', { dataTransfer });
+}
+
+// Sin red (batería en modo fixture, sin DATABASE_URL) el POST a /api/v1/sync
+// responde 503 y el comando queda `queued` — el mismo camino que ya prueba
+// finance-pivot-actions.test.ts para `sendAll`/`acuse`, aquí ejercitado de
+// punta a punta con el gesto real (DataTransfer real, sin tocar el estado de
+// Svelte a mano).
+test('admin en modo fixture: arrastrar una categoría a EVENTOS abre el popover y crea el evento', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
+  await expect(page.locator('[data-testid="pivot-table"]')).toBeVisible();
+
+  // Fila de categoría «Ocio» (GASTOS, dims por defecto cat/sub): el asa ⠿ es
+  // el único elemento draggable de esa fila.
+  const ocioAsa = page.locator('tr', { hasText: 'Ocio' }).first().locator('.asa');
+  const bandaEventos = page.locator('[data-testid="pivot-banda-eventos"]');
+  await expect(bandaEventos).not.toHaveClass(/dnd-target/);
+
+  await nativeDragDrop(page, ocioAsa, bandaEventos);
+
+  const popover = page.locator('.popover-evento');
+  await expect(popover).toBeVisible();
+  const input = popover.getByLabel('Nombre del evento nuevo');
+  await input.fill('Cena de prueba');
+  await popover.getByRole('button', { name: 'Crear y asignar' }).click();
+  await expect(popover).toHaveCount(0);
+
+  const toast = page.locator('[data-testid="pivot-toast"]');
+  await expect(toast).toBeVisible();
+  // Éxito con outcome `queued` (sin BD en la batería de fixture): el resumen
+  // del drop honesto va seguido de la nota de cola (mismo copy que el outbox,
+  // R14 de la tarea 6).
+  await expect(toast).toContainText('movimiento');
+  await expect(toast).toContainText('→ Cena de prueba · regla creada');
+  await expect(toast).toContainText('Guardado en este dispositivo');
+});
+
+test('admin en modo fixture: arrastrar una categoría sobre otra la recategoriza con Deshacer', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
+  await expect(page.locator('[data-testid="pivot-table"]')).toBeVisible();
+
+  const ocioAsa = page.locator('tr', { hasText: 'Ocio' }).first().locator('.asa');
+  const supermercadoRow = page.locator('tr', { hasText: 'Supermercado' }).first();
+  await expect(supermercadoRow).not.toHaveClass(/dnd-target/);
+
+  await nativeDragDrop(page, ocioAsa, supermercadoRow);
+
+  const toast = page.locator('[data-testid="pivot-toast"]');
+  await expect(toast).toBeVisible();
+  // catPathOf resuelve la ruta completa (categoryPath, fase 4): Supermercado
+  // cuelga de Casa.
+  await expect(toast).toContainText('→ Casa › Supermercado · regla creada');
+  await expect(page.getByRole('button', { name: 'Deshacer' })).toBeVisible();
 });

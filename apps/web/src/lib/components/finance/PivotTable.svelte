@@ -12,12 +12,14 @@
   import { monthLabel } from '$lib/finance/chart-data';
   import { categoryPath } from '$lib/finance/breakdown';
   import { formatCents } from '$lib/finance/format';
+  import { isUuid } from '$lib/finance/filters';
   import {
-    addDim, collectMovIdsByKey, DIM_LABELS, moveDim, parseChips, parseDims, parseIdList, PIVOT_DIMENSIONS,
+    addDim, buildDragPayload, collectLeafItems, collectMovIdsByKey, createDragGhostElement, DIM_LABELS,
+    dragGhostLabel, moveDim, parseChips, parseDims, parseIdList, PIVOT_DIMENSIONS,
     rangeBetween, removeDim, resolveSelectionIds, rowMatchesChips, sameSortKey, selectableListAny,
     serializeChips, serializeDims, serializeIdList, sortTree, summarizeCategoryDrop, summarizeEventDrop,
     toAnySelectable, toggleInMap, toMovementSelectable,
-    type PivotNodeLike, type PivotSortKey, type SelectableItem, type SortDir
+    type DragPayload, type PivotNodeLike, type PivotSortKey, type SelectableItem, type SortDir
   } from '$lib/finance/pivot-state';
   import {
     acuse, assignConceptRecurrence, assignConceptToCategory, assignConceptToEvent, assignTransactionsToEvent,
@@ -48,7 +50,12 @@
   // no cambian los datos del servidor, solo la agrupación cliente.
   const dims = $derived(parseDims(page.url.searchParams.get('dims')));
   const chips = $derived(parseChips(page.url.searchParams.get('q')));
-  const dupEventIds = $derived(parseIdList(page.url.searchParams.get('dupev')));
+  // R24: dupev alimenta el `dupEventIds` del dominio (Set de ids) — filtrado
+  // por isUuid igual que exev en el loader, para que un valor con forma
+  // inválida en la URL no llegue nunca al dominio (aunque un id sin forma de
+  // UUID ya no casaría con ningún evento real, la garantía la da el tipo, no
+  // la suerte del `Set.has`).
+  const dupEventIds = $derived(parseIdList(page.url.searchParams.get('dupev')).filter(isUuid));
 
   function setShallowParam(key: string, value: string): void {
     const url = new URL(page.url);
@@ -301,6 +308,66 @@
     };
   }
 
+  // ── Drag and drop nativo (la barra de acciones es la alternativa completa) ─
+  let dragging = $state<DragPayload | null>(null);
+  let newEventDrop = $state<DragPayload | null>(null);
+  let newEventName = $state('');
+
+  function onDragStart(e: DragEvent, node: PivotNodeLike, nodeDims: readonly PivotDimension[]): void {
+    const self = toAnySelectable(node, nodeDims);
+    let items: SelectableItem[];
+    let omitted = 0;
+    if (self) {
+      items = selected.has(node.key) && selectionList.length > 0 ? selectionList : [self];
+    } else {
+      const collected = collectLeafItems(node);
+      items = collected.items;
+      omitted = collected.omitted;
+    }
+    if (items.length === 0 || !e.dataTransfer) {
+      e.preventDefault();
+      return;
+    }
+    const payload = buildDragPayload(items, omitted);
+    e.dataTransfer.setDragImage(createDragGhostElement(dragGhostLabel(payload)), 10, 10);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', node.key);
+    dragging = payload;
+  }
+  const onDragEnd = () => (dragging = null);
+
+  // Los tres drops delegan en los aplicadores compartidos de la tarea 12: mismo
+  // reparto conceptos/ids, mismos payloads, mismo acuse y mismo Deshacer que la
+  // barra de acciones. Aquí solo se resuelve el gesto.
+  async function onDropCategory(categoryId: string): Promise<void> {
+    const payload = dragging;
+    dragging = null;
+    if (!payload || payload.items.length === 0) return;
+    await applyCategoryAssignment(payload.items, categoryId, payload.omitted);
+  }
+
+  async function onDropEvent(eventId: string, eventName: string): Promise<void> {
+    const payload = dragging;
+    dragging = null;
+    if (!payload || payload.items.length === 0) return;
+    await applyEventAssignment(payload.items, eventId, eventName, payload.omitted);
+  }
+
+  function onDropNewEvent(): void {
+    const payload = dragging;
+    dragging = null;
+    if (!payload || payload.items.length === 0) return;
+    newEventDrop = payload;
+    newEventName = '';
+  }
+  async function confirmNewEventDrop(): Promise<void> {
+    const payload = newEventDrop;
+    const name = newEventName.trim();
+    newEventDrop = null;
+    if (!payload || !name) return;
+    await applyNewEventAssignment(payload.items, name, payload.omitted);
+  }
+
   // ── Acciones de la barra (delegan en los aplicadores) ──────────────────────
   async function actionMoveToEvent(eventId: string): Promise<void> {
     const items = selectionList;
@@ -375,7 +442,13 @@
   {@const natClass = (kind === 'gasto' || kind === 'ingreso') && nodeDims[node.depth] === 'nat'
     ? node.nat === 'recurrente' ? (kind === 'gasto' ? 'neg' : 'pos') : node.nat === 'extraordinario' ? 'suave' : ''
     : ''}
-  <tr style={tintFor(node.depth)} class:clicable={hasChildren} onclick={() => hasChildren && toggle(node.key)}>
+  {@const isDraggable = kind === 'gasto' || kind === 'ingreso' || kind === 'evento'}
+  {@const dropCatId = (kind === 'gasto' || kind === 'ingreso') ? node.catId : null}
+  <tr style={tintFor(node.depth)} class:clicable={hasChildren}
+    class:dnd-target={dragging !== null && dropCatId !== null} class:dnd-dimmed={dragging !== null && dropCatId === null}
+    onclick={() => hasChildren && toggle(node.key)}
+    ondragover={dropCatId !== null ? (e) => e.preventDefault() : undefined}
+    ondrop={dropCatId !== null ? (e) => { e.preventDefault(); void onDropCategory(dropCatId); } : undefined}>
     <td class="arbol" style={`padding-left: calc(var(--space-3) + ${node.depth} * var(--space-4));`}>
       <!-- El disparador de expansión es un BOTÓN: con teclado y lector de
            pantalla el árbol tiene que ser operable (spec §8, axe 0 serious).
@@ -387,6 +460,11 @@
       {:else}
         <span class="flecha" aria-hidden="true"></span>
       {/if}
+      <span class="asa" draggable={isDraggable} title="arrastrar" aria-hidden="true"
+        style:visibility={isDraggable ? 'visible' : 'hidden'}
+        onclick={(e) => e.stopPropagation()}
+        ondragstart={isDraggable ? (e) => onDragStart(e, node, nodeDims) : undefined}
+        ondragend={isDraggable ? onDragEnd : undefined}>⠿</span>
       <input type="checkbox" class="marca" style:visibility={item ? 'visible' : 'hidden'}
         tabindex={item ? 0 : -1} checked={item ? selected.has(node.key) : false}
         aria-label={`seleccionar ${node.label}`}
@@ -470,11 +548,25 @@
           {#each gastoTree as node (node.key)}{@render nodeRow(node, 'gasto', dims, selectableListAny(gastoTree, dims))}{/each}
           {@render subtotalRow('Subtotal gastos', tree.subtotales.gastos, '', '')}
         {/if}
-        <tr class="banda" data-testid="pivot-banda-eventos"><td colspan={colSpan}>EVENTOS</td></tr>
+        <tr class="banda" class:dnd-target={dragging !== null} data-testid="pivot-banda-eventos"
+          ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); onDropNewEvent(); }}>
+          <td colspan={colSpan} class="banda-eventos">
+            EVENTOS (soltar aquí = + nuevo evento · ☑ por evento = verlo en gastos/ingresos)
+            {#if newEventDrop}
+              <form class="popover-evento" onsubmit={(e) => { e.preventDefault(); void confirmNewEventDrop(); }}>
+                <input type="text" placeholder="＋ nuevo evento…" bind:value={newEventName} data-autofocus
+                  aria-label="Nombre del evento nuevo"
+                  onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); newEventDrop = null; } }} />
+                <button type="submit">Crear y asignar</button>
+              </form>
+            {/if}
+          </td>
+        </tr>
         {#each displayEventos as event (event.eventId)}
           {@const key = `event/${event.eventId}`}
           {@const evExpanded = forceExpand || expanded.has(key)}
-          <tr class="clicable" onclick={() => event.children.length > 0 && toggle(key)}>
+          <tr class="clicable" class:dnd-target={dragging !== null} onclick={() => event.children.length > 0 && toggle(key)}
+            ondragover={(e) => e.preventDefault()} ondrop={(e) => { e.preventDefault(); void onDropEvent(event.eventId, event.name); }}>
             <td class="arbol">
               {#if event.children.length > 0}
                 <button type="button" class="flecha" aria-expanded={evExpanded}
@@ -563,6 +655,20 @@
   .flecha { display: inline-block; width: var(--space-4); color: var(--ink-faint); border: 0; background: transparent; font: inherit; padding: 0; text-align: left; }
   button.flecha { cursor: pointer; }
   .abrir { border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0; text-decoration: underline dotted; }
+  .asa { cursor: grab; color: var(--ink-faint); margin-right: var(--space-1); }
+  tr.dnd-target { outline: 2px solid var(--primary); outline-offset: -2px; }
+  tr.dnd-dimmed { opacity: .45; }
+  .banda-eventos { position: relative; }
+  .popover-evento { position: absolute; z-index: 30; top: 100%; left: var(--space-3); display: flex; gap: var(--space-1); background: var(--surface-strong); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-over); padding: var(--space-2); }
+  .popover-evento input { border: 1px solid var(--line); border-radius: var(--r-sm); padding: var(--space-1); font-size: max(1em, 1rem); }
+  .popover-evento button { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--primary); color: var(--ink-on-primary); cursor: pointer; padding: var(--space-1) var(--space-2); }
+  :global(.pivot-drag-ghost) { position: fixed; top: -1000px; left: -1000px; padding: var(--space-1) var(--space-3); border-radius: var(--r-full); background: var(--primary); color: var(--ink-on-primary); font-size: var(--text-micro); white-space: nowrap; pointer-events: none; }
+
+  /* Presupuesto de la spec §8: nada de movimiento para quien pide reducirlo.
+     El resalte del destino se queda (es información, no animación). */
+  @media (prefers-reduced-motion: reduce) {
+    tr.dnd-target, tr.dnd-dimmed, .popover-evento, :global(.pivot-drag-ghost) { transition: none; animation: none; }
+  }
   .banda td { background: var(--canvas-deep); font-weight: 700; font-size: var(--text-micro); letter-spacing: .06em; }
   .subtotal { background: var(--canvas); font-weight: 500; }
   .subtotal .ok { color: var(--success); }
