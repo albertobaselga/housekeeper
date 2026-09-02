@@ -29,6 +29,18 @@
   const movementsHref = (categoryId: string): string =>
     `${base}/movimientos?${mergeParams(page.url.searchParams, { cat: categoryId })}`;
 
+  // Los gastos viajan en céntimos NEGATIVOS (son salidas). Para el chip de
+  // variación de la tarjeta «Gastos» el signo del dato no es el signo de la
+  // noticia: `deltaPct` conserva el signo del valor con signo (su propio test
+  // lo fija: deltaPct(-150n, -100n) === -50), así que sobre `expenseCents` tal
+  // cual, gastar MENOS pintaba ▲ + naranja y gastar MÁS pintaba ▼ + verde —
+  // al revés de lo que la tarjeta debe decir. `magnitude` da el valor absoluto
+  // en cadena de céntimos para que la comparación sea de TAMAÑO, no de signo.
+  const magnitude = (cents: string): string => {
+    const value = BigInt(cents);
+    return (value < 0n ? -value : value).toString();
+  };
+
   // El rótulo sigue a la granularidad: el load pide 12 cubos, no 12 meses
   // (SERIES_MONTHS en finance.server.ts). «Últimos 12 periodos» a secas mentiría
   // en cuanto el usuario cambiara a trimestres o años.
@@ -45,6 +57,9 @@
     {@const pct = deltaPct(BigInt(nowCents), BigInt(prevCents))}
     {#if pct === null}
       <span class="status-chip">sin periodo anterior</span>
+    {:else if pct === 0}
+      <!-- Igual que el periodo anterior no es ni una bajada ni un aviso. -->
+      <span class="status-chip" title={`anterior: ${formatCents(prevCents)}`}>sin cambios</span>
     {:else}
       {@const good = invert ? pct < 0 : pct > 0}
       <span class="status-chip {good ? 'success' : 'warning'}" title={`anterior: ${formatCents(prevCents)}`}>
@@ -76,7 +91,7 @@
       <article class="card">
         <p class="eyebrow">Gastos</p>
         <p class="cifra kpi-neg">{formatCents(summary.expenseCents)}</p>
-        {@render delta(summary.expenseCents, prev?.expenseCents, true)}
+        {@render delta(magnitude(summary.expenseCents), prev ? magnitude(prev.expenseCents) : undefined, true)}
         <p class="kpi-note">♻ {formatCents(summary.recurringExpenseCents)} · ✦ {formatCents(summary.extraordinaryExpenseCents)}{summary.unclassifiedExpenseCents !== '0' ? ` · — ${formatCents(summary.unclassifiedExpenseCents)}` : ''}</p>
       </article>
       <article class="card">

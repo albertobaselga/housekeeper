@@ -23,6 +23,14 @@ test('admin en modo fixture: el Dashboard de Finanzas pinta KPIs, flujo de caja 
   const gastosCard = kpis.locator('.card').filter({ has: page.getByText('Gastos', { exact: true }) });
   await expect(gastosCard).toContainText('−3.185,50 €'); // expenseCents '-318550' (menos tipográfico U+2212)
 
+  // El chip de variación de Gastos compara TAMAÑOS, no signos: expenseCents
+  // pasa de -355000 (prev) a -318550 (ahora) → se gastó MENOS → ▼ + verde.
+  // (Antes de esta corrección, el signo negativo del dato invertía el chip:
+  // gastar menos salía en naranja con flecha hacia arriba.)
+  const gastosDelta = gastosCard.locator('.status-chip');
+  await expect(gastosDelta).toHaveClass(/success/);
+  await expect(gastosDelta).toContainText('▼ 10 %');
+
   // Con pendingCount: 3 de la fixture, la tarjeta «Tasa de ahorro» enlaza a revisión.
   const pendingChip = page.getByRole('link', { name: '3 sin revisar' });
   await expect(pendingChip).toBeVisible();
