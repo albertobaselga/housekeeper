@@ -51,11 +51,19 @@ export function parseArgs(argv) {
   return opciones;
 }
 
+/** Clase \s de Python 3 (módulo `re`, modo str) — NO es la de JavaScript:
+ * incluye U+001C-U+001F y U+0085, y excluye U+FEFF. Los hashes de dedup migrados
+ * se calcularon con esta clase, así que aquí va explícita y no la implícita de JS. */
+// eslint-disable-next-line no-control-regex
+const PY_SPACE_RX = /[\t\n\v\f\r \u001c-\u001f\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/gu;
+
 // Réplica EXACTA de backend/app/money.py::norm_text del origen, congelada a
 // propósito: lo migrado debe casar con los alias que el origen escribió.
+// Copia literal de packages/domain/src/finance/text.ts (llamada síncrona
+// dentro de migrar(); el test compara ambas).
 export function normText(valor) {
   const sinMarcas = valor.normalize('NFKD').replace(/\p{M}+/gu, '');
-  return sinMarcas.replace(/\s+/g, ' ').trim().toUpperCase();
+  return sinMarcas.replace(PY_SPACE_RX, ' ').replace(/^ | $/g, '').toUpperCase();
 }
 
 /** «Fuera de ambos repos» hecho comprobable: fuera de CUALQUIER repo git. */
@@ -145,7 +153,16 @@ export function resumenOrigen(origen) {
   let fechaMin = null;
   let fechaMax = null;
   for (const tx of origen.transactions) {
-    const clave = `${cuentasPorId.get(tx.account_id).bank_ref}|${tx.op_date.slice(0, 7)}`;
+    const cuenta = cuentasPorId.get(tx.account_id);
+    // Defensa en profundidad (Task 99, punto 3): `validarOrigen` ya bloquea esto
+    // ANTES de llegar aquí en `migrar()`, pero `resumenOrigen` también se llama
+    // sola en tests y en `--verify-only`; sin esta guarda, `cuenta.bank_ref` de
+    // abajo lee una propiedad de `undefined` y revienta con un TypeError sin
+    // nombre ni apellidos.
+    if (cuenta === undefined) {
+      throw new Error(`transactions id=${tx.id}: account_id ${tx.account_id} no existe en accounts.`);
+    }
+    const clave = `${cuenta.bank_ref}|${tx.op_date.slice(0, 7)}`;
     sumasCuentaMes.set(clave, (sumasCuentaMes.get(clave) ?? 0n) + tx.amount_cents);
     estados.set(tx.status, (estados.get(tx.status) ?? 0) + 1);
     // Clave CANÓNICA: el origen guarda uuid4().hex sin guiones y el destino
@@ -217,6 +234,15 @@ export const CLASES_CUENTA_DESTINO = ['comun', 'personal', 'inversion'];
 export const CLASES_CATEGORIA_DESTINO = ['gasto', 'ingreso', 'transferencia'];
 export const TIPOS_REGLA_DESTINO = ['proveedor_exacto', 'concepto_contiene', 'codigo_norma43'];
 export const ORIGENES_REGLA_DESTINO = ['manual', 'agente'];
+
+/** «Vacío o solo blancos» con la MISMA clase de espacio que `normText`
+ *  (`PY_SPACE_RX`), no la `\s` de JS: un BOM solo no cuenta como blanco aquí
+ *  tampoco. `null`/`undefined` también son blanco (columna NOT NULL que llega
+ *  sin valor incumple igual el CHECK, aunque sea un 23502 y no un 23514). */
+function enBlanco(valor) {
+  if (valor === null || valor === undefined) return true;
+  return valor.replace(PY_SPACE_RX, '').length === 0;
+}
 
 /** Invariantes que 0036 impone y el origen NO garantiza, comprobados ANTES de
  *  abrir la transacción: mejor una lista legible en el informe que un error
@@ -292,6 +318,42 @@ export function validarOrigen(origen) {
   const lotesSinNombre = origen.importBatches.filter((b) => b.filename === null || b.filename.trim() === '');
   if (lotesSinNombre.length > 0) {
     problemas.push(`${lotesSinNombre.length} lote(s) con filename vacío o solo blancos (ids: ${lotesSinNombre.map((b) => b.id).join(', ')}); el destino exige un filename no vacío (CHECK de 0036).`);
+  }
+  // Resolución del coordinador (fase 3, Task 99 punto 2): el resto de columnas
+  // NOT NULL con CHECK `length(btrim(x)) BETWEEN 1 AND n` de 0036 (`grep -n
+  // btrim packages/db/migrations/0036_finance.sql`) que el origen puede
+  // entregar en blanco; pattern y filename ya quedan cubiertos arriba.
+  // provider_norm/concept_norm de `finance_transactions` y
+  // `finance_event_rules` NO se validan aquí a propósito: son columnas
+  // NULLABLE sin CHECK de blanco en 0036, y `providerNormOSuNulo` ya las
+  // coalesce a NULL antes del INSERT (decisión del coordinador).
+  for (const c of origen.accounts) {
+    if (enBlanco(c.name)) problemas.push(`accounts id=${c.id}: name en blanco (CHECK de 0036).`);
+    // bank_ref SÍ admite NULL en 0036; el CHECK solo se dispara si no lo es.
+    if (c.bank_ref !== null && c.bank_ref !== undefined && enBlanco(c.bank_ref)) {
+      problemas.push(`accounts id=${c.id}: bank_ref en blanco (CHECK de 0036).`);
+    }
+  }
+  for (const c of origen.categories) {
+    if (enBlanco(c.name)) problemas.push(`categories id=${c.id}: name en blanco (CHECK de 0036).`);
+  }
+  for (const a of origen.providerAliases) {
+    if (enBlanco(a.provider_norm)) problemas.push(`provider_aliases id=${a.id}: provider_norm en blanco (CHECK de 0036).`);
+    if (enBlanco(a.alias)) problemas.push(`provider_aliases id=${a.id}: alias en blanco (CHECK de 0036).`);
+  }
+  for (const e of origen.events) {
+    if (enBlanco(e.name)) problemas.push(`events id=${e.id}: name en blanco (CHECK de 0036).`);
+  }
+  for (const t of origen.transactions) {
+    if (enBlanco(t.dedup_hash)) problemas.push(`transactions id=${t.id}: dedup_hash en blanco (CHECK de 0036).`);
+  }
+  // Task 99, punto 3: mismo invariante que la guarda de `resumenOrigen`, pero
+  // AQUÍ para que el informe lo diga antes de abrir la transacción.
+  const idsCuenta = new Set(origen.accounts.map((c) => c.id));
+  for (const t of origen.transactions) {
+    if (!idsCuenta.has(t.account_id)) {
+      problemas.push(`transactions id=${t.id}: account_id ${t.account_id} no existe en accounts.`);
+    }
   }
   return problemas;
 }

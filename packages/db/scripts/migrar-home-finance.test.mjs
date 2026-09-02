@@ -39,11 +39,28 @@ describe('normText (réplica de money.py::norm_text)', () => {
       '',
       '   ',
       'ya limpio',
-      'MAYÚSCULAS y minúsculas MEZCLADAS'
+      'MAYÚSCULAS y minúsculas MEZCLADAS',
+      // Muestras de control (Task 99, punto 1): la clase \s de Python NO es la
+      // de JavaScript. Ninguna de estas cuatro aparece en un extracto real,
+      // pero el ETL tiene que casar con el dominio también en el borde.
+      'AB', // NEL (U+0085): espacio para Python, no para JS
+      'AB', // FS (U+001C): espacio para Python, no para JS
+      '﻿CAFE', // BOM (U+FEFF): NO es espacio para Python; sobrevive
+      ' A B　' // NBSP, EM SPACE, IDEOGRAPHIC SPACE: espacio en ambos
     ];
     for (const muestra of muestras) {
       expect(normText(muestra)).toBe(normTextDominio(muestra));
     }
+  });
+
+  // Expectativas literales (no dependen del dominio): si algún día el dominio
+  // y el ETL divergieran a la vez de la misma manera, el test de arriba no lo
+  // vería. Estas cuatro fijan el valor esperado con nombre y apellidos.
+  it('la clase de espacio es la de Python en las cuatro muestras de control', () => {
+    expect(normText('AB')).toBe('A B'); // NEL
+    expect(normText('AB')).toBe('A B'); // FS
+    expect(normText('﻿CAFE')).toBe('﻿CAFE'); // BOM sobrevive
+    expect(normText(' A B　')).toBe('A B');
   });
 });
 
@@ -217,6 +234,23 @@ describe('resumenOrigen y compararResumenes', () => {
     expect(comparacion.lineas.find((l) => l.etiqueta === `grupo ${GRUPO_HUERFANO} (patas y suma)`).ok)
       .toBe(true);
   });
+  // Task 99, punto 3: sin la guarda, `cuentasPorId.get(tx.account_id).bank_ref`
+  // lee una propiedad de `undefined` y revienta con un TypeError sin id ni
+  // account_id — inservible para quien lea el fallo a las tantas.
+  it('un account_id colgado lanza un Error con el id de la tx y el account_id, no un TypeError', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.transactions[0].account_id = 999;
+    let error;
+    try {
+      resumenOrigen(origen);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(TypeError);
+    expect(error.message).toContain('1');
+    expect(error.message).toContain('999');
+  });
 });
 
 describe('verificarHashes', () => {
@@ -288,6 +322,60 @@ describe('validarOrigen', () => {
     origen.importBatches[0].filename = '';
     expect(validarOrigen(origen)).toEqual([
       '1 lote(s) con filename vacío o solo blancos (ids: 1); el destino exige un filename no vacío (CHECK de 0036).'
+    ]);
+  });
+
+  // Task 99, punto 2: 0036 exige `length(btrim(x)) BETWEEN 1 AND n` (o, para
+  // bank_ref, «NULL o esa misma longitud») en estas columnas además de
+  // pattern/filename (ya cubiertos arriba). Un caso por columna, uno por test,
+  // origen mínimo mutado en un solo campo. concept_norm/provider_norm de
+  // finance_event_rules y provider_norm de finance_transactions NO llevan CHECK
+  // de blanco en 0036 (nullable, sin btrim): providerNormOSuNulo ya los
+  // coalesce a NULL antes del INSERT, así que no hace falta validarlos aquí.
+  it('detecta accounts.name en blanco', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.accounts[0].name = '   ';
+    expect(validarOrigen(origen)).toEqual(['accounts id=1: name en blanco (CHECK de 0036).']);
+  });
+  it('detecta accounts.bank_ref en blanco (cuando no es NULL)', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.accounts[0].bank_ref = '   ';
+    expect(validarOrigen(origen)).toEqual(['accounts id=1: bank_ref en blanco (CHECK de 0036).']);
+  });
+  it('detecta categories.name en blanco', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.categories[1].name = '';
+    expect(validarOrigen(origen)).toEqual(['categories id=2: name en blanco (CHECK de 0036).']);
+  });
+  it('detecta provider_aliases.provider_norm en blanco', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.providerAliases[0].provider_norm = '   ';
+    expect(validarOrigen(origen)).toEqual(['provider_aliases id=1: provider_norm en blanco (CHECK de 0036).']);
+  });
+  it('detecta provider_aliases.alias en blanco', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.providerAliases[0].alias = '';
+    expect(validarOrigen(origen)).toEqual(['provider_aliases id=1: alias en blanco (CHECK de 0036).']);
+  });
+  it('detecta events.name en blanco', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.events[0].name = '   ';
+    expect(validarOrigen(origen)).toEqual(['events id=1: name en blanco (CHECK de 0036).']);
+  });
+  it('detecta transactions.dedup_hash en blanco', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.transactions[0].dedup_hash = '';
+    expect(validarOrigen(origen)).toEqual(['transactions id=1: dedup_hash en blanco (CHECK de 0036).']);
+  });
+
+  // Task 99, punto 3: una transacción con account_id colgado (no existe en
+  // accounts) es un error bloqueante, con nombre y apellidos, ANTES de tocar
+  // la base — no un 23503 crudo de Postgres a mitad de INSERT.
+  it('detecta transactions.account_id colgado (no existe en accounts)', async () => {
+    const origen = await crearOrigenSintetico();
+    origen.transactions[0].account_id = 999;
+    expect(validarOrigen(origen)).toEqual([
+      'transactions id=1: account_id 999 no existe en accounts.'
     ]);
   });
 });
