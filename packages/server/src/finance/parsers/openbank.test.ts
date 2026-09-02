@@ -68,6 +68,37 @@ describe("parseOpenbank — decodeEntities y ramas del derivador de provider", (
     const rows = parseOpenbank(bytes);
     expect(rows[0]?.concept).toBe("PAGO &hearts; rareza");
   });
+  it("una entidad heredada de Object.prototype no inyecta código: se deja literal como cualquier desconocida", () => {
+    const bytes = openbankMiniHtml("0073 0100 5100 0000 0006", [
+      "<tr><td>06/05/2026</td><td>06/05/2026</td>" +
+        "<td>PAGO &constructor; &toString; &hasOwnProperty; fin</td><td>10,00</td><td>10,00</td></tr>",
+    ]);
+    const rows = parseOpenbank(bytes);
+    expect(rows[0]?.concept).toBe("PAGO &constructor; &toString; &hasOwnProperty; fin");
+  });
+  it("&nbsp; decodifica al espacio duro U+00A0, como el origen, no a un espacio normal", () => {
+    const bytes = openbankMiniHtml("0073 0100 5100 0000 0007", [
+      "<tr><td>06/05/2026</td><td>06/05/2026</td><td>PAGO A&nbsp;&nbsp;B fin</td><td>10,00</td><td>10,00</td></tr>",
+    ]);
+    const rows = parseOpenbank(bytes);
+    expect(rows[0]?.concept).toBe("PAGO A  B fin");
+  });
+  it("una referencia numérica fuera de rango no lanza RangeError: se sustituye por el carácter de reemplazo", () => {
+    const bytes = openbankMiniHtml("0073 0100 5100 0000 0008", [
+      "<tr><td>06/05/2026</td><td>06/05/2026</td>" +
+        "<td>PAGO &#x110000; &#9999999999; &#xD800; fin</td><td>10,00</td><td>10,00</td></tr>",
+    ]);
+    expect(() => parseOpenbank(bytes)).not.toThrow();
+    const rows = parseOpenbank(bytes);
+    expect(rows[0]?.concept).toBe("PAGO � � � fin");
+  });
+  it("una entidad con nombre que lleva dígito se decodifica (p.ej. &sup2;)", () => {
+    const bytes = openbankMiniHtml("0073 0100 5100 0000 0009", [
+      "<tr><td>06/05/2026</td><td>06/05/2026</td><td>ALQUILER LOCAL 40m&sup2; fin</td><td>10,00</td><td>10,00</td></tr>",
+    ]);
+    const rows = parseOpenbank(bytes);
+    expect(rows[0]?.concept).toBe("ALQUILER LOCAL 40m² fin");
+  });
   it("deriva el provider de «TRANSFERENCIA A FAVOR DE» y de la variante INMEDIATA", () => {
     const bytes = openbankMiniHtml("0073 0100 5100 0000 0004", [
       "<tr><td>06/05/2026</td><td>06/05/2026</td>" +

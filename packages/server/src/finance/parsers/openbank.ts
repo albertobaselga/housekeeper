@@ -12,20 +12,38 @@ const TRANSFER_RX = /^TRANSFERENCIA(?:\s+INMEDIATA)?\s+(?:A\s+FAVOR\s+DE|DE)\s+(
  * bancario no trae `&hearts;` ni jeroglíficos — solo las que sí pueden salir
  * de un exportador que escapó un `<td>` con tildes. Cualquier entidad con
  * nombre fuera de esta lista se deja literal, igual que el origen deja las
- * inválidas. */
-const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+ * inválidas.
+ * `Object.create(null)` en vez de `{}`: sin `Object.prototype` en la cadena,
+ * `&constructor;`/`&toString;`/etc. no encuentran nada que devolver y caen al
+ * mismo "desconocida → literal" que cualquier otra entidad inexistente, en
+ * vez de filtrar código fuente de `Object` dentro de `concept`.
+ * `nbsp` decodifica al espacio duro U+00A0 (no U+0020): es lo que hace
+ * `html.unescape` del origen, y un `&nbsp;` interior sí sobrevive al `trim()`
+ * de las celdas separadoras vacías porque solo afecta los extremos. */
+const NAMED_ENTITIES: Record<string, string> = Object.assign(Object.create(null) as Record<string, string>, {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
   aacute: "á", eacute: "é", iacute: "í", oacute: "ó", uacute: "ú", uuml: "ü", ntilde: "ñ",
   Aacute: "Á", Eacute: "É", Iacute: "Í", Oacute: "Ó", Uacute: "Ú", Uuml: "Ü", Ntilde: "Ñ",
-  iexcl: "¡", iquest: "¿", euro: "€", ordf: "ª", ordm: "º",
+  iexcl: "¡", iquest: "¿", euro: "€", ordf: "ª", ordm: "º", sup2: "²",
   ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", mdash: "—", ndash: "–",
-};
+});
+
+/** `String.fromCodePoint` lanza `RangeError` fuera de 0..0x10FFFF o en el
+ * hueco de subrogados (0xD800..0xDFFF). `html.unescape` del origen no falla
+ * ahí: sustituye por el carácter de reemplazo U+FFFD. Una referencia numérica
+ * fuera de rango en un extracto real es absurda, pero no debe escapar como
+ * `RangeError` crudo cuando todo lo demás en el módulo falla como
+ * `FinanceParserError` — o, aquí, simplemente no falla. */
+function charFromCodePoint(cp: number): string {
+  if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return "�";
+  return String.fromCodePoint(cp);
+}
 
 function decodeEntities(s: string): string {
-  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole: string, ref: string) => {
+  return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);/gi, (whole: string, ref: string) => {
     const r = ref.toLowerCase();
-    if (r.startsWith("#x")) return String.fromCodePoint(Number.parseInt(r.slice(2), 16));
-    if (r.startsWith("#")) return String.fromCodePoint(Number(r.slice(1)));
+    if (r.startsWith("#x")) return charFromCodePoint(Number.parseInt(r.slice(2), 16));
+    if (r.startsWith("#")) return charFromCodePoint(Number(r.slice(1)));
     return NAMED_ENTITIES[ref] ?? NAMED_ENTITIES[r] ?? whole;
   });
 }
