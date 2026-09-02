@@ -592,9 +592,9 @@ filas aunque llame a la API a mano, y no ve el módulo en la navegación.
   Finanzas»**.
 - **Rol**: `family_admin` (los comandos `finance.grant.write` /
   `finance.revoke.write` exigen además `access.manage`).
-- Un admin puede quitarse Finanzas a sí mismo; cualquier otro admin puede
-  devolvérsela. Desactivar no borra nada: escribe `revoked_at` y conserva el
-  histórico.
+- Un admin puede quitarse Finanzas a sí mismo; cualquier admin con
+  `access.manage` —incluido él mismo— puede devolvérsela. Desactivar no borra
+  nada: escribe `revoked_at` y conserva el histórico.
 - Los administradores nuevos nacen con Finanzas apagado.
 
 ### La operación mensual
