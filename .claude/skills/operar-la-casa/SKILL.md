@@ -124,6 +124,7 @@ sale de la URL.
 | Recetas | `/h/<hogar>/recipes` | `content.read` | [ops](referencia-operaciones.md#menú-recetas-alérgenos-comensales-y-compra) |
 | Calendario | `/h/<hogar>/calendar` | `calendar.read` | [ops](referencia-operaciones.md#calendario-y-calendarios-enlazados) |
 | Buscar | `/h/<hogar>/search` | `search.use` | — |
+| Finanzas | `/h/<hogar>/finanzas` | `family_admin` **con concesión** | [ops](referencia-operaciones.md#finanzas) |
 
 **Las seis rutas de `employment` son una sola pantalla en pestañas.** El
 expediente laboral se repartió porque no cabía en una página de móvil: se entra

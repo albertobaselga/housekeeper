@@ -573,3 +573,53 @@ se ha recibido: sólo quien cobra.
   Con el planificador puesto, el peor caso son cinco minutos.
 - **No cierres un mes para «probar».** Cerrar dispara el recibo y el aviso a quien
   cobra.
+
+---
+
+## Finanzas
+
+El módulo de finanzas es de administradores, y ni siquiera de todos: además del
+rol `family_admin` hace falta una **concesión por membresía** (doble cerrojo,
+impuesto en RLS por `app.finance_enabled()`). Un admin sin concesión ve cero
+filas aunque llame a la API a mano, y no ve el módulo en la navegación.
+
+### Conceder o revocar el módulo a un administrador
+
+- **Dónde**: `/h/<hogar>/settings`, tarjeta **Finanzas** («Quién puede ver las
+  finanzas de la casa»). Lista las membresías `family_admin`, cada una con el
+  chip de estado —**Activado** o **Apagado**— y el botón **Activar Finanzas** /
+  **Desactivar Finanzas**; sin concesión, la fila dice **«No ve el módulo de
+  Finanzas»**.
+- **Rol**: `family_admin` (los comandos `finance.grant.write` /
+  `finance.revoke.write` exigen además `access.manage`).
+- Un admin puede quitarse Finanzas a sí mismo; cualquier otro admin puede
+  devolvérsela. Desactivar no borra nada: escribe `revoked_at` y conserva el
+  histórico.
+- Los administradores nuevos nacen con Finanzas apagado.
+
+### La operación mensual
+
+1. **Descargar los extractos** de la web de cada banco (CaixaBankNow → Cuentas →
+   Saldo y movimientos → exportar Excel; Deutsche Bank online → Cuentas →
+   descarga de movimientos; OpenBank y Amex desde sus áreas de cliente).
+2. **Importar**: `/h/<hogar>/finanzas/importar` → elegir el fichero → la
+   previsualización dice el banco detectado, cuántos movimientos son nuevos y
+   cuántos repetidos, y pide crear las cuentas que no conozca → Confirmar.
+   El fichero no se guarda en ningún sitio: se procesa y se descarta.
+3. **Revisar**: `/h/<hogar>/finanzas/revision` — confirmar las categorías
+   sugeridas, fila a fila o en bloque; la casilla «Regla» crea la regla al
+   confirmar para que el mes que viene venga hecho.
+4. Mirar el mes en **Finanzas** (`/h/<hogar>/finanzas`) y en **Analítica**
+   (`/h/<hogar>/finanzas/analitica`).
+
+### Qué NO hay que hacer
+
+- **Nada de SQL a mano** sobre las tablas `finance_*`: las escrituras van por
+  comandos de `/api/v1/sync` con autoría y auditoría, como todo lo demás.
+- **Ningún extracto real entra en el repositorio** (ni en fixtures ni en tests):
+  las muestras del repo son sintéticas.
+- Una importación equivocada **no se arregla borrando filas**: se deshace desde
+  el historial de Importar (borra el lote entero y sus transacciones).
+- La migración desde el sistema antiguo (home-finance) fue única y está
+  congelada; su runbook es
+  [docs/runbooks/migracion-home-finance.md](../../../docs/runbooks/migracion-home-finance.md).
