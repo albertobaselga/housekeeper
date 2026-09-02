@@ -93,9 +93,14 @@
   }
 
   function setCategory(rowId: string, categoryId: string): void {
+    // `categoryName` viaja en el borrador junto a `categoryId` porque la línea
+    // de apoyo de la fila (`ledgerRowMeta`) pinta el NOMBRE: sin él, el
+    // desplegable enseñaría la categoría nueva y el renglón de debajo seguiría
+    // diciendo la vieja hasta que llegara el acuse.
+    const categoryName = movimientos.categories.find((category) => category.id === categoryId)?.name ?? null;
     saveRow(
       rowId,
-      { categoryId },
+      { categoryId, categoryName },
       financeCommand(context.household.id, { kind: 'finance.transaction.update', transactionId: rowId, categoryId })
     );
   }
