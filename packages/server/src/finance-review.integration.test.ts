@@ -332,6 +332,8 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
     // (household_id, rule_type, pattern, origin, priority) con la que crea
     // assignConcept, así que el primer comando de aquí debe hacerla caer
     // también (F6-I1: sustituir, no acumular).
+    // El selector por proveedor "ACME LUZ IT" casa con txPend1 Y txPend2 (las
+    // dos fixtures comparten proveedor): este comando recategoriza a las dos.
     const first = await run(ADMIN, {
       kind: "finance.category.assignConcept",
       provider: "ACME LUZ IT",
@@ -406,6 +408,18 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
       return loaded.rows[0];
     });
     expect(tieRow).toMatchObject({ status: "sugerida_regla", category_id: FIN.catSub });
+    // createRule también pasa por replaceManualRule: sigue habiendo UNA sola
+    // fila proveedor_exacto/ACME LUZ IT (la del it "recategorizar..." de
+    // arriba se sustituye, no se acumula una gemela), dejando HH limpio.
+    const acmeRules = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select category_id from app.finance_rules
+          where household_id = $1 and rule_type = 'proveedor_exacto' and pattern = 'ACME LUZ IT'`,
+        [HH],
+      );
+      return loaded.rows;
+    });
+    expect(acmeRules).toHaveLength(1);
   });
 
   // El cerrojo estructural del dispatcher (requireFinanceAdmin antes de

@@ -365,11 +365,7 @@ async function updateFinanceTransaction(
     if (!pattern) {
       throw new CommandRejectedError("invalid_payload", "El movimiento no tiene proveedor para la regla");
     }
-    await client.query(
-      `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin)
-       values ($1, $2, $3, $4, 0, 'manual')`,
-      [householdId, payload.createRule.ruleType, pattern, finalCategory],
-    );
+    await replaceManualRule(client, householdId, payload.createRule.ruleType, pattern, finalCategory);
     await runPostImportPipeline(client, householdId);
   }
   return { resourceId: tx.id };
@@ -1113,6 +1109,38 @@ async function deleteFinanceCategory(
 }
 
 /**
+ * Simetría con assignConceptToEvent: crear o recategorizar una regla manual
+ * SUSTITUYE la regla previa del mismo patrón en vez de acumular reglas
+ * gemelas con prioridad 0 entre las que el pipeline elegiría por orden
+ * físico (F6-I1). Solo caen las reglas manuales: las de origen 'agente' y
+ * las creadas desde Ajustes con otra prioridad no son «la misma regla». Los
+ * dos sitios que crean una regla manual de prioridad 0 —recategorizar un
+ * concepto desde Analítica y confirmar con regla desde la revisión— pasan
+ * por aquí para que ninguno pueda divergir en silencio sobre esa semántica.
+ */
+async function replaceManualRule(
+  client: PoolClient,
+  householdId: UUID,
+  ruleType: "proveedor_exacto" | "concepto_contiene",
+  pattern: string,
+  categoryId: UUID,
+): Promise<UUID> {
+  await client.query(
+    `delete from app.finance_rules
+      where household_id = $1 and rule_type = $2 and pattern = $3 and origin = 'manual' and priority = 0`,
+    [householdId, ruleType, pattern],
+  );
+  const inserted = await client.query<{ id: string }>(
+    `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin)
+     values ($1, $2, $3, $4, 0, 'manual') returning id`,
+    [householdId, ruleType, pattern, categoryId],
+  );
+  const ruleId = inserted.rows[0]?.id;
+  if (!ruleId) throw new Error("La regla manual no devolvió identificador");
+  return ruleId;
+}
+
+/**
  * OJO: aquí `payload.categoryId` es la categoría DESTINO, no un selector. Si
  * se le pasara el payload entero, `matchingFinanceTxIds` tomaría la rama
  * `selector.categoryId` y recategorizaría los movimientos que YA están en el
@@ -1148,22 +1176,8 @@ async function assignConceptToCategory(
   }
   const ruleType = payload.concept === undefined ? "proveedor_exacto" : "concepto_contiene";
   const pattern = payload.concept === undefined ? payload.provider : payload.concept;
-  // Simetría con assignConceptToEvent: recategorizar un concepto SUSTITUYE la
-  // regla manual previa del mismo patrón en vez de acumular reglas gemelas
-  // con prioridad 0 entre las que el pipeline elegiría por orden físico
-  // (F6-I1). Solo caen las reglas manuales: las de origen 'agente' y las
-  // creadas desde Ajustes con otra prioridad no son «la misma regla».
-  await client.query(
-    `delete from app.finance_rules
-      where household_id = $1 and rule_type = $2 and pattern = $3 and origin = 'manual' and priority = 0`,
-    [householdId, ruleType, pattern],
-  );
-  const inserted = await client.query<{ id: string }>(
-    `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin)
-     values ($1, $2, $3, $4, 0, 'manual') returning id`,
-    [householdId, ruleType, pattern, payload.categoryId],
-  );
-  return { resourceId: inserted.rows[0]?.id as UUID };
+  const resourceId = await replaceManualRule(client, householdId, ruleType, pattern, payload.categoryId);
+  return { resourceId };
 }
 
 async function undoImport(client: PoolClient, householdId: UUID, batchId: UUID): Promise<Record<string, never>> {
