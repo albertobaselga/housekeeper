@@ -16,6 +16,7 @@
   } = $props();
 
   let input = $state<HTMLInputElement | null>(null);
+  let buscador = $state<HTMLDivElement | null>(null);
   let query = $state('');
   let debounced = $state('');
   let open = $state(false);
@@ -27,16 +28,41 @@
     return () => clearTimeout(t);
   });
 
+  // Un grupo expandido con la consulta anterior no debe seguir expandido con
+  // una consulta nueva: es estado de presentación de ESTA búsqueda, no una
+  // preferencia que sobreviva a ella (M9).
+  $effect(() => {
+    debounced;
+    expandedGroups = new Set();
+  });
+
   const groups = $derived<SuggestGroup[]>(debounced.trim().length >= 2 ? suggestChips(rows, catPathOf, debounced) : []);
   const showDropdown = $derived(open && debounced.trim().length >= 2);
 
   function addChip(chip: SearchChip): void {
-    onChips([...chips, chip]);
+    // Elegir dos veces la misma sugerencia (o Enter dos veces con el mismo
+    // texto libre) no debe duplicar el chip: el filtrado ya es idempotente,
+    // pero la barra de chips repetidos se leía como un error (M4).
+    const already = chips.some(
+      (c) => c.type === chip.type && c.value === chip.value && (c.prov ?? '') === (chip.prov ?? '')
+    );
+    if (!already) onChips([...chips, chip]);
     query = '';
     debounced = '';
     open = false;
   }
   const removeChip = (idx: number) => onChips(chips.filter((_, i) => i !== idx));
+
+  // Cierra el desplegable si el foco sale del componente entero (clic o Tab
+  // fuera): mientras quedaba texto de ≥2 caracteres el panel seguía tapando la
+  // tabla aunque el foco ya estuviera en otra parte (M3). `relatedTarget` es el
+  // elemento que RECIBE el foco; si sigue dentro de `.buscador` (p. ej. Tab a
+  // un botón de sugerencia) no hay nada que cerrar.
+  function onFocusOut(e: FocusEvent): void {
+    const next = e.relatedTarget;
+    if (next instanceof Node && buscador?.contains(next)) return;
+    open = false;
+  }
 
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Enter') {
@@ -49,8 +75,11 @@
   }
 
   // Atajo global «/»: enfoca el buscador salvo que el foco esté en otro campo.
+  // Con modificador (Ctrl+/, Cmd+/, Alt+/) no es el atajo de búsqueda de esta
+  // pantalla —son combinaciones de otras cosas (comentar, buscar del SO/editor,
+  // etc.)— y no debe robar el foco ni cancelar esas combinaciones (M5).
   function onWindowKeydown(e: KeyboardEvent): void {
-    if (e.key !== '/') return;
+    if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
     const el = document.activeElement;
     if (el instanceof HTMLElement && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
     e.preventDefault();
@@ -63,7 +92,7 @@
 
 <svelte:window onkeydown={onWindowKeydown} />
 
-<div class="buscador">
+<div class="buscador" bind:this={buscador} onfocusout={onFocusOut}>
   <input bind:this={input} type="text" aria-label="Buscar"
     placeholder="Buscar proveedor, concepto, evento o categoría…  /"
     value={query} oninput={(e) => { query = e.currentTarget.value; open = true; }}
@@ -77,13 +106,14 @@
         {#each groups as g (g.group)}
           {@const cap = expandedGroups.has(g.group) ? g.items.length : MAX_PER_GROUP}
           <p class="grupo">{g.group}</p>
-          {#each g.items.slice(0, cap) as item (item.chip.type + item.chip.value)}
-            <button type="button" class="sugerencia" onmousedown={(e) => e.preventDefault()} onclick={() => addChip(item.chip)}>
+          {#each g.items.slice(0, cap) as item (item.chip.type + item.chip.value + (item.chip.prov ?? ''))}
+            <button type="button" class="sugerencia" role="option" aria-selected="false"
+              onmousedown={(e) => e.preventDefault()} onclick={() => addChip(item.chip)}>
               <span>{item.label}</span><small>{item.detail}</small>
             </button>
           {/each}
           {#if g.items.length > cap}
-            <button type="button" class="mas" onmousedown={(e) => e.preventDefault()}
+            <button type="button" class="mas" role="option" aria-selected="false" onmousedown={(e) => e.preventDefault()}
               onclick={() => (expandedGroups = new Set(expandedGroups).add(g.group))}>{g.items.length - cap} más…</button>
           {/if}
         {/each}
@@ -94,7 +124,7 @@
   {#if chips.length > 0}
     <div class="chips">
       {#each chips as chip, i (i)}
-        <span class="chip activa">🔍 {TYPE_LABEL[chip.type]}: {chipDisplay(chip)}
+        <span class="chip">🔍 {TYPE_LABEL[chip.type]}: {chipDisplay(chip)}
           <button type="button" aria-label="quitar filtro" onclick={() => removeChip(i)}>×</button></span>
       {/each}
       <button type="button" class="limpiar" onclick={() => onChips([])}>limpiar</button>
