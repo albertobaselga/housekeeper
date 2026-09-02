@@ -1,6 +1,7 @@
+import * as XLSX from "xlsx";
 import { describe, expect, it } from "vitest";
 
-import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
+import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, sheetGrid, toCents } from "./shared.js";
 
 describe("toCents (port de money.py::to_cents)", () => {
   it("entiende formato es-ES en texto y números de celda", () => {
@@ -36,6 +37,29 @@ describe("parseDateEs", () => {
     expect(parseDateEs("04/05/2026", 7)).toBe("2026-05-04");
     expect(() => parseDateEs("30/02/2026", 7)).toThrow(FinanceParserError);
     expect(() => parseDateEs("no-fecha", 3)).toThrow(/Fila 3/);
+  });
+});
+
+describe("sheetGrid (receta SheetJS común: header:1, raw:true, defval:'')", () => {
+  it("lee la hoja por nombre si se indica", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["a", "b"]]), "Hoja1");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["c", "d"]]), "Hoja2");
+    expect(sheetGrid(wb, "Hoja2")).toEqual([["c", "d"]]);
+  });
+  it("sin nombre lee la primera hoja", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["x", "y"]]), "Solo");
+    expect(sheetGrid(wb)).toEqual([["x", "y"]]);
+  });
+  it("libro sin hojas lanza FinanceParserError", () => {
+    const wb = XLSX.utils.book_new();
+    expect(() => sheetGrid(wb)).toThrow(FinanceParserError);
+  });
+  it("hoja inexistente lanza FinanceParserError", () => {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["x"]]), "Solo");
+    expect(() => sheetGrid(wb, "Otra")).toThrow(FinanceParserError);
   });
 });
 

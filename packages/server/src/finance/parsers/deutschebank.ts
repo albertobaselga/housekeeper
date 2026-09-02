@@ -2,7 +2,15 @@ import * as XLSX from "xlsx";
 
 import { normalizeBankProvider, type ParsedRow } from "@housekeeper/domain/finance";
 
-import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
+import {
+  DEUTSCHE_HEADER_MARK,
+  FinanceParserError,
+  balanceCentsOf,
+  buildRaw,
+  parseDateEs,
+  sheetGrid,
+  toCents,
+} from "./shared.js";
 
 const PREFIXES: readonly [RegExp, string][] = [
   [/^RECIBO\s+/, ""],
@@ -21,20 +29,14 @@ function dbProvider(concept: string): string {
 /** Port de parsers/deutschebank.py::parse sobre SheetJS. */
 export function parseDeutsche(bytes: Uint8Array): ParsedRow[] {
   const wb = XLSX.read(bytes, { type: "array" });
-  const first = wb.SheetNames[0];
-  if (first === undefined) throw new FinanceParserError("libro sin hojas", 0);
-  const grid: unknown[][] = XLSX.utils.sheet_to_json(wb.Sheets[first] as XLSX.WorkSheet, {
-    header: 1,
-    raw: true,
-    defval: "",
-  });
+  const grid = sheetGrid(wb);
   const text = (row: unknown[], i: number): string => String(row[i] ?? "").trim();
   let iban: string | null = null;
   let headerRow: number | null = null;
   let headers: string[] = [];
   for (let r = 0; r < grid.length; r += 1) {
     const cells = (grid[r] as unknown[]).map((c) => String(c ?? "").trim());
-    if (cells[1] === "Cuenta:") iban = cells[2]?.trim() || null; // "" no es un IBAN válido
+    if (cells[1] === DEUTSCHE_HEADER_MARK) iban = cells[2]?.trim() || null; // "" no es un IBAN válido
     if (cells[1] === "date" && cells.includes("amount")) {
       headerRow = r;
       headers = cells;

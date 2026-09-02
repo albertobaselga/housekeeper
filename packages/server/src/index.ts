@@ -12,6 +12,7 @@ export * from "./commands/settlement.js";
 export * from "./commands/wiki.js";
 export * from "./database.js";
 export * from "./finance/dedup-hash.js";
+export * from "./finance/parsers/index.js";
 export * from "./idempotency.js";
 export * from "./logging.js";
 export * from "./menu-hash.js";

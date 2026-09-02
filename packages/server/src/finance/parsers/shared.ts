@@ -1,7 +1,15 @@
+import * as XLSX from "xlsx";
+
 /** Nombre EXACTO de la hoja que solo trae el export de Amex. Vive aquí (y no en
  * `index.ts`) para que `index.ts` y `amex.ts` no formen un ciclo de módulos y
  * para que el literal no se duplique en `synthetic-samples.ts`. */
 export const AMEX_SHEET = "Detalles de la operación";
+
+/** Literal de cabecera que marca el inicio de una tabla de movimientos de CaixaBank. */
+export const CAIXABANK_HEADER_MARK = "Número de cuenta";
+
+/** Literal de cabecera que precede al IBAN en un extracto de Deutsche Bank. */
+export const DEUTSCHE_HEADER_MARK = "Cuenta:";
 
 /** Error de parser con número de fila, como base.py::ParseError del origen. */
 export class FinanceParserError extends Error {
@@ -61,6 +69,22 @@ export function parseDateEs(s: string, row: number): string {
     }
   }
   throw new FinanceParserError(`fecha inválida ${JSON.stringify(s)}`, row);
+}
+
+/** Rejilla de una hoja del libro aplicando la receta SheetJS común a todos los
+ * parsers (`header: 1, raw: true, defval: ""`): la hoja `name` si se indica, o
+ * la primera si no. Lanza FinanceParserError si el libro no tiene hojas o si
+ * se pide una hoja que no existe. */
+export function sheetGrid(wb: XLSX.WorkBook, name?: string): unknown[][] {
+  const sheetName = name ?? wb.SheetNames[0];
+  if (sheetName === undefined) {
+    throw new FinanceParserError("libro sin hojas", 0);
+  }
+  const sheet = wb.Sheets[sheetName];
+  if (sheet === undefined) {
+    throw new FinanceParserError(`no se encontró la hoja '${sheetName}'`, 0);
+  }
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" });
 }
 
 /** Port de base.py::build_raw: dict cabecera→valor con claves únicas. */

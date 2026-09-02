@@ -1,8 +1,12 @@
 import * as XLSX from "xlsx";
 
-import type { FinanceBank } from "@housekeeper/domain/finance";
+import type { FinanceBank, ParsedRow, ParsedStatement } from "@housekeeper/domain/finance";
 
-import { AMEX_SHEET, FinanceParserError } from "./shared.js";
+import { parseAmex } from "./amex.js";
+import { parseCaixabank } from "./caixabank.js";
+import { parseDeutsche } from "./deutschebank.js";
+import { parseOpenbank } from "./openbank.js";
+import { AMEX_SHEET, CAIXABANK_HEADER_MARK, DEUTSCHE_HEADER_MARK, FinanceParserError, sheetGrid } from "./shared.js";
 
 export { AMEX_SHEET, FinanceParserError };
 
@@ -30,19 +34,38 @@ export function detectBank(bytes: Uint8Array, filename: string): FinanceBank | n
   }
   const wb = tryRead(bytes); // binario BIFF (.xls de verdad)
   if (wb === null) return null;
-  const first = wb.SheetNames[0];
-  if (first === undefined) return null;
-  const grid: unknown[][] = XLSX.utils.sheet_to_json(wb.Sheets[first] as XLSX.WorkSheet, {
-    header: 1,
-    raw: true,
-    defval: "",
-  });
+  let grid: unknown[][];
+  try {
+    grid = sheetGrid(wb);
+  } catch {
+    return null; // libro sin hojas: no es ningún banco reconocido
+  }
   for (const row of grid.slice(0, 15)) {
     for (const cell of row) {
       const v = String(cell).trim();
-      if (v === "Número de cuenta") return "caixabank";
-      if (v === "Cuenta:") return "deutsche_bank";
+      if (v === CAIXABANK_HEADER_MARK) return "caixabank";
+      if (v === DEUTSCHE_HEADER_MARK) return "deutsche_bank";
     }
   }
   return null;
+}
+
+const PARSERS: Record<FinanceBank, (bytes: Uint8Array) => ParsedRow[]> = {
+  caixabank: parseCaixabank,
+  deutsche_bank: parseDeutsche,
+  openbank: parseOpenbank,
+  amex: parseAmex,
+};
+
+/** Detecta el banco y parsea el extracto completo. Lanza FinanceParserError. */
+export function parseStatement(bytes: Uint8Array, filename: string): ParsedStatement {
+  const bank = detectBank(bytes, filename);
+  if (bank === null) {
+    throw new FinanceParserError(
+      `formato de ${filename} no reconocido (ni CaixaBank ni Deutsche Bank ni Amex ni OpenBank)`,
+      0,
+    );
+  }
+  const rows = PARSERS[bank](bytes);
+  return { bank, accountRefs: [...new Set(rows.map((r) => r.accountRef))], rows };
 }

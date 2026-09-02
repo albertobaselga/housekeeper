@@ -2,9 +2,15 @@ import * as XLSX from "xlsx";
 
 import { CARD_PREFIX_RX, normalizeBankProvider, type ParsedRow } from "@housekeeper/domain/finance";
 
-import { FinanceParserError, balanceCentsOf, buildRaw, parseDateEs, toCents } from "./shared.js";
-
-const HEADER_MARK = "Número de cuenta";
+import {
+  CAIXABANK_HEADER_MARK,
+  FinanceParserError,
+  balanceCentsOf,
+  buildRaw,
+  parseDateEs,
+  sheetGrid,
+  toCents,
+} from "./shared.js";
 
 /** Port de parsers/caixabank.py::_extract_provider. */
 function extractProvider(codeCommon: string, complementarios: readonly string[]): string {
@@ -22,19 +28,13 @@ function extractProvider(codeCommon: string, complementarios: readonly string[])
 /** Port de parsers/caixabank.py::parse sobre SheetJS. */
 export function parseCaixabank(bytes: Uint8Array): ParsedRow[] {
   const wb = XLSX.read(bytes, { type: "array" });
-  const first = wb.SheetNames[0];
-  if (first === undefined) throw new FinanceParserError("libro sin hojas", 0);
-  const grid: unknown[][] = XLSX.utils.sheet_to_json(wb.Sheets[first] as XLSX.WorkSheet, {
-    header: 1,
-    raw: true,
-    defval: "",
-  });
+  const grid = sheetGrid(wb);
   const text = (row: unknown[], i: number): string => String(row[i] ?? "").trim();
   const rows: ParsedRow[] = [];
   let inTable = false;
   let headers: string[] = [];
   grid.forEach((cells, r) => {
-    if (text(cells, 1) === HEADER_MARK) {
+    if (text(cells, 1) === CAIXABANK_HEADER_MARK) {
       headers = cells.map((c) => String(c ?? "").trim());
       inTable = true;
       return;
