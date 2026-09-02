@@ -87,3 +87,77 @@ test('admin en modo fixture: Movimientos lista el ledger y abre el panel con «D
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
 });
+
+// [FASE 5, T9] Edición inline, manuales y transferencias en Movimientos. Estas
+// tres pruebas se quedan en lo puramente local (selección, apertura/cierre de
+// formulario, motivo del botón de vincular): NINGUNA dispara `optimistic.run`
+// contra la red, siguiendo la misma convención que el resto de `.e2e.ts` (modo
+// fixture = solo lectura; el envío real de comandos se prueba con base propia
+// en `.dbe2e.ts`, fuera del alcance de esta tarea).
+
+test('Movimientos: cada fila trae sus controles de edición inline', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
+  const rows = page.locator('.finance-ledger .finance-row-wrap');
+  await expect(rows).toHaveCount(5);
+
+  // Fila 1 (Encina): tiene proveedor y no pertenece a ningún grupo — checkbox,
+  // categoría, eventos, recurrencia y alias de proveedor, pero SIN botón de
+  // desvincular ni de borrar (es un movimiento importado, no un manual).
+  const encina = rows.nth(0);
+  await expect(encina.getByLabel('Seleccionar movimiento')).toBeVisible();
+  await expect(encina.getByLabel('Categoría')).toBeVisible();
+  await expect(encina.getByTitle('Asignar a eventos')).toBeVisible();
+  await expect(encina.getByLabel('Tipo de gasto')).toBeVisible();
+  await expect(encina.getByTitle('Editar alias del proveedor')).toBeVisible();
+  await expect(encina.getByTitle('Desvincular transferencia')).toHaveCount(0);
+
+  // Fila 3 (traspaso a cuenta común): sin proveedor pero YA vinculada a un
+  // grupo — trae el botón de desvincular y no el de alias.
+  const traspaso = rows.nth(2);
+  await expect(traspaso.getByTitle('Desvincular transferencia')).toBeVisible();
+  await expect(traspaso.getByTitle('Editar alias del proveedor')).toHaveCount(0);
+
+  // Ninguna fila del fixture es un manual borrable (todas traen un dedupHash
+  // de importación, no `manual-…`): «Borrar» no aparece en ninguna parte.
+  await expect(page.getByRole('button', { name: 'Borrar' })).toHaveCount(0);
+});
+
+test('Movimientos: seleccionar filas activa la barra y «Vincular transferencia» explica por qué está deshabilitado', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
+  const rows = page.locator('.finance-ledger .finance-row-wrap');
+  await expect(page.locator('.seleccion-bar')).toHaveCount(0);
+
+  await rows.nth(0).getByLabel('Seleccionar movimiento').check();
+  const bar = page.locator('.seleccion-bar');
+  await expect(bar).toContainText('1 seleccionados');
+  const linkButton = bar.getByRole('button', { name: /Vincular transferencia/ });
+  await expect(linkButton).toBeDisabled();
+  await expect(linkButton).toHaveAttribute('title', 'se necesitan al menos 2 movimientos');
+
+  // Encina (−87,34 €) + nómina (+2.125,00 €): la selección no suma cero.
+  await rows.nth(1).getByLabel('Seleccionar movimiento').check();
+  await expect(bar).toContainText('2 seleccionados');
+  await expect(linkButton).toHaveAttribute('title', 'la selección no suma cero');
+
+  // Encina + traspaso (fila 3, YA pertenece a un grupo): motivo distinto.
+  await rows.nth(1).getByLabel('Seleccionar movimiento').uncheck();
+  await rows.nth(2).getByLabel('Seleccionar movimiento').check();
+  await expect(linkButton).toHaveAttribute('title', 'algún movimiento ya pertenece a un grupo');
+
+  await bar.getByRole('button', { name: 'Quitar selección' }).click();
+  await expect(page.locator('.seleccion-bar')).toHaveCount(0);
+});
+
+test('Movimientos: «+ Añadir manual» abre y cierra el formulario', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
+  await expect(page.locator('.action-form')).toHaveCount(0);
+  await page.getByRole('button', { name: '+ Añadir manual' }).click();
+  const form = page.locator('.action-form');
+  await expect(form).toBeVisible();
+  await expect(form.locator('legend')).toContainText('Añadir movimiento manual');
+  await form.getByRole('button', { name: 'Cancelar' }).click();
+  await expect(page.locator('.action-form')).toHaveCount(0);
+});
