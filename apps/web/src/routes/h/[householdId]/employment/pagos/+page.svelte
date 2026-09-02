@@ -319,7 +319,10 @@
   }
   .mes-fila:first-child { border-top: 0; }
   .mes-fila > details { min-width: 0; }
-  .mes-fila > a { align-self: center; }
+  /* El documento se descarga desde la fila cerrada, así que el botón va a la
+     altura del mes, no centrado en la fila entera: centrado, al desplegar el
+     detalle se quedaba flotando a media lista de líneas. */
+  .mes-fila > a { align-self: start; margin-top: var(--space-2); }
   /* La diana de 56 px y la rejilla las pone `.fila-accion`; el borde superior
      lo pone la fila entera, que abarca también el enlace del documento. */
   .mes-fila summary {

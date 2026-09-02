@@ -27,19 +27,31 @@
   const canRecordVacation = $derived(
     employmentAgreement !== null && can(context.role, 'leave.approve')
   );
-  // Decidir sobre un año cerrado no depende de qué persona esté elegida arriba:
-  // la tarjeta las enseña todas y cada propuesta lleva su acuerdo.
   const canDecideCarryover = $derived(can(context.role, 'leave.approve'));
 
-  // Con `?empleada=`, su historial va primero; el resto conserva el orden del
-  // servidor (la propia primero para la empleada).
+  // La pestaña es el expediente de UNA persona: con `?empleada=` sólo se pinta
+  // la suya (historial y días de años cerrados), porque la barra de arriba dice
+  // «Expediente de X» y enseñar debajo a las demás desmentía esa frase. Sin
+  // `?empleada=` —la empleada mirando lo suyo, o un enlace viejo— se ve lo que
+  // el servidor deja ver, la propia primero.
+  const scoped = $derived(
+    Boolean(data.empleada) && (overview?.people.some((p) => p.agreementId === data.empleada) ?? false)
+  );
   const people = $derived(
     overview
-      ? [...overview.people].sort(
-          (a, b) =>
-            Number(b.agreementId === data.empleada) - Number(a.agreementId === data.empleada)
-        )
+      ? scoped
+        ? overview.people.filter((p) => p.agreementId === data.empleada)
+        : [...overview.people].sort(
+            (a, b) =>
+              Number(b.agreementId === data.empleada) - Number(a.agreementId === data.empleada)
+          )
       : []
+  );
+  const carryoverProposals = $derived(
+    overview ? (scoped ? overview.carryoverProposals.filter((p) => p.agreementId === data.empleada) : overview.carryoverProposals) : []
+  );
+  const carryoverDecisions = $derived(
+    overview ? (scoped ? overview.carryoverDecisions.filter((d) => d.agreementId === data.empleada) : overview.carryoverDecisions) : []
   );
 
   /**
@@ -134,10 +146,10 @@
     <VacationCarryoverCard
       householdId={data.householdId}
       today={overview.today}
-      proposals={overview.carryoverProposals}
-      decisions={overview.carryoverDecisions}
+      proposals={carryoverProposals}
+      decisions={carryoverDecisions}
       canDecide={canDecideCarryover}
-      showPerson={overview.people.length > 1}
+      showPerson={!scoped && overview.people.length > 1}
     />
 
     {#each people as person (person.agreementId)}

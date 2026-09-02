@@ -862,6 +862,14 @@
     gap: var(--space-2);
   }
 
+  /* Los grupos de «Lo que rige hoy» (horario, trabajo extra, complementos) son
+     bloques distintos y tienen que leerse como tales: pegados a la última fila
+     del grupo anterior, la pantalla se leía como una lista sin fin. */
+  .card h3 {
+    margin-top: var(--space-5);
+    margin-bottom: var(--space-2);
+  }
+
   .schedule-mismatch {
     font-weight: 500;
   }
