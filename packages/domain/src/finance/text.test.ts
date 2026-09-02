@@ -28,3 +28,24 @@ describe("dayDiffIso", () => {
     expect(dayDiffIso("2026-05-29", "2026-06-01")).toBe(-3);
   });
 });
+
+// La clase \s de Python (modo str) NO es la de JavaScript: incluye U+001C-U+001F
+// y U+0085, y excluye U+FEFF (que sí recorta el `.trim()` de JS). Los valores
+// dorados de abajo se calcularon a mano con `re.sub(r"\s+", " ", s).strip()` del
+// origen; cualquier divergencia cambia `concept_norm`/`provider_norm` y, peor, el
+// hash de dedup que ya está migrado.
+describe("normText: la clase de espacio es la de Python, no la de JS", () => {
+  it("trata como espacio los separadores que Python cuenta y JS no", () => {
+    expect(normText("A\u0085B")).toBe("A B"); // NEL
+    expect(normText("A\u001cB")).toBe("A B"); // FS
+  });
+
+  it("conserva el BOM: U+FEFF no es espacio en Python ni lo recorta strip()", () => {
+    expect(normText("\ufeffHOLA")).toBe("\ufeffHOLA");
+  });
+
+  it("colapsa los espacios compartidos y recorta solo los extremos", () => {
+    expect(normText("\u00a0a\u2003b\u00a0")).toBe("A B"); // NBSP y EM SPACE
+    expect(normText("  a  b  ")).toBe("A B");
+  });
+});
