@@ -164,6 +164,66 @@ export async function loadFinanceMovimientos(
   }
 }
 
+export interface FinanceRevisionRow {
+  id: string;
+  opDate: string;
+  accountName: string;
+  concept: string;
+  provider: string | null;
+  providerDisplay: string | null;
+  amountCents: string;
+  status: string;
+  categoryId: string | null;
+  recurrence: 'recurrente' | 'extraordinario' | null;
+  transferGroupId: string | null;
+}
+
+export interface FinanceRevisionData {
+  from: string;
+  to: string;
+  rows: FinanceRevisionRow[];
+  categories: FinanceCategoryDto[];
+}
+
+/** Pendientes y sugerencias del rango: la bandeja de Revisión (spec §8). */
+export async function loadFinanceRevision(
+  user: { id: string },
+  householdId: string,
+  range: { from: string; to: string },
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceRevisionData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const rows = await client.query<FinanceRevisionRow>(
+        `select tx.id, tx.op_date::text as "opDate", acc.name as "accountName", tx.concept,
+                tx.provider, alias.display as "providerDisplay", tx.amount_cents::text as "amountCents",
+                tx.status::text as status, tx.category_id as "categoryId", tx.recurrence::text as recurrence,
+                tx.transfer_group_id as "transferGroupId"
+           from app.finance_transactions as tx
+           join app.finance_accounts as acc
+             on acc.household_id = tx.household_id and acc.id = tx.account_id
+           left join app.finance_provider_aliases as alias
+             on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
+          where tx.household_id = $1 and tx.status <> 'confirmada'
+            and tx.op_date between $2 and $3
+          order by tx.op_date desc, tx.id desc`,
+        [householdId, range.from, range.to]
+      );
+      const categories = await readFinanceCategories(client, householdId);
+      return { from: range.from, to: range.to, rows: rows.rows, categories };
+    });
+  } catch (cause) {
+    // Igual que el dashboard y Movimientos (Ruling R2): «no eres family_admin»
+    // (CommandRejectedError) y «sin membresía viva» (AuthorizationError) son el
+    // mismo «sin acceso» para quien mira la pantalla — la ruta ya lo blindó con
+    // `finance.access` en el layout del hogar, esto es el cinturón.
+    if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) return null;
+    return unreadable(log, 'finance revision', cause);
+  }
+}
+
 // ── Guard y parseo de los GET /api/v1/finance/* (§7, Task 8) ────────────────
 //
 // `isUuid`/`DATE_PATTERN` vienen de $lib/finance/filters (Ruling R12): ese

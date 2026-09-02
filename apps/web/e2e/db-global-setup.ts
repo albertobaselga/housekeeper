@@ -190,6 +190,51 @@ INSERT INTO app.expenses (
 COMMIT;
 `;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Siembra propia del módulo Finanzas (ids ac9… de E2E_SEED.finanzas, T10): una
+// cuenta, una categoría de gasto y dos movimientos pendientes para ejercitar
+// la bandeja de Revisión. La concesión y la categoría raíz de transferencias
+// van guardadas por `WHERE NOT EXISTS`: este hogar ya las trae de
+// packages/db/fixtures/002_finance.sql (admin del roble con Finanzas
+// concedido, y su única raíz `transferencia`), así que aquí son solo un
+// cinturón por si esa fixture cambiase.
+// ─────────────────────────────────────────────────────────────────────────────
+const FINANCE_SEED = `
+BEGIN;
+SET LOCAL row_security = off;
+
+INSERT INTO app.finance_module_grants (household_id, membership_id, granted_by_membership_id)
+SELECT '${HOUSEHOLD}', '${ADMIN_MEMBERSHIP}', '${ADMIN_MEMBERSHIP}'
+WHERE NOT EXISTS (
+  SELECT 1 FROM app.finance_module_grants
+   WHERE household_id = '${HOUSEHOLD}' AND membership_id = '${ADMIN_MEMBERSHIP}' AND revoked_at IS NULL);
+
+INSERT INTO app.finance_categories (household_id, id, name, kind, parent_id)
+SELECT '${HOUSEHOLD}', 'ac900000-0000-4000-8000-000000000001', 'Transferencias E2E', 'transferencia', NULL
+WHERE NOT EXISTS (
+  SELECT 1 FROM app.finance_categories
+   WHERE household_id = '${HOUSEHOLD}' AND kind = 'transferencia' AND parent_id IS NULL);
+
+INSERT INTO app.finance_categories (household_id, id, name, kind, parent_id) VALUES
+  ('${HOUSEHOLD}', '${E2E_SEED.finanzas.catCasa}', 'Casa E2E', 'gasto', NULL);
+
+INSERT INTO app.finance_accounts
+  (household_id, id, name, bank, kind, owner_label, bank_ref, owner_aliases, transfer_refs) VALUES
+  ('${HOUSEHOLD}', '${E2E_SEED.finanzas.account}', 'Cuenta E2E', 'caixabank', 'comun', 'familia', 'E2E-0001', '[]'::jsonb, '[]'::jsonb);
+
+INSERT INTO app.finance_transactions
+  (household_id, id, account_id, batch_id, op_date, concept, provider, provider_norm,
+   amount_cents, category_id, status, transfer_group_id, dedup_hash, recurrence, recurrence_manual, raw, currency_code) VALUES
+  ('${HOUSEHOLD}', '${E2E_SEED.finanzas.txSuper}', '${E2E_SEED.finanzas.account}', NULL,
+   current_date - 3, 'COMPRA SUPERMERCADO RIO E2E', 'SUPERMERCADO RIO E2E', 'supermercado rio e2e',
+   -4321, NULL, 'pendiente', NULL, 'e2e-fin-0001', NULL, false, '{}'::jsonb, 'EUR'),
+  ('${HOUSEHOLD}', '${E2E_SEED.finanzas.txLuz}', '${E2E_SEED.finanzas.account}', NULL,
+   current_date - 2, 'RECIBO LUZ NORTE E2E', 'LUZ NORTE E2E', 'luz norte e2e',
+   -6600, NULL, 'pendiente', NULL, 'e2e-fin-0002', NULL, false, '{}'::jsonb, 'EUR');
+
+COMMIT;
+`;
+
 export default async function globalSetup(): Promise<void> {
   const adminUrl = process.env.E2E_DATABASE_URL;
   if (!adminUrl) return;
@@ -214,6 +259,7 @@ export default async function globalSetup(): Promise<void> {
     }
     await admin.query(WIKI_SEED);
     await admin.query(E2E_BATTERY_SEED);
+    await admin.query(FINANCE_SEED);
 
     // Login del servidor web: miembro de casa_clara_app, sin BYPASSRLS. Se
     // conserva entre ejecuciones (el servidor anterior puede seguir teniendo

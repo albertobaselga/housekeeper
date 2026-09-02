@@ -1,13 +1,24 @@
 import { demoOrUnavailable } from '$lib/server/data-source.server';
-import { loadFinanceStatus } from '$lib/server/finance-status.server';
+import { loadFinanceRevision } from '$lib/server/finance.server';
+import { getFinanceRevisionFixture } from '$lib/server/fixtures.server';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals, params }) => {
-  const status = locals.user
-    ? await loadFinanceStatus({ id: locals.user.id }, params.householdId)
+/** Rango por defecto de la bandeja: los últimos 6 meses. */
+function monthsAgoISO(months: number): string {
+  const date = new Date();
+  date.setUTCMonth(date.getUTCMonth() - months);
+  return date.toISOString().slice(0, 10);
+}
+
+export const load: PageServerLoad = async ({ depends, locals, params, url }) => {
+  depends('cc:finance');
+  const range = {
+    from: url.searchParams.get('from') ?? monthsAgoISO(6),
+    to: url.searchParams.get('to') ?? new Date().toISOString().slice(0, 10)
+  };
+  const revision = locals.user
+    ? await loadFinanceRevision({ id: locals.user.id }, params.householdId, range)
     : null;
-  if (status) return { status };
-  // Sin base de datos, la demo enseña el esqueleto vacío; con base y avería,
-  // 503 honesto (regla de data-source.server.ts).
-  return demoOrUnavailable(() => ({ status: { accountCount: 0, transactionCount: 0 } }));
+  if (revision) return { revision };
+  return demoOrUnavailable(() => ({ revision: getFinanceRevisionFixture(range) }));
 };

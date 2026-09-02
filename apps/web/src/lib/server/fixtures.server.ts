@@ -6,7 +6,7 @@ import { isFinanceAccountKind, isFinanceCategoryKind, type AnaliticaData, type A
 import type { FinanceFilters } from '$lib/finance/filters';
 
 import { demoOnly, fixturesAllowed } from './data-source.server';
-import type { FinanceDashboardData, FinanceMovimientosData } from './finance.server';
+import type { FinanceDashboardData, FinanceMovimientosData, FinanceRevisionData } from './finance.server';
 
 /**
  * Corpus de demostración. Todo lo que sale de aquí es INVENTADO.
@@ -851,3 +851,28 @@ export const getFinanceAnaliticaFixture = demoOnly('finanzas-analitica', (filter
     }))
   };
 });
+export const getFinanceRevisionFixture = demoOnly(
+  'finanzas/revision',
+  (range: { from: string; to: string }): FinanceRevisionData => ({
+    from: range.from,
+    to: range.to,
+    rows: [
+      {
+        id: 'fc100000-0000-4000-8000-000000000001',
+        opDate: range.from,
+        accountName: 'Cuenta común (demo)',
+        concept: 'COMPRA SUPERMERCADO DEMO',
+        provider: 'SUPERMERCADO DEMO',
+        providerDisplay: null,
+        amountCents: '-2350',
+        status: 'pendiente',
+        categoryId: null,
+        recurrence: null,
+        transferGroupId: null
+      }
+    ],
+    categories: [
+      { id: 'fc200000-0000-4000-8000-000000000001', name: 'Casa', parentId: null, kind: 'gasto' }
+    ]
+  })
+);

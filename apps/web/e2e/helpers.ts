@@ -50,6 +50,17 @@ export const E2E_SEED = {
     vecina: 'aa800000-0000-4000-8000-000000000002',
     /** No destacado: solo en el directorio y la búsqueda. */
     fontanero: 'aa800000-0000-4000-8000-000000000003'
+  },
+  /**
+   * Siembra propia de Finanzas (prefijo ac9…, R20): sin choque con las
+   * fixtures 1…/2…, con la siembra aa… de arriba, ni con la segunda
+   * administración ab9… de `finanzas-concesion.dbe2e.ts`.
+   */
+  finanzas: {
+    account: 'ac910000-0000-4000-8000-000000000001',
+    catCasa: 'ac900000-0000-4000-8000-000000000002',
+    txSuper: 'ac920000-0000-4000-8000-000000000001',
+    txLuz: 'ac920000-0000-4000-8000-000000000002'
   }
 } as const;
 
