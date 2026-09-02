@@ -187,7 +187,13 @@ ensayo local completo (con datos reales) tiene que haber terminado en
 5. ETL real; el informe debe decir `Resultado: OK`; después `--verify-only`.
 6. Conceder Finanzas a la cuenta de Alberto (Ajustes → Finanzas) y comprobar
    visualmente las 7 pantallas contra el informe y contra
-   `backend/data/informe-semestre1-2026.md`.
+   `backend/data/informe-semestre1-2026.md`. Antes de conceder, contar los
+   `family_admin` del hogar: la sección de Ajustes la ve cualquier
+   administración de la casa y cualquiera de ellas puede activarse Finanzas
+   (spec §4). Si hay más admins que Alberto, decidir con él si se quedan como
+   admin. Lo que NO puede pasar, y el ensayo comprobó: una cuenta de interna
+   (`employee_live_in`) o una admin sin concesión no ve el enlace, recibe 403
+   en `/finanzas/*` y 404 «Hogar no encontrado» en `/api/v1/finance/*`.
 7. `pnpm backup:full` de casa-clara con los datos ya migrados (drill de
    restauración según `docs/runbooks/backup-restore.md`).
 8. La retirada del sistema antiguo (parar `cf-finanzas`, quemar credenciales,
