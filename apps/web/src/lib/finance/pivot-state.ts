@@ -401,6 +401,11 @@ export function serializeChips(chips: readonly SearchChip[]): string {
     .join('|');
 }
 
+/** Type guard (sin `as` sobre el dato parseado): estrecha `type` al union de `SearchChip`. */
+function isChipType(type: string): type is SearchChip['type'] {
+  return (CHIP_TYPES as readonly string[]).includes(type);
+}
+
 export function parseChips(q: string | null): SearchChip[] {
   if (!q) return [];
   const chips: SearchChip[] = [];
@@ -409,7 +414,7 @@ export function parseChips(q: string | null): SearchChip[] {
     if (idx < 0) continue;
     const type = part.slice(0, idx);
     const rawValue = part.slice(idx + 1);
-    if (!(CHIP_TYPES as readonly string[]).includes(type)) continue;
+    if (!isChipType(type)) continue;
     try {
       if (type === 'concept' && rawValue.includes('~~')) {
         const sep = rawValue.indexOf('~~');
@@ -419,7 +424,7 @@ export function parseChips(q: string | null): SearchChip[] {
           prov: decodeURIComponent(rawValue.slice(0, sep))
         });
       } else {
-        chips.push({ type: type as SearchChip['type'], value: decodeURIComponent(rawValue) });
+        chips.push({ type, value: decodeURIComponent(rawValue) });
       }
     } catch {
       continue;
