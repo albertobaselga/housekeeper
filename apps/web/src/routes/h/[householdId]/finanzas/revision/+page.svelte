@@ -30,6 +30,13 @@
   const loaded = $derived(data.revision?.rows ?? []);
   const rows = $derived(loaded.filter((row) => !hidden.includes(row.id)));
   const hayMasPendientes = $derived(data.revision ? data.revision.totalPending > loaded.length : false);
+  // [FASE 5 · integración del cierre, T15-R1] Lo que queda por revisar en TODO
+  // el hogar descontando lo confirmado optimistamente en esta página: es lo que
+  // debe decir el rótulo, no `rows.length`, que con 675 pendientes y los 200
+  // visibles ya confirmados diría «0 movimientos por revisar».
+  const pendientesRestantes = $derived(
+    data.revision ? data.revision.totalPending - (loaded.length - rows.length) : 0
+  );
   const suggested = $derived(
     rows.filter((row) => (localCategory[row.id] ?? row.categoryId) && row.status.startsWith('sugerida'))
   );
@@ -102,14 +109,20 @@
   <PageHeader
     eyebrow="Finanzas"
     title="Revisión"
-    support={data.revision ? `${rows.length} movimientos por revisar` : undefined}
+    support={data.revision ? `${pendientesRestantes} movimientos por revisar` : undefined}
   />
   <FinanceNav pendingReviewCount={data.pendingReviewCount} />
   <ActionStatus status={actionStatus} />
 
   {#if !data.revision}
     <p class="empty-state">Ahora mismo no podemos leer los movimientos.</p>
-  {:else if rows.length === 0}
+  {:else if rows.length === 0 && !hayMasPendientes}
+    <!--
+      [FASE 5 · integración del cierre, T15-R1] «Nada que revisar» solo cuando
+      de verdad no queda nada: si se confirmaron en bloque los 200 visibles de
+      un hogar con 675, la rama de abajo mantiene el aviso de que hay más
+      (con la cola offline puede quedarse así hasta que vuelva la conexión).
+    -->
     <p class="empty-state">Nada que revisar en este periodo ✨</p>
   {:else}
     {#if hayMasPendientes}

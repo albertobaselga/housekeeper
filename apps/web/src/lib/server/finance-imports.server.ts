@@ -117,8 +117,11 @@ export async function previewImport(
       [householdId, hashes]
     );
     const known = new Set(existing.rows.map((row) => row.dedup_hash));
-    const accounts = await client.query<{ bank_ref: string }>(
-      `select bank_ref from app.finance_accounts where household_id = $1`,
+    // [FASE 5 · integración del cierre, T15-R4] `bank_ref` es NULLABLE
+    // (0036_finance.sql:110): el tipo de fila lo dice y una cuenta sin
+    // referencia simplemente no cubre ninguna ref del extracto.
+    const accounts = await client.query<{ bank_ref: string | null }>(
+      `select bank_ref from app.finance_accounts where household_id = $1 and bank_ref is not null`,
       [householdId]
     );
     const knownRefs = new Set(accounts.rows.map((row) => row.bank_ref));
@@ -174,8 +177,10 @@ export async function confirmImport(
         [householdId, account.name, statement.bank, account.kind, account.ownerLabel, account.bankRef]
       );
     }
-    const accounts = await client.query<{ id: string; bank_ref: string }>(
-      `select id, bank_ref from app.finance_accounts where household_id = $1`,
+    // [T15-R4] Misma nulabilidad que arriba: las cuentas sin `bank_ref` no
+    // pueden cubrir refs del extracto, así que quedan fuera del mapa.
+    const accounts = await client.query<{ id: string; bank_ref: string | null }>(
+      `select id, bank_ref from app.finance_accounts where household_id = $1 and bank_ref is not null`,
       [householdId]
     );
     const accountByRef = new Map(accounts.rows.map((row) => [row.bank_ref, row.id]));
