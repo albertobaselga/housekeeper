@@ -123,3 +123,277 @@ export function leerOrigen(rutaSqlite) {
     db.close();
   }
 }
+
+/** Tablas destino cuyo conteo verifica el informe (0036, sin la de grants). */
+export const TABLAS_DESTINO = [
+  'finance_accounts', 'finance_categories', 'finance_rules', 'finance_import_batches',
+  'finance_transactions', 'finance_provider_aliases', 'finance_events',
+  'finance_transaction_events', 'finance_event_rules'
+];
+
+export function resumenOrigen(origen) {
+  const cuentasPorId = new Map(origen.accounts.map((c) => [c.id, c]));
+  const sumasCuentaMes = new Map();
+  const grupos = new Map();
+  const estados = new Map();
+  let fechaMin = null;
+  let fechaMax = null;
+  for (const tx of origen.transactions) {
+    const clave = `${cuentasPorId.get(tx.account_id).bank_ref}|${tx.op_date.slice(0, 7)}`;
+    sumasCuentaMes.set(clave, (sumasCuentaMes.get(clave) ?? 0n) + tx.amount_cents);
+    estados.set(tx.status, (estados.get(tx.status) ?? 0) + 1);
+    if (tx.transfer_group_id) {
+      const g = grupos.get(tx.transfer_group_id) ?? { patas: 0, suma: 0n };
+      g.patas += 1;
+      g.suma += tx.amount_cents;
+      grupos.set(tx.transfer_group_id, g);
+    }
+    if (fechaMin === null || tx.op_date < fechaMin) fechaMin = tx.op_date;
+    if (fechaMax === null || tx.op_date > fechaMax) fechaMax = tx.op_date;
+  }
+  return {
+    conteos: {
+      finance_accounts: origen.accounts.length,
+      finance_categories: origen.categories.length,
+      finance_rules: origen.rules.filter((r) => r.active).length,
+      finance_import_batches: origen.importBatches.length,
+      finance_transactions: origen.transactions.length,
+      finance_provider_aliases: origen.providerAliases.length,
+      finance_events: origen.events.length,
+      finance_transaction_events: origen.transactionEvents.length,
+      finance_event_rules: origen.eventRules.length
+    },
+    sumasCuentaMes, grupos, estados, fechaMin, fechaMax
+  };
+}
+
+/** Todo lo que el destino NO conserva, dicho en voz alta. Ningún aviso bloquea:
+ *  el informe tiene que poder decir «Resultado: OK» y aun así declarar qué se
+ *  pierde, en vez de callarse pérdidas que el usuario vería luego en la UI. */
+export function avisosOrigen(origen) {
+  const avisos = [];
+  const inactivas = origen.rules.filter((r) => !r.active).length;
+  if (inactivas > 0) avisos.push(`${inactivas} regla(s) inactiva(s) del origen no se migran (el esquema destino no conserva reglas apagadas).`);
+  const conCodigo = origen.rules.filter((r) => r.active && r.code_common !== null && r.match_type !== 'codigo_norma43').length;
+  if (conCodigo > 0) avisos.push(`${conCodigo} regla(s) activa(s) con code_common fuera de codigo_norma43 pierden ese filtro (columna sin equivalente en destino).`);
+  // Estas dos son incondicionales: el destino no tiene columna equivalente, así
+  // que la pérdida ocurre SIEMPRE (categories.sort_order y rules.learned_from_id
+  // existen en models.py:27 y :80 y leerOrigen ni los trae).
+  avisos.push('El orden manual del árbol de categorías (categories.sort_order) no se conserva: el destino ordena por nombre.');
+  avisos.push('La procedencia de las reglas aprendidas (rules.learned_from_id) no se conserva: el destino solo guarda origin.');
+  // Invariante «cada grupo netea 0» (spec §9.3): se INFORMA, no se exige. El
+  // origen admite patas huérfanas (transfers.py::orphan_legs) y migrarlas es lo fiel.
+  const gruposRotos = [...resumenOrigen(origen).grupos.entries()]
+    .filter(([, g]) => g.suma !== 0n)
+    .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+  if (gruposRotos.length > 0) {
+    const lista = gruposRotos.map(([id, g]) => `${id} (patas=${g.patas}, suma=${g.suma})`).join('; ');
+    avisos.push(`${gruposRotos.length} grupo(s) de transferencia del origen no netean 0 (patas huérfanas, spec §9.3; se migran tal cual): ${lista}.`);
+  }
+  return avisos;
+}
+
+/** Vocabularios del origen y del destino, en un solo sitio: los usan
+ *  `validarOrigen` (tarea 4) y el mapeo de bancos de `migrar()` (tarea 5). */
+export const BANCOS_CUENTA_ORIGEN = {
+  caixabank: 'caixabank', deutsche_bank: 'deutsche_bank', openbank: 'openbank', amex: 'amex',
+  // Cuentas virtuales del origen: en 0036 `finance_accounts.bank` es NULL
+  // (resolución canónica 6 del doc de interfaces).
+  efectivo: null, inversion: null, manual: null
+};
+export const BANCOS_LOTE_DESTINO = ['caixabank', 'deutsche_bank', 'openbank', 'amex', 'manual'];
+export const ESTADOS_DESTINO = ['pendiente', 'sugerida_regla', 'sugerida_agente', 'confirmada'];
+export const CLASES_CUENTA_DESTINO = ['comun', 'personal', 'inversion'];
+export const CLASES_CATEGORIA_DESTINO = ['gasto', 'ingreso', 'transferencia'];
+export const TIPOS_REGLA_DESTINO = ['proveedor_exacto', 'concepto_contiene', 'codigo_norma43'];
+export const ORIGENES_REGLA_DESTINO = ['manual', 'agente'];
+
+/** Invariantes que 0036 impone y el origen NO garantiza, comprobados ANTES de
+ *  abrir la transacción: mejor una lista legible en el informe que un error
+ *  crudo de `pg` a mitad de escritura. Orden de las comprobaciones fijo. */
+export function validarOrigen(origen) {
+  const problemas = [];
+  const raices = origen.categories.filter((c) => c.parent_id === null && c.kind === 'transferencia');
+  if (raices.length !== 1) {
+    problemas.push(`${raices.length} categoría(s) raíz de tipo «transferencia» en el origen; el destino admite exactamente una (índice único parcial de 0036).`);
+  }
+  const porId = new Map(origen.categories.map((c) => [c.id, c]));
+  const nietas = origen.categories.filter((c) => c.parent_id !== null && (porId.get(c.parent_id)?.parent_id ?? null) !== null);
+  if (nietas.length > 0) {
+    problemas.push(`${nietas.length} categoría(s) de tercer nivel (ids: ${nietas.map((c) => c.id).join(', ')}); el destino solo admite árbol de 2 niveles (trigger de 0036).`);
+  }
+  const largos = origen.transactions.filter((t) => t.concept.length > 500);
+  if (largos.length > 0) {
+    problemas.push(`${largos.length} transacción(es) con concept de más de 500 caracteres (ids: ${largos.map((t) => t.id).join(', ')}); el destino lo limita con CHECK.`);
+  }
+  for (const t of origen.transactions) {
+    if (!ESTADOS_DESTINO.includes(t.status)) {
+      problemas.push(`Transacción ${t.id} con status «${t.status}» fuera del vocabulario del destino (${ESTADOS_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const c of origen.accounts) {
+    if (!CLASES_CUENTA_DESTINO.includes(c.kind)) {
+      problemas.push(`Cuenta ${c.id} («${c.name}») con kind «${c.kind}» fuera del vocabulario del destino (${CLASES_CUENTA_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const c of origen.accounts) {
+    if (!(c.bank in BANCOS_CUENTA_ORIGEN)) {
+      problemas.push(`Cuenta ${c.id} («${c.name}») con bank «${c.bank}» fuera del vocabulario del origen (${Object.keys(BANCOS_CUENTA_ORIGEN).join(', ')}).`);
+    }
+  }
+  for (const b of origen.importBatches) {
+    if (!BANCOS_LOTE_DESTINO.includes(b.bank)) {
+      problemas.push(`Lote ${b.id} («${b.filename}») con bank «${b.bank}» fuera del vocabulario del destino (${BANCOS_LOTE_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const c of origen.categories) {
+    if (!CLASES_CATEGORIA_DESTINO.includes(c.kind)) {
+      problemas.push(`Categoría ${c.id} («${c.name}») con kind «${c.kind}» fuera del vocabulario del destino (${CLASES_CATEGORIA_DESTINO.join(', ')}).`);
+    }
+  }
+  for (const r of origen.rules.filter((x) => x.active)) {
+    if (!TIPOS_REGLA_DESTINO.includes(r.match_type)) {
+      problemas.push(`Regla ${r.id} con match_type «${r.match_type}» fuera del vocabulario del destino (${TIPOS_REGLA_DESTINO.join(', ')}).`);
+    }
+    if (!ORIGENES_REGLA_DESTINO.includes(r.origin)) {
+      problemas.push(`Regla ${r.id} con origin «${r.origin}» fuera del vocabulario del destino (${ORIGENES_REGLA_DESTINO.join(', ')}).`);
+    }
+  }
+  // Resolución del coordinador (fase 3): tres invariantes más que 0036 exige con
+  // CHECK/UNIQUE y el origen no garantiza. Bloquean, igual que los de arriba.
+  const clavePorPadreYNombre = new Map();
+  for (const c of origen.categories) {
+    const clave = `${c.parent_id}|${normText(c.name)}`;
+    const lista = clavePorPadreYNombre.get(clave) ?? [];
+    lista.push(c);
+    clavePorPadreYNombre.set(clave, lista);
+  }
+  const categoriasDuplicadas = [...clavePorPadreYNombre.values()].filter((lista) => lista.length > 1).flat();
+  if (categoriasDuplicadas.length > 0) {
+    const ids = categoriasDuplicadas.map((c) => c.id).sort((x, y) => x - y);
+    problemas.push(`${categoriasDuplicadas.length} categoría(s) duplicada(s) bajo el mismo padre tras normalizar el nombre (ids: ${ids.join(', ')}); el destino tiene UNIQUE NULLS NOT DISTINCT (household_id, parent_id, name).`);
+  }
+  const patronesVacios = origen.rules.filter((r) => r.active && (r.pattern === null || r.pattern.trim() === ''));
+  if (patronesVacios.length > 0) {
+    problemas.push(`${patronesVacios.length} regla(s) activa(s) con pattern vacío o solo blancos (ids: ${patronesVacios.map((r) => r.id).join(', ')}); el destino exige un patrón no vacío (CHECK de 0036).`);
+  }
+  const lotesSinNombre = origen.importBatches.filter((b) => b.filename === null || b.filename.trim() === '');
+  if (lotesSinNombre.length > 0) {
+    problemas.push(`${lotesSinNombre.length} lote(s) con filename vacío o solo blancos (ids: ${lotesSinNombre.map((b) => b.id).join(', ')}); el destino exige un filename no vacío (CHECK de 0036).`);
+  }
+  return problemas;
+}
+
+export function compararResumenes(a, b) {
+  const lineas = [];
+  const anotar = (seccion, etiqueta, ok, detalle) => lineas.push({ seccion, etiqueta, ok, detalle });
+  for (const tabla of Object.keys(a.conteos)) {
+    const real = b.conteos[tabla] ?? 0;
+    anotar('conteos', tabla, real === a.conteos[tabla], `origen=${a.conteos[tabla]} destino=${real}`);
+  }
+  for (const clave of [...new Set([...a.sumasCuentaMes.keys(), ...b.sumasCuentaMes.keys()])].sort()) {
+    const x = a.sumasCuentaMes.get(clave) ?? 0n;
+    const y = b.sumasCuentaMes.get(clave) ?? 0n;
+    anotar('sumas', clave, x === y, `origen=${x} destino=${y}`);
+  }
+  anotar('grupos', 'total de grupos', a.grupos.size === b.grupos.size, `origen=${a.grupos.size} destino=${b.grupos.size}`);
+  for (const grupo of [...new Set([...a.grupos.keys(), ...b.grupos.keys()])].sort()) {
+    const x = a.grupos.get(grupo) ?? { patas: 0, suma: 0n };
+    const y = b.grupos.get(grupo) ?? { patas: 0, suma: 0n };
+    // SOLO origen↔destino. «Cada grupo netea 0» NO se exige aquí: el origen
+    // tiene patas huérfanas legítimas (transfers.py::orphan_legs) y exigirlo
+    // haría fallar una migración fiel. Ese invariante va a avisosOrigen.
+    anotar('grupos', `grupo ${grupo} (patas y suma)`,
+      x.patas === y.patas && x.suma === y.suma,
+      `origen patas=${x.patas} suma=${x.suma}; destino patas=${y.patas} suma=${y.suma}`);
+  }
+  for (const estado of [...new Set([...a.estados.keys(), ...b.estados.keys()])].sort()) {
+    const x = a.estados.get(estado) ?? 0;
+    const y = b.estados.get(estado) ?? 0;
+    anotar('estados', estado, x === y, `origen=${x} destino=${y}`);
+  }
+  anotar('fechas', 'op_date min/max', a.fechaMin === b.fechaMin && a.fechaMax === b.fechaMax,
+    `origen=${a.fechaMin}…${a.fechaMax} destino=${b.fechaMin}…${b.fechaMax}`);
+  return { ok: lineas.every((l) => l.ok), lineas };
+}
+
+// Resolución del coordinador (fase 3): `verificarHashes` NO muestrea en
+// silencio. Por defecto (`muestra = Infinity`) verifica TODA transacción
+// comprobable; solo si se pide una muestra explícita queda algo sin comprobar,
+// y eso se cuenta en `noMuestreados` (no se calla). La Task 6 llama con
+// `{ muestra: Infinity }`.
+export function verificarHashes(origen, computeDedupHash, { muestra = Infinity } = {}) {
+  const cuentasPorId = new Map(origen.accounts.map((c) => [c.id, c]));
+  const esSha256 = /^[0-9a-f]{64}$/;
+  const discrepancias = [];
+  let comprobados = 0;
+  let descartados = 0;
+  let noMuestreados = 0;
+  for (const tx of origen.transactions) {
+    const cuenta = cuentasPorId.get(tx.account_id);
+    // Amex lleva dedup_ref (columna Referencia) que el origen no persiste en
+    // la tabla; los prefijos manual-/cashpair-/invmirror- no son sha256.
+    if (cuenta.bank === 'amex' || !esSha256.test(tx.dedup_hash)) {
+      descartados += 1;
+      continue;
+    }
+    if (comprobados >= muestra) {
+      noMuestreados += 1;
+      continue;
+    }
+    const recalculado = computeDedupHash({
+      bankRef: cuenta.bank_ref, opDate: tx.op_date, amountCents: tx.amount_cents,
+      concept: tx.concept, balanceCents: tx.balance_cents, dedupRef: null
+    });
+    comprobados += 1;
+    if (recalculado !== tx.dedup_hash) discrepancias.push({ id: tx.id, esperado: tx.dedup_hash, recalculado });
+  }
+  return { comprobados, descartados, noMuestreados, discrepancias };
+}
+
+export function renderInforme({ modo, hogar, rutaSqlite, copia, comparacion, hashes, avisos,
+  motivoAborto = null, ahora = new Date() }) {
+  const ok = motivoAborto === null && hashes.discrepancias.length === 0
+    && comparacion !== null && comparacion.ok;
+  const marca = (bien) => (bien ? '✓' : '✗');
+  const l = ['# Informe de verificación — migración home-finance → casa-clara', '',
+    `- Fecha: ${ahora.toISOString()}`, `- Modo: ${modo}`, `- Origen: ${rutaSqlite}`,
+    `- Hogar destino: ${hogar}`, ''];
+  if (motivoAborto !== null) {
+    l.push('## Aborto', '', `La ejecución se interrumpió: ${motivoAborto}`, '');
+  }
+  // La copia del PASO 0 es la garantía frente al riesgo «única copia de la base
+  // origen» (spec §13): su ruta y su sha256 viven en el informe, que se guarda,
+  // no solo en la consola, que se pierde al cerrar la terminal.
+  l.push('## Copia de seguridad (PASO 0)', '');
+  l.push(copia === null
+    ? `- (no se hizo copia en esta ejecución${modo === 'verify-only' ? ': --verify-only no escribe' : ''})`
+    : `- fichero: ${copia.destino}\n- sha256: ${copia.sha256}`);
+  l.push('');
+  for (const [titulo, clave] of [
+    ['Conteos por tabla', 'conteos'],
+    ['Sumas de amount_cents por cuenta y mes', 'sumas'],
+    ['Grupos de transferencia', 'grupos'],
+    ['Distribución de estados', 'estados'],
+    ['Rango de fechas', 'fechas']
+  ]) {
+    l.push(`## ${titulo}`, '');
+    if (comparacion === null) {
+      l.push('(sin datos: la migración abortó antes de escribir en la base destino)', '');
+      continue;
+    }
+    for (const linea of comparacion.lineas.filter((x) => x.seccion === clave)) {
+      l.push(`- ${marca(linea.ok)} ${linea.etiqueta}: ${linea.detalle}`);
+    }
+    l.push('');
+  }
+  l.push('## Verificación cruzada de dedup_hash', '',
+    `- comprobados: ${hashes.comprobados}`,
+    `- descartados (amex u otros bancos sin hash comparable): ${hashes.descartados}`,
+    `- no muestreados (fuera de la muestra pedida): ${hashes.noMuestreados}`);
+  if (hashes.discrepancias.length === 0) l.push('- ✓ sin discrepancias');
+  else for (const d of hashes.discrepancias) l.push(`- ✗ transacción origen ${d.id}: almacenado ${d.esperado} ≠ recalculado ${d.recalculado}`);
+  l.push('', '## Avisos', '', ...(avisos.length ? avisos.map((a) => `- ${a}`) : ['- (ninguno)']));
+  l.push('', `Resultado: ${ok ? 'OK' : 'FALLO'}`, '');
+  return l.join('\n');
+}
