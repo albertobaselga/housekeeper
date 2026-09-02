@@ -36,8 +36,19 @@ export type FinanceDetailMode =
 
 async function getJson<T>(fetchFn: typeof fetch, path: string, params: URLSearchParams): Promise<T> {
   const response = await fetchFn(`/api/v1/finance/${path}?${params}`);
-  if (!response.ok) throw new FinanceApiError(response.status, `GET /api/v1/finance/${path} → ${response.status}`);
-  return (await response.json()) as T;
+  if (!response.ok) {
+    // El cuerpo puede traer el motivo (código de dominio, límite excedido…);
+    // si no hay cuerpo legible, el status ya es información suficiente.
+    const detail = await response.text().catch(() => '');
+    throw new FinanceApiError(response.status, detail || `GET /api/v1/finance/${path} → ${response.status}`);
+  }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    // Un 200 con cuerpo no-JSON (redirección de sesión, error de plataforma)
+    // no debe escapar como SyntaxError crudo: unifica el contrato de error.
+    throw new FinanceApiError(response.status, 'respuesta no válida');
+  }
 }
 
 export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {
@@ -52,6 +63,7 @@ export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {
       if (excludeEventIds.length > 0) params.set('exev', excludeEventIds.join(','));
       return getJson(fetchFn, 'summary', params);
     },
+    // months: cantidad de puntos de la serie temporal, nunca céntimos.
     series: (filters: FinanceFilters, months = 12): Promise<FinanceSeriesPointDto[]> => {
       const params = base(filters);
       params.set('g', filters.granularity);
@@ -59,6 +71,7 @@ export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {
       return getJson(fetchFn, 'series', params);
     },
     breakdown: (filters: FinanceFilters): Promise<FinanceCategoryRowDto[]> => getJson(fetchFn, 'breakdown', base(filters)),
+    // limit: tope de filas del ranking de proveedores, nunca céntimos.
     providers: (filters: FinanceFilters, limit = 10): Promise<FinanceProviderRowDto[]> => {
       const params = base(filters);
       params.set('limit', String(limit));
@@ -83,11 +96,18 @@ export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {
       for (const [key, value] of Object.entries(extra)) if (value) params.set(key, value);
       return getJson(fetchFn, 'transactions', params);
     },
+    // Precondición para el handler de `transactions`: `ids`/`group_ids` vacíos
+    // deben leerse como «sin coincidencias», nunca como «sin filtro» (el cliente
+    // no fabrica aquí una página vacía porque no conoce la forma canónica de
+    // `FinanceTransactionsPage` que decida el propio handler).
     transactionsByIds: (ids: string[]): Promise<FinanceTransactionsPage> =>
       getJson(fetchFn, 'transactions', withHousehold(new URLSearchParams({ ids: ids.join(',') }))),
     transactionsByGroups: (groupIds: string[]): Promise<FinanceTransactionsPage> =>
       getJson(fetchFn, 'transactions', withHousehold(new URLSearchParams({ group_ids: groupIds.join(',') }))),
     eventsSummary: (filters: FinanceFilters): Promise<FinanceEventSummaryDto[]> => getJson(fetchFn, 'events-summary', base(filters)),
-    eventDetail: (id: string, filters: FinanceFilters): Promise<FinanceEventDetailDto> => getJson(fetchFn, `events/${id}`, base(filters))
+    // El id viaja en el PATH, no por URLSearchParams (que escapa solo): hay que
+    // codificarlo a mano para que un id con `/`, `?` o `#` no cambie de recurso.
+    eventDetail: (id: string, filters: FinanceFilters): Promise<FinanceEventDetailDto> =>
+      getJson(fetchFn, `events/${encodeURIComponent(id)}`, base(filters))
   };
 }

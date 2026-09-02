@@ -45,11 +45,43 @@ describe('cliente de /api/v1/finance', () => {
     await api.pivot(FILTERS, ['prov', 'cat'], [DUPEV_A, DUPEV_B]);
     expect(calls[1]).toContain('dims=prov%2Ccat');
     expect(calls[1]).toContain(`dupev=${DUPEV_A}%2C${DUPEV_B}`);
+    // El orden por defecto (['cat', 'sub']) SÍ pasa por serializeDims (dims.length > 0),
+    // a diferencia de la llamada sin argumento de arriba, que ni lo invoca: esta es la
+    // que de verdad ejercita la rama «serializeDims devuelve null» desde el cliente.
+    await api.pivot(FILTERS, ['cat', 'sub']);
+    expect(calls[2]).not.toContain('dims=');
+  });
+
+  it('eventDetail codifica el id en el path para no cambiar de recurso', async () => {
+    const { calls, fetchFn } = stubFetch(200, {});
+    const api = financeApi(HOUSEHOLD, fetchFn);
+    const RISKY_ID = '../summary?x';
+    await api.eventDetail(RISKY_ID, FILTERS);
+    expect(calls[0]).toBe(
+      `/api/v1/finance/events/${encodeURIComponent(RISKY_ID)}?from=2026-01-01&to=2026-08-31&acc=a1&household=${HOUSEHOLD}`
+    );
+    expect(calls[0]).not.toContain('events/../summary');
   });
 
   it('una respuesta no-ok se convierte en FinanceApiError con su status', async () => {
     const { fetchFn } = stubFetch(503);
     await expect(financeApi(HOUSEHOLD, fetchFn).summary(FILTERS)).rejects.toBeInstanceOf(FinanceApiError);
     await expect(financeApi(HOUSEHOLD, fetchFn).summary(FILTERS)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('una respuesta no-ok conserva el cuerpo del servidor como mensaje de error', async () => {
+    const fetchFn = (async () =>
+      new Response('límite de exportación excedido', { status: 429 })) as typeof fetch;
+    await expect(financeApi(HOUSEHOLD, fetchFn).summary(FILTERS)).rejects.toMatchObject({
+      status: 429,
+      message: 'límite de exportación excedido'
+    });
+  });
+
+  it('una respuesta ok con cuerpo no-JSON se convierte en FinanceApiError, no en SyntaxError', async () => {
+    const fetchFn = (async () =>
+      new Response('<html>sesión caducada</html>', { status: 200 })) as typeof fetch;
+    await expect(financeApi(HOUSEHOLD, fetchFn).summary(FILTERS)).rejects.toBeInstanceOf(FinanceApiError);
+    await expect(financeApi(HOUSEHOLD, fetchFn).summary(FILTERS)).rejects.toMatchObject({ status: 200 });
   });
 });
