@@ -49,6 +49,22 @@ test('la Analítica de Finanzas no tiene incidencias serias de accesibilidad', a
   expect(await seriousViolations(page)).toEqual([]);
 });
 
+// F7-T1: el Dashboard y Movimientos se suman a la Analítica (ya cubierta más
+// arriba) para que las tres pantallas de Finanzas entren en la puerta crítica.
+test('el Dashboard de Finanzas no tiene incidencias serias de accesibilidad', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});
+
+test('Movimientos de Finanzas no tiene incidencias serias de accesibilidad', async ({ page }) => {
+  await loginAs(page, 'admin');
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/movimientos`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});
+
 test('la hoja «Más» de la navegación móvil no tiene incidencias serias', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await loginAs(page, 'family');
