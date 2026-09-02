@@ -45,6 +45,21 @@ describe('cashflowLayout: barras + línea de ahorro', () => {
     expect(layout.groups[1]!.centerX).toBeGreaterThan(layout.groups[0]!.centerX);
     expect(layout.groups[0]!.label).toBe('ene 26');
   });
+  it('sin cubos no lanza y no hay grupos ni puntos de ahorro', () => {
+    const empty = cashflowLayout([]);
+    expect(empty.groups).toEqual([]);
+    expect(empty.savings).toEqual([]);
+  });
+  it('con ahorro negativo, el cero baja del suelo y aparecen ticks negativos', () => {
+    const negative = cashflowLayout([
+      { bucket: '2026-01', incomeCents: 200000n, expenseCents: -250000n, savingsCents: -50000n }
+    ]);
+    expect(negative.zeroY).toBeLessThan(negative.plot.bottom);
+    expect(negative.ticks.some((tick) => tick.value < 0)).toBe(true);
+    expect(negative.ticks.some((tick) => tick.label.startsWith('−'))).toBe(true);
+    const expenseBar = negative.groups[0]!.expense;
+    expect(expenseBar.height).toBeCloseTo(negative.zeroY - expenseBar.y, 5);
+  });
 });
 
 describe('natureStackLayout: apilado por naturaleza', () => {
@@ -73,6 +88,22 @@ describe('groupExpenseCategories: el groupByParent del original', () => {
     expect(groups[1]!.totalCents).toBe(-60000n);
     expect(groups[1]!.subs.map((sub) => sub.name)).toEqual(['Supermercado', '(general)']);
     expect(groups[0]!.percent).toBe(100);
+  });
+  it('el nombre del grupo se recupera de la fila del propio padre aunque falte del mapa', () => {
+    const namesSinPadre = new Map([['c1', 'Supermercado']]); // simula categoría archivada / mapa filtrado
+    const groups = groupExpenseCategories([
+      { categoryId: 'c1', name: 'Supermercado', parentId: 'p1', totalCents: '-50000' },
+      { categoryId: 'p1', name: 'Casa', parentId: null, totalCents: '-10000' }
+    ], namesSinPadre);
+    expect(groups[0]!.name).toBe('Casa');
+  });
+  it('un grupo minoritario conserva un suelo del 1% para no desaparecer de la barra', () => {
+    const groups = groupExpenseCategories([
+      { categoryId: 'p1', name: 'Casa', parentId: null, totalCents: '-100000' },
+      { categoryId: 'p2', name: 'Ocio', parentId: null, totalCents: '-700' }
+    ], new Map([['p1', 'Casa'], ['p2', 'Ocio']]));
+    const minoritario = groups.find((group) => group.name === 'Ocio')!;
+    expect(minoritario.percent).toBe(1);
   });
 });
 

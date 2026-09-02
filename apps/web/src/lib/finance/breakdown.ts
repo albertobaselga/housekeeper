@@ -26,6 +26,10 @@ export function groupExpenseCategories(
     const parentId = row.parentId ?? row.categoryId;
     const name = parentId === null ? 'Sin categorizar' : (categoryNameById.get(parentId) ?? '?');
     const group = groups.get(parentId) ?? { id: parentId, name, totalCents: 0n, percent: 0, subs: [] };
+    // La fila del propio padre siempre trae su nombre real: si el grupo se creó antes
+    // a partir de una hija y el mapa no traía al padre (categoría archivada o mapa
+    // filtrado), esta fila corrige el '?' en cuanto aparece.
+    if (row.parentId === null && group.name === '?') group.name = row.name;
     group.totalCents += total;
     group.subs.push({
       name: row.parentId === null && row.categoryId !== null ? '(general)' : row.name,
@@ -40,12 +44,16 @@ export function groupExpenseCategories(
     const abs = group.totalCents < 0n ? -group.totalCents : group.totalCents;
     return abs > acc ? abs : acc;
   }, 1n);
-  return list.map((group) => ({
-    ...group,
-    // Porcentaje entero de presentación: el cociente en bigint se convierte a Number solo al final, para la barra.
-    percent: Number(((group.totalCents < 0n ? -group.totalCents : group.totalCents) * 100n) / maxAbs),
-    subs: [...group.subs].sort((a, b) => ascending(a.totalCents, b.totalCents))
-  }));
+  return list.map((group) => {
+    const abs = group.totalCents < 0n ? -group.totalCents : group.totalCents;
+    return {
+      ...group,
+      // Porcentaje entero de presentación: el cociente en bigint se convierte a Number solo
+      // al final, para la barra; con suelo de 1 para que un grupo minoritario no desaparezca.
+      percent: abs === 0n ? 0 : Math.max(1, Number((abs * 100n) / maxAbs)),
+      subs: [...group.subs].sort((a, b) => ascending(a.totalCents, b.totalCents))
+    };
+  });
 }
 
 /** 'Casa › Supermercado' para selects y chips (porta categoryPath del origen). */

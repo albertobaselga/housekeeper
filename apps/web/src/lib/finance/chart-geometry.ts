@@ -9,6 +9,8 @@ import { axisEuro, bucketLabel } from './format';
 
 export interface ChartBar { x: number; y: number; width: number; height: number }
 
+// Geometría de píxeles: recibe euros ya convertidos por el llamante (la Task 10
+// es quien debe justificar ahí su propio Number sobre céntimos, no esta función).
 export function sparklinePoints(values: readonly number[]): string {
   if (values.length < 2) return '';
   const min = Math.min(...values);
@@ -42,6 +44,8 @@ interface Frame {
   zeroY: number;
   y: (value: number) => number;
   slot: number;
+  /** Centro en x del cubo `index`: única fuente de verdad para barras, etiqueta y ahorro. */
+  centerX: (index: number) => number;
 }
 
 // Geometría de píxeles: los cálculos de escala y tamaño de paso son presentación, no dinero.
@@ -51,7 +55,9 @@ function frameFor(values: number[], bucketCount: number, size: { width?: number;
   const plot = { left: 70, right: width - 8, top: 8, bottom: height - 24 };
   const rawMax = Math.max(0, ...values);
   const rawMin = Math.min(0, ...values);
-  const step = niceCeil(Math.max(rawMax - rawMin, 1) / 4);
+  // Suelo de un euro por paso: con datos vacíos o todo a cero, evita pasos fraccionarios
+  // que producen ticks distintos redondeando a la misma etiqueta en euros enteros.
+  const step = Math.max(1, niceCeil(Math.max(rawMax - rawMin, 1) / 4));
   const max = Math.ceil(rawMax / step) * step || step;
   const min = Math.floor(rawMin / step) * step;
   const y = (value: number): number => plot.top + ((max - value) / (max - min)) * (plot.bottom - plot.top);
@@ -59,8 +65,19 @@ function frameFor(values: number[], bucketCount: number, size: { width?: number;
   for (let value = min; value <= max; value += step) {
     ticks.push({ value, y: y(value), label: axisEuro(BigInt(Math.round(value)) * 100n) });
   }
-  return { width, height, plot, ticks, zeroY: y(0), y, slot: (plot.right - plot.left) / Math.max(bucketCount, 1) };
+  const slot = (plot.right - plot.left) / Math.max(bucketCount, 1);
+  return {
+    width, height, plot, ticks, zeroY: y(0), y, slot,
+    centerX: (index: number) => plot.left + slot * (index + 0.5)
+  };
 }
+
+// Línea de ahorro: compartida por ambos layouts, un punto por cubo sobre el mismo frame.
+const savingsLine = (
+  buckets: readonly { savingsCents: bigint }[],
+  frame: Frame
+): { x: number; y: number }[] =>
+  buckets.map((bucket, index) => ({ x: frame.centerX(index), y: frame.y(eurosOf(bucket.savingsCents)) }));
 
 export interface CashflowBucketInput { bucket: string; incomeCents: bigint; expenseCents: bigint; savingsCents: bigint }
 export interface CashflowLayout {
@@ -80,7 +97,7 @@ export function cashflowLayout(
   const frame = frameFor(values, buckets.length, size);
   const barWidth = Math.max((frame.slot * 0.6 - 2) / 2, 2);
   const bar = (centerOffset: number, index: number, euros: number): ChartBar => {
-    const centerX = frame.plot.left + frame.slot * (index + 0.5);
+    const centerX = frame.centerX(index);
     const top = frame.y(Math.abs(euros));
     return { x: centerX + centerOffset, y: top, width: barWidth, height: frame.zeroY - top };
   };
@@ -88,14 +105,11 @@ export function cashflowLayout(
     width: frame.width, height: frame.height, plot: frame.plot, ticks: frame.ticks, zeroY: frame.zeroY,
     groups: buckets.map((bucket, index) => ({
       label: bucketLabel(bucket.bucket),
-      centerX: frame.plot.left + frame.slot * (index + 0.5),
+      centerX: frame.centerX(index),
       income: bar(-barWidth - 1, index, eurosOf(bucket.incomeCents)),
       expense: bar(1, index, eurosOf(bucket.expenseCents))
     })),
-    savings: buckets.map((bucket, index) => ({
-      x: frame.plot.left + frame.slot * (index + 0.5),
-      y: frame.y(eurosOf(bucket.savingsCents))
-    }))
+    savings: savingsLine(buckets, frame)
   };
 }
 
@@ -121,7 +135,7 @@ export function natureStackLayout(
   return {
     width: frame.width, height: frame.height, plot: frame.plot, ticks: frame.ticks, zeroY: frame.zeroY,
     groups: buckets.map((bucket, index) => {
-      const centerX = frame.plot.left + frame.slot * (index + 0.5);
+      const centerX = frame.centerX(index);
       const pieces: [NatureStackLayout['groups'][number]['segments'][number]['nature'], number][] = [
         ['recurrente', Math.abs(eurosOf(bucket.recurringCents))],
         ['extraordinario', Math.abs(eurosOf(bucket.extraordinaryCents))],
@@ -135,9 +149,6 @@ export function natureStackLayout(
       });
       return { label: bucketLabel(bucket.bucket), centerX, segments };
     }),
-    savings: buckets.map((bucket, index) => ({
-      x: frame.plot.left + frame.slot * (index + 0.5),
-      y: frame.y(eurosOf(bucket.savingsCents))
-    }))
+    savings: savingsLine(buckets, frame)
   };
 }
