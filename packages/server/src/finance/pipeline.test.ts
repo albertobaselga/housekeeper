@@ -10,6 +10,7 @@ import type {
 
 import {
   PIPELINE_ORDER,
+  cashAccountIdOf,
   runPipelineSteps,
   runPostImportPipeline,
   type PipelineState,
@@ -171,5 +172,41 @@ describe("runPostImportPipeline: carga y persistencia SQL (cliente simulado)", (
     expect(report.steps[0]).toEqual({ name: "reglas", affected: 1 });
     const update = writes.find((w) => w.sql.includes("update app.finance_transactions"));
     expect(update?.params).toEqual(["hh-1", "iber1", "cat-casa", "sugerida_regla", null, "extraordinario"]);
+  });
+});
+
+describe("cashAccountIdOf: la cuenta de efectivo se reconoce por su referencia", () => {
+  // El origen usa `CASH_REF = "EFECTIVO"` sobre `bank_ref` (cash.py:8), un campo
+  // técnico invariable; el nombre lo edita el usuario desde Ajustes en la fase 5.
+  const cuenta = (extra: Partial<FinanceAccountView>): FinanceAccountView => ({
+    id: "cash", name: "Efectivo", bank: null, kind: "comun", bankRef: "EFECTIVO",
+    ownerAliases: [], transferRefs: [], ...extra,
+  });
+
+  it("la encuentra por bankRef aunque el usuario la haya renombrado", () => {
+    expect(cashAccountIdOf([cuenta({ name: "Caja de casa" })])).toBe("cash");
+  });
+
+  it("cae al nombre normalizado para las cuentas anteriores a esta regla", () => {
+    expect(cashAccountIdOf([cuenta({ id: "vieja", bankRef: "OTRA", name: "Efectivo" })])).toBe("vieja");
+  });
+
+  it("sin cuenta de efectivo devuelve null", () => {
+    expect(cashAccountIdOf([acc("a1", "caixabank", "comun")])).toBeNull();
+  });
+
+  it("renombrar la cuenta no la saca de las exclusiones de los pasos 4 y 6", () => {
+    const state = buildState();
+    const caja = state.accounts.find((a) => a.id === "cash");
+    if (caja === undefined) throw new Error("la cuenta de efectivo falta en buildState()");
+    caja.name = "Caja de casa"; // conserva bankRef: "EFECTIVO"
+    // Un reintegro apuntado DENTRO de la propia cuenta de efectivo: si la cuenta
+    // deja de reconocerse, el paso 6 lo recategoriza y lo confirma en silencio.
+    state.txs.push(tx("desdeCaja", { accountId: "cash", amountCents: -4000n, concept: "REINT. CAJERO 9999", opDate: "2026-06-19" }));
+    let seq = 0;
+    const { report } = runPipelineSteps(state, () => `id-${(seq += 1)}`);
+    const byId = new Map(state.txs.map((t) => [t.id, t]));
+    expect(byId.get("desdeCaja")?.status).toBe("pendiente");
+    expect(report.steps.find((s) => s.name === "efectivo")?.affected).toBe(1);
   });
 });

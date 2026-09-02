@@ -90,11 +90,18 @@ export interface PipelineChanges {
 }
 
 /** Cuenta «Efectivo» del hogar: sin banco (el CHECK de `finance_accounts.bank`
- * solo admite los cuatro bancos reales) y con el nombre normalizado EFECTIVO.
+ * solo admite los cuatro bancos reales). Se reconoce por su REFERENCIA
+ * (`CASH_REF = "EFECTIVO"` del origen, cash.py:8), que es un campo técnico
+ * invariable, y no por el nombre, que el usuario edita desde Ajustes: si se
+ * buscara por nombre, renombrarla a «Caja» dejaría de excluirla de los pasos 4 y
+ * 6 y contaminaría la contabilidad de doble entrada sin ningún error visible. El
+ * nombre queda solo como respaldo para las cuentas anteriores a esta regla.
  * El dominio no la deduce nunca: se le pasa el id (resolución canónica 6). */
-function cashAccountIdOf(accounts: readonly FinanceAccountView[]): string | null {
-  const cash = accounts.find((a) => a.bank === null && normText(a.name) === "EFECTIVO");
-  return cash?.id ?? null;
+export function cashAccountIdOf(accounts: readonly FinanceAccountView[]): string | null {
+  const byRef = accounts.find((a) => a.bank === null && a.bankRef === "EFECTIVO");
+  if (byRef) return byRef.id;
+  const byName = accounts.find((a) => a.bank === null && normText(a.name) === "EFECTIVO");
+  return byName?.id ?? null;
 }
 
 /** Núcleo PURO del pipeline: muta `state` en memoria y acumula los cambios a
