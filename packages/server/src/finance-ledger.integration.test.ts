@@ -68,7 +68,7 @@ INSERT INTO app.finance_accounts
   ('${HH}', '${FIN.accountA}', 'Cuenta IT Ledger A', 'caixabank', 'comun', 'familia', 'IT-LED-0001', '[]'::jsonb, '[]'::jsonb),
   ('${HH}', '${FIN.accountB}', 'Cuenta IT Ledger B', 'openbank', 'personal', 'padre', 'IT-LED-0002', '[]'::jsonb, '[]'::jsonb),
   ('${HH}', '${FIN.fund}', 'Fondo IT Ledger', 'openbank', 'inversion', 'familia', 'IT-LED-0003', '[]'::jsonb, '[]'::jsonb),
-  ('${HH}', '${FIN.cash}', 'Efectivo', NULL, 'comun', 'familia', 'IT-LED-CASH', '[]'::jsonb, '[]'::jsonb);
+  ('${HH}', '${FIN.cash}', 'Efectivo', NULL, 'comun', 'familia', 'EFECTIVO', '[]'::jsonb, '[]'::jsonb);
 
 INSERT INTO app.finance_import_batches (household_id, id, filename, bank, new_count, dup_count) VALUES
   ('${HH}', '${FIN.batch}', 'ledger-it.xls', 'caixabank', 1, 0);
@@ -180,7 +180,7 @@ describe.runIf(Boolean(adminUrl))("comandos de doble entrada de finanzas (manual
     expect(ack.status).toBe("accepted");
     const pair = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
       const loaded = await client.query(
-        `select account_id, amount_cents::text as amount_cents, status, recurrence_manual, batch_id, concept
+        `select id, account_id, amount_cents::text as amount_cents, status, recurrence_manual, batch_id, concept
            from app.finance_transactions
           where household_id = $1
             and dedup_hash = 'cashpair-' || (
@@ -197,6 +197,10 @@ describe.runIf(Boolean(adminUrl))("comandos de doble entrada de finanzas (manual
       batch_id: null,
     });
     expect(pair.concept).toBe("Contrapartida efectivo — Cañas del domingo IT");
+    // Borrar la contrapartida directamente (sin pasar por su gasto) se rechaza:
+    // solo se borra en cascada desde `deleteManualTransaction` sobre el gasto.
+    const rejectPair = await run(ADMIN, { kind: "finance.transaction.manual.delete", transactionId: pair.id as string });
+    expect(rejectPair).toMatchObject({ status: "rejected", errorCode: "finance_cashpair_leg" });
     // Y borrar el gasto se lleva su contrapartida por delante (cascada del Step 3).
     expect((await run(ADMIN, { kind: "finance.transaction.manual.delete", transactionId: ack.resourceId as string })).status).toBe("accepted");
     const left = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
@@ -211,11 +215,26 @@ describe.runIf(Boolean(adminUrl))("comandos de doble entrada de finanzas (manual
   });
 
   it("marca un cargo como inversión creando la pata espejo invmirror-", async () => {
+    // Cuenta destino que no es de inversión: se rechaza antes de tocar nada.
+    const wrongAccount = await run(ADMIN, {
+      kind: "finance.transaction.invest", transactionId: FIN.txImported, accountId: FIN.accountB,
+    });
+    expect(wrongAccount).toMatchObject({ status: "rejected", errorCode: "finance_not_investment_account" });
+    // Un abono (importe >= 0) no puede marcarse como aportación.
+    const income = await run(ADMIN, {
+      kind: "finance.transaction.manual.create", accountId: FIN.accountA, opDate: "2026-08-13",
+      concept: "Nómina IT", amountCents: "5000",
+    });
+    const needsCharge = await run(ADMIN, {
+      kind: "finance.transaction.invest", transactionId: income.resourceId as string, accountId: FIN.fund,
+    });
+    expect(needsCharge).toMatchObject({ status: "rejected", errorCode: "finance_invest_needs_charge" });
+
     const ack = await run(ADMIN, { kind: "finance.transaction.invest", transactionId: FIN.txImported, accountId: FIN.fund });
     expect(ack.status).toBe("accepted");
     const legs = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
       const loaded = await client.query(
-        `select account_id, amount_cents::text as amount_cents, status, dedup_hash
+        `select account_id, amount_cents::text as amount_cents, status, dedup_hash, concept, provider
            from app.finance_transactions
           where household_id = $1 and transfer_group_id = $2 order by amount_cents`,
         [HH, ack.resourceId],
@@ -226,7 +245,43 @@ describe.runIf(Boolean(adminUrl))("comandos de doble entrada de finanzas (manual
     expect(legs[0]).toMatchObject({ account_id: FIN.accountA, amount_cents: "-9900", status: "confirmada" });
     expect(legs[1]).toMatchObject({ account_id: FIN.fund, amount_cents: "9900" });
     expect(legs[1].dedup_hash).toBe("invmirror-it-led-0001");
+    // Mismo rótulo que usaría el pipeline automático (detectInvestmentContributions)
+    // para la misma operación: "Aportación a <cuenta> — <proveedor del cargo>",
+    // proveedor = nombre de la cuenta de inversión, no el del cargo original.
+    expect(legs[1].concept).toBe("Aportación a Fondo IT Ledger — CARGO IT");
+    expect(legs[1].provider).toBe("Fondo IT Ledger");
+    // El cargo ya está vinculado: un segundo intento se rechaza sin crear nada.
+    const alreadyLinked = await run(ADMIN, { kind: "finance.transaction.invest", transactionId: FIN.txImported, accountId: FIN.fund });
+    expect(alreadyLinked).toMatchObject({ status: "rejected", errorCode: "finance_already_linked" });
     investGroup = ack.resourceId as string;
+  });
+
+  it("rechaza marcar como inversión un cargo cuyo espejo ya existe", async () => {
+    const charge = await run(ADMIN, {
+      kind: "finance.transaction.manual.create", accountId: FIN.accountA, opDate: "2026-08-14",
+      concept: "Cargo suelto IT", amountCents: "-4200",
+    });
+    const chargeId = charge.resourceId as string;
+    const dedupHash = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select dedup_hash from app.finance_transactions where household_id = $1 and id = $2`,
+        [HH, chargeId],
+      );
+      return loaded.rows[0].dedup_hash as string;
+    });
+    // Espejo ya presente (simulado por fuera del comando): el mismo caso que un
+    // espejo creado antes por el pipeline automático o por un invest previo.
+    await adminPool.query(
+      `insert into app.finance_transactions
+         (household_id, account_id, batch_id, op_date, concept, provider, provider_norm,
+          amount_cents, category_id, status, transfer_group_id, dedup_hash, recurrence,
+          recurrence_manual, raw, currency_code)
+       values ($1, $2, null, current_date, 'Espejo previo IT', null, null, 4200, null,
+               'confirmada', null, $3, null, false, '{}'::jsonb, 'EUR')`,
+      [HH, FIN.fund, `invmirror-${dedupHash}`],
+    );
+    const rejected = await run(ADMIN, { kind: "finance.transaction.invest", transactionId: chargeId, accountId: FIN.fund });
+    expect(rejected).toMatchObject({ status: "rejected", errorCode: "finance_mirror_exists" });
   });
 
   it("desvincular un grupo con espejo borra el espejo y devuelve la pata real a pendiente", async () => {
@@ -255,6 +310,16 @@ describe.runIf(Boolean(adminUrl))("comandos de doble entrada de finanzas (manual
       transactionIds: [cargo.resourceId as string, abono.resourceId as string],
     });
     expect(good.status).toBe("accepted");
+    // Una de las dos patas ya pertenece a un grupo: se rechaza sin desagrupar nada.
+    const otro = await run(ADMIN, {
+      kind: "finance.transaction.manual.create", accountId: FIN.accountA, opDate: "2026-08-11",
+      concept: "Traspaso IT suelto", amountCents: "-5000",
+    });
+    const alreadyLinked = await run(ADMIN, {
+      kind: "finance.transfers.link",
+      transactionIds: [cargo.resourceId as string, otro.resourceId as string],
+    });
+    expect(alreadyLinked).toMatchObject({ status: "rejected", errorCode: "finance_already_linked" });
     const unlink = await run(ADMIN, { kind: "finance.transfers.unlink", transferGroupId: good.resourceId as string });
     expect(unlink.status).toBe("accepted");
   });

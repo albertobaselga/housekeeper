@@ -506,6 +506,14 @@ async function transferCategoryId(client: PoolClient, householdId: UUID): Promis
   return id as UUID;
 }
 
+/**
+ * Estrechado sin `as` (R7) de `category.kind` — tipado `string` en
+ * `requireFinanceCategory` — al literal que exige `FinanceTxView.categoryKind`.
+ * El CHECK de 0036 garantiza el valor en la base; esto solo evita el cast
+ * sobre una fila SQL para satisfacer al tipo.
+ */
+const FINANCE_CATEGORY_KINDS = ["gasto", "ingreso", "transferencia"] as const;
+
 async function createManualTransaction(
   client: PoolClient,
   householdId: UUID,
@@ -551,6 +559,10 @@ async function createManualTransaction(
   const cashId = await cashAccountId(client, householdId);
   if (cashId && payload.accountId === cashId && payload.categoryId && category) {
     const efectivoCategoryId = await cashCategoryId(client, householdId);
+    const categoryKind = FINANCE_CATEGORY_KINDS.find((kind) => kind === category.kind);
+    if (!categoryKind) {
+      throw new Error(`kind de categoría inesperado: ${category.kind}`);
+    }
     const counterleg = cashCounterlegFor(
       {
         id: id as UUID,
@@ -561,7 +573,7 @@ async function createManualTransaction(
         providerNorm,
         amountCents: BigInt(payload.amountCents),
         categoryId: payload.categoryId,
-        categoryKind: category.kind as "gasto" | "ingreso" | "transferencia",
+        categoryKind,
         status: "confirmada",
         transferGroupId: null,
         recurrence: payload.recurrence ?? null,
@@ -660,6 +672,13 @@ async function investTransaction(
   }
   const groupId = randomUUID() as UUID;
   const categoryId = await transferCategoryId(client, householdId);
+  // Mismo rótulo que detectInvestmentContributions (domain/finance/investments.ts,
+  // el que usa el pipeline automático para la MISMA operación): concepto
+  // "Aportación a <cuenta> — <proveedor del cargo>" y proveedor = nombre de la
+  // cuenta de inversión, NUNCA el concepto/proveedor del cargo original — así
+  // el usuario ve la misma etiqueta se dispare a mano o lo detecte el pipeline.
+  const mirrorConcept = `Aportación a ${account.name} — ${tx.provider ?? ""}`;
+  const mirrorProvider = account.name;
   await client.query(
     `insert into app.finance_transactions
        (household_id, account_id, batch_id, op_date, concept, provider, provider_norm,
@@ -670,9 +689,9 @@ async function investTransaction(
       householdId,
       payload.accountId,
       tx.op_date,
-      tx.concept,
-      tx.provider,
-      tx.provider ? normText(tx.provider) : null,
+      mirrorConcept,
+      mirrorProvider,
+      normText(mirrorProvider),
       (-BigInt(tx.amount_cents)).toString(),
       categoryId,
       groupId,
@@ -694,6 +713,14 @@ async function linkTransfers(
   payload: FinanceTransfersLinkPayload,
 ): Promise<{ resourceId: UUID }> {
   const ids = [...new Set(payload.transactionIds)];
+  // El esquema exige `transactionIds.min(2)` sobre el array CRUDO; tras
+  // deduplicar con el Set puede quedar un único id (mismo id repetido a
+  // propósito o por error del cliente) — sin esta guarda, un movimiento con
+  // amount_cents = 0 (el CHECK de 0036 no lo prohíbe fuera de `manual.create`)
+  // se agruparía consigo mismo.
+  if (ids.length < 2) {
+    throw new CommandRejectedError("invalid_payload", "Se necesitan al menos dos movimientos distintos");
+  }
   const loaded = await client.query<{ id: string; amount_cents: string; transfer_group_id: string | null }>(
     `select id, amount_cents::text as amount_cents, transfer_group_id
        from app.finance_transactions
