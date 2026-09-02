@@ -1,7 +1,11 @@
+import type { FinanceTxDto } from '@housekeeper/server';
+
 import type { Role } from '$lib/auth/capabilities';
 import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
+import type { FinanceFilters } from '$lib/finance/filters';
 
 import { demoOnly, fixturesAllowed } from './data-source.server';
+import type { FinanceDashboardData, FinanceMovimientosData } from './finance.server';
 
 /**
  * Corpus de demostración. Todo lo que sale de aquí es INVENTADO.
@@ -465,3 +469,141 @@ export const getCalendarFixture = demoOnly('calendario', buildCalendarFixture);
 export const getContactsFixture = demoOnly('directorio de contactos', buildContactsFixture);
 export const getEmergencyFixture = demoOnly('Emergencias', buildEmergencyFixture);
 export const getSettingsFixture = demoOnly('ajustes', buildSettingsFixture);
+
+// ── Finanzas (fase 4): corpus demo del módulo. Todo inventado. ───────────────
+
+const FINANCE_ACCOUNTS = [
+  { id: 'fa000000-0000-4000-8000-000000000001', name: 'Cuenta común', bank: 'caixabank', kind: 'comun', ownerLabel: 'familia', archived: false },
+  { id: 'fa000000-0000-4000-8000-000000000002', name: 'Cuenta nómina', bank: 'openbank', kind: 'personal', ownerLabel: 'padre', archived: false },
+  { id: 'fa000000-0000-4000-8000-000000000003', name: 'Plan índice', bank: 'deutsche_bank', kind: 'inversion', ownerLabel: 'familia', archived: false }
+];
+
+const FINANCE_CATEGORIES = [
+  { id: 'fb000000-0000-4000-8000-000000000001', name: 'Casa', parentId: null, kind: 'gasto' },
+  { id: 'fb000000-0000-4000-8000-000000000002', name: 'Supermercado', parentId: 'fb000000-0000-4000-8000-000000000001', kind: 'gasto' },
+  { id: 'fb000000-0000-4000-8000-000000000003', name: 'Suministros', parentId: 'fb000000-0000-4000-8000-000000000001', kind: 'gasto' },
+  { id: 'fb000000-0000-4000-8000-000000000004', name: 'Ingresos', parentId: null, kind: 'ingreso' },
+  { id: 'fb000000-0000-4000-8000-000000000005', name: 'Nómina', parentId: 'fb000000-0000-4000-8000-000000000004', kind: 'ingreso' },
+  { id: 'fb000000-0000-4000-8000-000000000006', name: 'Transferencias', parentId: null, kind: 'transferencia' }
+];
+
+/** Serie mensual coherente: ahorro = ingresos + gastos en cada cubo. */
+const FINANCE_SERIES = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08'].map(
+  (bucket, index) => {
+    const income = 420000n + BigInt(index) * 1000n;
+    const expense = -(300000n + BigInt(index % 3) * 12000n);
+    return { bucket, incomeCents: income.toString(), expenseCents: expense.toString(), savingsCents: (income + expense).toString() };
+  }
+);
+
+const FINANCE_SUMMARY_PREV = {
+  incomeCents: '402000', expenseCents: '-355000', recurringExpenseCents: '-260000',
+  extraordinaryExpenseCents: '-80000', unclassifiedExpenseCents: '-15000',
+  savingsCents: '47000', netSavingsRate: 11.7, grossSavingsRate: 35.3,
+  investedCents: '40000', investmentRate: 10, freeCashFlowCents: '7000', opsCashFlowCents: '47000',
+  receivedContributionsCents: '0', outgoingTransfersCents: '0', pendingCount: 0, prev: null
+};
+
+export const getFinanceDashboardFixture = demoOnly(
+  'finance-dashboard',
+  (filters: FinanceFilters): FinanceDashboardData => ({
+    householdId: HOUSEHOLD.id,
+    filters,
+    summary: {
+      incomeCents: '425000', expenseCents: '-318550', recurringExpenseCents: '-214000',
+      extraordinaryExpenseCents: '-84550', unclassifiedExpenseCents: '-20000',
+      savingsCents: '106450', netSavingsRate: 25, grossSavingsRate: 49.6,
+      investedCents: '60000', investmentRate: 14.1, freeCashFlowCents: '46450', opsCashFlowCents: '106450',
+      receivedContributionsCents: '0', outgoingTransfersCents: '0', pendingCount: 3,
+      prev: FINANCE_SUMMARY_PREV
+    },
+    series: FINANCE_SERIES,
+    breakdown: [
+      { categoryId: 'fb000000-0000-4000-8000-000000000002', name: 'Supermercado', parentId: 'fb000000-0000-4000-8000-000000000001', totalCents: '-182000', count: 14 },
+      { categoryId: 'fb000000-0000-4000-8000-000000000003', name: 'Suministros', parentId: 'fb000000-0000-4000-8000-000000000001', totalCents: '-96550', count: 6 },
+      { categoryId: null, name: 'Sin categorizar', parentId: null, totalCents: '-40000', count: 3 },
+      { categoryId: 'fb000000-0000-4000-8000-000000000005', name: 'Nómina', parentId: 'fb000000-0000-4000-8000-000000000004', totalCents: '425000', count: 2 }
+    ],
+    providers: [
+      { provider: 'SUPERMERCADOS ENCINA', providerDisplay: 'Encina', totalCents: '-98000', count: 9 },
+      { provider: 'LUZ DEL VALLE SA', providerDisplay: 'Luz del Valle', totalCents: '-56550', count: 4 },
+      { provider: 'AGUAS DE LA VEGA', providerDisplay: 'Aguas de la Vega', totalCents: '-24000', count: 2 }
+    ],
+    accounts: FINANCE_ACCOUNTS,
+    categories: FINANCE_CATEGORIES
+  })
+);
+
+// Tipado explícito: sin él, TS infiere cada `raw` por separado (llaves
+// distintas según la fila) y la unión resultante deja de encajar en
+// `Record<string, string>` — cada firma de índice ve las llaves ausentes de
+// las demás filas como opcionales, no como ausentes.
+const FINANCE_TXS: FinanceTxDto[] = [
+  {
+    id: 'fc000000-0000-4000-8000-000000000001', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
+    opDate: '2026-08-28', valueDate: '2026-08-28', concept: 'COMPRA SUPERMERCADOS ENCINA MADRID',
+    provider: 'SUPERMERCADOS ENCINA', providerNorm: 'supermercados encina', providerDisplay: 'Encina',
+    amountCents: '-8734', balanceCents: '215600', codeCommon: '12', codeOwn: '300',
+    categoryId: 'fb000000-0000-4000-8000-000000000002', categoryName: 'Supermercado',
+    status: 'confirmada', transferGroupId: null, recurrence: 'recurrente' as const, recurrenceManual: false,
+    bankCategory: 'Alimentación', eventIds: [],
+    raw: { 'Fecha operación': '28/08/2026', 'Concepto': 'COMPRA SUPERMERCADOS ENCINA MADRID', 'Importe': '-87,34', 'Saldo': '2.156,00' }
+  },
+  {
+    id: 'fc000000-0000-4000-8000-000000000002', accountId: FINANCE_ACCOUNTS[1]!.id, accountName: 'Cuenta nómina',
+    opDate: '2026-08-25', valueDate: '2026-08-25', concept: 'NOMINA AGOSTO TALLERES ROBLE SL',
+    provider: 'TALLERES ROBLE SL', providerNorm: 'talleres roble sl', providerDisplay: 'Talleres Roble',
+    amountCents: '212500', balanceCents: '389000', codeCommon: '01', codeOwn: '100',
+    categoryId: 'fb000000-0000-4000-8000-000000000005', categoryName: 'Nómina',
+    status: 'confirmada', transferGroupId: null, recurrence: 'recurrente' as const, recurrenceManual: false,
+    bankCategory: null, eventIds: [],
+    raw: { 'Fecha operación': '25/08/2026', 'Concepto': 'NOMINA AGOSTO TALLERES ROBLE SL', 'Importe': '2.125,00' }
+  },
+  {
+    id: 'fc000000-0000-4000-8000-000000000003', accountId: FINANCE_ACCOUNTS[1]!.id, accountName: 'Cuenta nómina',
+    opDate: '2026-08-20', valueDate: null, concept: 'TRASPASO A CUENTA COMUN',
+    provider: null, providerNorm: null, providerDisplay: null,
+    amountCents: '-50000', balanceCents: null, codeCommon: null, codeOwn: null,
+    categoryId: 'fb000000-0000-4000-8000-000000000006', categoryName: 'Transferencias',
+    status: 'confirmada', transferGroupId: 'fd000000-0000-4000-8000-000000000001', recurrence: null, recurrenceManual: false,
+    bankCategory: null, eventIds: [], raw: null
+  },
+  {
+    id: 'fc000000-0000-4000-8000-000000000004', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
+    opDate: '2026-08-20', valueDate: '2026-08-20', concept: 'TRANSFERENCIA DE CUENTA NOMINA',
+    provider: null, providerNorm: null, providerDisplay: null,
+    amountCents: '50000', balanceCents: '224334', codeCommon: '04', codeOwn: null,
+    categoryId: 'fb000000-0000-4000-8000-000000000006', categoryName: 'Transferencias',
+    status: 'confirmada', transferGroupId: 'fd000000-0000-4000-8000-000000000001', recurrence: null, recurrenceManual: false,
+    bankCategory: null, eventIds: [],
+    raw: { 'Fecha operación': '20/08/2026', 'Concepto': 'TRANSFERENCIA DE CUENTA NOMINA', 'Importe': '500,00' }
+  },
+  {
+    id: 'fc000000-0000-4000-8000-000000000005', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
+    opDate: '2026-08-12', valueDate: '2026-08-12', concept: 'RECIBO LUZ DEL VALLE SA',
+    provider: 'LUZ DEL VALLE SA', providerNorm: 'luz del valle sa', providerDisplay: 'Luz del Valle',
+    amountCents: '-14210', balanceCents: '174334', codeCommon: '03', codeOwn: '210',
+    categoryId: 'fb000000-0000-4000-8000-000000000003', categoryName: 'Suministros',
+    status: 'sugerida_regla', transferGroupId: null, recurrence: 'recurrente' as const, recurrenceManual: false,
+    bankCategory: 'Hogar', eventIds: [],
+    raw: { 'Fecha operación': '12/08/2026', 'Concepto': 'RECIBO LUZ DEL VALLE SA', 'Importe': '-142,10' }
+  }
+];
+
+export const getFinanceMovimientosFixture = demoOnly(
+  'finance-movimientos',
+  (filters: FinanceFilters): FinanceMovimientosData => ({
+    householdId: HOUSEHOLD.id,
+    filters,
+    page: {
+      total: FINANCE_TXS.length,
+      sumCents: FINANCE_TXS.reduce((acc, tx) => acc + BigInt(tx.amountCents), 0n).toString(),
+      limit: 100,
+      offset: 0,
+      rows: FINANCE_TXS
+    },
+    accounts: FINANCE_ACCOUNTS,
+    categories: FINANCE_CATEGORIES,
+    events: [{ id: 'fe000000-0000-4000-8000-000000000001', name: 'Semana Santa 2026' }]
+  })
+);
