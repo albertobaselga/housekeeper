@@ -81,7 +81,14 @@ export const CATEGORIAS = [
   { id: 3, name: 'Alimentación', parent_id: null, kind: 'gasto', sort_order: 1 },
   { id: 4, name: 'Supermercado', parent_id: 3, kind: 'gasto', sort_order: 0 },
   { id: 5, name: 'Nómina', parent_id: null, kind: 'ingreso', sort_order: 2 },
-  { id: 6, name: 'Transferencia interna', parent_id: null, kind: 'transferencia', sort_order: 3 }
+  { id: 6, name: 'Transferencia interna', parent_id: null, kind: 'transferencia', sort_order: 3 },
+  // 7/8/9/10: raíces nuevas y aisladas (no tocan Vivienda/Alimentación/Nómina,
+  // que la Task 5 verifica por nombre) para ejercer la forma legítima del
+  // origen «misma categoría hija bajo dos padres distintos» (9 y 10: 'Otros').
+  { id: 7, name: 'Ocio', parent_id: null, kind: 'gasto', sort_order: 4 },
+  { id: 8, name: 'Salud', parent_id: null, kind: 'gasto', sort_order: 5 },
+  { id: 9, name: 'Otros', parent_id: 7, kind: 'gasto', sort_order: 0 },
+  { id: 10, name: 'Otros', parent_id: 8, kind: 'gasto', sort_order: 0 }
 ];
 
 export const REGLAS = [
@@ -93,7 +100,7 @@ export const REGLAS = [
 
 export const LOTES = [
   { id: 1, filename: 'extracto-comun-enero.xls', bank: 'caixabank', imported_at: '2026-02-01 10:00:00', new_count: 3, dup_count: 0 },
-  { id: 2, filename: 'amex-enero.xlsx', bank: 'amex', imported_at: '2026-02-02 10:30:00', new_count: 1, dup_count: 0 },
+  { id: 2, filename: 'amex-enero.xlsx', bank: 'amex', imported_at: '2026-02-02 10:30:00', new_count: 2, dup_count: 0 },
   { id: 3, filename: 'db-febrero.xls', bank: 'deutsche_bank', imported_at: '2026-03-02 09:00:00', new_count: 6, dup_count: 1 },
   // Lote de altas manuales: bank='manual', que el destino SÍ admite en lotes.
   { id: 4, filename: 'manual', bank: 'manual', imported_at: '2026-02-14 12:00:00', new_count: 2, dup_count: 0 }
@@ -117,7 +124,12 @@ export const TRANSACCIONES = [
   { id: 10, account_id: 5, batch_id: 3, op_date: '2026-03-01', value_date: null, concept: 'APORTACION FONDO ESPEJO', provider: '', amount_cents: 10000n, balance_cents: null, code_common: null, code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_INVERSION, hash: 'invmirror-c3d4e5f607182930', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
   // 11: pata huérfana (grupo de una sola pata, suma ≠ 0). El origen las tiene; migrarlas
   // tal cual es lo correcto, y la comparación de la tarea 4 NO debe tomarlo por un fallo.
-  { id: 11, account_id: 2, batch_id: 3, op_date: '2026-03-05', value_date: null, concept: 'TRASPASO PENDIENTE DE PAREJA', provider: '', amount_cents: -7500n, balance_cents: 35711n, code_common: '04', code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_HUERFANO, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null }
+  { id: 11, account_id: 2, batch_id: 3, op_date: '2026-03-05', value_date: null, concept: 'TRASPASO PENDIENTE DE PAREJA', provider: '', amount_cents: -7500n, balance_cents: 35711n, code_common: '04', code_own: null, category_id: 6, status: 'confirmada', transfer_group_id: GRUPO_HUERFANO, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null },
+  // 12: segunda transacción amex (sin dedup_ref), para que la cuenta amex traiga
+  // «varias» transacciones y no una sola. Sigue excluida de la comprobación
+  // cruzada de hashes por ser cuenta amex (verificarHashes descarta la cuenta
+  // entera, no solo la fila con dedup_ref), así que no altera hashesComprobables.
+  { id: 12, account_id: 3, batch_id: 2, op_date: '2026-02-10', value_date: null, concept: 'CINE EJEMPLO MADRID', provider: 'CINE EJEMPLO', amount_cents: -1500n, balance_cents: null, code_common: null, code_own: null, category_id: 9, status: 'confirmada', transfer_group_id: null, hash: 'sha256', recurrence: null, recurrence_manual: 0, bank_category: null, raw: null }
 ];
 
 export const ALIAS = [{ id: 1, provider_norm: 'SUPERMERCADOS ACME', alias: 'Acme' }];
@@ -131,19 +143,19 @@ export const REGLAS_EVENTO = [
 // Números derivados de las constantes de arriba. NINGÚN test del plan repite
 // estos valores como literal: todos los importan de aquí (una sola verdad).
 export const TOTALES = {
-  accounts: 5, categories: 6, rules: 4, rulesActivas: 3, importBatches: 4,
-  transactions: 11, providerAliases: 1, events: 1, transactionEvents: 1, eventRules: 2,
+  accounts: 5, categories: 10, rules: 4, rulesActivas: 3, importBatches: 4,
+  transactions: 12, providerAliases: 1, events: 1, transactionEvents: 1, eventRules: 2,
   // comprobables = hash sha256 y cuenta no-amex: 1, 2, 3, 4, 8, 9, 11.
-  // descartados = amex (7) + prefijos manual-/cashpair-/invmirror- (5, 6, 10).
-  hashesComprobables: 7, hashesDescartados: 4, gruposTransferencia: 3,
-  estados: { confirmada: 9, pendiente: 1, sugerida_regla: 1 },
+  // descartados = amex (7, 12) + prefijos manual-/cashpair-/invmirror- (5, 6, 10).
+  hashesComprobables: 7, hashesDescartados: 5, gruposTransferencia: 3,
+  estados: { confirmada: 10, pendiente: 1, sugerida_regla: 1 },
   fechaMin: '2026-01-10', fechaMax: '2026-03-05'
 };
 
 export const SUMAS_CUENTA_MES = {
   '00490001512345678901': { '2026-01': 247450n, '2026-02': -50000n },
   ES9100190020961234567890: { '2026-02': 43211n, '2026-03': -17500n },
-  'AMEX-SINTETICA-1001': { '2026-01': -1234n },
+  'AMEX-SINTETICA-1001': { '2026-01': -1234n, '2026-02': -1500n },
   EFECTIVO: { '2026-02': 0n },
   'INV-SINTETICO': { '2026-03': 10000n }
 };
