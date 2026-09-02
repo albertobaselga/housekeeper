@@ -326,6 +326,88 @@ describe.runIf(Boolean(adminUrl))("comandos de revisión de finanzas sobre Postg
     expect(links).toEqual([{ event_id: FIN.event }]);
   });
 
+  it("recategorizar un concepto sustituye la regla manual previa del mismo patrón", async () => {
+    // El it "confirma con regla" (arriba) ya creó una regla proveedor_exacto
+    // con patrón 'ACME LUZ IT' y catSub vía createRule: comparte
+    // (household_id, rule_type, pattern, origin, priority) con la que crea
+    // assignConcept, así que el primer comando de aquí debe hacerla caer
+    // también (F6-I1: sustituir, no acumular).
+    const first = await run(ADMIN, {
+      kind: "finance.category.assignConcept",
+      provider: "ACME LUZ IT",
+      categoryId: FIN.catRoot,
+    });
+    expect(first.status).toBe("accepted");
+    const afterFirst = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select category_id from app.finance_rules
+          where household_id = $1 and rule_type = 'proveedor_exacto' and pattern = 'ACME LUZ IT'`,
+        [HH],
+      );
+      return loaded.rows;
+    });
+    expect(afterFirst).toHaveLength(1);
+    expect(afterFirst[0].category_id).toBe(FIN.catRoot);
+
+    // El "deshacer" del cliente: el mismo comando, con la categoría anterior.
+    const second = await run(ADMIN, {
+      kind: "finance.category.assignConcept",
+      provider: "ACME LUZ IT",
+      categoryId: FIN.catSub,
+    });
+    expect(second.status).toBe("accepted");
+    const afterSecond = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select category_id from app.finance_rules
+          where household_id = $1 and rule_type = 'proveedor_exacto' and pattern = 'ACME LUZ IT'`,
+        [HH],
+      );
+      return loaded.rows;
+    });
+    expect(afterSecond).toHaveLength(1);
+    expect(afterSecond[0].category_id).toBe(FIN.catSub);
+  });
+
+  it("el pipeline aplica la regla más reciente cuando dos empatan", async () => {
+    // Dos reglas concepto_contiene con el mismo patrón y prioridad, sembradas
+    // a mano (fuera de cualquier comando) con created_at distinto para
+    // ejercer el desempate del ORDER BY del pipeline sin pasar por el DELETE
+    // de assignConceptToCategory.
+    const pattern = "EMPATE REGLAS IT";
+    const tieTxId = "ab300000-0000-4000-8000-000000000003";
+    await adminPool.query(
+      `insert into app.finance_transactions
+         (household_id, id, account_id, batch_id, op_date, concept, provider, provider_norm,
+          amount_cents, category_id, status, transfer_group_id, dedup_hash, recurrence,
+          recurrence_manual, raw, currency_code) values
+       ($1, $2, $3, null, current_date, $4, null, null, -900, null, 'pendiente', null,
+        'it-rev-empate-0001', null, false, '{}'::jsonb, 'EUR')`,
+      [HH, tieTxId, FIN.account, `RECIBO ${pattern} SEPTIEMBRE`],
+    );
+    await adminPool.query(
+      `insert into app.finance_rules (household_id, rule_type, pattern, category_id, priority, origin, created_at) values
+       ($1, 'concepto_contiene', $2, $3, 0, 'manual', now() - interval '1 minute'),
+       ($1, 'concepto_contiene', $2, $4, 0, 'manual', now())`,
+      [HH, pattern, FIN.catRoot, FIN.catSub],
+    );
+    // Camino más corto ya usado por esta suite para disparar el pipeline:
+    // finance.transaction.update con createRule sobre OTRO movimiento.
+    const ack = await run(ADMIN, {
+      kind: "finance.transaction.update",
+      transactionId: FIN.txPend1,
+      createRule: { ruleType: "proveedor_exacto" },
+    });
+    expect(ack.status).toBe("accepted");
+    const tieRow = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query(
+        `select status, category_id from app.finance_transactions where household_id = $1 and id = $2`,
+        [HH, tieTxId],
+      );
+      return loaded.rows[0];
+    });
+    expect(tieRow).toMatchObject({ status: "sugerida_regla", category_id: FIN.catSub });
+  });
+
   // El cerrojo estructural del dispatcher (requireFinanceAdmin antes de
   // despachar) tiene que valer para TODO kind de escritura, no solo para los
   // tres que esta tarea implementa de verdad: los 19 restantes, aún "no
