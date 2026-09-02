@@ -92,6 +92,18 @@ describe.runIf(Boolean(adminUrl))("lecturas de finanzas bajo RLS (fase 4, doble 
     expect(tx2?.providerDisplay).toBe("Empresa Fixture");
   });
 
+  // [FASE 5, T9] dedupHash/batchId: el botón «Borrar» del manual (Movimientos)
+  // distingue un manual borrable (batch_id null + hash `manual-`) de un
+  // importado — TX1/TX2 (002_finance.sql) llevan batch_id y hash de importación
+  // reales, así que este dorado prueba el camino "NO es manual" con datos de
+  // verdad, no con un valor inventado.
+  it("dedupHash y batchId llegan tal cual desde la fila importada", async () => {
+    const page = await as("fixture:roble:admin", ROBLE, (client) => readFinanceTransactions(client, ROBLE, WIDE));
+    const tx1 = page.rows.find((row) => row.id === TX1);
+    expect(tx1?.batchId).toBe("f1800000-0000-4000-8000-000000000001");
+    expect(tx1?.dedupHash).toBe("fixture-roble-tx-0001");
+  });
+
   it("eventId y excludeEventIds filtran conjuntos complementarios ($n no se desplaza)", async () => {
     const withEvent = await as("fixture:roble:admin", ROBLE, (client) =>
       readFinanceTransactions(client, ROBLE, { ...WIDE, eventId: EVENT1 }));

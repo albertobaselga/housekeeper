@@ -40,6 +40,9 @@ export interface FinanceTxDto {
   categoryId: string | null; categoryName: string | null; status: string; transferGroupId: string | null;
   recurrence: "recurrente" | "extraordinario" | null; recurrenceManual: boolean;
   bankCategory: string | null; eventIds: string[]; raw: Record<string, string> | null;
+  // [FASE 5] Distinguir un manual borrable (batch_id null + hash `manual-`) de
+  // un importado exige estos dos; ninguna otra pantalla los pinta.
+  dedupHash: string; batchId: string | null;
 }
 
 export interface FinanceTransactionsQuery extends FinanceReadFilters {
@@ -279,7 +282,8 @@ export async function readFinanceTransactions(
             tx.category_id as "categoryId", cat.name as "categoryName",
             tx.status::text as "status", tx.transfer_group_id as "transferGroupId",
             tx.recurrence::text as "recurrence", tx.recurrence_manual as "recurrenceManual",
-            tx.bank_category as "bankCategory", tx.raw
+            tx.bank_category as "bankCategory", tx.raw,
+            tx.dedup_hash as "dedupHash", tx.batch_id as "batchId"
        ${fromSql}
       order by tx.op_date desc, tx.id desc
       limit $${params.length + 1} offset $${params.length + 2}`,
