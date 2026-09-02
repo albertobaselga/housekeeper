@@ -5,7 +5,7 @@ export * from "./dedup.js";
 
 export * from "./provider-norm.js";
 
-// rules (Task 4)
+export * from "./rules.js";
 
 // transfers (Task 5)
 
