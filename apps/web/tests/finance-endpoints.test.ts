@@ -181,3 +181,90 @@ describe('transactions: R21 (ids/group_ids presentes pero vacíos)', () => {
     expect(await response.json()).toEqual({ total: 0, sumCents: '0', limit: 100, offset: 0, rows: [] });
   });
 });
+
+/**
+ * I2: el cerrojo aplicativo (`requireFinanceAdmin` dentro de `financeRead` y
+ * de los dos loaders) no tenía ninguna prueba de regresión: si alguien borra
+ * `await requireFinanceAdmin(client, membership)` de cualquiera de los tres
+ * sitios, la batería entera seguía en verde. R2/R22: `AuthorizationError` y
+ * `CommandRejectedError` son EL MISMO estado de «sin acceso» — se traducen a
+ * 404 «Hogar no encontrado» en la API (indistinguible de hogar inexistente) y
+ * a `null` en los loaders (la página cae a la fixture o al 403 del guard de
+ * ruta), nunca a un 500 ni a una fuga de por qué.
+ */
+describe('I2: requireFinanceAdmin es el cerrojo aplicativo, no una comprobación decorativa', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock('$lib/server/db.server', () => ({ getDatabasePool: () => ({}) }));
+  });
+
+  async function statusAndBody(run: () => Promise<Response>): Promise<{ status: number; body: unknown }> {
+    try {
+      const response = await run();
+      return { status: response.status, body: await response.json() };
+    } catch (cause) {
+      const failure = cause as { status?: number; body?: unknown };
+      return { status: failure.status ?? 0, body: failure.body };
+    }
+  }
+
+  it('CommandRejectedError en requireFinanceAdmin → 404 "Hogar no encontrado" sin revelar el motivo, y sin llamar a la lectura', async () => {
+    vi.doMock('@housekeeper/server', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@housekeeper/server')>();
+      return {
+        ...actual,
+        requireFinanceAdmin: async () => {
+          throw new actual.CommandRejectedError('finance_not_granted', 'Tu cuenta no tiene Finanzas activado');
+        },
+        withAuthorizedTransaction: async (
+          _pool: unknown,
+          _principal: unknown,
+          _householdId: string,
+          operation: (client: unknown, membership: unknown) => Promise<unknown>
+        ) => operation({}, { id: 'm1', householdId: HOUSEHOLD, role: 'family_admin', expiresAt: null }),
+        readFinanceSummary: vi.fn(async () => {
+          throw new Error('no debería llamarse: requireFinanceAdmin ya debía haber cortado');
+        })
+      };
+    });
+    const { GET: summaryGet } = await import('../src/routes/api/v1/finance/summary/+server');
+    const event = { locals: { user: USER }, url: urlOf(`household=${HOUSEHOLD}`), params: {} };
+    const { status, body } = await statusAndBody(() => (summaryGet as (e: unknown) => Promise<Response>)(event));
+    expect(status).toBe(404);
+    expect(body).toEqual({ message: 'Hogar no encontrado' });
+    expect(JSON.stringify(body)).not.toMatch(/concesión|finanzas|permiso/i);
+  });
+
+  it('AuthorizationError en requireFinanceAdmin → los loaders devuelven null (no propagan, no llaman a la lectura ni al logger de avería)', async () => {
+    const errorSpy = vi.fn();
+    vi.doMock('@housekeeper/server', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('@housekeeper/server')>();
+      return {
+        ...actual,
+        createLogger: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: errorSpy }),
+        requireFinanceAdmin: async () => {
+          throw new actual.AuthorizationError('sin concesión viva');
+        },
+        withAuthorizedTransaction: async (
+          _pool: unknown,
+          _principal: unknown,
+          _householdId: string,
+          operation: (client: unknown, membership: unknown) => Promise<unknown>
+        ) => operation({}, { id: 'm1', householdId: HOUSEHOLD, role: 'family_admin', expiresAt: null }),
+        readFinanceSummary: vi.fn(async () => { throw new Error('no debería llamarse'); }),
+        readFinanceTransactions: vi.fn(async () => { throw new Error('no debería llamarse'); })
+      };
+    });
+    const { loadFinanceDashboard, loadFinanceMovimientos } = await import('../src/lib/server/finance.server');
+    const filters = { from: '2026-01-01', to: '2026-01-31', granularity: 'month' as const, accountIds: [], eventId: null };
+    const dashboard = await loadFinanceDashboard({ id: 'u1' }, HOUSEHOLD, filters, FAKE_POOL);
+    expect(dashboard).toBeNull();
+    const movimientos = await loadFinanceMovimientos(
+      { id: 'u1' }, HOUSEHOLD, filters,
+      { q: null, categoryId: null, recurrence: null, limit: 100, offset: 0 },
+      FAKE_POOL
+    );
+    expect(movimientos).toBeNull();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
