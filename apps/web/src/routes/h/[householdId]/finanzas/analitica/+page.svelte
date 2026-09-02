@@ -4,6 +4,8 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import FinanceFilterBar from '$lib/components/finance/FinanceFilterBar.svelte';
   import NatureStackChart from '$lib/components/finance/NatureStackChart.svelte';
+  import PivotTable from '$lib/components/finance/PivotTable.svelte';
+  import FinanceDetailPanel from '$lib/components/finance/FinanceDetailPanel.svelte';
   import { formatCents } from '$lib/finance/format';
   import {
     buildNatureChartData,
@@ -15,10 +17,18 @@
   } from '$lib/finance/chart-data';
   import { isUuid, rangeLabel } from '$lib/finance/filters';
   import { parseIdList, serializeIdList } from '$lib/finance/pivot-state';
+  // `FinanceDetailMode` vive en el módulo `.ts` de la fase 4 (`$lib/finance/api`),
+  // no en `FinanceDetailPanel.svelte`: el nombre del tipo es el canónico, solo
+  // cambia el módulo del que se importa (nota del brief de la Task 10).
+  import type { FinanceDetailMode } from '$lib/finance/api';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
   const a = $derived(data.analitica);
+
+  let recurrence = $state<'recurrente' | 'extraordinario' | null>(null);
+  let panel = $state<FinanceDetailMode | null>(null);
+  const pivotRows = $derived(a.pivotRows.filter((r) => !recurrence || r.nat === recurrence));
 
   // Partidas excluidas de KPIs y gráfica: ?exev= (CSV), navegación real porque
   // los KPIs se recalculan en el servidor. Filtrado por isUuid igual que el
@@ -172,6 +182,29 @@
       </table>
     </div>
   </section>
+
+  <section aria-labelledby="pivot-titulo">
+    <h2 id="pivot-titulo">Categorías</h2>
+    <div class="chips-naturaleza" role="group" aria-label="Filtrar por naturaleza">
+      <button type="button" class="chip" class:activa={recurrence === null} onclick={() => (recurrence = null)}>Todos</button>
+      <button type="button" class="chip" class:activa={recurrence === 'recurrente'} onclick={() => (recurrence = 'recurrente')}>♻ Recurrente</button>
+      <button type="button" class="chip" class:activa={recurrence === 'extraordinario'} onclick={() => (recurrence = 'extraordinario')}>✦ Extraordinario</button>
+    </div>
+    <PivotTable
+      rows={pivotRows}
+      months={a.months}
+      categories={a.categories}
+      events={a.eventsSummary}
+      invAccounts={a.invAccounts}
+      householdId={page.params.householdId ?? ''}
+      onOpenIds={(ids, label, sub) => (panel = { kind: 'ids', ids, label, sub })}
+    />
+  </section>
+
+  {#if panel}
+    <FinanceDetailPanel mode={panel} householdId={page.params.householdId ?? ''}
+      live={!data.demo} onClose={() => (panel = null)} />
+  {/if}
 {/if}
 </div>
 
@@ -197,4 +230,7 @@
   .tarjeta { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); padding: var(--pad-card); margin-top: var(--space-3); }
   .tabla-finanzas tr.destacada { background: var(--canvas); font-weight: 700; }
   .tabla-finanzas tr.separada td { border-top: 2px solid var(--line-strong); }
+  .chips-naturaleza { display: flex; gap: var(--space-2); margin: var(--space-2) 0; flex-wrap: wrap; }
+  .chip { border: 1px solid var(--line); border-radius: var(--r-full); background: var(--surface); padding: var(--space-1) var(--space-2); font-size: var(--text-meta); cursor: pointer; }
+  .chip.activa { border-color: var(--primary); background: var(--primary-soft); font-weight: 700; }
 </style>
