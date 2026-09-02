@@ -654,7 +654,23 @@
   {@const dropCatId = (kind === 'gasto' || kind === 'ingreso') ? node.catId : null}
   <tr style={tintFor(node.depth)} class:clicable={hasChildren}
     class:dnd-target={dragging !== null && dropCatId !== null} class:dnd-dimmed={dragging !== null && dropCatId === null}
-    onclick={() => hasChildren && toggle(node.key)}
+    onclick={(e) => {
+      // [Rev 0, Important 1] El clic real de la marca de selección (ver el
+      // comentario junto a `.marca-toggle` más abajo) llega aquí con
+      // `target` = el `<label>` de 44×44, NO el `<input>` de 13×13: el
+      // `stopPropagation()` que vive en el `onclick` del input actúa sobre
+      // OTRO evento (el que el navegador sintetiza al activar el label,
+      // que corre DESPUÉS de que este ya haya burbujeado). Frenarlo aquí, en
+      // el propio disparador del despliegue, evita tener que meter un
+      // `stopPropagation` en el `<label>` — que `svelte-check` marca como
+      // elemento no interactivo con manejador de ratón sin manejador de
+      // teclado (a11y_no_noninteractive_element_interactions): el `<tr>` ya
+      // es interactivo para svelte-check (rol ARIA `row`, que desciende de
+      // `widget`), así que comprobar el origen del clic AQUÍ no añade ningún
+      // aviso nuevo.
+      if (e.target instanceof Element && e.target.closest('.marca-toggle')) return;
+      hasChildren && toggle(node.key);
+    }}
     ondragover={dropCatId !== null ? (e) => e.preventDefault() : undefined}
     ondrop={dropCatId !== null ? (e) => { e.preventDefault(); void onDropCategory(e, dropCatId, node.key); } : undefined}>
     <td class="arbol" style={`padding-left: calc(var(--space-3) + ${node.depth} * var(--space-4));`}>
@@ -695,6 +711,20 @@
           («seleccionar Semana Santa 2026») el texto visible-pero-clipado sí
           disparaba «frase por debajo del piso tipográfico» al concatenarse con
           el resto del contenido de la fila.
+
+          [Rev 0, Important 1] El `stopPropagation()` de más abajo vivía
+          SOLO en el `onclick` del `<input>` — y un toque real ocurre sobre
+          el `<label>` de 44×44 (el input nativo mide 13×13): ese clic
+          tiene el `<label>` como `target`, burbujea ENTERO hasta el
+          `<tr onclick>` de arriba (que despliega/pliega la fila) y SOLO
+          DESPUÉS el navegador sintetiza el clic de activación sobre el
+          input — demasiado tarde para frenar la burbuja del primero. El
+          propio `onclick` del `<tr>` (ver su comentario) ignora ahora los
+          clics cuyo `target` cae dentro de `.marca-toggle`, así que ese
+          primer evento nunca llega a desplegar la fila; el clic sintetizado
+          sobre el input sigue su curso (es OTRO evento) y el
+          `stopPropagation` de aquí abajo sigue frenándolo a él para que no
+          burbujee una segunda vez.
         -->
         <label class="marca-toggle" style:visibility={item ? 'visible' : 'hidden'}>
           <input type="checkbox" class="marca"
@@ -819,7 +849,15 @@
         {#each displayEventos as event (event.eventId)}
           {@const key = `event/${event.eventId}`}
           {@const evExpanded = forceExpand || expanded.has(key)}
-          <tr class="clicable" class:dnd-target={dragging !== null} onclick={() => event.children.length > 0 && toggle(key)}
+          <tr class="clicable" class:dnd-target={dragging !== null}
+            onclick={(e) => {
+              // [Rev 0, Important 1] Mismo arreglo que en `nodeRow` (ver su
+              // comentario): `dupev` está `disabled` precisamente cuando NO
+              // hay hijos, o sea que SIEMPRE que esta fila es clicable el
+              // `<label>` de la marca también es operable.
+              if (e.target instanceof Element && e.target.closest('.marca-toggle')) return;
+              event.children.length > 0 && toggle(key);
+            }}
             ondragover={(e) => e.preventDefault()}
             ondrop={(e) => { e.preventDefault(); void onDropEvent(e, event.eventId, event.name, key); }}>
             <td class="arbol">
@@ -845,6 +883,14 @@
                   A4 sí cuenta —a diferencia de `aria-label`, que no es texto—
                   y disparaba «frase por debajo del piso tipográfico» al
                   concatenarse con el resto de la fila.
+
+                  [Rev 0, Important 1] Mismo fallo de burbujeo que la marca
+                  de selección del árbol (ver el comentario del `<label>`
+                  homónimo en `nodeRow`, más arriba en este fichero): el
+                  `stopPropagation` del `<input>` llega tarde porque el
+                  clic real cae sobre el `<label>` de 44×44. El `onclick`
+                  del `<tr>` (ver su comentario) ya ignora esos clics antes
+                  de desplegar la fila.
                 -->
                 <label class="marca-toggle"
                   title="Ver los movimientos de este evento también dentro de sus categorías en GASTOS/INGRESOS">
@@ -961,8 +1007,12 @@
   button.flecha { min-height: var(--row-data); cursor: pointer; }
   /* [F5-INT-1] `min-width`/`min-height`: una hoja abierta solo con un enlace
      corto (categoría de nombre breve) no debía depender de la longitud del
-     texto para alcanzar el piso de 44×44. */
-  .abrir { display: inline-flex; align-items: center; justify-content: center; min-width: var(--row-data); min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0 var(--space-1); text-decoration: underline dotted; }
+     texto para alcanzar el piso de 44×44. `justify-content: flex-start`
+     (Rev 0, Minor 5): con `center` una etiqueta corta quedaba descentrada
+     respecto al resto de la columna, que va alineada a la izquierda; la
+     diana de 44 px se conserva igual (la da `min-width`/`min-height`, no la
+     alineación del contenido). */
+  .abrir { display: inline-flex; align-items: center; justify-content: flex-start; min-width: var(--row-data); min-height: var(--row-data); border: 0; background: transparent; cursor: pointer; font: inherit; padding: 0 var(--space-1); text-decoration: underline dotted; }
   .asa { cursor: grab; color: var(--ink-faint); }
   /* [F5-INT-1] Mismo patrón que `LedgerTable.select-toggle` (R33): la MARCA
      nativa mide 13×13, así que la diana real es el `<label>` que la envuelve
