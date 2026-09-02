@@ -36,6 +36,13 @@ test('el admin con concesión confirma un pendiente desde Revisión', async ({ p
   // Badge de pendientes visible en la navegación del módulo.
   await expect(page.locator('.revision-badge')).toBeVisible();
 
+  // [FASE 5 · despacho de cierre, F5-I1] Con tres pendientes sembrados caben
+  // todos en la página (tope 200), así que el aviso de «hay más» NO se pinta:
+  // el caso contrario (201 pendientes → 200 filas y `totalPending === 201`) lo
+  // sujeta `tests/finance-revision.integration.test.ts`, que puede sembrar 201
+  // filas sin dejar rastro para las baterías vecinas.
+  await expect(page.getByText('movimientos más recientes de')).toHaveCount(0);
+
   const fila = page.locator('tr', { hasText: 'SUPERMERCADO RIO E2E' });
   await expect(fila).toBeVisible();
   await fila.getByRole('combobox', { name: 'Categoría' }).selectOption({ label: 'Casa E2E' });

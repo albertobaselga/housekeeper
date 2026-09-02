@@ -183,7 +183,21 @@ export interface FinanceRevisionData {
   to: string;
   rows: FinanceRevisionRow[];
   categories: FinanceCategoryDto[];
+  /** Pendientes del rango SIN el tope: lo que la pantalla necesita para avisar de cuántos quedan. */
+  totalPending: number;
 }
+
+/**
+ * [FASE 5 · despacho de cierre, F5-I1 / Ruling R37] Tope de la bandeja de
+ * Revisión. Antes no había ninguno: la consulta traía TODOS los pendientes de
+ * la ventana de 6 meses, la pantalla montaba un `CategorySelect` con el árbol
+ * entero por fila (cientos de miles de `<option>` en SSR con los 675
+ * pendientes reales) y `confirmSuggested` mandaba todos los ids contra un
+ * contrato que los topa en 500 (`schemas.ts:695`), así que el botón principal
+ * se rechazaba SIEMPRE con `invalid_payload`. Con 200 por página el tope del
+ * esquema queda inalcanzable por construcción.
+ */
+export const REVISION_PAGE_SIZE = 200;
 
 /** Pendientes y sugerencias del rango: la bandeja de Revisión (spec §8). */
 export async function loadFinanceRevision(
@@ -208,11 +222,29 @@ export async function loadFinanceRevision(
              on alias.household_id = tx.household_id and alias.provider_norm = tx.provider_norm
           where tx.household_id = $1 and tx.status <> 'confirmada'
             and tx.op_date between $2 and $3
-          order by tx.op_date desc, tx.id desc`,
+          order by tx.op_date desc, tx.id desc
+          limit $4`,
+        [householdId, range.from, range.to, REVISION_PAGE_SIZE]
+      );
+      // Mismo `where` que las filas (sin los join, que no lo estrechan: el de
+      // cuenta es por clave foránea obligatoria y el de alias es LEFT), en la
+      // MISMA transacción, para que el aviso de «hay más» no pueda contradecir
+      // a lo que se está pintando.
+      const pending = await client.query<{ totalPending: number }>(
+        `select count(*)::int as "totalPending"
+           from app.finance_transactions as tx
+          where tx.household_id = $1 and tx.status <> 'confirmada'
+            and tx.op_date between $2 and $3`,
         [householdId, range.from, range.to]
       );
       const categories = await readFinanceCategories(client, householdId);
-      return { from: range.from, to: range.to, rows: rows.rows, categories };
+      return {
+        from: range.from,
+        to: range.to,
+        rows: rows.rows,
+        categories,
+        totalPending: pending.rows[0]?.totalPending ?? rows.rows.length
+      };
     });
   } catch (cause) {
     // Igual que el dashboard y Movimientos (Ruling R2): «no eres family_admin»

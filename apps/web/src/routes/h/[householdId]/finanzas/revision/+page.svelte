@@ -22,7 +22,14 @@
   let ruleFor = $state<string[]>([]);
   let localCategory = $state<Record<string, string>>({});
 
-  const rows = $derived((data.revision?.rows ?? []).filter((row) => !hidden.includes(row.id)));
+  // La página que trajo el servidor (como mucho `REVISION_PAGE_SIZE` filas) y
+  // lo que queda visible tras esconder lo ya confirmado. El aviso de «hay más»
+  // se calcula sobre la PRIMERA —la foto del servidor—, no sobre la segunda:
+  // si no, confirmar una fila de un rango pequeño encendería el aviso solo
+  // porque quedan menos filas a la vista que pendientes contados.
+  const loaded = $derived(data.revision?.rows ?? []);
+  const rows = $derived(loaded.filter((row) => !hidden.includes(row.id)));
+  const hayMasPendientes = $derived(data.revision ? data.revision.totalPending > loaded.length : false);
   const suggested = $derived(
     rows.filter((row) => (localCategory[row.id] ?? row.categoryId) && row.status.startsWith('sugerida'))
   );
@@ -65,6 +72,11 @@
     );
   }
 
+  // [FASE 5 · despacho de cierre, F5-I1] Solo los ids VISIBLES: `suggested`
+  // sale de `rows`, que es la página del servidor (≤ REVISION_PAGE_SIZE = 200)
+  // menos lo ya escondido. Nunca puede acercarse al tope de 500 de
+  // `financeTransactionsBulkPayloadSchema`, que es lo que rechazaba el lote
+  // entero con `invalid_payload` en un hogar con 675 pendientes.
   function confirmSuggested(): void {
     const ids = suggested.map((row) => row.id);
     if (ids.length === 0) return;
@@ -100,6 +112,19 @@
   {:else if rows.length === 0}
     <p class="empty-state">Nada que revisar en este periodo ✨</p>
   {:else}
+    {#if hayMasPendientes}
+      <!--
+        [FASE 5 · despacho de cierre, F5-I1 / Ruling R37] La bandeja pinta como
+        mucho una página; sin este aviso, un hogar con 675 pendientes veía 200
+        filas y ninguna señal de que hubiera más. `role="status"` porque
+        aparece y desaparece con la navegación y quien usa lector de pantalla
+        tiene que enterarse sin perder el foco.
+      -->
+      <p class="empty-state" role="status">
+        Se muestran los {loaded.length} movimientos más recientes de {data.revision.totalPending} pendientes;
+        al confirmarlos aparecerán los siguientes.
+      </p>
+    {/if}
     {#if suggested.length > 0}
       <!--
         [FASE 5, T10 · corrección ronda 2, Minor 2] «1 sugerencias» no

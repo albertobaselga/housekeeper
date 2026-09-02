@@ -896,7 +896,11 @@ export const getFinanceRevisionFixture = demoOnly(
     ],
     categories: [
       { id: 'fc200000-0000-4000-8000-000000000001', name: 'Casa', parentId: null, kind: 'gasto' }
-    ]
+    ],
+    // [FASE 5 · despacho de cierre, F5-I1] Tantos pendientes como filas: la
+    // maqueta cabe entera en una página, así que el aviso de «hay más» de la
+    // pantalla queda apagado (es `totalPending > rows.length` quien lo enciende).
+    totalPending: 2
   })
 );
 
