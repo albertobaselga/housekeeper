@@ -946,7 +946,10 @@ export const getFinanceImportarFixture = demoOnly(
         id: 'fc500000-0000-4000-8000-000000000001',
         filename: 'movimientos-demo.xls',
         bank: 'openbank',
-        importedAt: '2026-08-01T10:00:00',
+        // [Corrección revisión #10] Formateada como la lectura real
+        // (`loadFinanceImportar`, Europe/Madrid): la maqueta ya no manda un
+        // ISO crudo que la página tendría que recortar a mano.
+        importedAt: '01/08/2026, 10:00',
         newCount: 12,
         dupCount: 0
       }

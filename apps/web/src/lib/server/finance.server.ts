@@ -649,6 +649,7 @@ export interface FinanceImportBatchRow {
   id: string;
   filename: string;
   bank: string;
+  /** Ya formateada en Europe/Madrid («DD/MM/AAAA, HH:MM»), no ISO: la pantalla la pinta tal cual. */
   importedAt: string;
   newCount: number;
   dupCount: number;
@@ -656,6 +657,36 @@ export interface FinanceImportBatchRow {
 
 export interface FinanceImportarData {
   batches: FinanceImportBatchRow[];
+}
+
+interface FinanceImportBatchQueryRow {
+  id: string;
+  filename: string;
+  bank: string;
+  importedAt: Date;
+  newCount: number;
+  dupCount: number;
+}
+
+/**
+ * [Corrección revisión #10] `imported_at` es `timestamptz`; leerlo con
+ * `::text` lo renderiza en el `TimeZone` de la sesión (UTC en el servidor),
+ * así que un lote importado a las 22:30 en Madrid se veía como «20:30». Se
+ * lee como `Date` (pg ya lo da en UTC internamente) y se formatea aquí con
+ * el mismo criterio que `wiki.server.ts` (`DATE_TIME_LABEL`, Europe/Madrid).
+ */
+const IMPORT_DATE_LABEL = new Intl.DateTimeFormat('es-ES', {
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Europe/Madrid'
+});
+
+/** Exportada para que el test de la revisión (#10) no dependa de una base de datos. */
+export function formatImportedAt(value: Date): string {
+  return IMPORT_DATE_LABEL.format(value);
 }
 
 /**
@@ -679,15 +710,24 @@ export async function loadFinanceImportar(
   try {
     return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
       await requireFinanceAdmin(client, membership);
-      const result = await client.query<FinanceImportBatchRow>(
-        `select id, filename, bank, imported_at::text as "importedAt",
+      const result = await client.query<FinanceImportBatchQueryRow>(
+        `select id, filename, bank, imported_at as "importedAt",
                 new_count as "newCount", dup_count as "dupCount"
            from app.finance_import_batches
           where household_id = $1
           order by imported_at desc`,
         [householdId]
       );
-      return { batches: result.rows };
+      return {
+        batches: result.rows.map((row) => ({
+          id: row.id,
+          filename: row.filename,
+          bank: row.bank,
+          importedAt: formatImportedAt(row.importedAt),
+          newCount: row.newCount,
+          dupCount: row.dupCount
+        }))
+      };
     });
   } catch (cause) {
     if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) return null;

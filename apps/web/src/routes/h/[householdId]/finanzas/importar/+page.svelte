@@ -24,21 +24,62 @@
     bank: string; newCount: number; dupCount: number; unknownRefs: string[];
     sample: Array<{ opDate: string; concept: string; provider: string | null; amountCents: string }>;
   }
-  interface NewAccountDraft { bankRef: string; name: string; kind: string; ownerLabel: string }
+  // Misma unión que `NewAccountInput` (finance-imports.server.ts): escrita a
+  // mano porque ese tipo vive en el paquete servidor y no puede importarse
+  // en el navegador. [Corrección revisión #5] Antes era `string`: los tres
+  // `<option>` la mantenían correcta por accidente, y una cuarta opción mal
+  // escrita solo habría fallado en tiempo de ejecución con un 422.
+  type AccountKind = 'comun' | 'personal' | 'inversion';
+  interface NewAccountDraft { bankRef: string; name: string; kind: AccountKind; ownerLabel: string }
+
+  function isAccountKind(value: string): value is AccountKind {
+    return value === 'comun' || value === 'personal' || value === 'inversion';
+  }
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+  }
+
+  /**
+   * [Corrección revisión #2] Una ruta `/api` de SvelteKit serializa
+   * `error(status, message)` como JSON `{ message }`: sin este parseo el
+   * texto en pantalla era el copy en español con el blob JSON pegado detrás
+   * («…: {"message":"El extracto supera…"}»). Mismo criterio que `getJson`
+   * en `lib/finance/api.ts`: si el cuerpo no es JSON legible, se usa tal
+   * cual, y si viene vacío, el status ya es información suficiente.
+   */
+  async function readErrorMessage(response: Response): Promise<string> {
+    const body = await response.text().catch(() => '');
+    try {
+      const parsed: unknown = JSON.parse(body);
+      if (isRecord(parsed) && typeof parsed.message === 'string' && parsed.message) return parsed.message;
+    } catch {
+      // Cuerpo no-JSON: se usa el texto crudo si no viene vacío.
+    }
+    return body || `Error ${response.status}`;
+  }
 
   let file = $state<File | null>(null);
   let preview = $state<Preview | null>(null);
   let newAccounts = $state<NewAccountDraft[]>([]);
   let busy = $state(false);
   let importError = $state<string | null>(null);
-  let importSuccess = $state<string | null>(null);
 
-  const confirmDisabled = $derived(busy || newAccounts.some((draft) => !draft.name.trim()));
+  // [Corrección revisión #4] El servidor exige además `ownerLabel` de 1 a 80
+  // caracteres (`isNewAccountInput`, imports/confirm/+server.ts): vaciar el
+  // campo «Titular» dejaba el botón habilitado y devolvía un 422 que, por el
+  // Issue #2, se leía como JSON crudo.
+  const confirmDisabled = $derived(
+    busy || newAccounts.some((draft) => !draft.name.trim() || !draft.ownerLabel.trim())
+  );
+
+  function patchDraft(index: number, patch: Partial<NewAccountDraft>): void {
+    newAccounts = newAccounts.map((entry, at) => (at === index ? { ...entry, ...patch } : entry));
+  }
 
   async function doPreview(chosen: File): Promise<void> {
     busy = true;
     importError = null;
-    importSuccess = null;
     try {
       const form = new FormData();
       form.append('file', chosen);
@@ -47,13 +88,25 @@
         body: form
       });
       if (!response.ok) {
-        importError = `No se pudo analizar el fichero: ${await response.text()}`;
+        importError = `No se pudo analizar el fichero: ${await readErrorMessage(response)}`;
+        // [Corrección revisión #8] Sin este reset, la previsualización del
+        // fichero ANTERIOR se quedaba en pantalla junto al error del nuevo.
+        preview = null;
+        file = null;
         return;
       }
       const result = (await response.json()) as Preview;
       file = chosen;
       preview = result;
       newAccounts = result.unknownRefs.map((bankRef) => ({ bankRef, name: '', kind: 'personal', ownerLabel: 'familia' }));
+    } catch {
+      // [Corrección revisión #2] Sin conexión, DNS o servidor caído, `fetch`
+      // RECHAZA en vez de resolver con `ok: false`. Sin este catch la promesa
+      // moría como unhandled rejection: «Analizando…» desaparecía y no
+      // aparecía ningún aviso, dejando al usuario sin saber si se importó.
+      importError = 'No hemos podido analizar el fichero. Comprueba tu conexión y vuelve a intentarlo.';
+      preview = null;
+      file = null;
     } finally {
       busy = false;
     }
@@ -68,7 +121,7 @@
       form.append('file', file);
       form.append('payload', JSON.stringify({
         newAccounts: newAccounts.map((draft) => ({
-          bankRef: draft.bankRef, name: draft.name.trim(), kind: draft.kind, ownerLabel: draft.ownerLabel
+          bankRef: draft.bankRef, name: draft.name.trim(), kind: draft.kind, ownerLabel: draft.ownerLabel.trim()
         }))
       }));
       const response = await fetch(`/api/v1/finance/imports/confirm?household=${context.household.id}`, {
@@ -76,15 +129,23 @@
         body: form
       });
       if (!response.ok) {
-        importError = `No se pudo confirmar la importación: ${await response.text()}`;
+        importError = `No se pudo confirmar la importación: ${await readErrorMessage(response)}`;
         return;
       }
       const result = (await response.json()) as { newCount: number; dupCount: number };
-      importSuccess = `Importadas ${result.newCount} nuevas (${result.dupCount} duplicadas).`;
+      // [Corrección revisión #3] Antes: `importSuccess`, una `.success-message`
+      // paralela que no caducaba nunca y podía pintarse a la vez que la nota
+      // unificada de `ActionStatus` (p. ej. al confirmar e inmediatamente
+      // deshacer OTRO lote). Ahora usa el mismo canal: una sola nota, efímera.
+      actionStatus.set({ tone: 'success', text: `Importadas ${result.newCount} nuevas (${result.dupCount} duplicadas).` });
       file = null;
       preview = null;
       newAccounts = [];
       await invalidate('cc:finance');
+    } catch {
+      // [Corrección revisión #2] Mismo motivo que en `doPreview`: un fallo de
+      // red a mitad de la subida no debe dejar la pantalla en silencio.
+      importError = 'No hemos podido confirmar la importación. Comprueba tu conexión y vuelve a intentarlo.';
     } finally {
       busy = false;
     }
@@ -92,13 +153,6 @@
 
   function undoBatch(batch: { id: string; filename: string }): void {
     if (!window.confirm(`¿Deshacer la importación de ${batch.filename}?`)) return;
-    // El aviso de confirmación («Importadas N nuevas…») es del flujo de
-    // fichero, no de un comando: `OptimisticActions` no lo conoce y no lo
-    // retira solo. Sin este reset se quedaba en pantalla para siempre —ni un
-    // nuevo fichero ni el propio deshacer lo tocaban— y competía con la nota
-    // «Guardado ✓» de `ActionStatus`, dos `.success-message` a la vez.
-    importSuccess = null;
-    importError = null;
     void optimistic.run(financeCommand(context.household.id, { kind: 'finance.import.undo', batchId: batch.id }));
   }
 </script>
@@ -107,12 +161,22 @@
   <PageHeader eyebrow="Finanzas" title="Importar" support="CaixaBank, Deutsche Bank, OpenBank o Amex" />
   <FinanceNav pendingReviewCount={data.pendingReviewCount} />
   <ActionStatus status={actionStatus} />
-  {#if importSuccess}<p class="success-message" role="status">{importSuccess}</p>{/if}
   {#if importError}<p class="form-error" role="alert">{importError}</p>{/if}
 
   <label class="button primary importar-boton">
     Elegir fichero (.xls/.xlsx)
-    <input type="file" accept=".xls,.xlsx" hidden
+    <!--
+      [Corrección revisión #1] `hidden` (=`display:none`) sacaba el input del
+      orden de tabulación y del árbol de accesibilidad: sin ratón ni pantalla
+      táctil no había forma de abrir el selector, y un lector de pantalla
+      anunciaba el texto del `<label>` como texto suelto, no como control.
+      `.sr-only` (ocultamiento por *clip*, ya usado en el resto de la casa)
+      mantiene el aspecto de botón y deja el input focusable y anunciado; el
+      foco se ve con `:focus-within` en el label. `disabled={busy}` de paso
+      impide elegir un segundo fichero mientras el primero se analiza
+      (revisión #8: dos previsualizaciones ya no pueden pisarse).
+    -->
+    <input type="file" accept=".xls,.xlsx" class="sr-only" disabled={busy}
       onchange={(event) => {
         const chosen = event.currentTarget.files?.[0];
         event.currentTarget.value = '';
@@ -129,18 +193,21 @@
         <fieldset class="cuenta-nueva">
           <legend>Cuenta nueva detectada: <span class="cifra">{draft.bankRef}</span></legend>
           <label>Nombre de la cuenta nueva
-            <input value={draft.name} placeholder="p. ej. Cuenta común OpenBank"
-              oninput={(event) => (newAccounts = newAccounts.map((entry, at) => (at === index ? { ...entry, name: event.currentTarget.value } : entry)))} />
+            <input value={draft.name} placeholder="p. ej. Cuenta común OpenBank" maxlength="120"
+              oninput={(event) => patchDraft(index, { name: event.currentTarget.value })} />
           </label>
           <label>Tipo
             <select value={draft.kind}
-              onchange={(event) => (newAccounts = newAccounts.map((entry, at) => (at === index ? { ...entry, kind: event.currentTarget.value } : entry)))}>
+              onchange={(event) => {
+                const { value } = event.currentTarget;
+                if (isAccountKind(value)) patchDraft(index, { kind: value });
+              }}>
               <option value="comun">común</option><option value="personal">personal</option><option value="inversion">inversión</option>
             </select>
           </label>
           <label>Titular
-            <input value={draft.ownerLabel}
-              oninput={(event) => (newAccounts = newAccounts.map((entry, at) => (at === index ? { ...entry, ownerLabel: event.currentTarget.value } : entry)))} />
+            <input value={draft.ownerLabel} maxlength="80"
+              oninput={(event) => patchDraft(index, { ownerLabel: event.currentTarget.value })} />
           </label>
         </fieldset>
       {/each}
@@ -166,9 +233,7 @@
 
   <section>
     <h2>Historial de importaciones</h2>
-    {#if !data.importar}
-      <p class="empty-state">Ahora mismo no podemos leer el historial.</p>
-    {:else if data.importar.batches.length === 0}
+    {#if data.importar.batches.length === 0}
       <p class="empty-state">Aún no se ha importado ningún extracto.</p>
     {:else}
       <div class="importar-scroll">
@@ -177,7 +242,7 @@
           <tbody>
             {#each data.importar.batches as batch (batch.id)}
               <tr>
-                <td class="cifra">{batch.importedAt.slice(0, 16).replace('T', ' ')}</td>
+                <td class="cifra">{batch.importedAt}</td>
                 <td>{batch.filename}</td>
                 <td>{BANK_LABELS[batch.bank] ?? batch.bank}</td>
                 <td class="cifra">{batch.newCount}</td>
@@ -193,7 +258,8 @@
 </div>
 
 <style>
-  .importar-boton { display: inline-block; }
+  .importar-boton { display: inline-block; position: relative; }
+  .importar-boton:focus-within { outline: .2rem solid var(--primary); outline-offset: .2rem; }
   .importar-scroll { overflow-x: auto; }
   .cuenta-nueva { display: grid; gap: var(--space-2); }
 </style>

@@ -1,7 +1,13 @@
 import type { Pool } from 'pg';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { intParam, parseReadFilters, parseTransactionsQuery, requireFinanceRequest } from '../src/lib/server/finance.server';
+import {
+  formatImportedAt,
+  intParam,
+  parseReadFilters,
+  parseTransactionsQuery,
+  requireFinanceRequest
+} from '../src/lib/server/finance.server';
 
 // Pool inyectado: el guard no debe depender de si DATABASE_URL está puesta en
 // el proceso de vitest. `FAKE_POOL` solo tiene que existir; nunca se usa.
@@ -349,5 +355,15 @@ describe('I2: requireFinanceAdmin es el cerrojo aplicativo, no una comprobación
     );
     expect(movimientos).toBeNull();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('formatImportedAt: revisión T12 #10 — imported_at se pinta en Europe/Madrid, no en el TimeZone de la sesión', () => {
+  it('22:30 en Madrid (verano, CEST = UTC+2) se lee 22:30, no 20:30 (lo que daría un ::text sin zona)', () => {
+    expect(formatImportedAt(new Date('2026-08-01T20:30:00.000Z'))).toBe('01/08/2026, 22:30');
+  });
+
+  it('medianoche en Madrid cae en el día siguiente en UTC: la etiqueta sigue la fecha de Madrid', () => {
+    expect(formatImportedAt(new Date('2026-08-01T22:15:00.000Z'))).toBe('02/08/2026, 00:15');
   });
 });

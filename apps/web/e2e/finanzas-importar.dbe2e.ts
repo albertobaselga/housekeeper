@@ -26,7 +26,15 @@ test('importar: previsualizar, dar de alta la cuenta, confirmar y deshacer', asy
   });
 
   await expect(page.locator('body')).toContainText('2 nuevas');
-  await page.getByLabel('Nombre de la cuenta nueva').fill('OpenBank E2E');
+  // [Corrección revisión #9] `retries: 1` (playwright.db.config.ts) puede
+  // volver a correr esta prueba sobre la MISMA base si el fallo anterior fue
+  // posterior a confirmar: «Deshacer» borra lote y transacciones, pero no la
+  // cuenta que este test dio de alta, así que en la repetición `unknownRefs`
+  // viene vacío, el fieldset no se pinta, y un `.fill(...)` incondicional
+  // agotaría el timeout — convirtiendo una intermitencia en rojo fijo, sin
+  // posibilidad de que el reintento pase nunca.
+  const cuentaNueva = page.getByLabel('Nombre de la cuenta nueva');
+  if ((await cuentaNueva.count()) > 0) await cuentaNueva.fill('OpenBank E2E');
   await page.getByRole('button', { name: 'Confirmar importación' }).click();
 
   await expect(page.locator('.success-message')).toContainText('Importadas 2');
