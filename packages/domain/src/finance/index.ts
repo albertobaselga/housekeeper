@@ -21,4 +21,4 @@ export * from "./event-rules.js";
 
 export * from "./kpis.js";
 
-// pivot (Task 11)
+export * from "./pivot.js";
