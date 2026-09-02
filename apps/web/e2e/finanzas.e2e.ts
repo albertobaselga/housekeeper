@@ -1,6 +1,6 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-import { HOUSEHOLD, loginAs } from './helpers';
+import { HOUSEHOLD, loginAs, nativeDragDrop } from './helpers';
 
 test('admin en modo fixture: el Dashboard de Finanzas pinta KPIs, flujo de caja y proveedores', async ({ page }) => {
   await loginAs(page, 'admin');
@@ -190,24 +190,10 @@ test('Movimientos: «+ Añadir manual» abre y cierra el formulario', async ({ p
   await expect(page.locator('.action-form')).toHaveCount(0);
 });
 
-// Task 13: drag-and-drop nativo del pivot de Analítica. `locator.dragTo()`
-// simula el arrastre por eventos de RATÓN, y Chromium bajo CDP no siempre los
-// traduce a la máquina de estados nativa de HTML5 DnD (dragstart/dragover/
-// drop) — es una limitación conocida de Playwright con d&d nativo, no del
-// marcado. La técnica que SÍ funciona (documentada por Playwright para este
-// caso) es despachar los eventos de arrastre a mano compartiendo un único
-// `DataTransfer` real entre origen y destino: los handlers de PivotTable
-// reciben un `DragEvent` con `dataTransfer` genuino (setDragImage/setData
-// funcionan) exactamente como en un arrastre real, solo que el gesto de
-// ratón que los dispara lo escribe la prueba en vez del sistema operativo.
-async function nativeDragDrop(page: Page, source: Locator, target: Locator): Promise<void> {
-  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
-  await source.dispatchEvent('dragstart', { dataTransfer });
-  await target.dispatchEvent('dragenter', { dataTransfer });
-  await target.dispatchEvent('dragover', { dataTransfer });
-  await target.dispatchEvent('drop', { dataTransfer });
-  await source.dispatchEvent('dragend', { dataTransfer });
-}
+// Task 13: drag-and-drop nativo del pivot de Analítica. `nativeDragDrop` (el
+// helper de dispatchEvent + DataTransfer real que SÍ dispara el dnd HTML5 de
+// PivotTable bajo Chromium/CDP) vive ahora en './helpers' (movido en la Task
+// 15 para que finanzas-pivot-dnd.e2e.ts lo reutilice sin duplicarlo).
 
 // Sin red (batería en modo fixture, sin DATABASE_URL) el POST a /api/v1/sync
 // responde 503 y el comando queda `queued` — el mismo camino que ya prueba

@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type JSHandle, type Locator, type Page } from '@playwright/test';
 
 export const HOUSEHOLD = '10000000-0000-4000-8000-000000000001';
 
@@ -80,4 +80,41 @@ export async function loginAs(page: Page, account: keyof typeof ACCOUNT_EMAILS):
   ).toBeVisible();
   await page.locator('button.account-card', { hasText: ACCOUNT_EMAILS[account] }).click();
   await page.waitForURL(`**/h/${HOUSEHOLD}/today`);
+}
+
+// [FASE 6, Task 13] Drag-and-drop nativo del pivot de Analítica. `locator.dragTo()`
+// simula el arrastre por eventos de RATÓN, y Chromium bajo CDP no siempre los
+// traduce a la máquina de estados nativa de HTML5 DnD (dragstart/dragover/
+// drop) — es una limitación conocida de Playwright con d&d nativo, no del
+// marcado. La técnica que SÍ funciona (documentada por Playwright para este
+// caso) es despachar los eventos de arrastre a mano compartiendo un único
+// `DataTransfer` real entre origen y destino: los handlers de PivotTable
+// reciben un `DragEvent` con `dataTransfer` genuino (setDragImage/setData
+// funcionan) exactamente como en un arrastre real, solo que el gesto de
+// ratón que los dispara lo escribe la prueba en vez del sistema operativo.
+//
+// Partido en dos pasos (Task 15) para poder inspeccionar el DOM A MITAD del
+// arrastre (p. ej. las clases `dnd-target`/`dnd-dimmed` que solo existen
+// mientras `dragging !== null`): `nativeDragDrop` sigue siendo el atajo de un
+// solo gesto para quien no necesita ese punto intermedio.
+export async function nativeDragStart(page: Page, source: Locator): Promise<JSHandle<DataTransfer>> {
+  const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+  await source.dispatchEvent('dragstart', { dataTransfer });
+  return dataTransfer;
+}
+
+export async function nativeDrop(
+  source: Locator,
+  target: Locator,
+  dataTransfer: JSHandle<DataTransfer>
+): Promise<void> {
+  await target.dispatchEvent('dragenter', { dataTransfer });
+  await target.dispatchEvent('dragover', { dataTransfer });
+  await target.dispatchEvent('drop', { dataTransfer });
+  await source.dispatchEvent('dragend', { dataTransfer });
+}
+
+export async function nativeDragDrop(page: Page, source: Locator, target: Locator): Promise<void> {
+  const dataTransfer = await nativeDragStart(page, source);
+  await nativeDrop(source, target, dataTransfer);
 }
