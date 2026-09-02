@@ -155,10 +155,15 @@ export function isCategoryAggregateNode(node: PivotNodeLike, dims: readonly Pivo
 }
 
 export function toCategorySelectable(node: PivotNodeLike, dims: readonly PivotDimension[]): SelectableItem | null {
-  if (!isCategoryAggregateNode(node, dims)) return null;
+  // F6-I2 (R7): `node.catId!` compilaba apoyado en que `isCategoryAggregateNode`
+  // comprueba `catId !== null`, pero el estrechamiento no cruza la llamada. Se
+  // saca `catId` al cuerpo y se comprueba aquí: TS lo estrecha de verdad y, si
+  // la guarda cambiara, esto deja de compilar en vez de colar `undefined`.
+  const catId = node.catId;
+  if (catId === null || !isCategoryAggregateNode(node, dims)) return null;
   return {
     key: node.key, parentKey: parentKeyOf(node.key), provider: '', concept: null,
-    count: node.count, categoryId: node.catId!, label: node.label
+    count: node.count, categoryId: catId, label: node.label
   };
 }
 

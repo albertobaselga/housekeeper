@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ depends, locals, params, url }) => 
   if (analitica) return { analitica: { ...analitica, filters }, demo: false };
   // null ⇒ sin concesión viva (o sin usuario): cae a la maqueta/503 de abajo.
   return demoOrUnavailable(() => ({
-    analitica: { ...getFinanceAnaliticaFixture(), filters },
+    analitica: { ...getFinanceAnaliticaFixture(filters), filters },
     demo: true
   }));
 };

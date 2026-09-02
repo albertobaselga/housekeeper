@@ -143,9 +143,15 @@ export function createEventPayload(name: string, id: string = crypto.randomUUID(
 // ── Deshacer una recategorización ────────────────────────────────────────────
 // El ACK de sync no devuelve «categorías previas», así que el plan se captura
 // EN EL CLIENTE antes de soltar: las filas del pivot ya saben la categoría de
-// cada movimiento. Previa única → re-asignar el concepto (revierte también la
-// regla); previas mixtas → restauración por ids (la regla creada queda: el
-// toast lo avisa y se borra en Ajustes).
+// cada movimiento. Previa única → re-asignar el concepto; previas mixtas →
+// restauración por ids.
+//
+// F6-I1: ninguno de los dos caminos revierte la REGLA que creó el drop.
+// `finance.category.assignConcept` siempre inserta una regla nueva, así que
+// re-asignar el concepto deja dos reglas con el mismo patrón y categorías
+// distintas, y la restauración por ids deja intacta la original. Los
+// movimientos vuelven a su sitio; las reglas se borran en Ajustes, y el acuse
+// lo dice siempre (`runCategoryUndo` en PivotTable.svelte).
 
 /**
  * Forma mínima de una fila de movimiento tal como la sirve el servidor: solo

@@ -26,8 +26,11 @@
 >
   <option value="" disabled>— categoría —</option>
   {#each groups as group (group.parentId)}
-    {#if group.options.length === 1}
-      <option value={group.options[0]!.id}>{group.options[0]!.label}</option>
+    <!-- R7: sin `!`. `{@const}` con el elemento ya estrechado por el propio
+         `{#if}` evita las dos aserciones de índice que tenía este bloque. -->
+    {@const solo = group.options.length === 1 ? group.options[0] : undefined}
+    {#if solo}
+      <option value={solo.id}>{solo.label}</option>
     {:else}
       <optgroup label={group.label}>
         {#each group.options as option (option.id)}

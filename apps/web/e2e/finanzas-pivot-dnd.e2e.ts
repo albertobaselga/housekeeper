@@ -3,8 +3,9 @@ import { expect, test } from '@playwright/test';
 import { HOUSEHOLD, loginAs, nativeDragDrop, nativeDragStart, nativeDrop } from './helpers';
 
 // Misma razón que en finanzas.e2e.ts: sin la dimensión de proveedor activa,
-// «Mercadona» no se pinta nunca (la maqueta no tiene subcategorías).
-const ANALITICA = `/h/${HOUSEHOLD}/finanzas/analitica?dims=cat,prov`;
+// «Mercadona» no se pinta nunca (la maqueta no tiene subcategorías). El rango
+// va explícito (F6-M4) para no depender del reloj de la máquina.
+const ANALITICA = `/h/${HOUSEHOLD}/finanzas/analitica?dims=cat,prov&from=2026-01-01&to=2026-03-31`;
 
 test.beforeEach(async ({ page }) => {
   await loginAs(page, 'admin');

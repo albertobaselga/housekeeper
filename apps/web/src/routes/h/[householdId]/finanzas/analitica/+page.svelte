@@ -6,7 +6,7 @@
   import NatureStackChart from '$lib/components/finance/NatureStackChart.svelte';
   import PivotTable from '$lib/components/finance/PivotTable.svelte';
   import FinanceDetailPanel from '$lib/components/finance/FinanceDetailPanel.svelte';
-  import { formatCents } from '$lib/finance/format';
+  import { formatCents, formatPct } from '$lib/finance/format';
   import {
     buildNatureChartData,
     monthLabel,
@@ -56,7 +56,10 @@
   const noselP = $derived(a.eventsSummary.filter((e) => excludedEventIds.includes(e.id)));
   const sum = (list: typeof a.eventsSummary, k: 'netCents' | 'incomeCents' | 'expenseCents') =>
     list.reduce((acc, e) => acc + e[k], 0n);
-  const pct = (v: number | null) => (v === null ? '—' : `${v} %`);
+  // F6-S1: los porcentajes de la Analítica salían con punto decimal («35.3 %»)
+  // frente a la coma del Dashboard porque esta pantalla se había declarado un
+  // `pct` local. `formatPct` de $lib/finance/format ya formatea con
+  // `toLocaleString('es-ES')` y ya lo usa el Dashboard: única definición.
 </script>
 
 <div class="page-wrap">
@@ -72,12 +75,12 @@
   <article class="kpi"><span>Gastos</span><strong class="cifra neg">{formatCents(a.summary.expenseCents)}</strong>
     <small>♻ {formatCents(a.summary.recurringExpenseCents)} · {pctOf(a.summary.recurringExpenseCents, a.summary.expenseCents)}% gasto · {pctOf(a.summary.recurringExpenseCents, a.summary.incomeCents)}% ingr<br />
       ✦ {formatCents(a.summary.extraordinaryExpenseCents)} · {pctOf(a.summary.extraordinaryExpenseCents, a.summary.expenseCents)}% gasto · {pctOf(a.summary.extraordinaryExpenseCents, a.summary.incomeCents)}% ingr</small></article>
-  <article class="kpi"><span>Tasa ahorro bruta</span><strong class="cifra">{pct(a.summary.grossSavingsRate)}</strong>
+  <article class="kpi"><span>Tasa ahorro bruta</span><strong class="cifra">{formatPct(a.summary.grossSavingsRate)}</strong>
     <small>{formatCents(a.summary.incomeCents + a.summary.recurringExpenseCents)} · sin extraordinarios ni inversión</small></article>
-  <article class="kpi"><span>Tasa ahorro neta</span><strong class="cifra">{pct(a.summary.netSavingsRate)}</strong>
+  <article class="kpi"><span>Tasa ahorro neta</span><strong class="cifra">{formatPct(a.summary.netSavingsRate)}</strong>
     <small>{formatCents(a.summary.savingsCents)} · gasto total, sin inversión</small></article>
   <article class="kpi"><span>Inversión</span><strong class="cifra pos">{formatCents(a.summary.investedCents)}</strong>
-    <small>{pct(a.summary.investmentRate)} sobre ingreso total</small></article>
+    <small>{formatPct(a.summary.investmentRate)} sobre ingreso total</small></article>
   <article class="kpi"><span>Free cash flow</span>
     <strong class="cifra {a.summary.freeCashFlowCents >= 0n ? 'pos' : 'neg'}">{formatCents(a.summary.freeCashFlowCents)}</strong>
     <small>{a.summary.freeCashFlowCents >= 0n ? 'caja generada' : 'caja destruida'} · ingresos − gastos − inversión</small></article>
@@ -190,6 +193,13 @@
       <button type="button" class="chip" class:activa={recurrence === 'recurrente'} onclick={() => (recurrence = 'recurrente')}>♻ Recurrente</button>
       <button type="button" class="chip" class:activa={recurrence === 'extraordinario'} onclick={() => (recurrence = 'extraordinario')}>✦ Extraordinario</button>
     </div>
+    {#if pivotRows.length === 0}
+      <!-- F6-M1: el guard de vacío de PivotTable solo mira la búsqueda, así que
+           filtrar por naturaleza sin coincidencias dejaba la tabla con la banda
+           EVENTOS sola y sin explicar por qué. El filtro de naturaleza vive
+           aquí, así que aquí se explica. -->
+      <p class="vacio">Sin movimientos con esa naturaleza en el rango.</p>
+    {:else}
     <PivotTable
       rows={pivotRows}
       months={a.months}
@@ -199,6 +209,7 @@
       householdId={page.params.householdId ?? ''}
       onOpenIds={(ids, label, sub) => (panel = { kind: 'ids', ids, label, sub })}
     />
+    {/if}
   </section>
 
   {#if panel}

@@ -124,10 +124,19 @@ describe('PivotTable: selección con Shift + checkbox (T12)', () => {
       /const puedeDeshacer = plan\.reassignments\.length > 0 \|\| plan\.bulkRestores\.length > 0;/
     );
     expect(table).toMatch(/r\.ok && movidos > 0 && puedeDeshacer \? \{ onUndo: \(\) => runCategoryUndo\(plan\) \} : \{\}/);
-    // Defensa en profundidad en runCategoryUndo: si el lote saliera vacío de
-    // todos modos, el acuse no puede ser el genérico "No hay nada que asignar".
-    expect(table).toMatch(/if \(payloads\.length === 0\)/);
-    expect(table).not.toMatch(/if \(payloads\.length === 0\) \{\s*toast = \{ message: 'No hay nada que asignar' \}/);
+    // T12-M6: la rama «No se pudo deshacer: N sin categoría previa» era
+    // inalcanzable tras esa guarda y se borró en vez de condicionarla; un
+    // mensaje muerto es peor que ninguno.
+    expect(table).not.toMatch(/No se pudo deshacer/);
+  });
+
+  it('F6-I1: el acuse de «Deshacer» avisa SIEMPRE de que las reglas creadas se conservan', () => {
+    // El servidor no revierte la regla por ninguno de los dos caminos del plan
+    // (`finance.category.assignConcept` siempre INSERTA una nueva): condicionar
+    // el aviso a `bulkRestores` dejaba el camino `reassignments` prometiendo un
+    // «Deshecho» limpio que la capa de reglas no cumple.
+    expect(table).toContain("const aviso = ' · las reglas creadas se conservan (bórralas en Ajustes)';");
+    expect(table).not.toMatch(/plan\.bulkRestores\.length > 0 \? ' · las reglas creadas/);
   });
 
   it('el plan de deshacer de una recategorización cubre TAMBIÉN una hoja de movimiento suelta, no solo conceptos', () => {

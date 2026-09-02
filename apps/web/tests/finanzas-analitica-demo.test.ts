@@ -1,9 +1,23 @@
 import { describe, expect, it } from 'vitest';
 
+import type { FinanceFilters } from '../src/lib/finance/filters';
 import { getFinanceAnaliticaFixture } from '../src/lib/server/fixtures.server';
 
+const FILTROS: FinanceFilters = {
+  from: '2026-01-01', to: '2026-03-31', granularity: 'month', accountIds: [], eventId: null
+};
+
 describe('maqueta sintética de Analítica (modo demo, datos inventados)', () => {
-  const demo = getFinanceAnaliticaFixture();
+  const demo = getFinanceAnaliticaFixture(FILTROS);
+
+  it('F6-M4: el rango anunciado es el de los filtros de la URL, no uno fijo propio', () => {
+    // Los DATOS siguen siendo la maqueta de tres meses; lo que se alinea con la
+    // URL es el rango que la pantalla anuncia (cabecera y «meses completos»).
+    const otro = getFinanceAnaliticaFixture({ ...FILTROS, from: '2026-02-01', to: '2026-02-28' });
+    expect(otro.from).toBe('2026-02-01');
+    expect(otro.to).toBe('2026-02-28');
+    expect(otro.months).toEqual(demo.months);
+  });
 
   it('cubre las cinco secciones del pivot y tres meses', () => {
     expect(demo.months).toEqual(['2026-01', '2026-02', '2026-03']);

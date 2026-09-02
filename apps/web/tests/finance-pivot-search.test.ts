@@ -2,8 +2,19 @@ import { describe, expect, it } from 'vitest';
 
 import {
   normalizeText, parseChips, rowMatchesChips, serializeChips, suggestChips,
-  type SearchChip
+  type SearchChip, type SuggestGroup
 } from '../src/lib/finance/pivot-state';
+
+/**
+ * T16-M1 (R7): `groups.find(...)!` era la única aserción de no-nulo del
+ * fichero. El helper lanza con el nombre del grupo que falta, así que el fallo
+ * dice qué pasó en vez de reventar con «cannot read property of undefined».
+ */
+function groupOf(groups: SuggestGroup[], name: string): SuggestGroup {
+  const found = groups.find((g) => g.group === name);
+  if (!found) throw new Error(`suggestChips no devolvió el grupo «${name}»`);
+  return found;
+}
 
 // Doble de `categoryPath` de la fase 4 (separador «›», el del repo).
 const catPathOf = (id: string) => (id === 'c1' ? 'Ocio › Bares' : 'Otra');
@@ -29,7 +40,7 @@ describe('suggestChips', () => {
   });
   it('sugiere categorías por su ruta completa', () => {
     const groups = suggestChips([row()], catPathOf, 'bares');
-    const cats = groups.find((g) => g.group === 'Categorías')!;
+    const cats = groupOf(groups, 'Categorías');
     expect(cats.items[0].chip).toEqual({ type: 'cat', value: 'c1' });
     expect(cats.items[0].label).toBe('Ocio › Bares');
   });
@@ -40,7 +51,7 @@ describe('suggestChips', () => {
       row({ prov: 'Medio Bar', totalCents: -900n, count: 1 })
     ];
     const groups = suggestChips(rows, catPathOf, 'bar');
-    const provs = groups.find((g) => g.group === 'Proveedores')!;
+    const provs = groupOf(groups, 'Proveedores');
     // Medio Bar tiene el mayor total en valor absoluto: va primero.
     // Zeta Bar y Alpha Bar empatan a total: desempatan por etiqueta ascendente.
     expect(provs.items.map((i) => i.label)).toEqual(['Medio Bar', 'Alpha Bar', 'Zeta Bar']);
@@ -54,7 +65,7 @@ describe('suggestChips', () => {
       row({ concept: 'aa', prov: 'b c', count: 5 })
     ];
     const groups = suggestChips(rows, catPathOf, 'aa');
-    const concepts = groups.find((g) => g.group === 'Conceptos')!;
+    const concepts = groupOf(groups, 'Conceptos');
     expect(concepts.items).toHaveLength(2);
     expect(concepts.items.map((i) => ({ chip: i.chip, detail: i.detail }))).toEqual([
       { chip: { type: 'concept', value: 'aa', prov: 'b c' }, detail: 'b c · 5 movs' },

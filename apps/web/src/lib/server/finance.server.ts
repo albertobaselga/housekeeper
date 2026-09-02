@@ -430,14 +430,18 @@ export async function loadFinanceAnalitica(
       // mostraría con todo a 0,00 € y los subtotales «No seleccionado»/«Total»
       // quedarían muertos.
       const readEvents: FinanceReadFilters = toReadFilters(filters);
+      // F6-S2: las cinco lecturas comparten UN `PoolClient` dentro de la misma
+      // transacción autorizada. `Promise.all` las solapaba sobre ese único
+      // cliente y `pg` avisaba («Calling client.query() when the client is
+      // already executing a query», error a secas desde pg@9): no hay
+      // paralelismo real que ganar —un cliente serializa igualmente— así que
+      // se secuencian.
       const summary = await readFinanceSummary(client, householdId, read);
-      const [analytics, pivot, events, categories, accounts] = await Promise.all([
-        readFinanceAnalytics(client, householdId, read),
-        readFinancePivot(client, householdId, read),
-        readFinanceEventsSummary(client, householdId, readEvents),
-        readFinanceCategories(client, householdId),
-        readFinanceAccounts(client, householdId)
-      ]);
+      const analytics = await readFinanceAnalytics(client, householdId, read);
+      const pivot = await readFinancePivot(client, householdId, read);
+      const events = await readFinanceEventsSummary(client, householdId, readEvents);
+      const categories = await readFinanceCategories(client, householdId);
+      const accounts = await readFinanceAccounts(client, householdId);
       const cuentas = accounts.map((acc) => {
         if (!isFinanceAccountKind(acc.kind)) throw new Error(`kind de cuenta desconocido: ${acc.kind}`);
         return { id: acc.id, name: acc.name, kind: acc.kind };

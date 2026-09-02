@@ -35,6 +35,10 @@ export interface NatureChartPoint {
  * Nº de meses COMPLETOS dentro de [from, to], para mensualizar sin diluir con
  * un mes en curso a medias. Un mes cuenta solo si el rango cubre su primer y
  * último día; si no hay ninguno completo se devuelve 1 (no dividir por cero).
+ *
+ * F6-M8: NO es el `monthsInRange` de `packages/server/src/finance/queries.ts`,
+ * que con el mismo nombre devuelve la LISTA de meses del rango. Aquí se cuenta;
+ * allí se enumera. Importar el que no es compila y da una cifra sin sentido.
  */
 export function monthsInRange(from: string, to: string): number {
   const [fy, fm, fd] = from.split('-').map(Number);
@@ -48,7 +52,15 @@ export function monthsInRange(from: string, to: string): number {
   return Math.max(1, endIdx - startIdx + 1);
 }
 
-/** «2026-01» → «ene 2026» (mes corto de $lib/finance/format + año completo). */
+/**
+ * «2026-01» → «ene 2026» (mes corto de $lib/finance/format + año completo).
+ *
+ * F6-M8: distinto a propósito del `bucketLabel` de `format.ts`, que escribe
+ * «ene 26». Las columnas del pivot y del resumen mensual pueden abarcar varios
+ * años y se leen una junto a otra, así que llevan el año completo; los cubos
+ * del flujo de caja del Dashboard son una serie corta y caben con dos cifras.
+ * No se unifican: son dos decisiones tipográficas distintas, no un descuido.
+ */
 export function monthLabel(month: string): string {
   const [year, m] = month.split('-');
   return `${MONTHS_SHORT[Number(m) - 1] ?? month} ${year}`;

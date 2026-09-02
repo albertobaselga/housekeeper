@@ -442,12 +442,14 @@ function buildSettingsFixture() {
   return copy({
     household: HOUSEHOLD,
     // El papel de la maqueta es el que cada cuenta juega EN ESTE hogar.
-    members: DEMO_USERS.map(({ id, name, initials, memberships }) => ({
-      id,
-      name,
-      initials,
-      role: memberships[0]!.role
-    })),
+    members: DEMO_USERS.map(({ id, name, initials, memberships }) => {
+      // R7: sin `!`. Cada cuenta demo se construye con exactamente una
+      // membresía (`demoUser` arriba); si eso dejara de ser cierto, esto lo
+      // dice en vez de colar `undefined` como papel.
+      const [membership] = memberships;
+      if (!membership) throw new Error(`la cuenta demo ${id} no tiene membresía`);
+      return { id, name, initials, role: membership.role };
+    }),
     preferences: { locale: 'Español (España)', timeZone: 'Europe/Madrid', weekStarts: 'Lunes' }
   });
 }
@@ -473,9 +475,17 @@ export const getSettingsFixture = demoOnly('ajustes', buildSettingsFixture);
 
 // ── Finanzas (fase 4): corpus demo del módulo. Todo inventado. ───────────────
 
+// F6-I2 (R7): los movimientos de la maqueta referenciaban la cuenta por un
+// índice del array con aserción de no-nulo, que R7 prohíbe. Los ids son
+// constantes como las de categoría (CAT_SUPERMERCADO más abajo): se nombran
+// una vez y el array las usa, así que no hay índice que estrechar ni aserción
+// que sostener.
+const CUENTA_COMUN = 'fa000000-0000-4000-8000-000000000001';
+const CUENTA_NOMINA = 'fa000000-0000-4000-8000-000000000002';
+
 const FINANCE_ACCOUNTS = [
-  { id: 'fa000000-0000-4000-8000-000000000001', name: 'Cuenta común', bank: 'caixabank', kind: 'comun', ownerLabel: 'familia', archived: false },
-  { id: 'fa000000-0000-4000-8000-000000000002', name: 'Cuenta nómina', bank: 'openbank', kind: 'personal', ownerLabel: 'padre', archived: false },
+  { id: CUENTA_COMUN, name: 'Cuenta común', bank: 'caixabank', kind: 'comun', ownerLabel: 'familia', archived: false },
+  { id: CUENTA_NOMINA, name: 'Cuenta nómina', bank: 'openbank', kind: 'personal', ownerLabel: 'padre', archived: false },
   { id: 'fa000000-0000-4000-8000-000000000003', name: 'Plan índice', bank: 'deutsche_bank', kind: 'inversion', ownerLabel: 'familia', archived: false }
 ];
 
@@ -541,7 +551,7 @@ export const getFinanceDashboardFixture = demoOnly(
 // las demás filas como opcionales, no como ausentes.
 const FINANCE_TXS: FinanceTxDto[] = [
   {
-    id: 'fc000000-0000-4000-8000-000000000001', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
+    id: 'fc000000-0000-4000-8000-000000000001', accountId: CUENTA_COMUN, accountName: 'Cuenta común',
     opDate: '2026-08-28', valueDate: '2026-08-28', concept: 'COMPRA SUPERMERCADOS ENCINA MADRID',
     provider: 'SUPERMERCADOS ENCINA', providerNorm: 'supermercados encina', providerDisplay: 'Encina',
     amountCents: '-8734', balanceCents: '215600', codeCommon: '12', codeOwn: '300',
@@ -552,7 +562,7 @@ const FINANCE_TXS: FinanceTxDto[] = [
     dedupHash: 'demo-fixture-tx-0001', batchId: 'fb100000-0000-4000-8000-000000000001'
   },
   {
-    id: 'fc000000-0000-4000-8000-000000000002', accountId: FINANCE_ACCOUNTS[1]!.id, accountName: 'Cuenta nómina',
+    id: 'fc000000-0000-4000-8000-000000000002', accountId: CUENTA_NOMINA, accountName: 'Cuenta nómina',
     opDate: '2026-08-25', valueDate: '2026-08-25', concept: 'NOMINA AGOSTO TALLERES ROBLE SL',
     provider: 'TALLERES ROBLE SL', providerNorm: 'talleres roble sl', providerDisplay: 'Talleres Roble',
     amountCents: '212500', balanceCents: '389000', codeCommon: '01', codeOwn: '100',
@@ -563,7 +573,7 @@ const FINANCE_TXS: FinanceTxDto[] = [
     dedupHash: 'demo-fixture-tx-0002', batchId: 'fb100000-0000-4000-8000-000000000001'
   },
   {
-    id: 'fc000000-0000-4000-8000-000000000003', accountId: FINANCE_ACCOUNTS[1]!.id, accountName: 'Cuenta nómina',
+    id: 'fc000000-0000-4000-8000-000000000003', accountId: CUENTA_NOMINA, accountName: 'Cuenta nómina',
     opDate: '2026-08-20', valueDate: null, concept: 'TRASPASO A CUENTA COMUN',
     provider: null, providerNorm: null, providerDisplay: null,
     amountCents: '-50000', balanceCents: null, codeCommon: null, codeOwn: null,
@@ -573,7 +583,7 @@ const FINANCE_TXS: FinanceTxDto[] = [
     dedupHash: 'demo-fixture-tx-0003', batchId: null
   },
   {
-    id: 'fc000000-0000-4000-8000-000000000004', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
+    id: 'fc000000-0000-4000-8000-000000000004', accountId: CUENTA_COMUN, accountName: 'Cuenta común',
     opDate: '2026-08-20', valueDate: '2026-08-20', concept: 'TRANSFERENCIA DE CUENTA NOMINA',
     provider: null, providerNorm: null, providerDisplay: null,
     amountCents: '50000', balanceCents: '224334', codeCommon: '04', codeOwn: null,
@@ -584,7 +594,7 @@ const FINANCE_TXS: FinanceTxDto[] = [
     dedupHash: 'demo-fixture-tx-0004', batchId: null
   },
   {
-    id: 'fc000000-0000-4000-8000-000000000005', accountId: FINANCE_ACCOUNTS[0]!.id, accountName: 'Cuenta común',
+    id: 'fc000000-0000-4000-8000-000000000005', accountId: CUENTA_COMUN, accountName: 'Cuenta común',
     opDate: '2026-08-12', valueDate: '2026-08-12', concept: 'RECIBO LUZ DEL VALLE SA',
     provider: 'LUZ DEL VALLE SA', providerNorm: 'luz del valle sa', providerDisplay: 'Luz del Valle',
     amountCents: '-14210', balanceCents: '174334', codeCommon: '03', codeOwn: '210',
@@ -652,7 +662,13 @@ const analiticaMov = (id: string, date: string, cents: bigint) => ({ id, date, c
 
 function analiticaPivotRows(): AnaliticaPivotRow[] {
   const mov = analiticaMov;
-  const base = { sub: null, event: null, eventId: null, nat: null as AnaliticaPivotRow['nat'] };
+  // F6-I2 (R7): anotar el tipo en vez de asertarlo. Sin la anotación TS
+  // infería `nat: null` (literal) y las filas que lo pisan con 'recurrente' no
+  // encajaban; con `Pick<…>` el contexto ya es el union del contrato y no hace
+  // falta ningún `as` sobre el dato.
+  const base: Pick<AnaliticaPivotRow, 'sub' | 'event' | 'eventId' | 'nat'> = {
+    sub: null, event: null, eventId: null, nat: null
+  };
   return [
     // Gasto recurrente: Mercadona bajo Supermercado, tres meses.
     ...(['2026-01', '2026-02', '2026-03'] as const).map(
@@ -757,12 +773,20 @@ function analiticaPivotRows(): AnaliticaPivotRow[] {
   ];
 }
 
-/** Maqueta de Analítica: solo existe sin base de datos (demoOnly la protege). */
-export const getFinanceAnaliticaFixture = demoOnly('finanzas-analitica', (): AnaliticaFixture => {
+/**
+ * Maqueta de Analítica: solo existe sin base de datos (demoOnly la protege).
+ *
+ * F6-M4: toma los filtros como `getFinanceDashboardFixture(filters)`. Los DATOS
+ * siguen siendo la maqueta fija de tres meses; los filtros solo fijan el rango
+ * ANUNCIADO (`from`/`to`), que es de donde salen el rótulo de medias mensuales
+ * y el número de meses completos. Sin ellos la cabecera decía un rango y el
+ * rótulo de debajo otro.
+ */
+export const getFinanceAnaliticaFixture = demoOnly('finanzas-analitica', (filters: FinanceFilters): AnaliticaFixture => {
   const pivotRows = analiticaPivotRows();
   return {
-    from: '2026-01-01',
-    to: '2026-03-31',
+    from: filters.from,
+    to: filters.to,
     months: ['2026-01', '2026-02', '2026-03'],
     summary: {
       incomeCents: 900000n,

@@ -35,6 +35,11 @@
     let acc = 0;
     const out: Segment[] = [];
     for (const part of parts) {
+      // F6-M9: un tramo negativo (p. ej. `ingresosSinCents` = total − rec − ext
+      // con devoluciones) daría `h < 0` y `Math.max(1, seg.h)` pintaría 1 px en
+      // la posición equivocada en vez de omitirlo. Se salta igual que los
+      // tramos a cero, y sin acumularlo: la pila queda como si no existiera.
+      if (part.cents <= 0n) continue;
       const h = (n(part.cents) / (maxPos - minNeg)) * innerH;
       out.push({ x, yTop: y(acc + n(part.cents)), h, fill: part.fill, name: part.name, cents: part.cents });
       acc += n(part.cents);

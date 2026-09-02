@@ -165,7 +165,9 @@ describe('plan de deshacer una recategorización', () => {
     expect(txCat.get('t4')).toBeNull();
   });
 
-  it('categoría previa única → volver a asignar el concepto (revierte también la regla)', () => {
+  // F6-I1: re-asignar el concepto NO revierte la regla creada por el drop (el
+  // servidor siempre inserta una nueva); solo devuelve los movimientos.
+  it('categoría previa única → volver a asignar el concepto', () => {
     const movIdsByKey = new Map([['/cat:X/prov:P', ['t1', 't2']]]);
     const plan = planCategoryUndo([item({ key: '/cat:X/prov:P', provider: 'P', count: 2 })], movIdsByKey, txCat);
     expect(plan.reassignments).toEqual([{ provider: 'P', concept: null, categoryId: 'c1' }]);

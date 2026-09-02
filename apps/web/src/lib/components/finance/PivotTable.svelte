@@ -206,18 +206,20 @@
       ...plan.reassignments.map((r) => assignConceptToCategory(r.provider, r.concept, r.categoryId)),
       ...plan.bulkRestores.map((g) => bulkByIds(g.transactionIds, { categoryId: g.categoryId }))
     ];
-    const aviso = plan.bulkRestores.length > 0 ? ' · las reglas creadas se conservan (bórralas en Ajustes)' : '';
+    // F6-I1: el aviso es INCONDICIONAL. El servidor no revierte la regla por
+    // ninguno de los dos caminos: `finance.category.assignConcept` siempre
+    // INSERTA una regla nueva (nunca borra ni actualiza la anterior), así que
+    // la rama `reassignments` deja DOS reglas con el mismo patrón apuntando a
+    // categorías distintas, y la rama `bulkRestores` deja intacta la que creó
+    // el drop. Decir «Deshecho» a secas prometía lo que la capa de reglas no
+    // cumple.
+    const aviso = ' · las reglas creadas se conservan (bórralas en Ajustes)';
     const saltos = plan.skipped > 0 ? ` · ${plan.skipped} sin categoría previa` : '';
-    // Defensa en profundidad: `applyCategoryAssignment` ya no ofrece «Deshacer»
-    // cuando el plan no tiene nada que restaurar (ver `puedeDeshacer`), así que
-    // este lote no debería llegar vacío. Si llegara (plan construido en otro
-    // punto en el futuro), `acuse` con lote vacío devolvería su `vacio` por
-    // defecto («No hay nada que asignar»), que aquí sería engañoso: el usuario
-    // pulsó «Deshacer», no «asignar». El mensaje honesto es este.
-    if (payloads.length === 0) {
-      toast = { message: `No se pudo deshacer: ${plan.skipped} sin categoría previa` };
-      return;
-    }
+    // T12-M6: aquí vivía una rama para el lote vacío con un mensaje sobre los
+    // movimientos sin categoría previa. La guarda `puedeDeshacer` de
+    // `applyCategoryAssignment` la hacía inalcanzable (sin reasignaciones ni
+    // restauraciones no se ofrece «Deshacer»), y un mensaje muerto es peor que
+    // ninguno: se borró en vez de condicionarla.
     const r = await submit(payloads);
     toast = { message: acuse(r, `Deshecho${aviso}${saltos}`) };
   }

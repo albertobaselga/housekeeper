@@ -4,7 +4,10 @@ import { HOUSEHOLD, loginAs } from './helpers';
 
 // dims=cat,prov: con las dims por defecto (cat,sub) la maqueta no tiene
 // subcategorías y el proveedor no llegaría a pintarse nunca.
-const ANALITICA = `/h/${HOUSEHOLD}/finanzas/analitica?dims=cat,prov`;
+// from/to explícitos (F6-M4): la maqueta ya anuncia el rango de la URL, y sin
+// fijarlo el rótulo de «meses completos» dependería del reloj de la máquina
+// (por defecto parseFilters da el año hasta hoy).
+const ANALITICA = `/h/${HOUSEHOLD}/finanzas/analitica?dims=cat,prov&from=2026-01-01&to=2026-03-31`;
 
 test.beforeEach(async ({ page }) => {
   await loginAs(page, 'admin');
@@ -111,4 +114,8 @@ test('la empleada no alcanza la Analítica: 403 en ruta declarada sin capacidad'
   await loginAs(page, 'employee');
   const response = await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
   expect(response?.status()).toBe(403);
+  // T16-M2: el código por sí solo no distingue un 403 del guard de ruta de un
+  // 403 de cualquier otra capa. El cuerpo sí, y es el mismo que ya afirma
+  // finanzas.e2e.ts para el Dashboard.
+  await expect(page.locator('body')).toContainText('no está incluida en tu acceso');
 });
