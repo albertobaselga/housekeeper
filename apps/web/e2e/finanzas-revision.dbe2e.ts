@@ -49,7 +49,7 @@ test('el admin con concesión confirma un pendiente desde Revisión', async ({ p
   // en lote (`finance.transactions.bulk`): hasta esta corrección ni el dbe2e
   // ni la maqueta ejercitaban ese camino ni los estados sugerida_* de
   // STATUS_LABEL.
-  const boton = page.getByRole('button', { name: '✓ Confirmar 1 sugerencias' });
+  const boton = page.getByRole('button', { name: '✓ Confirmar 1 sugerencia' });
   await expect(boton).toBeVisible();
   await boton.click();
   await expect(page.locator('.success-message')).toContainText('Guardado ✓');

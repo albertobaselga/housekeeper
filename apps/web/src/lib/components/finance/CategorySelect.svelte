@@ -40,3 +40,14 @@
     {/if}
   {/each}
 </select>
+
+<style>
+  /*
+    [FASE 5, T10 · corrección ronda 2, Important 1] Sin `min-height` el
+    `<select>` nativo mide su propia línea de texto (~25 px): por debajo del
+    piso táctil de 44 px que exige `mobile-densidad.dbe2e.ts` (A3). Se aplica
+    aquí, en el componente compartido, para que Movimientos (T9) y Revisión
+    (T10) queden cubiertos con un solo cambio.
+  */
+  select { min-height: var(--row-data); }
+</style>

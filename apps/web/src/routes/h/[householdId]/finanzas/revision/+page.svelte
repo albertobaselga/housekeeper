@@ -101,8 +101,13 @@
     <p class="empty-state">Nada que revisar en este periodo ✨</p>
   {:else}
     {#if suggested.length > 0}
+      <!--
+        [FASE 5, T10 · corrección ronda 2, Minor 2] «1 sugerencias» no
+        concuerda en español. El plural solo se usa cuando de verdad hay más
+        de una.
+      -->
       <button class="button primary" type="button" onclick={confirmSuggested}>
-        ✓ Confirmar {suggested.length} sugerencias
+        ✓ Confirmar {suggested.length} {suggested.length === 1 ? 'sugerencia' : 'sugerencias'}
       </button>
     {/if}
     <div class="revision-scroll">
@@ -145,12 +150,25 @@
               </td>
               <td><RecurrenceChip value={row.recurrence} onchange={(next) => setRecurrence(row.id, next)} /></td>
               <td>
-                <input type="checkbox" aria-label="Crear regla al confirmar"
-                  checked={ruleFor.includes(row.id)}
-                  onchange={(event) => {
-                    const on = event.currentTarget.checked;
-                    ruleFor = on ? [...ruleFor, row.id] : ruleFor.filter((id) => id !== row.id);
-                  }} />
+                <!--
+                  [FASE 5, T10 · corrección ronda 2, Important 1] La marca
+                  nativa de una casilla mide 13×13: `mobile-densidad.dbe2e.ts`
+                  mide, para checkbox/radio, el `<label>` que la envuelve (es
+                  la diana real), y aquí no había ninguno. Se envuelve en un
+                  `<label>` con área ≥44×44 (mismo token `--row-data` que el
+                  resto del sistema) y el texto accesible se traslada al
+                  `<label>` (sr-only), sin duplicar el nombre accesible con un
+                  `aria-label` a la vez en el input y en su envoltorio.
+                -->
+                <label class="rule-toggle">
+                  <input type="checkbox"
+                    checked={ruleFor.includes(row.id)}
+                    onchange={(event) => {
+                      const on = event.currentTarget.checked;
+                      ruleFor = on ? [...ruleFor, row.id] : ruleFor.filter((id) => id !== row.id);
+                    }} />
+                  <span class="sr-only">Crear regla al confirmar</span>
+                </label>
               </td>
               <td>
                 <button class="button secondary small-button" type="button"
@@ -167,4 +185,11 @@
 
 <style>
   .revision-scroll { overflow-x: auto; }
+  .rule-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--row-data);
+    min-height: var(--row-data);
+  }
 </style>

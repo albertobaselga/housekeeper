@@ -17,6 +17,14 @@ const log = createLogger('web:finanzas:layout');
  * «Nada que revisar en este periodo ✨» — el badge prometía lo que la bandeja
  * no enseñaba. Se calcula en SQL (`current_date - interval '6 months'`) para
  * no duplicar el cálculo de fecha de la página.
+ *
+ * [FASE 5, T10 · corrección ronda 2, Minor 3] El límite inferior no bastaba:
+ * un movimiento con `op_date` futura (importado por adelantado) sumaba al
+ * badge sin aparecer en la bandeja, cuyo `to` por defecto es hoy. El badge
+ * es siempre «los últimos 6 meses hasta hoy», nunca un rango que el usuario
+ * pueda estrechar desde la URL de Revisión (`?from=&to=`): es un contador de
+ * navegación compartido por las siete pantallas del módulo, no puede leer un
+ * parámetro que solo tiene sentido en una de ellas.
  */
 export const load: LayoutServerLoad = async ({ depends, locals, params }) => {
   depends('cc:finance');
@@ -32,7 +40,8 @@ export const load: LayoutServerLoad = async ({ depends, locals, params }) => {
           `select count(*)::int as pending
              from app.finance_transactions
             where household_id = $1 and status <> 'confirmada'
-              and op_date >= (current_date - interval '6 months')`,
+              and op_date >= (current_date - interval '6 months')
+              and op_date <= current_date`,
           [params.householdId]
         );
         return result.rows[0]?.pending ?? 0;

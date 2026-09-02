@@ -20,3 +20,9 @@
   <option value="recurrente">♻ Recurrente</option>
   <option value="extraordinario">✦ Extraordinario</option>
 </select>
+
+<style>
+  /* [FASE 5, T10 · corrección ronda 2, Important 1] Ver CategorySelect.svelte:
+     mismo piso táctil de 44 px, mismo motivo. */
+  select { min-height: var(--row-data); }
+</style>
