@@ -107,7 +107,10 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   finance_event_name_taken: 'Ya existe un evento con ese nombre',
   finance_batch_not_found: 'Esa importación ya no existe',
   finance_transfer_sum_not_zero: 'La selección no suma cero',
-  finance_already_linked: 'Algún movimiento ya pertenece a una transferencia',
+  // [FASE 5 · integración del cierre, T14 concern 1] Lo emiten tres comandos
+  // (vincular, desvincular y borrar un manual vinculado) y la web traduce por
+  // código, así que el copy tiene que valer para los tres y decir qué hacer.
+  finance_already_linked: 'Ese movimiento ya pertenece a una transferencia: desvincúlala primero',
   finance_transfer_group_not_found: 'Esa transferencia ya no existe',
   finance_not_investment_account: 'La cuenta destino no es de inversión',
   finance_invest_needs_charge: 'Solo un cargo puede marcarse como inversión',
