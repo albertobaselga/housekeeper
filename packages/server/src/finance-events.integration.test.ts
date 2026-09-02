@@ -7,6 +7,7 @@ import { API_VERSION, type CommandAckV1, type CommandEnvelopeV1 } from "@houseke
 
 import { financeCommandHandler } from "./commands/finance.js";
 import { withAuthorizedTransaction, type AuthenticatedPrincipal } from "./database.js";
+import { readFinanceEventsSummary } from "./finance/queries.js";
 import { processSyncBatch } from "./sync.js";
 
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
@@ -368,5 +369,56 @@ describe.runIf(Boolean(adminUrl))("comandos de eventos y alias de proveedores de
 
     expect(await linkCount(categoryEventId)).toBe(linksBefore);
     expect(await ruleCountForEvent(categoryEventId)).toBe(rulesBefore);
+  });
+
+  // T11-M8/T11-R1: `txCount` del resumen está ACOTADO POR EL RANGO, no es el
+  // total del evento — es la diferencia que la web resuelve pidiendo el resumen
+  // dos veces (`loadFinanceEventos` calcula el `totalCount` sin rango). Aquí se
+  // fija contra Postgres el recuento acotado, que es el que podía mentir.
+  it("el txCount del resumen cuenta solo los movimientos dentro del rango", async () => {
+    const rango = await run(ADMIN, { kind: "finance.event.create", name: "Rango IT Eventos" });
+    expect(rango.status).toBe("accepted");
+    const rangoId = rango.resourceId as string;
+    const asignados = await run(ADMIN, {
+      kind: "finance.event.assignTransactions",
+      eventId: rangoId,
+      transactionIds: [FIN.tx1, FIN.tx2],
+      action: "add",
+    });
+    expect(asignados.status).toBe("accepted");
+    expect(await linkCount(rangoId)).toBe(2);
+
+    // Las fechas se leen de la base (`current_date - 15` / `- 5` de la
+    // fixture): construirlas en JS haría que el caso dependiese de la zona
+    // horaria del proceso frente a la del servidor.
+    const fechas = await withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+      const loaded = await client.query<{ id: string; op_date: string }>(
+        `select id, op_date::text as op_date from app.finance_transactions
+          where household_id = $1 and id = any($2::uuid[]) order by op_date`,
+        [HH, [FIN.tx1, FIN.tx2]],
+      );
+      return loaded.rows;
+    });
+    expect(fechas).toHaveLength(2);
+    const [antigua, reciente] = fechas;
+    expect(antigua?.id).toBe(FIN.tx1);
+    expect(reciente?.id).toBe(FIN.tx2);
+
+    const resumen = async (from: string, to: string): Promise<number | undefined> =>
+      withAuthorizedTransaction(appPool, ADMIN, HH, async (client) => {
+        const rows = await readFinanceEventsSummary(client, HH, {
+          from,
+          to,
+          accountIds: [],
+          eventId: null,
+          excludeEventIds: [],
+        });
+        return rows.find((row) => row.id === rangoId)?.txCount;
+      });
+
+    // Rango que solo cubre el movimiento reciente: uno de los dos.
+    expect(await resumen(reciente?.op_date ?? "", reciente?.op_date ?? "")).toBe(1);
+    // Rango completo: los dos.
+    expect(await resumen(antigua?.op_date ?? "", reciente?.op_date ?? "")).toBe(2);
   });
 });
