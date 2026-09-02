@@ -20,8 +20,11 @@ export function recurrenceFingerprint(
   return `${codeCommon ?? "??"}|${abs / 5000n}`;
 }
 
-/** Mediana ×2 (siempre entera) de una lista de bigints. */
+/** Mediana ×2 (siempre entera) de una lista de bigints.
+ * Precondición: `values` no vacío (ambas llamadas ocurren tras comprobar `months.size >= 2`,
+ * que implica `txs.length >= 2`). */
 function median2(values: readonly bigint[]): bigint {
+  if (values.length === 0) throw new RangeError("median2: se requiere al menos un valor");
   const sorted = [...values].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const mid = sorted.length >> 1;
   return sorted.length % 2 === 1
@@ -68,6 +71,8 @@ export function assessRecurrence(txs: readonly FinanceTxView[]): RecurrenceVerdi
   for (const groupTxs of groups.values()) {
     const verdict = isRecurrentGroup(groupTxs) ? "recurrente" : "extraordinario";
     for (const t of groupTxs) {
+      // t.transferGroupId ya está descartado al agrupar (bucle anterior); se repite aquí
+      // como red de seguridad fiel al original Python, aunque hoy sea inalcanzable.
       if (t.recurrenceManual || t.transferGroupId !== null) continue;
       if (t.recurrence !== verdict) verdicts.push({ txId: t.id, recurrence: verdict });
     }

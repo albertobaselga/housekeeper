@@ -40,6 +40,17 @@ describe("isRecurrentGroup (umbrales exactos del origen)", () => {
     expect(isRecurrentGroup([at("2026-05-30", -1000n), at("2026-06-02", -9000n)])).toBe(true); // wrap fin de mes
     expect(isRecurrentGroup([at("2026-05-02", -1000n), at("2026-06-20", -9000n, { concept: "CUOTA CLUB" })])).toBe(true);
     expect(isRecurrentGroup([at("2026-05-02", -1000n, { codeCommon: "05" }), at("2026-06-20", -9000n, { codeCommon: "05" })])).toBe(true);
+    // solo mediana estable decide: días 2 y 20 (sin wrap, diff 18 > 4), concepto "PAGO", sin código 03/05
+    expect(isRecurrentGroup([at("2026-05-02", -1000n), at("2026-06-20", -2000n)])).toBe(true); // 0,333 ≤ 0,35
+    expect(isRecurrentGroup([at("2026-05-02", -1000n), at("2026-06-20", -2100n)])).toBe(false); // 0,355 > 0,35
+    // mismo caso estable, con 3 importes (uno de más en mayo) para forzar la rama impar de median2
+    expect(
+      isRecurrentGroup([
+        at("2026-05-02", -1000n),
+        at("2026-05-03", -1500n),
+        at("2026-06-20", -2500n),
+      ]),
+    ).toBe(true);
   });
   it("1 mes: nunca recurrente", () => {
     expect(isRecurrentGroup([at("2026-06-01", -100n), at("2026-06-20", -100n)])).toBe(false);
