@@ -96,3 +96,19 @@ test('el árbol se despliega con teclado (camino accesible equivalente)', async 
   await expect(disparador).toHaveAttribute('aria-expanded', 'true');
   await expect(tabla).toContainText('Mercadona');
 });
+
+// Misma forma que «la empleada no alcanza Finanzas» de finanzas.e2e.ts: la
+// Analítica es una ruta hija más y hereda la misma declaración de capacidad,
+// pero al vivir en su propio fichero de fixture (T14) le falta cobertura
+// directa — el `beforeEach` de este fichero entra como admin, así que aquí se
+// vuelve a entrar como empleada antes de pedir la ruta.
+test('la empleada no alcanza la Analítica: 403 en ruta declarada sin capacidad', async ({ page }) => {
+  // El `beforeEach` de este fichero entra como admin: sin limpiar cookies,
+  // `/login` redirige (303) a Hoy porque ya hay sesión y nunca enseña el
+  // selector de cuentas que `loginAs` necesita (mismo patrón que
+  // mobile-densidad.dbe2e.ts al cambiar de cuenta a mitad de test).
+  await page.context().clearCookies();
+  await loginAs(page, 'employee');
+  const response = await page.goto(`/h/${HOUSEHOLD}/finanzas/analitica`);
+  expect(response?.status()).toBe(403);
+});
