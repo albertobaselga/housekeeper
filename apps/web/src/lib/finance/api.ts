@@ -3,6 +3,14 @@
  * va por comandos de /api/v1/sync (fase 5). Los tipos DTO se importan SOLO
  * como tipos del paquete servidor: se borran al compilar y nada de
  * @housekeeper/server llega al navegador.
+ *
+ * [T12-R1, despacho de cierre F5] También expone `isRecord` y las guardas de
+ * forma de las dos respuestas de importación (`isFinanceImportPreview`,
+ * `isFinanceImportConfirmResult`): son utilidades puras sin red propia — las
+ * dos rutas de `imports/{preview,confirm}` son REST, no lecturas de este
+ * cliente, pero viven aquí para que `importar/+page.svelte` no repita un
+ * guard sin `as` (R7) y para que su unidad de prueba tenga un módulo `.ts`
+ * importable desde vitest (el repo no tiene `@testing-library/svelte`).
  */
 import type {
   AnalyticsRow,
@@ -34,6 +42,59 @@ export type FinanceDetailMode =
   | { kind: 'ids'; ids: string[]; label: string; sub?: string | null }
   | { kind: 'grupo'; groupId: string; label: string };
 
+/**
+ * [T12-R1, despacho de cierre F5] Guarda de narrowing sin `as` (R7): un
+ * `value is T` genérico deja que el llamador elija el tipo esperado sin que
+ * la función finja verificar su FORMA completa — `getJson` es genérico sobre
+ * DTOs muy distintos (varios de ellos arrays, p. ej. `series`/`breakdown`),
+ * así que el único caso real a descartar aquí es que el cuerpo del JSON sea
+ * `null`/`undefined` o un primitivo (número, cadena, booleano): lo que de
+ * verdad puede llegar en una redirección de sesión o un error de plataforma
+ * con un 200. Un objeto con la forma equivocada sigue sin detectarse aquí —
+ * para eso están las guardas de forma completa como `isFinanceImportPreview`
+ * en `importar/+page.svelte`, que sí conocen sus campos.
+ */
+export function isRecord<T = Record<string, unknown>>(value: unknown): value is T {
+  return typeof value === 'object' && value !== null;
+}
+
+/** Forma de la previsualización de `POST /api/v1/finance/imports/preview`. */
+export interface FinanceImportPreviewDto {
+  bank: string;
+  newCount: number;
+  dupCount: number;
+  unknownRefs: string[];
+  sample: Array<{ opDate: string; concept: string; provider: string | null; amountCents: string }>;
+}
+
+/**
+ * A diferencia de `isRecord`, esta guarda SÍ conoce los campos: un objeto
+ * bien formado pero vacío, o con un campo del tipo equivocado, también cae —
+ * el caso real de una redirección de sesión que devuelve `{}` con 200 (o de
+ * un cambio de contrato del servidor que ninguna prueba de tipos detecta
+ * porque el cast que sustituye era precisamente el problema, T12-R1).
+ */
+export function isFinanceImportPreview(value: unknown): value is FinanceImportPreviewDto {
+  return (
+    isRecord(value) &&
+    typeof value.bank === 'string' &&
+    typeof value.newCount === 'number' &&
+    typeof value.dupCount === 'number' &&
+    Array.isArray(value.unknownRefs) &&
+    Array.isArray(value.sample)
+  );
+}
+
+/** Forma de la respuesta de `POST /api/v1/finance/imports/confirm`. */
+export interface FinanceImportConfirmResultDto {
+  newCount: number;
+  dupCount: number;
+}
+
+export function isFinanceImportConfirmResult(value: unknown): value is FinanceImportConfirmResultDto {
+  return isRecord(value) && typeof value.newCount === 'number' && typeof value.dupCount === 'number';
+}
+
 async function getJson<T>(fetchFn: typeof fetch, path: string, params: URLSearchParams): Promise<T> {
   const response = await fetchFn(`/api/v1/finance/${path}?${params}`);
   if (!response.ok) {
@@ -42,13 +103,16 @@ async function getJson<T>(fetchFn: typeof fetch, path: string, params: URLSearch
     const detail = await response.text().catch(() => '');
     throw new FinanceApiError(response.status, detail || `GET /api/v1/finance/${path} → ${response.status}`);
   }
+  let parsed: unknown;
   try {
-    return (await response.json()) as T;
+    parsed = await response.json();
   } catch {
     // Un 200 con cuerpo no-JSON (redirección de sesión, error de plataforma)
     // no debe escapar como SyntaxError crudo: unifica el contrato de error.
     throw new FinanceApiError(response.status, 'respuesta no válida');
   }
+  if (!isRecord<T>(parsed)) throw new FinanceApiError(response.status, 'respuesta no válida');
+  return parsed;
 }
 
 export function financeApi(householdId: string, fetchFn: typeof fetch = fetch) {

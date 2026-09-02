@@ -6,6 +6,7 @@
   import { useAppContext } from '$lib/auth/context';
   import { financeCommand } from '$lib/finance/commands';
   import { formatCents } from '$lib/finance/format';
+  import { isFinanceImportConfirmResult, isFinanceImportPreview, isRecord, type FinanceImportPreviewDto } from '$lib/finance/api';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import type { PageData } from './$types';
 
@@ -16,14 +17,16 @@
   const actionStatus = optimistic.status;
   $effect(() => optimistic.start());
 
+  // [T12-R6, despacho de cierre F5] `finance_import_batches.bank` admite
+  // `'manual'` además de los cuatro bancos reales (0036_finance.sql:202): sin
+  // esta entrada, un lote sin banco de origen (alta manual del histórico)
+  // caía al identificador crudo en el historial de importaciones.
   const BANK_LABELS: Record<string, string> = {
-    caixabank: 'CaixaBank', deutsche_bank: 'Deutsche Bank', openbank: 'OpenBank', amex: 'American Express'
+    caixabank: 'CaixaBank', deutsche_bank: 'Deutsche Bank', openbank: 'OpenBank', amex: 'American Express',
+    manual: 'Manual'
   };
 
-  interface Preview {
-    bank: string; newCount: number; dupCount: number; unknownRefs: string[];
-    sample: Array<{ opDate: string; concept: string; provider: string | null; amountCents: string }>;
-  }
+  type Preview = FinanceImportPreviewDto;
   // Misma unión que `NewAccountInput` (finance-imports.server.ts): escrita a
   // mano porque ese tipo vive en el paquete servidor y no puede importarse
   // en el navegador. [Corrección revisión #5] Antes era `string`: los tres
@@ -34,10 +37,6 @@
 
   function isAccountKind(value: string): value is AccountKind {
     return value === 'comun' || value === 'personal' || value === 'inversion';
-  }
-
-  function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null;
   }
 
   /**
@@ -64,13 +63,30 @@
   let newAccounts = $state<NewAccountDraft[]>([]);
   let busy = $state(false);
   let importError = $state<string | null>(null);
+  // [T12-R5, despacho de cierre F5] Cuando la previsualización aparece, el
+  // `<input type=file>` ha dejado de ser el control relevante del gesto: el
+  // `$effect` de más abajo mueve el foco al `<h2>` de la sección resultante
+  // (regla única de foco de la fase 5), en vez de dejarlo caer al `<body>`
+  // durante el instante en que `disabled={busy}` lo deshabilita.
+  let previewHeading = $state<HTMLHeadingElement | null>(null);
+  $effect(() => {
+    if (preview) previewHeading?.focus();
+  });
+
+  // [T12-R4, despacho de cierre F5] El servidor ya topa `newAccounts` en 10
+  // (`confirm/+server.ts:56`, `parseNewAccounts` → 422 `invalid_payload`), así
+  // que un extracto con más de 10 cuentas desconocidas nunca podría confirmarse
+  // de todas formas: el aviso en cliente evita el viaje redondo y el 422 con
+  // mensaje genérico que antes se leía sin contexto.
+  const MAX_NEW_ACCOUNTS = 10;
+  const tooManyNewAccounts = $derived(newAccounts.length > MAX_NEW_ACCOUNTS);
 
   // [Corrección revisión #4] El servidor exige además `ownerLabel` de 1 a 80
   // caracteres (`isNewAccountInput`, imports/confirm/+server.ts): vaciar el
   // campo «Titular» dejaba el botón habilitado y devolvía un 422 que, por el
   // Issue #2, se leía como JSON crudo.
   const confirmDisabled = $derived(
-    busy || newAccounts.some((draft) => !draft.name.trim() || !draft.ownerLabel.trim())
+    busy || tooManyNewAccounts || newAccounts.some((draft) => !draft.name.trim() || !draft.ownerLabel.trim())
   );
 
   function patchDraft(index: number, patch: Partial<NewAccountDraft>): void {
@@ -95,10 +111,21 @@
         file = null;
         return;
       }
-      const result = (await response.json()) as Preview;
+      // [T12-R1, despacho de cierre F5] Guarda de forma en vez de `as Preview`
+      // (R7): un `parse` que devuelve `unknown` y un cast ciego dejaban pasar
+      // sin aviso un cuerpo con la forma equivocada (p. ej. una redirección de
+      // sesión que responde 200 con `{}`), reventando más abajo en
+      // `result.unknownRefs.map(...)` con un TypeError sin relación aparente.
+      const parsedJson: unknown = await response.json();
+      if (!isFinanceImportPreview(parsedJson)) {
+        importError = 'La respuesta del servidor no tiene el formato esperado';
+        preview = null;
+        file = null;
+        return;
+      }
       file = chosen;
-      preview = result;
-      newAccounts = result.unknownRefs.map((bankRef) => ({ bankRef, name: '', kind: 'personal', ownerLabel: 'familia' }));
+      preview = parsedJson;
+      newAccounts = parsedJson.unknownRefs.map((bankRef) => ({ bankRef, name: '', kind: 'personal', ownerLabel: 'familia' }));
     } catch {
       // [Corrección revisión #2] Sin conexión, DNS o servidor caído, `fetch`
       // RECHAZA en vez de resolver con `ok: false`. Sin este catch la promesa
@@ -116,6 +143,13 @@
     if (!file || !preview) return;
     busy = true;
     importError = null;
+    // [T12-R2, despacho de cierre F5] `confirmed` distingue «la confirmación
+    // en el servidor tuvo éxito» de «hay que pintar un error»: antes,
+    // `await invalidate('cc:finance')` vivía DENTRO de este mismo `try`, así
+    // que un fallo del `load` posterior al confirm (p. ej. sin red un
+    // instante) caía en el `catch` de abajo y pintaba «No se pudo confirmar
+    // la importación» sobre una importación que YA se había confirmado.
+    let confirmed: { newCount: number; dupCount: number } | null = null;
     try {
       const form = new FormData();
       form.append('file', file);
@@ -132,22 +166,37 @@
         importError = `No se pudo confirmar la importación: ${await readErrorMessage(response)}`;
         return;
       }
-      const result = (await response.json()) as { newCount: number; dupCount: number };
-      // [Corrección revisión #3] Antes: `importSuccess`, una `.success-message`
-      // paralela que no caducaba nunca y podía pintarse a la vez que la nota
-      // unificada de `ActionStatus` (p. ej. al confirmar e inmediatamente
-      // deshacer OTRO lote). Ahora usa el mismo canal: una sola nota, efímera.
-      actionStatus.set({ tone: 'success', text: `Importadas ${result.newCount} nuevas (${result.dupCount} duplicadas).` });
-      file = null;
-      preview = null;
-      newAccounts = [];
-      await invalidate('cc:finance');
+      // [T12-R1] Misma guarda de forma que `doPreview`, en vez de `as`.
+      const parsedJson: unknown = await response.json();
+      if (!isFinanceImportConfirmResult(parsedJson)) {
+        importError = 'La respuesta del servidor no tiene el formato esperado';
+        return;
+      }
+      confirmed = parsedJson;
     } catch {
       // [Corrección revisión #2] Mismo motivo que en `doPreview`: un fallo de
       // red a mitad de la subida no debe dejar la pantalla en silencio.
       importError = 'No hemos podido confirmar la importación. Comprueba tu conexión y vuelve a intentarlo.';
     } finally {
       busy = false;
+    }
+    if (!confirmed) return;
+    // [Corrección revisión #3] Antes: `importSuccess`, una `.success-message`
+    // paralela que no caducaba nunca y podía pintarse a la vez que la nota
+    // unificada de `ActionStatus` (p. ej. al confirmar e inmediatamente
+    // deshacer OTRO lote). Ahora usa el mismo canal: una sola nota, efímera.
+    actionStatus.set({ tone: 'success', text: `Importadas ${confirmed.newCount} nuevas (${confirmed.dupCount} duplicadas).` });
+    file = null;
+    preview = null;
+    newAccounts = [];
+    try {
+      await invalidate('cc:finance');
+    } catch {
+      // [T12-R2] El confirm YA está hecho: un fallo del `load` no es un error
+      // de confirmación, es una pantalla que puede haberse quedado con datos
+      // viejos. `ActionFeedback` no tiene un tono «warn»: 'success' es el más
+      // parecido a un aviso suave (se autolimpia a los 4 s, no alarma en rojo).
+      actionStatus.set({ tone: 'success', text: 'Recarga para ver los movimientos.' });
     }
   }
 
@@ -197,8 +246,14 @@
 
   {#if preview}
     <section>
-      <h2>Previsualización — {BANK_LABELS[preview.bank] ?? preview.bank}</h2>
+      <!-- [T12-R5] `tabindex="-1"`: ancla de foco, no entra en el orden de
+           tabulación. El `$effect` de arriba la enfoca en cuanto esta sección
+           aparece, siguiendo la regla única de foco de la fase 5. -->
+      <h2 bind:this={previewHeading} tabindex="-1">Previsualización — {BANK_LABELS[preview.bank] ?? preview.bank}</h2>
       <p><span class="status-chip">{preview.newCount} nuevas</span> <span class="status-chip">{preview.dupCount} duplicadas</span></p>
+      {#if tooManyNewAccounts}
+        <p class="form-error" role="alert">Como máximo 10 cuentas nuevas por importación.</p>
+      {/if}
       {#each newAccounts as draft, index (draft.bankRef)}
         <fieldset class="cuenta-nueva">
           <legend>Cuenta nueva detectada: <span class="cifra">{draft.bankRef}</span></legend>
@@ -228,7 +283,11 @@
             {#each preview.sample as row, index (index)}
               <tr>
                 <td class="cifra">{row.opDate}</td>
-                <td title={row.concept}>{row.provider ?? row.concept}</td>
+                <!-- [F5-M6, despacho de cierre] `provider` puede llegar como
+                     cadena VACÍA (no `null`) desde el extracto: `??` no cae en
+                     ese caso y la celda salía en blanco — el mismo defecto que
+                     `txTitle` cerró para Revisión/Movimientos (T10-I2). -->
+                <td title={row.concept}>{row.provider || row.concept}</td>
                 <td class="cifra">{formatCents(row.amountCents)}</td>
               </tr>
             {/each}
