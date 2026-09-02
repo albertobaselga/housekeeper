@@ -1953,7 +1953,7 @@ export {
   DEFAULT_VACATION_CARRYOVER_MONTHS,
   readVacationCarryoverExpiry,
   vacationCarryoverDeadline
-} from '@casa-clara/domain';
+} from '@housekeeper/domain';
 export type { VacationCarryoverExpiry };
 
 /** «Nunca expiran» / «6 meses de margen», para leerlo sin traducir nada. */

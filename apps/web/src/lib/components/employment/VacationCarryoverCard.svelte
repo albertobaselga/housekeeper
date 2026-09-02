@@ -7,7 +7,7 @@
     rejectVacationCarryover
   } from '$lib/employment/commands';
   import { employmentTabHref } from '$lib/employment/model';
-  import type { CommandEnvelopeV1 } from '@casa-clara/contracts';
+  import type { CommandEnvelopeV1 } from '@housekeeper/contracts';
   import type {
     VacationCarryoverDecisionView,
     VacationCarryoverProposalView

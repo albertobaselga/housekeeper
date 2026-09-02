@@ -1,6 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 
-import { agreementCreateInputSchema } from '@casa-clara/contracts/schemas';
+import { agreementCreateInputSchema } from '@housekeeper/contracts/schemas';
 
 import { employmentTabHref } from '$lib/employment/model';
 import {

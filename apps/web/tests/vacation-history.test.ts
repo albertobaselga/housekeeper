@@ -1,4 +1,4 @@
-import { contractYear } from '@casa-clara/domain';
+import { contractYear } from '@housekeeper/domain';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -271,7 +271,7 @@ describe('ningún periodo apuntado desaparece de la pantalla', () => {
     expect(tercero?.headline).toBe(
       'En el tercer año ha disfrutado 5 días y el contrato reconoce 0 días: hay 5 días de más.'
     );
-    expect(tercero?.excessNote).toContain('Casa Clara no lo corrige sola');
+    expect(tercero?.excessNote).toContain('La aplicación no lo corrige sola');
     expect(person.empty).toBe(false);
   });
 

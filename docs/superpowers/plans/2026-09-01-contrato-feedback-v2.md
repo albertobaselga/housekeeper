@@ -29,7 +29,7 @@ escriban el mismo fichero.
   (`apps/web/src/lib/auth/routing.ts`) o falla cerrada.
 - Castellano en textos, comentarios y mensajes de commit.
 - **El presupuesto de bytes del arranque de Hoy son 120.000** y quedan ~1.500 de
-  margen: `pnpm --filter @casa-clara/web verify:bundle` tiene que seguir pasando.
+  margen: `pnpm --filter @housekeeper/web verify:bundle` tiene que seguir pasando.
 - Antes de dar una tarea por terminada: `pnpm typecheck`, `pnpm lint` y los tests
   del paquete tocado, ejecutados de verdad, con la salida leída.
 - Commits pequeños en castellano, uno por pieza con sentido propio.
@@ -344,7 +344,7 @@ ficheros no basta si la unidad que se rompe es un contrato entre módulos.
 ## Cierre
 
 Con las tres tandas dentro: `pnpm typecheck`, `pnpm lint`, `pnpm test`,
-`pnpm --filter @casa-clara/web verify:bundle` y la batería de base de datos.
+`pnpm --filter @housekeeper/web verify:bundle` y la batería de base de datos.
 Después, merge a `main`, despliegue y **aplicar las migraciones 0036, 0037 y 0038 en Supabase por
 conexión directa al 5432** (el pooler del 6543 no conserva los cerrojos de
 sesión que necesita el runner).
