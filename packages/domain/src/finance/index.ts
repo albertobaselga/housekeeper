@@ -7,7 +7,7 @@ export * from "./provider-norm.js";
 
 export * from "./rules.js";
 
-// transfers (Task 5)
+export * from "./transfers.js";
 
 // amex (Task 6)
 
