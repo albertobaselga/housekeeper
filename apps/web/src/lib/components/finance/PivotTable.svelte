@@ -13,10 +13,11 @@
   import { formatCents } from '$lib/finance/format';
   import {
     addDim, DIM_LABELS, moveDim, parseChips, parseDims, parseIdList, PIVOT_DIMENSIONS,
-    removeDim, sameSortKey, serializeDims, serializeIdList, sortTree, rowMatchesChips,
+    removeDim, sameSortKey, serializeChips, serializeDims, serializeIdList, sortTree, rowMatchesChips,
     type PivotNodeLike, type PivotSortKey, type SortDir
   } from '$lib/finance/pivot-state';
   import type { AnaliticaCategory, AnaliticaEventSummary, AnaliticaPivotRow } from '$lib/finance/analitica-data';
+  import PivotSearch from './PivotSearch.svelte';
 
   // `invAccounts` y `householdId` no se usan todavía: los consume la Task 12
   // (barra de acciones y envío de comandos). Se mantienen en la firma pública
@@ -179,6 +180,8 @@
 {/snippet}
 
 <div class="pivot-controles">
+  <PivotSearch rows={filteredRows.length ? filteredRows : rows} {catPathOf} {chips}
+    onChips={(next) => setShallowParam('q', serializeChips(next))} />
   <div class="dims" role="group" aria-label="Dimensiones del pivot">
     {#each dims as d, i (d)}
       <span class="chip activa">
@@ -195,7 +198,8 @@
 </div>
 
 {#if isEmpty}
-  <p class="vacio">Sin resultados que coincidan con la búsqueda.</p>
+  <p class="vacio">Sin resultados que coincidan con la búsqueda.
+    <button type="button" class="limpiar" onclick={() => setShallowParam('q', '')}>limpiar búsqueda</button></p>
 {:else}
   <div class="pivot-scroll">
     <table class="pivot" data-testid="pivot-table">
@@ -302,4 +306,5 @@
   .suave { color: var(--ink-soft); }
   .vacio, .nota { color: var(--ink-soft); font-size: var(--text-meta); margin-top: var(--space-2); }
   small { color: var(--ink-faint); }
+  .limpiar { border: 0; background: transparent; cursor: pointer; color: var(--ink-soft); font-size: var(--text-meta); text-decoration: underline; }
 </style>
