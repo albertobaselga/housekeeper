@@ -17,7 +17,7 @@ export * from "./cash.js";
 
 export * from "./recurrence.js";
 
-// event-rules (Task 9)
+export * from "./event-rules.js";
 
 // kpis (Task 10)
 
