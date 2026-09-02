@@ -46,3 +46,79 @@ test('importar: previsualizar, dar de alta la cuenta, confirmar y deshacer', asy
   await expect(page.locator('.success-message')).toContainText('Guardado ✓');
   await expect(page.locator('tr', { hasText: 'movimientos-e2e.xls' })).toHaveCount(0);
 });
+
+// [FASE 7, T4] Ampliación: lo importado tiene que VERSE en Movimientos bajo
+// RLS, y el deshacer tiene que dejarlo en cero. El ciclo de importación en sí
+// ya lo cubre el test de arriba (fase 5): aquí solo se comprueba el efecto
+// sobre los datos que ve la administración con concesión.
+const MOVIMIENTOS_JULIO = `/h/${HOUSEHOLD}/finanzas/movimientos?from=2026-07-01&to=2026-07-31&q=ALQUILER+JULIO`;
+
+async function deshacerSiQueda(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
+  const fila = page.locator('tr', { hasText: 'movimientos-e2e.xls' });
+  if (await fila.count()) {
+    page.once('dialog', (dialog) => void dialog.accept());
+    await fila.first().getByRole('button', { name: 'Deshacer' }).click();
+    await expect(page.locator('tr', { hasText: 'movimientos-e2e.xls' })).toHaveCount(0);
+  }
+}
+
+test.describe('lo importado se ve y el deshacer lo borra', () => {
+  // Nada de `loginAs` aquí: el `page` del hook es el MISMO del cuerpo del
+  // test (fixture de Playwright compartida entre el test y sus hooks), que ya
+  // se autenticó como admin en su primera línea. Repetir el login rompía la
+  // limpieza — `/login` con sesión viva redirige directo a Hoy (véase
+  // `routes/login/+page.server.ts`) y el selector de cuentas nunca se pinta,
+  // así que `loginAs` fallaba buscando una pantalla que no iba a aparecer.
+  test.afterEach(async ({ page }) => {
+    await deshacerSiQueda(page);
+  });
+
+  test('los movimientos del lote aparecen en Movimientos y desaparecen al deshacer', async ({ page }) => {
+    await loginAs(page, 'admin');
+
+    // Punto de partida: el hogar no tiene todavía el movimiento del extracto.
+    await page.goto(MOVIMIENTOS_JULIO);
+    await expect(page.locator('.finance-ledger .finance-row')).toHaveCount(0);
+
+    // Importar el mismo extracto sintético de la fase 5 (en memoria, sin
+    // ficheros binarios en el repo).
+    await page.goto(`/h/${HOUSEHOLD}/finanzas/importar`);
+    await page.setInputFiles('input[type="file"]', {
+      name: 'movimientos-e2e.xls',
+      mimeType: 'application/vnd.ms-excel',
+      buffer: Buffer.from(OPENBANK_HTML, 'latin1')
+    });
+    await expect(page.locator('body')).toContainText('2 nuevas');
+
+    // El alta de cuenta es condicional a propósito: el test de la fase 5 corre
+    // antes en este mismo fichero y su deshacer borra el lote y sus
+    // transacciones, pero la cuenta «OpenBank E2E» que dio de alta se queda.
+    // Si ya existe, la previsualización no pide crearla y no hay formulario.
+    const nombreCuenta = page.getByLabel('Nombre de la cuenta nueva');
+    if (await nombreCuenta.count()) {
+      await nombreCuenta.fill('OpenBank E2E');
+    }
+
+    await page.getByRole('button', { name: 'Confirmar importación' }).click();
+    await expect(page.locator('.success-message')).toContainText('Importadas 2');
+
+    // El movimiento existe para la administración con concesión: RLS lo deja
+    // pasar. El filtro `q=ALQUILER+JULIO` ya casa por `ilike` contra el
+    // concepto en el servidor (readFinanceTransactions), así que el único
+    // resultado es justo la fila importada; el título visible de la fila es
+    // el beneficiario extraído del concepto de transferencia («CLARA DEMO»),
+    // no el concepto en crudo (txTitle: providerDisplay || provider ||
+    // concept) — se confirma también el importe exacto del extracto sintético.
+    await page.goto(MOVIMIENTOS_JULIO);
+    const filas = page.locator('.finance-ledger .finance-row');
+    await expect(filas).toHaveCount(1);
+    await expect(filas.first()).toContainText('CLARA DEMO');
+    await expect(filas.first()).toContainText('850,00');
+
+    // Deshacer: el lote se va con sus transacciones (ON DELETE CASCADE).
+    await deshacerSiQueda(page);
+    await page.goto(MOVIMIENTOS_JULIO);
+    await expect(page.locator('.finance-ledger .finance-row')).toHaveCount(0);
+  });
+});
