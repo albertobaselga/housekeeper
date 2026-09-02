@@ -1,7 +1,7 @@
 // Presupuesto de arranque de la pantalla Hoy.
 //
 // Mide el grafo de importaciones ESTÁTICAS del nodo de página de Hoy y lo acota
-// en 120 kB. Además vigila dos fugas concretas que ya han ocurrido:
+// en 120 kB. Además vigila fugas concretas que ya han ocurrido:
 //
 //  1. El editor de la Guía (Milkdown) tiene que seguir detrás de un import
 //     dinámico de su ruta.
@@ -14,6 +14,18 @@
 //     algo del arranque importe un módulo para que sus tablas viajen enteras.
 //     Por eso viven en `@housekeeper/contracts/capabilities`, sin reexport desde
 //     `index.ts`, y por eso esto falla si reaparecen.
+//  3. El módulo Finanzas (fase 4, Ruling R15) vive en su propia ruta
+//     (/h/[householdId]/finanzas): nada de `$lib/finance/` ni
+//     `$lib/components/finance/` puede aparecer en el grafo de Hoy. A
+//     diferencia de WikiEditor, ninguno de esos ficheros es su propio punto de
+//     entrada (nadie hace un `import()` dinámico de ellos desde Hoy), así que
+//     una fuga NO cambiaría el nombre de ningún módulo del grafo de
+//     `walkInitialImports` —se colaría calladamente dentro de un trozo
+//     compartido que Hoy ya carga—. Por eso esta regla no compara contra
+//     `visited` (la técnica de `editorModule`) sino contra el desglose por
+//     módulo de `housekeeper-module-map.json`, igual que la regla de
+//     `capabilities.ts` de arriba, pero por PREFIJO de ruta en vez de por
+//     nombre exacto: puede haber varios ficheros del módulo a la vez.
 //
 // El mapa módulo→trozo lo escribe el plugin `housekeeper:client-module-map` de
 // `vite.config.ts`. Es lo que permite señalar al culpable en vez de dejar un
@@ -35,6 +47,26 @@ const FORBIDDEN_IN_INITIAL_GRAPH = [
       '    las capacidades de la sesión ya resueltas en AppContextV1. Impórtala de\n' +
       '    "@housekeeper/contracts/capabilities" allí donde de verdad haga falta y NO la reexportes\n' +
       '    desde "@housekeeper/contracts": la arista de importación basta para arrastrarla.'
+  }
+];
+
+/**
+ * Directorios enteros desterrados del arranque de Hoy (Ruling R15): cualquier
+ * fichero cuya ruta empiece por uno de estos prefijos es del módulo Finanzas,
+ * no de Hoy.
+ */
+const FORBIDDEN_PREFIXES_IN_INITIAL_GRAPH = [
+  {
+    prefix: 'src/lib/finance/',
+    why:
+      'Finanzas vive en /h/[householdId]/finanzas, aparte de Hoy: si algo de ahí\n' +
+      '    aparece aquí, algún import se coló fuera de las rutas de finanzas.'
+  },
+  {
+    prefix: 'src/lib/components/finance/',
+    why:
+      'los componentes del Dashboard/Movimientos de Finanzas son de esa ruta, no\n' +
+      '    de Hoy: revisa qué import de Hoy (o de un trozo que Hoy comparte) los arrastró.'
   }
 ];
 
@@ -107,6 +139,13 @@ for (const rule of FORBIDDEN_IN_INITIAL_GRAPH) {
   throw new Error(
     `${rule.module} volvió al arranque de Hoy (${initialModules.get(hit)} bytes sin minificar):\n    ${rule.why}`
   );
+}
+
+for (const rule of FORBIDDEN_PREFIXES_IN_INITIAL_GRAPH) {
+  const hits = [...initialModules.keys()].filter((id) => normalize(id).startsWith(rule.prefix));
+  if (hits.length === 0) continue;
+  const detail = hits.map((id) => `\n    ${initialModules.get(id)} bytes sin minificar  ${normalize(id)}`).join('');
+  throw new Error(`${rule.prefix}* volvió al arranque de Hoy:${detail}\n  ${rule.why}`);
 }
 
 if (initialBytes > BUDGET_BYTES) {
