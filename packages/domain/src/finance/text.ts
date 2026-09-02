@@ -1,8 +1,8 @@
 /** Clase \s de Python 3 (módulo `re`, modo str) — NO es la de JavaScript:
  * incluye U+001C-U+001F y U+0085, y excluye U+FEFF. Los hashes de dedup migrados
- * se calcularon con esta clase, así que aquí va explícita y no la implícita de JS. */
-// U+001C-U+001F SON espacio para Python y el hash de dedup migrado depende
-// de que aquí también lo sean: por eso la clase los lleva a propósito.
+ * se calcularon con esta clase, así que aquí va explícita y no la implícita de JS.
+ * U+001C-U+001F SON espacio para Python y el hash de dedup migrado depende de
+ * que aquí también lo sean: por eso la clase los lleva a propósito. */
 // eslint-disable-next-line no-control-regex
 const PY_SPACE_RX = /[\t\n\v\f\r \u001c-\u001f\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/gu;
 
@@ -28,13 +28,22 @@ export function normText(s: string): string {
     .toUpperCase();
 }
 
-/** Port de money.py::normalize_concept: colapso de espacios + recorte a 80; «—» si vacío. */
+/** Port de money.py::normalize_concept: colapso de espacios + recorte a 80; «—» si vacío.
+ *
+ * Dos notas de paridad con el origen (Task 99, punto 4), igual que en `normText`:
+ * - `str.split()` sin argumentos de Python parte por `str.isspace()`, la clase
+ *   `PY_SPACE_RX` (NEL/FS cuentan, el BOM no), no la `\s` de JavaScript;
+ * - `[:80]` de Python corta por PUNTOS DE CÓDIGO, no por unidades UTF-16: un
+ *   emoji (par sustituto) cuenta 1, no 2. `Array.from` itera por puntos de
+ *   código; `.slice(0, 80)` sobre el string, en cambio, podría partir un par
+ *   sustituto por la mitad. */
 export function normalizeConcept(concept: string): string {
   const collapsed = concept
-    .split(/\s+/)
+    .split(PY_SPACE_RX)
     .filter((part) => part.length > 0)
     .join(" ");
-  return collapsed.slice(0, 80) || "—";
+  // Recorte por puntos de código, como `[:80]` de Python (un emoji cuenta 1, no 2).
+  return Array.from(collapsed).slice(0, 80).join("") || "—";
 }
 
 /** Diferencia a−b en días de calendario entre fechas ISO yyyy-mm-dd. Sin reloj. */

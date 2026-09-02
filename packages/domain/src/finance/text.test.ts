@@ -19,6 +19,18 @@ describe("normalizeConcept (port de money.py::normalize_concept)", () => {
   it("devuelve «—» si queda vacío", () => {
     expect(normalizeConcept("   ")).toBe("—");
   });
+  // Task 99, punto 4: la misma paridad Python que normText, aplicada a
+  // normalizeConcept. (a) split() sin argumentos parte por la clase \s de
+  // Python (PY_SPACE_RX), no por la de JS: el NEL colapsa a espacio y el BOM
+  // sobrevive. (b) el recorte a 80 es por PUNTOS DE CÓDIGO (como `[:80]` de
+  // Python), no por unidades UTF-16: un emoji cuenta 1, no 2.
+  it("parte por la clase de espacio de Python: NEL colapsa, el BOM sobrevive", () => {
+    expect(normalizeConcept("AB﻿C")).toBe("A B﻿C");
+  });
+  it("recorta por puntos de código, no por unidades UTF-16 (un emoji no cuenta doble)", () => {
+    const largo = "😀".repeat(50); // 50 puntos de código, 100 unidades UTF-16
+    expect(normalizeConcept(largo)).toBe(largo); // NO se recorta: son 50 puntos de código
+  });
 });
 
 describe("dayDiffIso", () => {
