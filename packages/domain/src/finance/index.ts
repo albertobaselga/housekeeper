@@ -19,6 +19,6 @@ export * from "./recurrence.js";
 
 export * from "./event-rules.js";
 
-// kpis (Task 10)
+export * from "./kpis.js";
 
 // pivot (Task 11)
