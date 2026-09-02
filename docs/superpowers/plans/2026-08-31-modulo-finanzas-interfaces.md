@@ -132,6 +132,7 @@ export interface ParsedRow {
   codeCommon: string | null;
   codeOwn: string | null;
   dedupRef: string | null;     // solo Amex (columna Referencia)
+  bankCategory: string | null; // extensión fase 2: columna «Categoría» de Amex → bank_category
   raw: Record<string, string>; // cabecera→valor del fichero original
 }
 
@@ -156,8 +157,19 @@ export interface FinanceTxView {
   recurrence: FinanceRecurrence;
   recurrenceManual: boolean;
   dedupHash: string;
+  // Extensión fase 2 (port fiel del origen; se rellenan desde SQL con join a categorías):
+  codeCommon: string | null;
+  codeOwn: string | null;
+  categoryKind: FinanceCategoryKind | null;
 }
 ```
+
+Extensiones fase 2 sobre los tipos canónicos anteriores (añadidos, no renombres): las
+lecturas SQL de las fases 4–6 deben incluir el `left join app.finance_categories` para
+poblar `categoryKind` en `FinanceTxView`. Los tipos auxiliares definidos en
+`types.ts`/`pivot.ts` se alinean con el esquema de la fase 1 (resolución canónica 6):
+`FinanceAccountView.bank: FinanceBank | null` y `FinanceEventRuleView.providerNorm: string
+| null`; `PivotSourceRow.kind` (pivot.ts) admite además `"inversion"`.
 
 ## Funciones canónicas del dominio
 
