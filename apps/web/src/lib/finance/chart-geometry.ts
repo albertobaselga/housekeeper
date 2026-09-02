@@ -19,7 +19,10 @@ export function sparklinePoints(values: readonly number[]): string {
     .join(' ');
 }
 
-/** El siguiente «valor bonito» (1/2/5 × 10^n) por encima de value. */
+/**
+ * El siguiente «valor bonito» (1/2/5 × 10^n) por encima de value.
+ * Trabaja en Number porque `value` ya es un euro de geometría (paso de eje), no céntimos.
+ */
 export function niceCeil(value: number): number {
   if (value <= 0) return 1;
   const power = 10 ** Math.floor(Math.log10(value));
