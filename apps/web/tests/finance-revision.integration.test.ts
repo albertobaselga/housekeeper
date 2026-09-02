@@ -42,22 +42,11 @@ function revisionUrlFor(base: string): string {
   return url.toString();
 }
 
-/**
- * Conexión de mantenimiento: `drop database` no puede ejecutarse desde la base
- * que se está borrando, y la base asignada a esta ola (`casaclara_finance_it`)
- * es una base de trabajo cualquiera del clúster. `postgres` existe siempre.
- */
-function maintenanceUrlFor(base: string): string {
-  const url = new URL(base);
-  url.pathname = '/postgres';
-  return url.toString();
-}
-
 describe.runIf(adminUrl !== '')('Revisión acotada a una página sobre Postgres real', () => {
   let appPool: pg.Pool;
 
   beforeAll(async () => {
-    const cluster = new pg.Client({ connectionString: maintenanceUrlFor(adminUrl) });
+    const cluster = new pg.Client({ connectionString: adminUrl });
     await cluster.connect();
     try {
       await cluster.query(`drop database if exists ${REVISION_DB} with (force)`);
@@ -112,7 +101,7 @@ describe.runIf(adminUrl !== '')('Revisión acotada a una página sobre Postgres 
 
   afterAll(async () => {
     await appPool?.end();
-    const cluster = new pg.Client({ connectionString: maintenanceUrlFor(adminUrl) });
+    const cluster = new pg.Client({ connectionString: adminUrl });
     await cluster.connect();
     try {
       await cluster.query(`drop database if exists ${REVISION_DB} with (force)`);

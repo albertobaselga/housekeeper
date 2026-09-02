@@ -6,7 +6,13 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { API_VERSION, type CommandEnvelopeV1, type FinanceImportUndoPayloadV1 } from '@housekeeper/contracts';
-import { financeCommandHandler, processSyncBatch, withAuthorizedTransaction } from '@housekeeper/server';
+import {
+  CommandRejectedError,
+  FinanceParserError,
+  financeCommandHandler,
+  processSyncBatch,
+  withAuthorizedTransaction
+} from '@housekeeper/server';
 
 import { confirmImport, previewImport } from '../src/lib/server/finance-imports.server';
 import { FIXTURE_HOUSEHOLD } from './helpers';
@@ -17,10 +23,22 @@ import { FIXTURE_HOUSEHOLD } from './helpers';
 const adminUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
 vi.mock('$env/dynamic/private', () => ({ env: { DATABASE_URL: 'postgres://prueba/afirmada' } }));
 
-const APP_LOGIN = 'it_casa_clara_finance_login';
-const FINANCE_DB = 'casaclara_finance_it';
+// [FASE 5 · despacho de cierre] La base y el rol de login son recursos del
+// CLÚSTER, no del proceso (mismo razonamiento que
+// `finance-access.integration.test.ts:27`). Con nombres FIJOS pasaban dos
+// cosas: dos ejecuciones simultáneas se borraban la base la una a la otra a
+// mitad, y —lo que rompía el gate de esta ola— si `TEST_DATABASE_URL` apunta
+// a esa misma base, el `drop database` se ejecuta desde la conexión abierta
+// sobre ella y Postgres responde «cannot drop the currently open database».
+// El pid las separa y el `afterAll` las retira en vez de acumularlas.
+const RUN = process.pid;
+const APP_LOGIN = `it_casa_clara_finance_login_${RUN}`;
+const FINANCE_DB = `casaclara_finance_imports_it_${RUN}`;
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
 const ADMIN = { id: 'fixture:roble:admin' };
+// Miembro del hogar SIN concesión de Finanzas (family_member de las fixtures):
+// cruza `withAuthorizedTransaction` pero no `requireFinanceAdmin`.
+const MEMBER = { id: 'fixture:roble:family' };
 
 // Extracto SINTÉTICO de OpenBank: HTML disfrazado de .xls, importes es-ES.
 const OPENBANK_HTML = `<html>
@@ -111,7 +129,18 @@ describe.runIf(adminUrl !== '')('ciclo importar → confirmar → deshacer sobre
   afterAll(async () => {
     await appPool?.end();
     await adminPool?.end();
-  });
+    // Los dos recursos del clúster que creó el `beforeAll` se retiran aquí:
+    // con el nombre ya marcado por el pid, dejarlos acumularía una base y un
+    // rol por ejecución en un clúster compartido.
+    const cluster = new pg.Client({ connectionString: adminUrl });
+    await cluster.connect();
+    try {
+      await cluster.query(`drop database if exists ${FINANCE_DB} with (force)`);
+      await cluster.query(`drop role if exists ${APP_LOGIN}`);
+    } finally {
+      await cluster.end();
+    }
+  }, 120_000);
 
   it('previsualiza: banco detectado, 2 nuevas, cuenta desconocida', async () => {
     const preview = await previewImport(ADMIN, FIXTURE_HOUSEHOLD, BYTES, 'movimientos.xls', appPool);
@@ -170,6 +199,40 @@ describe.runIf(adminUrl !== '')('ciclo importar → confirmar → deshacer sobre
     expect(result.acknowledgements[0]).toMatchObject({ status: 'accepted' });
     const after = await previewImport(ADMIN, FIXTURE_HOUSEHOLD, BYTES, 'movimientos.xls', appPool);
     expect(after.newCount).toBe(2); // vuelven a ser nuevas
+  });
+
+  /**
+   * [FASE 5 · despacho de cierre, F5-I3] Las dos rutas parseaban el fichero
+   * ANTES de comprobar el cerrojo: `requireFinanceRequest` solo mira sesión,
+   * UUID de hogar y PERTENENCIA, así que cualquier miembro del hogar —la
+   * empleada incluida— podía forzar la descompresión y el parseo completo de
+   * un xlsx de hasta 10 MB en la función serverless antes de recibir su 404.
+   *
+   * El fichero de estas dos pruebas es basura deliberada: hoy `parseStatement`
+   * lo rechaza con `FinanceParserError` (que la ruta traduce a 422). Que lo
+   * que llegue sea `CommandRejectedError` —el 404 de siempre— demuestra que el
+   * parseo NO corrió: es la única forma de afirmar «sin parsear» desde fuera.
+   */
+  const BASURA = new Uint8Array(Buffer.from('esto no es el extracto de ningún banco', 'latin1'));
+
+  it('previsualizar como miembro sin concesión: 404 sin llegar a parsear el fichero', async () => {
+    await expect(previewImport(MEMBER, FIXTURE_HOUSEHOLD, BASURA, 'inventado.xls', appPool)).rejects.toBeInstanceOf(
+      CommandRejectedError
+    );
+    // Y el mismo fichero, con el admin con concesión, sí llega al parser: si
+    // no, la prueba de arriba pasaría por el motivo equivocado.
+    await expect(previewImport(ADMIN, FIXTURE_HOUSEHOLD, BASURA, 'inventado.xls', appPool)).rejects.toBeInstanceOf(
+      FinanceParserError
+    );
+  });
+
+  it('confirmar como miembro sin concesión: 404 sin llegar a parsear el fichero', async () => {
+    await expect(
+      confirmImport(MEMBER, FIXTURE_HOUSEHOLD, BASURA, 'inventado.xls', [], appPool)
+    ).rejects.toBeInstanceOf(CommandRejectedError);
+    await expect(
+      confirmImport(ADMIN, FIXTURE_HOUSEHOLD, BASURA, 'inventado.xls', [], appPool)
+    ).rejects.toBeInstanceOf(FinanceParserError);
   });
 
   it('`bank_category` de Amex se persiste al confirmar (Important 1 de la revisión)', async () => {

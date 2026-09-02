@@ -89,6 +89,15 @@ function splitFreshRows(
 /**
  * Previsualización sin estado: el fichero se parsea en memoria y solo se
  * consulta qué hashes ya existen y qué refs de cuenta faltan. Nada se persiste.
+ *
+ * [FASE 5 · despacho de cierre, F5-I3] El parseo va DENTRO de la transacción
+ * autorizada, después de `requireFinanceAdmin`. El guard previo de la ruta
+ * (`requireFinanceRequest`) solo comprueba sesión, UUID de hogar y
+ * PERTENENCIA: con el parseo delante, cualquier miembro del hogar —la empleada
+ * incluida, a quien la tabla de capacidades cierra las siete pantallas pero no
+ * estos dos endpoints— podía forzar la descompresión y el parseo completo de
+ * un xlsx de hasta 10 MB antes de recibir su 404. La respuesta al no
+ * autorizado no cambia (mismo 404 de siempre): solo cambia el ORDEN.
  */
 export async function previewImport(
   user: { id: string },
@@ -98,10 +107,10 @@ export async function previewImport(
   pool: Pool | null = getDatabasePool()
 ): Promise<ImportPreviewResult> {
   if (!pool) throw new Error('La importación requiere la base de datos del hogar');
-  const statement = parseStatement(bytes, filename);
-  const hashes = statement.rows.map(hashOf);
   return withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
     await requireFinanceAdmin(client, membership);
+    const statement = parseStatement(bytes, filename);
+    const hashes = statement.rows.map(hashOf);
     const existing = await client.query<{ dedup_hash: string }>(
       `select dedup_hash from app.finance_transactions
         where household_id = $1 and dedup_hash = any($2::text[])`,
@@ -134,6 +143,11 @@ export async function previewImport(
  * el resultado es determinista por dedup_hash. Crea las cuentas nuevas del
  * payload, el lote y las transacciones, y ejecuta el pipeline unificado.
  * El extracto NO se persiste en ningún almacenamiento.
+ *
+ * [FASE 5 · despacho de cierre, F5-I3] El parseo va DENTRO de la transacción
+ * autorizada, después de `requireFinanceAdmin`, por el mismo motivo que en
+ * `previewImport`: quien no tiene la concesión recibe su 404 sin que el
+ * servidor haya tocado el fichero.
  */
 export async function confirmImport(
   user: { id: string },
@@ -144,9 +158,9 @@ export async function confirmImport(
   pool: Pool | null = getDatabasePool()
 ): Promise<ImportConfirmResult> {
   if (!pool) throw new Error('La importación requiere la base de datos del hogar');
-  const statement = parseStatement(bytes, filename);
   return withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
     await requireFinanceAdmin(client, membership);
+    const statement = parseStatement(bytes, filename);
     // `on conflict … do nothing`: reconfirmar el mismo extracto con las MISMAS
     // `newAccounts` (doble clic, reintento tras un timeout) es el camino
     // determinista que el propio módulo promete, no un 23505 sin capturar
