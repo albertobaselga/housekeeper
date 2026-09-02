@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import type { CommandEnvelopeV1, FinanceWritePayloadV1 } from '@housekeeper/contracts';
   import type { FinanceTxDto } from '@housekeeper/server';
   import PageHeader from '$lib/components/PageHeader.svelte';
   import ActionStatus from '$lib/components/ActionStatus.svelte';
@@ -15,6 +16,7 @@
   import { mergeParams, rangeLabel } from '$lib/finance/filters';
   import { formatCents } from '$lib/finance/format';
   import { canLinkSelection } from '$lib/finance/link-transfers';
+  import { draftedRow, releaseDraft, restoreDraft, withDraft, type RowDrafts } from '$lib/finance/row-drafts';
   import { useAppContext } from '$lib/auth/context';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import type { PageData } from './$types';
@@ -54,8 +56,46 @@
     selected = on ? [...selected, rowId] : selected.filter((id) => id !== rowId);
   }
 
+  /*
+   * [FASE 5 · despacho de cierre, F5-I5] Borrador por fila, la misma pieza que
+   * Ajustes: `finance.transaction.update` con `eventIds` es un REEMPLAZO
+   * completo (`replaceTransactionEvents` borra y reinserta), y hasta ahora el
+   * payload se construía desde `row.eventIds` —la foto del servidor—, que con
+   * `queued` no se refresca porque no hay `invalidate`. Marcar el evento A y
+   * luego el B mandaba `eventIds: [B]`, y al vaciarse la cola en orden FIFO A
+   * desaparecía sin aviso. El borrador acumula lo pendiente, se revierte si el
+   * servidor rechaza y suelta en `settle` solo lo confirmado.
+   */
+  let drafts = $state<RowDrafts<FinanceTxDto>>({});
+
+  // Las filas que se pintan llevan el borrador aplicado: el selector de
+  // eventos y el de categoría enseñan lo que la persona acaba de marcar,
+  // aunque el acuse siga en la cola.
+  const ledgerRows = $derived(movimientos.page.rows.map((row) => draftedRow(row, drafts[row.id])));
+
+  /**
+   * Anota el parche en el borrador de la fila, manda el comando ya construido
+   * y administra los tres desenlaces: rechazo → el borrador vuelve donde
+   * estaba (T13-R1); acuse → suelta SOLO las claves de este comando (T13-R2);
+   * `queued` → el borrador se queda, que es de lo que se trata.
+   */
+  function saveRow(
+    rowId: string,
+    patch: Partial<FinanceTxDto>,
+    command: CommandEnvelopeV1<FinanceWritePayloadV1>
+  ): void {
+    const previo = drafts[rowId];
+    drafts = withDraft(drafts, rowId, patch);
+    void optimistic.run(command, {
+      revert: () => (drafts = restoreDraft(drafts, rowId, previo)),
+      settle: () => (drafts = releaseDraft(drafts, rowId, patch))
+    });
+  }
+
   function setCategory(rowId: string, categoryId: string): void {
-    void optimistic.run(
+    saveRow(
+      rowId,
+      { categoryId },
       financeCommand(context.household.id, { kind: 'finance.transaction.update', transactionId: rowId, categoryId })
     );
   }
@@ -63,14 +103,20 @@
   // `null` es un valor legítimo («—» del RecurrenceChip): devuelve el movimiento
   // a sin clasificar. El esquema y el handler lo aceptan; no hay guarda que valga.
   function setRecurrence(rowId: string, recurrence: 'recurrente' | 'extraordinario' | null): void {
-    void optimistic.run(
+    saveRow(
+      rowId,
+      { recurrence },
       financeCommand(context.household.id, { kind: 'finance.transaction.update', transactionId: rowId, recurrence })
     );
   }
 
   function toggleEvent(row: FinanceTxDto, eventId: string, add: boolean): void {
-    const eventIds = add ? [...row.eventIds, eventId] : row.eventIds.filter((id) => id !== eventId);
-    void optimistic.run(
+    // Del BORRADOR, no de la foto: es el hallazgo F5-I5 entero.
+    const actuales = draftedRow(row, drafts[row.id]).eventIds;
+    const eventIds = add ? [...actuales, eventId] : actuales.filter((id) => id !== eventId);
+    saveRow(
+      row.id,
+      { eventIds },
       financeCommand(context.household.id, { kind: 'finance.transaction.update', transactionId: row.id, eventIds })
     );
   }
@@ -198,7 +244,7 @@
       </div>
     {/if}
     <LedgerTable
-      rows={movimientos.page.rows}
+      rows={ledgerRows}
       {eventNameById}
       onOpen={(tx) => (panelMode = { kind: 'movimiento', tx })}
       selectedIds={selectedSet}

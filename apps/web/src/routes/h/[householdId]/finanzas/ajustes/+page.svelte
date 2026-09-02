@@ -4,10 +4,11 @@
   import PageHeader from '$lib/components/PageHeader.svelte';
   import FinanceNav from '$lib/components/finance/FinanceNav.svelte';
   import { useAppContext } from '$lib/auth/context';
-  import { mergeAccountDraft } from '$lib/finance/account-drafts';
   import { financeCommand } from '$lib/finance/commands';
   import { formatCents } from '$lib/finance/format';
+  import { draftedRow, releaseDraft, restoreDraft, withDraft } from '$lib/finance/row-drafts';
   import { OptimisticActions } from '$lib/offline/optimistic';
+  import type { RowDrafts } from '$lib/finance/row-drafts';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -58,10 +59,15 @@
    * borrador por cuenta acumula los parches pendientes y se suelta en
    * `settle` (cuando `synced`/reconciliación trae datos frescos).
    */
-  let drafts = $state<Record<string, Partial<(typeof accounts)[number]>>>({});
+  let drafts = $state<RowDrafts<(typeof accounts)[number]>>({});
+
+  /** El valor que hay HOY en la fila (foto + borrador), para la guarda anti-ruido de los `onblur` (T13-R3). */
+  function vista(account: (typeof accounts)[number]): (typeof accounts)[number] {
+    return draftedRow(account, drafts[account.id]);
+  }
 
   function saveAccount(account: (typeof accounts)[number], patch: Partial<(typeof accounts)[number]>): void {
-    const next = mergeAccountDraft(account, drafts[account.id], patch);
+    const next = draftedRow(account, drafts[account.id], patch);
     if (!isAccountKind(next.kind)) {
       // M4: antes se abandonaba con un `return` mudo. Hoy es inalcanzable
       // (el <select> solo ofrece los tres valores válidos), pero si un cuarto
@@ -69,7 +75,11 @@
       actionStatus.set({ tone: 'error', text: 'No reconocemos el tipo de esta cuenta: no se ha guardado el cambio.' });
       return;
     }
-    drafts[account.id] = { ...drafts[account.id], ...patch };
+    // El borrador ANTES de anotar este parche: es a lo que hay que volver si el
+    // servidor rechaza el comando (T13-R1), en vez de dejar el valor rechazado
+    // dentro del borrador y reenviarlo en cada edición posterior de la fila.
+    const previo = drafts[account.id];
+    drafts = withDraft(drafts, account.id, patch);
     void optimistic.run(
       financeCommand(context.household.id, {
         kind: 'finance.account.update',
@@ -80,7 +90,12 @@
         ownerAliases: next.ownerAliases,
         transferRefs: next.transferRefs
       }),
-      { settle: () => { delete drafts[account.id]; } }
+      {
+        revert: () => (drafts = restoreDraft(drafts, account.id, previo)),
+        // Solo las claves de ESTE comando (T13-R2): un segundo comando en
+        // vuelo sobre la misma fila conserva su parche.
+        settle: () => (drafts = releaseDraft(drafts, account.id, patch))
+      }
     );
   }
 
@@ -142,9 +157,19 @@
           <thead><tr><th>Nombre</th><th>Banco</th><th>Referencia</th><th>Tipo</th><th>Titular</th><th>Alias de titulares (;)</th><th>Referencias transferencia (,)</th></tr></thead>
           <tbody>
             {#each accounts as account (account.id)}
+              <!--
+                [FASE 5 · despacho de cierre, T13-R3] `fila` es la cuenta tal y
+                como está AHORA: foto del servidor + borrador pendiente. Las
+                guardas anti-ruido de los `onblur` comparaban contra la foto,
+                que sin conexión nunca se refresca, así que volver a salir de
+                un campo ya editado reenviaba otro comando idéntico; y tras un
+                rechazo el campo seguía enseñando el valor rechazado aunque el
+                borrador ya hubiera vuelto atrás.
+              -->
+              {@const fila = vista(account)}
               <tr>
-                <td><input aria-label={`Nombre de ${account.name}`} value={account.name}
-                  onblur={(event) => event.currentTarget.value !== account.name && saveAccount(account, { name: event.currentTarget.value })} /></td>
+                <td><input aria-label={`Nombre de ${account.name}`} value={fila.name}
+                  onblur={(event) => event.currentTarget.value !== fila.name && saveAccount(account, { name: event.currentTarget.value })} /></td>
                 <!--
                   [FASE 5 · despacho de cierre, F5-C1] Las dos columnas salen
                   de columnas NULLABLES (`bank`, `bank_ref` de
@@ -157,18 +182,18 @@
                 <td>{account.bank ?? '—'}</td>
                 <td class="cifra">{account.bankRef ? `…${account.bankRef.slice(-4)}` : '—'}</td>
                 <td>
-                  <select aria-label={`Tipo de ${account.name}`} value={account.kind}
+                  <select aria-label={`Tipo de ${account.name}`} value={fila.kind}
                     onchange={(event) => saveAccount(account, { kind: event.currentTarget.value })}>
                     <option value="comun">común</option><option value="personal">personal</option><option value="inversion">inversión</option>
                   </select>
                 </td>
-                <td><input aria-label={`Titular de ${account.name}`} value={account.ownerLabel}
-                  onblur={(event) => event.currentTarget.value !== account.ownerLabel && saveAccount(account, { ownerLabel: event.currentTarget.value })} /></td>
-                <td><input aria-label={`Alias de titulares de ${account.name}`} value={account.ownerAliases.join('; ')}
+                <td><input aria-label={`Titular de ${account.name}`} value={fila.ownerLabel}
+                  onblur={(event) => event.currentTarget.value !== fila.ownerLabel && saveAccount(account, { ownerLabel: event.currentTarget.value })} /></td>
+                <td><input aria-label={`Alias de titulares de ${account.name}`} value={fila.ownerAliases.join('; ')}
                   onblur={(event) => saveAccount(account, { ownerAliases: parseList(event.currentTarget.value, ';') })} /></td>
                 <td>
-                  {#if account.kind === 'inversion'}
-                    <input aria-label={`Referencias de transferencia de ${account.name}`} value={account.transferRefs.join(', ')}
+                  {#if fila.kind === 'inversion'}
+                    <input aria-label={`Referencias de transferencia de ${account.name}`} value={fila.transferRefs.join(', ')}
                       onblur={(event) => saveAccount(account, { transferRefs: parseList(event.currentTarget.value, ',') })} />
                   {:else}—{/if}
                 </td>
