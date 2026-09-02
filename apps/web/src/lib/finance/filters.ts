@@ -92,16 +92,6 @@ export function monthsAgoOf(today: string, months: number): string {
 }
 
 /**
- * Igual, tomando un `Date` en UTC. [FASE 5, T10 · corrección Minor 7 — antes
- * vivía inline en `revision/+page.server.ts` sin el clamp]. Se conserva para
- * quien todavía parte de un `Date`; el camino de las pantallas es
- * `parseDateRange`, que ancla el «hoy» en la zona del hogar.
- */
-export function monthsAgoISO(months: number, today: Date = new Date()): string {
-  return monthsAgoOf(isoOf(today.getUTCFullYear(), today.getUTCMonth() + 1, today.getUTCDate()), months);
-}
-
-/**
  * ¿Es una fecha ISO REAL? `DATE_PATTERN` solo mira la forma: `2026-13-40` la
  * pasa y llegaba tal cual a `op_date between $2 and $3`, donde Postgres
  * responde 22008 y el `catch` de los cargadores lo confunde con una avería

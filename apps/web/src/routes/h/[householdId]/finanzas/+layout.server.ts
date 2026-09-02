@@ -12,7 +12,7 @@ const log = createLogger('web:finanzas:layout');
  * alguna, así que el conteo sale correcto sin repetir aquí el doble cerrojo.
  *
  * [FASE 5, T10 · corrección Minor 2] Misma ventana de 6 meses que
- * `revision/+page.server.ts` (`monthsAgoISO(6)`): sin este filtro, un hogar
+ * `revision/+page.server.ts` (`parseDateRange`, seis meses por omisión): sin este filtro, un hogar
  * con pendientes de hace más de 6 meses veía el badge en «7» y, al pulsar,
  * «Nada que revisar en este periodo ✨» — el badge prometía lo que la bandeja
  * no enseñaba. Se calcula en SQL (`current_date - interval '6 months'`) para

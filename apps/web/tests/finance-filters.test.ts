@@ -8,7 +8,7 @@ import {
   mergeFilters,
   mergeParams,
   monthRange,
-  monthsAgoISO,
+  monthsAgoOf,
   parseDateRange,
   parseFilters,
   parsePageOffset,
@@ -172,21 +172,25 @@ describe('isUuid y DATE_PATTERN: exportados para que otras tareas no copien el r
 // mes destino más corto se desbordaba al mes siguiente (31/8 − 6 → 3/3, no
 // 28/2). Se movió aquí para reutilizar `addMonths`/`daysInMonth`, que ya
 // resuelven el mismo desborde para `rangeOfMonths`/`shiftRange`.
-describe('monthsAgoISO (rango rodante de la bandeja de Revisión)', () => {
+// [FASE 5 · despacho de cierre, F5-M3] Tomaba un `Date` y lo leía en UTC, que
+// es de donde salía el «hoy» equivocado de Revisión y Eventos de madrugada.
+// Ahora parte de una fecha ISO —la del hogar— y el clamp de fin de mes, que es
+// lo que de verdad hay que proteger, sigue igual.
+describe('monthsAgoOf (rango rodante de la bandeja de Revisión)', () => {
   it('31 de agosto menos 6 meses clampa a 28 de febrero, no se desborda a marzo', () => {
-    expect(monthsAgoISO(6, new Date(Date.UTC(2026, 7, 31)))).toBe('2026-02-28');
+    expect(monthsAgoOf('2026-08-31', 6)).toBe('2026-02-28');
   });
 
   it('29 de febrero (bisiesto) menos 12 meses clampa a 28 de febrero del año anterior', () => {
-    expect(monthsAgoISO(12, new Date(Date.UTC(2024, 1, 29)))).toBe('2023-02-28');
+    expect(monthsAgoOf('2024-02-29', 12)).toBe('2023-02-28');
   });
 
   it('un mes de igual longitud conserva el día exacto', () => {
-    expect(monthsAgoISO(1, new Date(Date.UTC(2026, 8, 15)))).toBe('2026-08-15');
+    expect(monthsAgoOf('2026-09-15', 1)).toBe('2026-08-15');
   });
 
   it('cruza el cambio de año', () => {
-    expect(monthsAgoISO(2, new Date(Date.UTC(2026, 0, 15)))).toBe('2025-11-15');
+    expect(monthsAgoOf('2026-01-15', 2)).toBe('2025-11-15');
   });
 });
 
