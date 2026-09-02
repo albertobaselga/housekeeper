@@ -99,3 +99,147 @@ export function sortTree<T extends SortableNodeLike & { children: T[] }>(
     .map((n) => ({ ...n, children: sortTree(n.children, key, dir) }))
     .sort((a, b) => compareSortValues(a, b, key, dir));
 }
+
+// ── Selección (checkbox, Shift+clic, resolución a tx_id) ─────────────────────
+// Tipado ESTRUCTURAL sobre la forma del nodo del pivot del dominio (fase 2):
+// si el dominio nombra distinto alguna propiedad (p. ej. total en vez de
+// totalCents), ajusta PivotNodeLike aquí — los nombres del dominio mandan.
+
+export interface PivotMovLike {
+  id: string;
+  date: string;
+  cents: bigint;
+}
+
+export interface PivotNodeLike extends SortableNodeLike {
+  key: string;
+  depth: number;
+  count: number;
+  catId: string | null;
+  nat: 'recurrente' | 'extraordinario' | null;
+  provider: string | null;
+  concept: string | null;
+  movs: PivotMovLike[];
+  children: PivotNodeLike[];
+}
+
+export interface SelectableItem {
+  key: string;
+  parentKey: string;
+  provider: string;
+  concept: string | null;
+  count: number;
+  /** Nodo categoría/subcategoría agregado: el gesto vincula la categoría entera. */
+  categoryId?: string;
+  label?: string;
+  /** Hoja de la dimensión Movimiento: la identidad es el id exacto. */
+  txId?: string;
+}
+
+export function parentKeyOf(key: string): string {
+  const idx = key.lastIndexOf('/');
+  return idx <= 0 ? '' : key.slice(0, idx);
+}
+
+export function toSelectable(node: PivotNodeLike): SelectableItem | null {
+  if (node.provider === null) return null;
+  return { key: node.key, parentKey: parentKeyOf(node.key), provider: node.provider, concept: node.concept, count: node.count };
+}
+
+export function isCategoryAggregateNode(node: PivotNodeLike, dims: readonly PivotDimension[]): boolean {
+  const dim = dims[node.depth];
+  return (dim === 'cat' || dim === 'sub') && node.catId !== null;
+}
+
+export function toCategorySelectable(node: PivotNodeLike, dims: readonly PivotDimension[]): SelectableItem | null {
+  if (!isCategoryAggregateNode(node, dims)) return null;
+  return {
+    key: node.key, parentKey: parentKeyOf(node.key), provider: '', concept: null,
+    count: node.count, categoryId: node.catId!, label: node.label
+  };
+}
+
+export function isMovementLeaf(node: PivotNodeLike, dims: readonly PivotDimension[]): boolean {
+  return dims[node.depth] === 'movement' && node.movs.length === 1;
+}
+
+export function toMovementSelectable(node: PivotNodeLike, dims: readonly PivotDimension[]): SelectableItem | null {
+  if (!isMovementLeaf(node, dims)) return null;
+  return {
+    key: node.key, parentKey: parentKeyOf(node.key), provider: '', concept: null,
+    count: 1, txId: node.movs[0].id, label: node.label
+  };
+}
+
+export function toAnySelectable(node: PivotNodeLike, dims: readonly PivotDimension[]): SelectableItem | null {
+  return toSelectable(node) ?? toCategorySelectable(node, dims) ?? toMovementSelectable(node, dims);
+}
+
+export function selectableListAny(nodes: readonly PivotNodeLike[], dims: readonly PivotDimension[]): SelectableItem[] {
+  return nodes.map((n) => toAnySelectable(n, dims)).filter((s): s is SelectableItem => s !== null);
+}
+
+/** Hojas proveedor/concepto del subárbol; `omitted` = hojas sin proveedor único. */
+export function collectLeafItems(node: PivotNodeLike): { items: SelectableItem[]; omitted: number } {
+  if (node.children.length === 0) {
+    const item = toSelectable(node);
+    return item ? { items: [item], omitted: 0 } : { items: [], omitted: 1 };
+  }
+  const items: SelectableItem[] = [];
+  let omitted = 0;
+  for (const child of node.children) {
+    const r = collectLeafItems(child);
+    items.push(...r.items);
+    omitted += r.omitted;
+  }
+  return { items, omitted };
+}
+
+export function rangeBetween(
+  siblings: readonly SelectableItem[],
+  fromKey: string,
+  toKey: string
+): SelectableItem[] | null {
+  const i = siblings.findIndex((s) => s.key === fromKey);
+  const j = siblings.findIndex((s) => s.key === toKey);
+  if (i === -1 || j === -1) return null;
+  const [lo, hi] = i <= j ? [i, j] : [j, i];
+  return siblings.slice(lo, hi + 1);
+}
+
+export function toggleInMap(map: ReadonlyMap<string, SelectableItem>, item: SelectableItem): Map<string, SelectableItem> {
+  const next = new Map(map);
+  if (next.has(item.key)) next.delete(item.key);
+  else next.set(item.key, item);
+  return next;
+}
+
+/**
+ * Mapa key→ids recorriendo una LISTA de raíces (recursivo). NO delega en el
+ * `collectNodeMovIds(tree)` del dominio (R15) porque su firma exige un
+ * `PivotTree` completo (secciones `gastos`/`ingresos`/`internas`/`inversiones`/
+ * `eventos`, con nodos `PivotNode` que llevan además `concepts: string[]`),
+ * mientras que aquí solo hay una LISTA de raíces ya filtrada/ordenada por
+ * sección y con el tipo estructural `PivotNodeLike` (sin `concepts`, con
+ * `nat` nullable) — envolver exigiría o bien fabricar un `PivotTree` falso, o
+ * bien un cast sobre los datos, ambos peores que este espejo mínimo de la
+ * misma lógica recursiva. Las claves ya llegan cualificadas por sección
+ * (prefijo `gastos/`, `evento:<id>/`, …) porque así las construye
+ * `buildTreeNodes` en el dominio, así que no hace falta recualificarlas aquí.
+ */
+export function collectMovIdsByKey(roots: readonly PivotNodeLike[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  const walk = (n: PivotNodeLike): void => {
+    map.set(n.key, n.movs.map((m) => m.id));
+    n.children.forEach(walk);
+  };
+  roots.forEach(walk);
+  return map;
+}
+
+export function resolveSelectionIds(
+  items: readonly SelectableItem[],
+  movIdsByKey: ReadonlyMap<string, string[]>
+): string[] {
+  return [...new Set(items.flatMap((i) => (i.txId != null ? [i.txId] : (movIdsByKey.get(i.key) ?? []))))];
+}
