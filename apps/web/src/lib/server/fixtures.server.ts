@@ -6,7 +6,12 @@ import { isFinanceAccountKind, isFinanceCategoryKind, type AnaliticaData, type A
 import type { FinanceFilters } from '$lib/finance/filters';
 
 import { demoOnly, fixturesAllowed } from './data-source.server';
-import type { FinanceDashboardData, FinanceMovimientosData, FinanceRevisionData } from './finance.server';
+import type {
+  FinanceDashboardData,
+  FinanceEventosData,
+  FinanceMovimientosData,
+  FinanceRevisionData
+} from './finance.server';
 
 /**
  * Corpus de demostración. Todo lo que sale de aquí es INVENTADO.
@@ -889,6 +894,27 @@ export const getFinanceRevisionFixture = demoOnly(
     ],
     categories: [
       { id: 'fc200000-0000-4000-8000-000000000001', name: 'Casa', parentId: null, kind: 'gasto' }
+    ]
+  })
+);
+
+export const getFinanceEventosFixture = demoOnly(
+  'finanzas/eventos',
+  (range: { from: string; to: string }): FinanceEventosData => ({
+    from: range.from,
+    to: range.to,
+    openId: null,
+    detail: null,
+    summary: [
+      {
+        id: 'fc300000-0000-4000-8000-000000000001',
+        name: 'Semana Santa (demo)',
+        txCount: 3,
+        expenseCents: '-42000',
+        incomeCents: '0',
+        netCents: '-42000',
+        totalCount: 3
+      }
     ]
   })
 );

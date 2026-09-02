@@ -546,3 +546,88 @@ export async function financeRead<T>(
     error(DATA_UNAVAILABLE_STATUS, DATA_UNAVAILABLE_MESSAGE);
   }
 }
+
+// ── Eventos (Task 11) ────────────────────────────────────────────────────────
+
+export interface FinanceEventSummaryRow {
+  id: string;
+  name: string;
+  txCount: number;
+  expenseCents: string;
+  incomeCents: string;
+  netCents: string;
+  totalCount: number;
+}
+
+export interface FinanceEventosData {
+  from: string;
+  to: string;
+  openId: string | null;
+  summary: FinanceEventSummaryRow[];
+  detail: Array<{ name: string; count: number; totalCents: string }> | null;
+}
+
+/**
+ * Totales por evento del rango + desglose por categoría del evento abierto.
+ *
+ * [Ajuste sobre el brief] El brief de la Task 11 traía el resumen como SQL
+ * propio de esta función, calcado a mano de `readFinanceEventsSummary`
+ * (packages/server, ya existente y ya probada en
+ * `queries.integration.test.ts`). La resolución del coordinador pide
+ * exactamente lo contrario —reutilizarla, no duplicar su SQL en la ruta ni
+ * aquí— así que este loader llama a esa lectura compartida en vez de
+ * reimplementarla. Efecto colateral BUENO del cambio: la reimplementación del
+ * brief sumaba TODOS los movimientos del evento (incluidas las categorías de
+ * `kind = 'transferencia'`), mientras que `readFinanceEventsSummary` las
+ * excluye —mismo criterio que el resto del módulo (dashboard, breakdown)—,
+ * así que un evento con una transferencia enlazada ya no la cuenta como
+ * ingreso o gasto. El desglose por categoría reutiliza igual `readFinanceBreakdown`
+ * acotado a `eventId: openId` (mismo camino que sigue `readFinanceEventDetail`
+ * por dentro, sin recalcular el resumen completo una segunda vez); su
+ * `Sin categorizar` sustituye al `(sin categoría)` que el brief improvisaba,
+ * por ser la etiqueta única ya establecida en esa lectura compartida.
+ *
+ * `totalCount` (movimientos enlazados al evento SIN el filtro de rango, para
+ * el aviso de borrado del §T11 svelte) no lo cubre ninguna lectura existente:
+ * es la única consulta propia de este loader, y cuenta filas de
+ * `finance_transaction_events` sin más condición que el hogar.
+ *
+ * [Ajuste sobre el brief] El catch original del brief solo distinguía
+ * `AuthorizationError`. `requireFinanceAdmin` (packages/server/commands/finance.ts)
+ * rechaza con `CommandRejectedError` a quien no es `family_admin` o no tiene
+ * Finanzas concedido — el mismo «sin acceso» que ya tratan como null
+ * `loadFinanceDashboard`/`loadFinanceMovimientos`/`loadFinanceRevision`. Se
+ * alinea aquí con esas tres: lo contrario habría hecho que un `family_member`
+ * autenticado disparase un `log.error` de avería por cada visita a Eventos.
+ */
+export async function loadFinanceEventos(
+  user: { id: string },
+  householdId: string,
+  range: { from: string; to: string },
+  openId: string | null,
+  pool: Pool | null = getDatabasePool()
+): Promise<FinanceEventosData | null> {
+  if (!pool) return null;
+  try {
+    return await withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
+      await requireFinanceAdmin(client, membership);
+      const { from, to } = range;
+      const filters: FinanceReadFilters = { from, to, accountIds: [], eventId: null, excludeEventIds: [] };
+      const rangeSummary = await readFinanceEventsSummary(client, householdId, filters);
+      const totals = await client.query<{ id: string; totalCount: number }>(
+        `select te.event_id as id, count(*)::int as "totalCount"
+           from app.finance_transaction_events as te
+          where te.household_id = $1
+          group by te.event_id`,
+        [householdId]
+      );
+      const totalById = new Map(totals.rows.map((row) => [row.id, row.totalCount]));
+      const summary = rangeSummary.map((row) => ({ ...row, totalCount: totalById.get(row.id) ?? 0 }));
+      const detail = openId ? await readFinanceBreakdown(client, householdId, { ...filters, eventId: openId }) : null;
+      return { from, to, openId, summary, detail };
+    });
+  } catch (cause) {
+    if (cause instanceof AuthorizationError || cause instanceof CommandRejectedError) return null;
+    return unreadable(log, 'finance eventos', cause);
+  }
+}

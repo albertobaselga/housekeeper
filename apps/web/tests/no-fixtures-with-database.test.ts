@@ -112,7 +112,8 @@ const CASES: LoadCase[] = [
   // añade junto con Analítica, que sí es de esta fase.
   { module: '../src/routes/h/[householdId]/finanzas/+page.server.ts' },
   { module: '../src/routes/h/[householdId]/finanzas/movimientos/+page.server.ts' },
-  { module: '../src/routes/h/[householdId]/finanzas/analitica/+page.server.ts' }
+  { module: '../src/routes/h/[householdId]/finanzas/analitica/+page.server.ts' },
+  { module: '../src/routes/h/[householdId]/finanzas/eventos/+page.server.ts' }
 ];
 
 type LoadFn = (event: Record<string, unknown>) => unknown;
