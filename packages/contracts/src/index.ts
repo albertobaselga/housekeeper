@@ -459,6 +459,126 @@ export interface PaymentRecordPayloadV1 {
   reference?: string;
 }
 
+/** `aggregateType: "finance"` — payloads de escritura del módulo Finanzas (discriminados por `kind`). */
+export type FinanceCommandRecurrence = "recurrente" | "extraordinario";
+export type FinanceCommandTxStatus = "pendiente" | "sugerida_regla" | "sugerida_agente" | "confirmada";
+
+export interface FinanceAccountUpdatePayloadV1 {
+  kind: "finance.account.update";
+  accountId: UUID;
+  name: string;
+  accountKind: "comun" | "personal" | "inversion";
+  ownerLabel: string;
+  ownerAliases: string[];
+  transferRefs: string[];
+}
+export interface FinanceCategoryCreatePayloadV1 {
+  kind: "finance.category.create";
+  name: string;
+  categoryKind: "gasto" | "ingreso";
+  parentId: UUID | null;
+}
+export interface FinanceCategoryUpdatePayloadV1 { kind: "finance.category.update"; categoryId: UUID; name: string }
+export interface FinanceCategoryDeletePayloadV1 { kind: "finance.category.delete"; categoryId: UUID }
+export interface FinanceCategoryAssignConceptPayloadV1 {
+  kind: "finance.category.assignConcept";
+  provider: string;
+  concept?: string;
+  categoryId: UUID;
+}
+export interface FinanceRuleCreatePayloadV1 {
+  kind: "finance.rule.create";
+  ruleType: "proveedor_exacto" | "concepto_contiene" | "codigo_norma43";
+  pattern: string;
+  categoryId: UUID;
+  priority?: number;
+}
+export interface FinanceRuleDeletePayloadV1 { kind: "finance.rule.delete"; ruleId: UUID }
+export interface FinanceTransactionUpdatePayloadV1 {
+  kind: "finance.transaction.update";
+  transactionId: UUID;
+  categoryId?: UUID | null;
+  status?: FinanceCommandTxStatus;
+  createRule?: { ruleType: "proveedor_exacto" | "concepto_contiene" };
+  concept?: string;
+  recurrence?: FinanceCommandRecurrence | null;
+  eventIds?: UUID[];
+}
+export interface FinanceTransactionsBulkPayloadV1 {
+  kind: "finance.transactions.bulk";
+  transactionIds: UUID[];
+  categoryId?: UUID;
+  status?: FinanceCommandTxStatus;
+}
+export interface FinanceAssignConceptRecurrencePayloadV1 {
+  kind: "finance.transactions.assignConceptRecurrence";
+  provider?: string;
+  concept?: string;
+  categoryId?: UUID;
+  recurrence: FinanceCommandRecurrence;
+}
+export interface FinanceManualCreatePayloadV1 {
+  kind: "finance.transaction.manual.create";
+  accountId: UUID;
+  opDate: ISODate;
+  concept: string;
+  provider?: string;
+  amountCents: MoneyCents;
+  categoryId?: UUID | null;
+  recurrence?: FinanceCommandRecurrence | null;
+}
+export interface FinanceManualDeletePayloadV1 { kind: "finance.transaction.manual.delete"; transactionId: UUID }
+export interface FinanceTransactionInvestPayloadV1 {
+  kind: "finance.transaction.invest";
+  transactionId: UUID;
+  accountId: UUID;
+}
+export interface FinanceTransfersLinkPayloadV1 { kind: "finance.transfers.link"; transactionIds: UUID[] }
+export interface FinanceTransfersUnlinkPayloadV1 { kind: "finance.transfers.unlink"; transferGroupId: UUID }
+export interface FinanceEventCreatePayloadV1 { kind: "finance.event.create"; id?: UUID; name: string }
+export interface FinanceEventUpdatePayloadV1 { kind: "finance.event.update"; eventId: UUID; name: string }
+export interface FinanceEventDeletePayloadV1 { kind: "finance.event.delete"; eventId: UUID }
+export interface FinanceEventAssignTransactionsPayloadV1 {
+  kind: "finance.event.assignTransactions";
+  eventId: UUID;
+  transactionIds: UUID[];
+  action: "add" | "remove";
+}
+export interface FinanceEventAssignConceptPayloadV1 {
+  kind: "finance.event.assignConcept";
+  provider?: string;
+  concept?: string;
+  categoryId?: UUID;
+  eventId?: UUID | null;
+  newEventName?: string;
+}
+export interface FinanceAliasUpdatePayloadV1 { kind: "finance.alias.update"; provider: string; alias: string }
+export interface FinanceImportUndoPayloadV1 { kind: "finance.import.undo"; batchId: UUID }
+
+export type FinanceWritePayloadV1 =
+  | FinanceAccountUpdatePayloadV1
+  | FinanceCategoryCreatePayloadV1
+  | FinanceCategoryUpdatePayloadV1
+  | FinanceCategoryDeletePayloadV1
+  | FinanceCategoryAssignConceptPayloadV1
+  | FinanceRuleCreatePayloadV1
+  | FinanceRuleDeletePayloadV1
+  | FinanceTransactionUpdatePayloadV1
+  | FinanceTransactionsBulkPayloadV1
+  | FinanceAssignConceptRecurrencePayloadV1
+  | FinanceManualCreatePayloadV1
+  | FinanceManualDeletePayloadV1
+  | FinanceTransactionInvestPayloadV1
+  | FinanceTransfersLinkPayloadV1
+  | FinanceTransfersUnlinkPayloadV1
+  | FinanceEventCreatePayloadV1
+  | FinanceEventUpdatePayloadV1
+  | FinanceEventDeletePayloadV1
+  | FinanceEventAssignTransactionsPayloadV1
+  | FinanceEventAssignConceptPayloadV1
+  | FinanceAliasUpdatePayloadV1
+  | FinanceImportUndoPayloadV1;
+
 export interface CriticalSnapshotV1 {
   apiVersion: typeof API_VERSION;
   schemaVersion: 1;

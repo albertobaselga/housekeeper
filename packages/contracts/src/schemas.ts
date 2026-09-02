@@ -541,6 +541,192 @@ export const financeCommandPayloadSchema = z.discriminatedUnion("kind", [
   financeRevokePayloadSchema,
 ]);
 
+// --- Finanzas: payloads de escritura (`aggregateType: "finance"`, discriminados por `kind`).
+// Los selectores proveedor-o-categoría se validan en el handler (finance_selector_required),
+// no con refine: la unión discriminada exige objetos planos.
+
+const financeRecurrenceSchema = z.enum(["recurrente", "extraordinario"]);
+const financeTxStatusSchema = z.enum(["pendiente", "sugerida_regla", "sugerida_agente", "confirmada"]);
+
+export const financeAccountUpdatePayloadSchema = z.object({
+  kind: z.literal("finance.account.update"),
+  accountId: uuidSchema,
+  name: z.string().trim().min(1).max(120),
+  accountKind: z.enum(["comun", "personal", "inversion"]),
+  ownerLabel: z.string().trim().min(1).max(80),
+  ownerAliases: z.array(z.string().trim().min(1).max(120)).max(20),
+  transferRefs: z.array(z.string().trim().min(1).max(64)).max(20),
+});
+
+export const financeCategoryCreatePayloadSchema = z.object({
+  kind: z.literal("finance.category.create"),
+  name: z.string().trim().min(1).max(80),
+  categoryKind: z.enum(["gasto", "ingreso"]),
+  parentId: uuidSchema.nullable(),
+});
+
+export const financeCategoryUpdatePayloadSchema = z.object({
+  kind: z.literal("finance.category.update"),
+  categoryId: uuidSchema,
+  name: z.string().trim().min(1).max(80),
+});
+
+export const financeCategoryDeletePayloadSchema = z.object({
+  kind: z.literal("finance.category.delete"),
+  categoryId: uuidSchema,
+});
+
+export const financeCategoryAssignConceptPayloadSchema = z.object({
+  kind: z.literal("finance.category.assignConcept"),
+  provider: z.string().trim().min(1).max(200),
+  concept: z.string().trim().min(1).max(200).optional(),
+  categoryId: uuidSchema,
+});
+
+export const financeRuleCreatePayloadSchema = z.object({
+  kind: z.literal("finance.rule.create"),
+  ruleType: z.enum(["proveedor_exacto", "concepto_contiene", "codigo_norma43"]),
+  pattern: z.string().trim().min(1).max(200),
+  categoryId: uuidSchema,
+  priority: z.number().int().min(0).max(1000).optional(),
+});
+
+export const financeRuleDeletePayloadSchema = z.object({
+  kind: z.literal("finance.rule.delete"),
+  ruleId: uuidSchema,
+});
+
+export const financeTransactionUpdatePayloadSchema = z.object({
+  kind: z.literal("finance.transaction.update"),
+  transactionId: uuidSchema,
+  categoryId: uuidSchema.nullable().optional(),
+  status: financeTxStatusSchema.optional(),
+  createRule: z.object({ ruleType: z.enum(["proveedor_exacto", "concepto_contiene"]) }).optional(),
+  concept: z.string().trim().min(3).max(500).optional(),
+  recurrence: financeRecurrenceSchema.nullable().optional(),
+  eventIds: z.array(uuidSchema).max(50).optional(),
+});
+
+// `status` es OPCIONAL a propósito: el pivot de la fase 6 cambia solo la
+// categoría en bloque. Que llegue al menos un campo de cambio (categoría o
+// estado) lo valida el handler (`invalid_payload`), no un refine: la unión
+// discriminada exige objetos planos.
+export const financeTransactionsBulkPayloadSchema = z.object({
+  kind: z.literal("finance.transactions.bulk"),
+  transactionIds: z.array(uuidSchema).min(1).max(500),
+  categoryId: uuidSchema.optional(),
+  status: financeTxStatusSchema.optional(),
+});
+
+export const financeAssignConceptRecurrencePayloadSchema = z.object({
+  kind: z.literal("finance.transactions.assignConceptRecurrence"),
+  provider: z.string().trim().min(1).max(200).optional(),
+  concept: z.string().trim().min(1).max(200).optional(),
+  categoryId: uuidSchema.optional(),
+  recurrence: financeRecurrenceSchema,
+});
+
+export const financeManualCreatePayloadSchema = z.object({
+  kind: z.literal("finance.transaction.manual.create"),
+  accountId: uuidSchema,
+  opDate: isoDateSchema,
+  concept: z.string().trim().min(3).max(200),
+  provider: z.string().trim().max(200).optional(),
+  amountCents: moneyCentsSchema.refine((value) => BigInt(value) !== 0n, "El importe no puede ser 0"),
+  categoryId: uuidSchema.nullable().optional(),
+  recurrence: financeRecurrenceSchema.nullable().optional(),
+});
+
+export const financeManualDeletePayloadSchema = z.object({
+  kind: z.literal("finance.transaction.manual.delete"),
+  transactionId: uuidSchema,
+});
+
+export const financeTransactionInvestPayloadSchema = z.object({
+  kind: z.literal("finance.transaction.invest"),
+  transactionId: uuidSchema,
+  accountId: uuidSchema,
+});
+
+export const financeTransfersLinkPayloadSchema = z.object({
+  kind: z.literal("finance.transfers.link"),
+  transactionIds: z.array(uuidSchema).min(2).max(20),
+});
+
+export const financeTransfersUnlinkPayloadSchema = z.object({
+  kind: z.literal("finance.transfers.unlink"),
+  transferGroupId: uuidSchema,
+});
+
+export const financeEventCreatePayloadSchema = z.object({
+  kind: z.literal("finance.event.create"),
+  id: uuidSchema.optional(),
+  name: z.string().trim().min(1).max(80),
+});
+
+export const financeEventUpdatePayloadSchema = z.object({
+  kind: z.literal("finance.event.update"),
+  eventId: uuidSchema,
+  name: z.string().trim().min(1).max(80),
+});
+
+export const financeEventDeletePayloadSchema = z.object({
+  kind: z.literal("finance.event.delete"),
+  eventId: uuidSchema,
+});
+
+export const financeEventAssignTransactionsPayloadSchema = z.object({
+  kind: z.literal("finance.event.assignTransactions"),
+  eventId: uuidSchema,
+  transactionIds: z.array(uuidSchema).min(1).max(500),
+  action: z.enum(["add", "remove"]),
+});
+
+export const financeEventAssignConceptPayloadSchema = z.object({
+  kind: z.literal("finance.event.assignConcept"),
+  provider: z.string().trim().min(1).max(200).optional(),
+  concept: z.string().trim().min(1).max(200).optional(),
+  categoryId: uuidSchema.optional(),
+  eventId: uuidSchema.nullable().optional(),
+  newEventName: z.string().trim().min(1).max(80).optional(),
+});
+
+export const financeAliasUpdatePayloadSchema = z.object({
+  kind: z.literal("finance.alias.update"),
+  provider: z.string().trim().min(1).max(200),
+  alias: z.string().trim().max(120),
+});
+
+export const financeImportUndoPayloadSchema = z.object({
+  kind: z.literal("finance.import.undo"),
+  batchId: uuidSchema,
+});
+
+export const financeWritePayloadSchema = z.discriminatedUnion("kind", [
+  financeAccountUpdatePayloadSchema,
+  financeCategoryCreatePayloadSchema,
+  financeCategoryUpdatePayloadSchema,
+  financeCategoryDeletePayloadSchema,
+  financeCategoryAssignConceptPayloadSchema,
+  financeRuleCreatePayloadSchema,
+  financeRuleDeletePayloadSchema,
+  financeTransactionUpdatePayloadSchema,
+  financeTransactionsBulkPayloadSchema,
+  financeAssignConceptRecurrencePayloadSchema,
+  financeManualCreatePayloadSchema,
+  financeManualDeletePayloadSchema,
+  financeTransactionInvestPayloadSchema,
+  financeTransfersLinkPayloadSchema,
+  financeTransfersUnlinkPayloadSchema,
+  financeEventCreatePayloadSchema,
+  financeEventUpdatePayloadSchema,
+  financeEventDeletePayloadSchema,
+  financeEventAssignTransactionsPayloadSchema,
+  financeEventAssignConceptPayloadSchema,
+  financeAliasUpdatePayloadSchema,
+  financeImportUndoPayloadSchema,
+]);
+
 export const wikiPageCommandPayloadSchema = z.discriminatedUnion("action", [
   wikiPageCreatePayloadSchema,
   wikiPageEditPayloadSchema,
