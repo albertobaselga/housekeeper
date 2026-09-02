@@ -1,5 +1,6 @@
 <script lang="ts">
   import CategorySelect from './CategorySelect.svelte';
+  import RecurrenceChip from './RecurrenceChip.svelte';
   import { manualAmountCents } from '$lib/finance/manual-form';
   import type { FinanceCategoryOptionSource } from '$lib/finance/category-options';
   import { todayLocal } from '$lib/finance/filters';
@@ -92,17 +93,7 @@
       <CategorySelect {categories} value={categoryId} onchange={(id) => (categoryId = id)} />
     </label>
     <label>Recurrencia
-      <select
-        value={recurrence ?? ''}
-        onchange={(event) => {
-          const next = event.currentTarget.value;
-          recurrence = next === '' ? null : (next as 'recurrente' | 'extraordinario');
-        }}
-      >
-        <option value="">— sin clasificar —</option>
-        <option value="recurrente">♻ Recurrente</option>
-        <option value="extraordinario">✦ Extraordinario</option>
-      </select>
+      <RecurrenceChip value={recurrence} onchange={(next) => (recurrence = next)} label="Recurrencia" />
     </label>
     {#if formError}<p class="form-error" role="alert">{formError}</p>{/if}
     <div>

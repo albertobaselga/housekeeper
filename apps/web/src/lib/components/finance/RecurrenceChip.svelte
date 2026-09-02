@@ -1,20 +1,24 @@
 <script lang="ts">
+  import { parseRecurrence } from '$lib/finance/manual-form';
+
   let {
     value,
-    onchange
+    onchange,
+    label = 'Tipo de gasto'
   }: {
     value: 'recurrente' | 'extraordinario' | null;
     onchange: (next: 'recurrente' | 'extraordinario' | null) => void;
+    /** Rótulo accesible: el nombre por defecto para las tablas, o el de un
+     * `<label>` envolvente cuando lo pide quien la usa (ManualForm, mismo
+     * patrón que CategorySelect). */
+    label?: string;
   } = $props();
 </script>
 
 <select
-  aria-label="Tipo de gasto"
+  aria-label={label}
   value={value ?? ''}
-  onchange={(event) => {
-    const next = event.currentTarget.value;
-    onchange(next === '' ? null : (next as 'recurrente' | 'extraordinario'));
-  }}
+  onchange={(event) => onchange(parseRecurrence(event.currentTarget.value))}
 >
   <option value="">—</option>
   <option value="recurrente">♻ Recurrente</option>

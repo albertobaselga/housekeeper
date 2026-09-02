@@ -37,9 +37,15 @@ describe('etiquetas accesibles de los componentes de edición', () => {
     for (const prop of ['categories', 'value', 'onchange']) expect(source).toContain(prop);
   });
 
-  it('RecurrenceChip se etiqueta «Tipo de gasto» y ofrece el valor vacío', async () => {
+  // [FASE 5, T13 · Ruling R25] RecurrenceChip gana el mismo `label` opcional
+  // que CategorySelect (arriba): ManualForm.svelte lo reutiliza envuelto en su
+  // propio `<label>Recurrencia>` en vez de duplicar el `<select>`, y necesita
+  // poder pasar un rótulo propio para no duplicar el nombre accesible con el
+  // de las tablas (Movimientos, Revisión), que siguen viendo «Tipo de gasto».
+  it('RecurrenceChip declara sus props y etiqueta por defecto «Tipo de gasto»', async () => {
     const source = await readFile(new URL('RecurrenceChip.svelte', base), 'utf8');
-    expect(source).toContain('aria-label="Tipo de gasto"');
+    expect(source).toContain("label = 'Tipo de gasto'");
+    expect(source).toContain('aria-label={label}');
     expect(source).toContain('<option value="">—</option>');
   });
 

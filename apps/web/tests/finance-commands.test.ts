@@ -12,7 +12,7 @@ import {
 
 import { financeCommand, financeGrantToggle, grantFinanceAccess, revokeFinanceAccess } from '../src/lib/finance/commands';
 import { canLinkSelection } from '../src/lib/finance/link-transfers';
-import { manualAmountCents } from '../src/lib/finance/manual-form';
+import { manualAmountCents, parseRecurrence } from '../src/lib/finance/manual-form';
 
 const HOUSEHOLD = '10000000-0000-4000-8000-000000000001';
 const MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
@@ -138,5 +138,17 @@ describe('manualAmountCents', () => {
     expect(manualAmountCents('12,50', 'ingreso')).toBe('1250');
     expect(manualAmountCents('0', 'gasto')).toBeNull();
     expect(manualAmountCents('abc', 'gasto')).toBeNull();
+  });
+});
+
+// Ruling R25: única definición del valor de recurrencia de un <select>, sin
+// aserciones — ManualForm.svelte y RecurrenceChip.svelte la comparten en vez
+// de repetir cada uno su propio `next as 'recurrente' | 'extraordinario'`.
+describe('parseRecurrence', () => {
+  it('acepta los dos valores válidos y trata cualquier otra cosa como sin clasificar', () => {
+    expect(parseRecurrence('recurrente')).toBe('recurrente');
+    expect(parseRecurrence('extraordinario')).toBe('extraordinario');
+    expect(parseRecurrence('')).toBeNull();
+    expect(parseRecurrence('otra-cosa')).toBeNull();
   });
 });
