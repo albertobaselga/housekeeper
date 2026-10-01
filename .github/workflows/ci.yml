@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: pnpm lint
       - run: pnpm typecheck
@@ -55,7 +55,7 @@ jobs:
     # integración de server y web a recrear el esquema de la misma base a la vez.
     # Su sitio es el job `integration`, que las corre una detrás de otra.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Run a non-empty unit suite
         run: scripts/ci/run-tests-nonempty.sh pnpm test:unit
@@ -63,7 +63,7 @@ jobs:
         run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/unit/*.xml'
       - name: Upload unit artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-results
           path: |
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate local and staging Compose models
         run: scripts/ci/validate-compose.sh
 
@@ -103,7 +103,7 @@ jobs:
       DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_db
       TEST_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_db
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Apply migrations from an empty database
         run: pnpm db:migrate
@@ -154,7 +154,7 @@ jobs:
       # creación de bases y por eso los pasos van en secuencia.
       TEST_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_integration
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Run server transaction, RLS and idempotency integration
         run: scripts/ci/run-tests-nonempty.sh pnpm --filter @housekeeper/server test
@@ -174,7 +174,7 @@ jobs:
         run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/unit/*.xml'
       - name: Upload integration artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-results
           path: artifacts/unit
@@ -187,7 +187,7 @@ jobs:
     env:
       ALLOW_SYNTHETIC_DATA_ONLY: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Install Chromium runtime
         # El paquete @playwright/test es devDependency de apps/web, no de la
@@ -201,7 +201,7 @@ jobs:
         run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/e2e/*.xml'
       - name: Upload browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-fixture-results
           path: |
@@ -242,7 +242,7 @@ jobs:
       # «datos exclusivamente sintéticos» sobre datos reales.
       E2E_DATABASE_URL: postgresql://ci_admin:ci-only-password@127.0.0.1:5432/housekeeper_ci_e2e
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Install Chromium runtime
         # El paquete @playwright/test es devDependency de apps/web, no de la
@@ -254,7 +254,7 @@ jobs:
         run: python3 scripts/ci/assert-junit-nonempty.py 'artifacts/e2e/junit-db.xml'
       - name: Upload database e2e evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-database-results
           path: |
@@ -269,7 +269,7 @@ jobs:
     env:
       ALLOW_SYNTHETIC_DATA_ONLY: "true"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Install Chromium runtime
         # El paquete @playwright/test es devDependency de apps/web, no de la
@@ -279,7 +279,7 @@ jobs:
         run: pnpm test:lighthouse -- --config=infra/quality/lighthouserc.json
       - name: Upload Lighthouse reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-results
           path: artifacts/lighthouse
@@ -291,9 +291,9 @@ jobs:
     timeout-minutes: 10
     needs: [unit, integration, e2e-fixture, e2e-database]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Collect every JUnit report produced by this run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: evidence
           pattern: "*-results"
