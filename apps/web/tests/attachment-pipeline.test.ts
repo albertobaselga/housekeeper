@@ -221,3 +221,76 @@ describe('con escáner configurado nada cambia', () => {
     ).rejects.toMatchObject({ code: 'attachment_scan_unavailable' });
   });
 });
+
+/**
+ * Los mismos bytes dos veces (spec §7.2). La clave del objeto sale del sha-256
+ * y es única en todo el almacén, así que dos personas que suben la misma foto
+ * chocan en `UNIQUE (bucket, object_key)`. Antes eso era un 500; y peor, la
+ * búsqueda de duplicados miraba todo lo VISIBLE, de modo que la administración
+ * —que ve todos los objetos— y, con la 0039, cualquiera de la familia —que ve
+ * las fotos de los cupones— recibían el objeto de otra persona como si fuera
+ * suyo, y el comando que lo enlazaba lo rechazaba después.
+ */
+describe('el mismo fichero dos veces', () => {
+  /**
+   * Pool falso con el almacén de claves que ya existen: `owned` es lo que
+   * devuelve la búsqueda de lo propio (en orden, una respuesta por consulta)
+   * y `conflict` dice si el INSERT choca con una clave que ya está.
+   */
+  function duplicatePool(options: { owned: Array<string | null>; conflict: boolean }) {
+    const selects: unknown[][] = [];
+    const owned = [...options.owned];
+    const client = {
+      query: async (text: string, params: unknown[] = []) => {
+        if (/household_memberships/.test(text)) {
+          return { rows: [{ id: MEMBERSHIP, household_id: HOUSEHOLD, role: 'family_member', expires_at: null }] };
+        }
+        if (/^\s*select id from app\.storage_objects/.test(text)) {
+          selects.push(params);
+          const id = owned.shift() ?? null;
+          return { rows: id ? [{ id }] : [] };
+        }
+        if (/insert into app\.storage_objects/.test(text)) {
+          return { rows: options.conflict ? [] : [{ id: 'objeto-nuevo' }] };
+        }
+        return { rows: [] };
+      },
+      release: () => undefined
+    };
+    return { pool: { connect: async () => client } as never, selects };
+  }
+
+  it('lo que ya subió la MISMA persona se devuelve tal cual, sin volver a subirlo', async () => {
+    const { pool, selects } = duplicatePool({ owned: ['objeto-mio'], conflict: false });
+    const putObject = vi.fn(async () => undefined);
+    const result = await uploadAttachment(USER, HOUSEHOLD, { bytes: JPEG, mediaType: 'image/jpeg' }, deps({ putObject }), pool);
+    expect(result.storageObjectId).toBe('objeto-mio');
+    expect(putObject).not.toHaveBeenCalled();
+    // La búsqueda pregunta por lo de ESTA membresía, no por lo visible.
+    expect(selects[0]).toContain(MEMBERSHIP);
+  });
+
+  it('lo que subió OTRA persona no se entrega: 409 attachment_duplicate y nada se sube', async () => {
+    const { pool } = duplicatePool({ owned: [null, null], conflict: true });
+    const putObject = vi.fn(async () => undefined);
+    const attempt = uploadAttachment(USER, HOUSEHOLD, { bytes: JPEG, mediaType: 'image/jpeg' }, deps({ putObject }), pool);
+    await expect(attempt).rejects.toBeInstanceOf(AttachmentError);
+    await expect(attempt).rejects.toMatchObject({
+      code: 'attachment_duplicate',
+      message: 'Ese fichero ya lo subió alguien de la casa'
+    });
+    expect(putObject).not.toHaveBeenCalled();
+  });
+
+  it('si la misma persona la subió a la vez desde otra pestaña, gana la que llegó primero', async () => {
+    // La búsqueda no la ve (aún no estaba confirmada), el INSERT choca al
+    // confirmarse la otra y la segunda búsqueda ya la encuentra: es suya.
+    const { pool, selects } = duplicatePool({ owned: [null, 'objeto-de-la-otra-pestana'], conflict: true });
+    const putObject = vi.fn(async () => undefined);
+    const result = await uploadAttachment(USER, HOUSEHOLD, { bytes: JPEG, mediaType: 'image/jpeg' }, deps({ putObject }), pool);
+    expect(result.storageObjectId).toBe('objeto-de-la-otra-pestana');
+    expect(putObject).not.toHaveBeenCalled();
+    expect(selects).toHaveLength(2);
+    expect(selects[1]).toContain(MEMBERSHIP);
+  });
+});

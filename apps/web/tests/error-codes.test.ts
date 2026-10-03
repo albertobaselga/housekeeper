@@ -35,6 +35,17 @@ describe('diccionario compartido de códigos de error', () => {
     expect(describeErrorCode('already_revoked')).toBeNull();
   });
 
+  it('traduce los rechazos de los cupones', () => {
+    expect(describeErrorCode('coupon_not_found')).toBe('El cupón ya no existe');
+    expect(describeErrorCode('coupon_use_not_found')).toBe('Ese uso del cupón ya no existe');
+    expect(describeErrorCode('coupon_photo_invalid')).toBe(
+      'La foto del cupón no vale: tiene que ser una foto que hayas subido tú'
+    );
+    // El papel que no puede es el `not_allowed` de siempre: no hay código
+    // propio de cupones para eso.
+    expect(describeErrorCode('not_allowed')).toBe('Tu rol no permite esta acción');
+  });
+
   it('un código sin traducir nunca se escupe crudo en pantalla', () => {
     expect(describeErrorCode('martian_error')).toBeNull();
     expect(describeErrorCode(undefined)).toBeNull();

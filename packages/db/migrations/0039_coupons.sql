@@ -48,9 +48,17 @@ BEGIN;
 -- lee la administración. Es aceptable porque la administración ya es audiencia
 -- del módulo (spec §9); no hay restrictiva como la de la 0037.
 --
--- FORCE ROW LEVEL SECURITY va al FINAL del fichero (lección de la 0032): aquí
--- no hay ninguna función `SECURITY DEFINER` con `row_security = off`, pero la
--- regla de la casa se cumple igual, y el bloque $check$ del final lo comprueba.
+-- LOS NOMBRES. La ficha dice «Usado el mar 7 oct por Marta» a toda la familia
+-- (spec §8.2), pero `user_profiles` (0005) solo enseña a `family_member` su
+-- propio perfil: sin más, la mitad de la audiencia leería «Alguien de la
+-- familia» en cada cupón ajeno. `app.coupon_people()` (sección 4) le da el
+-- nombre de quien guardó un cupón o apuntó un uso vivo de su hogar, y nada más.
+--
+-- FORCE ROW LEVEL SECURITY va al FINAL del fichero (lección de la 0032). La
+-- única `SECURITY DEFINER` con `row_security = off` de aquí es plpgsql, cuyo
+-- cuerpo el validador no planifica al crearla, así que no choca con el FORCE
+-- en ningún orden; aun así la regla de la casa se cumple, y el bloque $check$
+-- del final lo comprueba.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── 1. Cupones ───────────────────────────────────────────────────────────────
@@ -60,7 +68,10 @@ CREATE TABLE app.coupons (
   merchant text NOT NULL CHECK (length(btrim(merchant)) BETWEEN 1 AND 120),
   offer text NOT NULL CHECK (length(btrim(offer)) BETWEEN 1 AND 200),
   code text CHECK (code IS NULL OR length(btrim(code)) BETWEEN 1 AND 120),
-  expires_on date,
+  -- El rango del contrato (`couponDateSchema`): el dominio no entiende los
+  -- años 0000–0099, y una fila escrita a mano fuera de él tumbaría la cartera
+  -- entera al leerla. Así la base y el contrato dicen lo mismo.
+  expires_on date CHECK (expires_on BETWEEN DATE '2000-01-01' AND DATE '2999-12-31'),
   max_uses integer CHECK (max_uses IS NULL OR max_uses BETWEEN 1 AND 999),
   notes text CHECK (notes IS NULL OR length(notes) <= 1000),
   photo_storage_object_id uuid NOT NULL,
@@ -99,6 +110,17 @@ COMMENT ON COLUMN app.coupons.discarded_at IS
  */
 CREATE INDEX coupons_household_idx
   ON app.coupons (household_id, discarded_at, expires_on);
+
+/*
+ * Lo que pregunta la foto. `storage_objects_read_coupon_photo` (sección 3) es
+ * permisiva y se suma con OR a TODAS las lecturas de `app.storage_objects` de
+ * la aplicación —justificantes, documentos, la deduplicación de adjuntos—,
+ * también a las de quien no ve ni un cupón; su EXISTS busca el cupón por
+ * (hogar, foto). Sin este índice, cada una recorrería los cupones del hogar.
+ * De paso es el índice del lado que referencia de la FK de la foto.
+ */
+CREATE INDEX coupons_photo_idx
+  ON app.coupons (household_id, photo_storage_object_id);
 
 CREATE TRIGGER coupons_touch_updated_at
 BEFORE UPDATE ON app.coupons
@@ -244,7 +266,8 @@ CREATE TABLE app.coupon_uses (
   household_id uuid NOT NULL,
   id uuid NOT NULL,
   coupon_id uuid NOT NULL,
-  used_on date NOT NULL,
+  -- Mismo rango que la caducidad y que el contrato.
+  used_on date NOT NULL CHECK (used_on BETWEEN DATE '2000-01-01' AND DATE '2999-12-31'),
   used_by_membership_id uuid NOT NULL,
   recorded_at timestamptz NOT NULL DEFAULT statement_timestamp(),
   voided_at timestamptz,
@@ -436,7 +459,64 @@ CREATE POLICY storage_objects_read_coupon_photo ON app.storage_objects
     )
   );
 
--- ── 4. Grants y auditoría ────────────────────────────────────────────────────
+-- ── 4. Los nombres de la cartera, para toda la familia ──────────────────────
+/*
+ * Quién guardó cada cupón y quién apuntó cada uso, con su nombre. Lo pide la
+ * ficha a TODA la familia (spec §8.2, D-usos: «cada uso guarda fecha y
+ * quién»), y `user_profiles_self_read`/`_admin_read` (0005) solo enseñan a
+ * `family_member` su propio perfil. Abrir esa tabla a toda la familia daría
+ * más de lo que hace falta —el nombre de la empleada, del apoyo, de quien ya
+ * no está—; esta función da lo justo:
+ *
+ *   · solo a la familia del hogar del contexto (a cualquier otro papel, o sin
+ *     contexto, cero filas: no es un error, es que no hay nada que enseñarle);
+ *   · solo de las membresías de ESE hogar que firmaron el alta de un cupón o un
+ *     uso vivo, que son los nombres que la ficha pinta;
+ *   · solo `(membership_id, display_name)`.
+ *
+ * SECURITY DEFINER con `row_security = off`, el patrón de
+ * `app.wiki_reading_overview` (0026): la puerta del papel la pone la propia
+ * función, porque leer el perfil ajeno es justo lo que la RLS de quien llama no
+ * le deja. plpgsql y no `LANGUAGE sql` a propósito (lección de la 0032).
+ */
+CREATE FUNCTION app.coupon_people()
+RETURNS TABLE (membership_id uuid, display_name text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, app
+SET row_security = off
+AS $$
+BEGIN
+  IF NOT app.context_is_complete() OR NOT app.family_role() THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT membership.id, profile.display_name
+    FROM app.household_memberships AS membership
+    JOIN app.user_profiles AS profile ON profile.user_id = membership.user_id
+   WHERE membership.household_id = app.current_household_id()
+     AND (
+       EXISTS (
+         SELECT 1 FROM app.coupons AS coupon
+          WHERE coupon.household_id = membership.household_id
+            AND coupon.created_by_membership_id = membership.id
+       )
+       OR EXISTS (
+         SELECT 1 FROM app.coupon_uses AS coupon_use
+          WHERE coupon_use.household_id = membership.household_id
+            AND coupon_use.used_by_membership_id = membership.id
+            AND coupon_use.voided_at IS NULL
+       )
+     );
+END
+$$;
+
+REVOKE ALL ON FUNCTION app.coupon_people() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.coupon_people() TO casa_clara_app;
+
+-- ── 5. Grants y auditoría ────────────────────────────────────────────────────
 -- Explícitos: no hay privilegios por defecto y el GRANT ON ALL TABLES de la
 -- 0005 solo alcanzó a las tablas de entonces. Sin DELETE. Nada para
 -- `casa_clara_worker`: no hay avisos push de cupones (el aviso es un asunto de
@@ -457,7 +537,7 @@ BEGIN
 END
 $audit_triggers$;
 
--- ── 5. FORCE, al final ───────────────────────────────────────────────────────
+-- ── 6. FORCE, al final ───────────────────────────────────────────────────────
 ALTER TABLE app.coupons FORCE ROW LEVEL SECURITY;
 ALTER TABLE app.coupon_uses FORCE ROW LEVEL SECURITY;
 
@@ -528,6 +608,19 @@ BEGIN
        AND qual LIKE '%photo_storage_object_id = storage_objects.id%'
   ) THEN
     RAISE EXCEPTION 'falta la política permisiva de lectura de la foto del cupón';
+  END IF;
+
+  -- Los nombres: plpgsql, SECURITY DEFINER, con la RLS apagada dentro y solo
+  -- para la aplicación.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc AS fn
+      JOIN pg_catalog.pg_language AS lang ON lang.oid = fn.prolang
+     WHERE fn.oid = to_regprocedure('app.coupon_people()')
+       AND fn.prosecdef AND lang.lanname = 'plpgsql'
+       AND 'row_security=off' = ANY (fn.proconfig)
+  ) OR has_function_privilege('public', 'app.coupon_people()', 'EXECUTE')
+    OR NOT has_function_privilege('casa_clara_app', 'app.coupon_people()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'app.coupon_people() no tiene la forma prometida o la puede ejecutar quien no debe';
   END IF;
 
   -- Y lo que esa política abre está acotado por la regla de enlace, al dar de

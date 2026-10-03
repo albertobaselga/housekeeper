@@ -150,7 +150,7 @@ describe("payloads de cupones: una forma válida por acción", () => {
     });
   });
 
-  it("la unión discrimina por action y tiene exactamente las seis acciones de la spec", () => {
+  it("la unión tiene exactamente las seis acciones de la spec, y cada una entra", () => {
     const actions = couponCommandPayloadSchema.options.map((option) => option.shape.action.value);
     expect(actions).toEqual(COUPON_ACTIONS);
     expect(accepts(create)).toBe(true);
@@ -159,6 +159,17 @@ describe("payloads de cupones: una forma válida por acción", () => {
     expect(accepts({ action: "void_use", couponId: COUPON, useId: USE })).toBe(true);
     expect(accepts({ action: "discard", couponId: COUPON })).toBe(true);
     expect(accepts({ action: "restore", couponId: COUPON })).toBe(true);
+  });
+
+  it("la unión discrimina por action: un use sin useId da un único error, en useId", () => {
+    // Aceptar o rechazar sale igual con `z.union`; lo que cambia es el error.
+    // Discriminando, quien depure un `invalid_payload` lee el campo que falta
+    // en la acción que pidió, no un `invalid_union` con las seis ramas.
+    const result = couponCommandPayloadSchema.safeParse({ action: "use", couponId: COUPON, usedOn: "2026-10-03" });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => [issue.code, issue.path.join(".")])).toEqual([
+      ["invalid_type", "useId"],
+    ]);
   });
 });
 
@@ -187,7 +198,9 @@ describe("payloads de cupones: texto recortado y vacío como null", () => {
 
   it("el límite se mide sobre el texto ya recortado", () => {
     expect(couponCreatePayloadSchema.safeParse({ ...create, merchant: `  ${"x".repeat(120)}  ` }).success).toBe(true);
+    expect(couponCreatePayloadSchema.safeParse({ ...create, offer: `  ${"o".repeat(200)}  ` }).success).toBe(true);
     expect(couponCreatePayloadSchema.safeParse({ ...create, code: ` ${"c".repeat(120)} ` }).success).toBe(true);
+    expect(couponCreatePayloadSchema.safeParse({ ...create, notes: `  ${"n".repeat(1000)}  ` }).success).toBe(true);
   });
 
   it("los opcionales viajan siempre: omitir uno no es lo mismo que vaciarlo", () => {
@@ -224,6 +237,9 @@ describe("payloads de cupones: rechazos", () => {
 
   it("oferta obligatoria de 1 a 200, código hasta 120 y notas hasta 1000", () => {
     expect(accepts({ ...create, offer: "" })).toBe(false);
+    // En blanco no es una oferta: recortada se queda vacía. Si pasara, la
+    // pararía la CHECK de la tabla a mitad de transacción, no el borde.
+    expect(accepts({ ...create, offer: "   " })).toBe(false);
     expect(accepts({ ...create, offer: "o".repeat(200) })).toBe(true);
     expect(accepts({ ...create, offer: "o".repeat(201) })).toBe(false);
     expect(accepts({ ...create, code: "c".repeat(121) })).toBe(false);

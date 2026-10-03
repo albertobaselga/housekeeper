@@ -62,6 +62,7 @@ describe('título de la pestaña: una sola fuente', () => {
     expect(sectionLabelFor('/h/abc/finanzas/eventos')).toBe('Eventos');
     expect(sectionLabelFor('/h/abc/finanzas/importar')).toBe('Importar');
     expect(sectionLabelFor('/h/abc/finanzas/ajustes')).toBe('Ajustes de Finanzas');
+    expect(sectionLabelFor('/h/abc/cupones')).toBe('Cupones');
   });
 
   it('el nombre del icono es el del manifiesto, o mandaríamos a buscar algo que no existe', () => {

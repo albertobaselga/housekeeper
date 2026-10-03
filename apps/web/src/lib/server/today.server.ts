@@ -4,6 +4,7 @@ import type { Role } from '@housekeeper/contracts';
 import { createLogger, computeMenuSlotHash, withAuthorizedTransaction } from '@housekeeper/server';
 import {
   cadenceClause,
+  localDate,
   occurrencesBetween,
   pendingFor,
   weekdayName,
@@ -11,7 +12,9 @@ import {
   type RoutineOverduePolicy,
   type RoutineSchedule
 } from '@housekeeper/domain';
+import { COUPON_EXPIRY_NOTICE_DAYS, expiresSoon } from '@housekeeper/domain/coupons';
 
+import { can } from '$lib/auth/capabilities';
 import {
   buildVacationCarryoverProposals,
   dateLabel,
@@ -321,6 +324,15 @@ export interface UnconfirmedSlotRow {
   meal: MealSlot;
 }
 
+/** Un cupón disponible que caduca dentro de la ventana de aviso. */
+export interface TodayExpiringCouponRow {
+  id: string;
+  merchant: string;
+  offer: string;
+  /** Último día en que sirve (YYYY-MM-DD), dentro de [hoy, hoy + 3]. */
+  expiresOn: string;
+}
+
 export interface TodayDecisionFacts {
   householdId: string;
   role: Role;
@@ -351,6 +363,12 @@ export interface TodayDecisionFacts {
    * esto tiene que ser un elemento más de la lista de decisiones y nada más.
    */
   vacationCarryovers: readonly VacationCarryoverProposalView[];
+  /**
+   * Cupones DISPONIBLES que caducan entre hoy y hoy + 3 (spec cupones §7.5),
+   * ya filtrados por el dominio (`expiresSoon`) y en orden de caducidad. Vacío
+   * para quien no tiene `coupon.access`: el cargador ni siquiera pregunta.
+   */
+  expiringCoupons: readonly TodayExpiringCouponRow[];
 }
 
 function extraDetail(extra: TodayExtraRow): string {
@@ -369,6 +387,8 @@ function extraDetail(extra: TodayExtraRow): string {
  * - employee_live_in: sus jornadas aceptadas por marcar realizadas, el cobro
  *   confirmable (cerrada, pagada del todo y sin confirmación) y su rutina de hoy.
  * - helper/viewer: nada que decidir (solo menú y rutinas visibles).
+ * - Con `coupon.access` (la familia), además UNA novedad con los cupones que
+ *   caducan pronto, detrás de las decisiones.
  */
 export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionItem[] {
   // Cada asunto enlaza al expediente de SU persona y a la pestaña que lo
@@ -475,6 +495,17 @@ export function buildTodayDecisions(facts: TodayDecisionFacts): TodayDecisionIte
         });
       }
     }
+  }
+
+  /*
+   * Cupones que caducan pronto: UN asunto, por muchos que sean, y de tipo
+   * novedad —no hay nada que decidir, hay algo que aprovechar antes de que se
+   * pierda—. Va detrás de las decisiones de verdad. Solo con `coupon.access`
+   * (la familia): la RLS ya le niega los cupones al resto y el cargador ni
+   * pregunta; esto es la defensa de arriba.
+   */
+  if (facts.expiringCoupons.length > 0 && can(facts.role, 'coupon.access')) {
+    items.push(expiringCouponsNews(facts.householdId, facts.expiringCoupons, facts.todayISO));
   }
 
   if (isEmployee) {
@@ -591,6 +622,60 @@ function aheadDayLabel(dueOn: string, todayISO: string): string {
   if (daysBetween(todayISO, dueOn) === 1) return 'Mañana';
   const name = weekdayName(isoWeekdayOf(dueOn));
   return `El ${name}`;
+}
+
+/**
+ * Cuándo caduca un cupón, dicho como se dice: «hoy», «mañana», «el jueves».
+ * La ventana del aviso es de tres días, así que el nombre del día no se
+ * confunde nunca con el de hoy; la fecha completa queda para lo que caiga
+ * fuera, que no debería llegar aquí.
+ */
+function expiryDayLabel(expiresOn: string, todayISO: string): string {
+  const gap = daysBetween(todayISO, expiresOn);
+  if (gap === 0) return 'hoy';
+  if (gap === 1) return 'mañana';
+  if (gap > 1 && gap <= 6) return `el ${weekdayName(isoWeekdayOf(expiresOn))}`;
+  return `el ${dateLabel(expiresOn)}`;
+}
+
+/** Cuántos comercios se nombran en el detalle antes de contar el resto. */
+const COUPON_MERCHANTS_NAMED = 3;
+
+/** «Mercado y Panadería» · «Mercado, Panadería, Farmacia y 2 más». */
+function merchantsSentence(coupons: readonly TodayExpiringCouponRow[]): string {
+  const merchants = [...new Set(coupons.map((coupon) => coupon.merchant))];
+  const named = merchants.slice(0, COUPON_MERCHANTS_NAMED);
+  const rest = merchants.length - named.length;
+  if (rest > 0) return `${named.join(', ')} y ${rest} más`;
+  if (named.length === 1) return named[0]!;
+  return `${named.slice(0, -1).join(', ')} y ${named[named.length - 1]}`;
+}
+
+function expiringCouponsNews(
+  householdId: string,
+  coupons: readonly TodayExpiringCouponRow[],
+  todayISO: string
+): TodayDecisionItem {
+  const base = `/h/${householdId}/cupones`;
+  if (coupons.length === 1) {
+    const coupon = coupons[0]!;
+    return {
+      key: 'cupones-caducan',
+      title: `El cupón de ${coupon.merchant} caduca ${expiryDayLabel(coupon.expiresOn, todayISO)}`,
+      detail: coupon.offer,
+      href: `${base}?cupon=${encodeURIComponent(coupon.id)}`,
+      cta: 'Verlo',
+      kind: 'news'
+    };
+  }
+  return {
+    key: 'cupones-caducan',
+    title: `${coupons.length} cupones caducan pronto`,
+    detail: merchantsSentence(coupons),
+    href: base,
+    cta: 'Verlos',
+    kind: 'news'
+  };
 }
 
 const CHIP_DATE = new Intl.DateTimeFormat('es-ES', {
@@ -1203,6 +1288,60 @@ export async function loadTodayOverview(
         );
       }
 
+      // Cupones que caducan pronto (spec cupones §7.5), solo para quien tiene
+      // el módulo: para el resto ni se pregunta, aunque la RLS le devolvería
+      // cero filas. La base acota la ventana y lo descartado; QUÉ cuenta como
+      // disponible lo decide el dominio, el mismo que reparte los cupones en
+      // los filtros de su pantalla, para que el aviso y la lista no discrepen.
+      // `count(*)` llega como texto y el dominio exige un número.
+      let expiringCoupons: TodayExpiringCouponRow[] = [];
+      if (can(membership.role, 'coupon.access')) {
+        const couponResult = await client.query<{
+          id: string;
+          merchant: string;
+          offer: string;
+          expiresOn: string;
+          maxUses: number | null;
+          liveUses: string;
+        }>(
+          `select coupon.id,
+                  coupon.merchant,
+                  coupon.offer,
+                  coupon.expires_on::text as "expiresOn",
+                  coupon.max_uses as "maxUses",
+                  (select count(*)
+                     from app.coupon_uses as used
+                    where used.household_id = coupon.household_id
+                      and used.coupon_id = coupon.id
+                      and used.voided_at is null)::text as "liveUses"
+             from app.coupons as coupon
+            where coupon.household_id = $1
+              and coupon.discarded_at is null
+              and coupon.expires_on between $2::date and $3::date
+            order by coupon.expires_on, coupon.merchant, coupon.id`,
+          [householdId, todayISO, addDays(todayISO, COUPON_EXPIRY_NOTICE_DAYS)]
+        );
+        const today = localDate(todayISO);
+        expiringCoupons = couponResult.rows
+          .filter((row) =>
+            expiresSoon(
+              {
+                maxUses: row.maxUses,
+                liveUses: Number(row.liveUses),
+                expiresOn: localDate(row.expiresOn),
+                discarded: false
+              },
+              today
+            )
+          )
+          .map((row) => ({
+            id: row.id,
+            merchant: row.merchant,
+            offer: row.offer,
+            expiresOn: row.expiresOn
+          }));
+      }
+
       const decisions = buildTodayDecisions({
         householdId,
         role: membership.role,
@@ -1214,7 +1353,8 @@ export async function loadTodayOverview(
         unconfirmedSlots,
         overdueRoutineCount: routines.overdueCount,
         vacationNews,
-        vacationCarryovers
+        vacationCarryovers,
+        expiringCoupons
       });
 
       const hour = Number(MADRID_HOUR.format(now));

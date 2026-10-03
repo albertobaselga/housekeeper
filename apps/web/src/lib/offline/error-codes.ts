@@ -68,6 +68,13 @@ const ERROR_CODE_LABELS: Record<string, string> = {
   // Contactos
   contact_not_found: 'El contacto ya no existe',
 
+  // Cupones. Usar un cupón agotado, caducado o descartado NO es un rechazo
+  // (la casa registra los usos, no los autoriza): aquí solo llega lo que de
+  // verdad no se puede hacer.
+  coupon_not_found: 'El cupón ya no existe',
+  coupon_use_not_found: 'Ese uso del cupón ya no existe',
+  coupon_photo_invalid: 'La foto del cupón no vale: tiene que ser una foto que hayas subido tú',
+
   // Rutinas y calendario
   routine_not_found: 'La rutina ya no existe',
   already_completed: 'Ya estaba marcada como hecha',

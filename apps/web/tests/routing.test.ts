@@ -12,7 +12,8 @@ describe('household route contract', () => {
   it('keeps every required stable module addressable', () => {
     expect(HOUSEHOLD_MODULES).toEqual([
       'today', 'employment', 'menu', 'recipes', 'wiki', 'search',
-      'routines', 'calendar', 'contacts', 'emergency', 'account', 'personal', 'finanzas', 'settings'
+      'routines', 'calendar', 'contacts', 'emergency', 'account', 'personal', 'finanzas', 'cupones',
+      'settings'
     ]);
 
     // «Tu cuenta» la alcanza todo el mundo; Ajustes sigue siendo de la familia.
@@ -147,5 +148,26 @@ describe('household route contract', () => {
     expect(can('family_admin', 'finance.access')).toBe(true);
     expect(can('family_member', 'finance.access')).toBe(false);
     expect(can('helper', 'finance.access')).toBe(false);
+  });
+
+  it('cupones es de la familia: una sola llave y ninguna ruta hija', () => {
+    expect(MODULE_CAPABILITY.cupones).toBe('coupon.access');
+    expect(guardForPath('/h/casa-roble/cupones')).toEqual({
+      householdId: 'casa-roble',
+      module: 'cupones',
+      capability: 'coupon.access',
+      known: true
+    });
+    // El detalle es una hoja (`?cupon=<id>`), no una ruta: una hija con el id
+    // del cupón no existe y falla cerrada, como cualquier otra sin declarar.
+    expect(guardForPath('/h/casa-roble/cupones/ca000000-0000-4000-8000-000000000001')).toMatchObject({
+      known: false,
+      capability: null
+    });
+    expect(can('family_admin', 'coupon.access')).toBe(true);
+    expect(can('family_member', 'coupon.access')).toBe(true);
+    expect(can('employee_live_in', 'coupon.access')).toBe(false);
+    expect(can('helper', 'coupon.access')).toBe(false);
+    expect(can('viewer', 'coupon.access')).toBe(false);
   });
 });

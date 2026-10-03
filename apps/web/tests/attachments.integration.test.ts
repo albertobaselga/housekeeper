@@ -21,10 +21,12 @@ const APP_LOGIN = 'it_housekeeper_attach_login';
 const ATTACH_DB = 'housekeeper_attach_it';
 
 const ADMIN_MEMBERSHIP = '11000000-0000-4000-8000-000000000001';
+const FAMILY_MEMBERSHIP = '11000000-0000-4000-8000-000000000002';
 const EMPLOYEE_MEMBERSHIP = '11000000-0000-4000-8000-000000000003';
 const HELPER_MEMBERSHIP = '11000000-0000-4000-8000-000000000004';
 
 const ADMIN_USER = { id: 'fixture:roble:admin' };
+const FAMILY_USER = { id: 'fixture:roble:family' };
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
 const HELPER_USER = { id: 'fixture:roble:helper' };
 const OUTSIDER_USER = { id: 'fixture:no-membership' };
@@ -78,6 +80,23 @@ function fakeDeps(verdict: 'clean' | 'infected' = 'clean'): FakeDeps {
       }
     }
   };
+}
+
+/**
+ * Almacén lento: el PUT tarda, y como va DENTRO de la transacción, la fila de
+ * la primera subida se queda sin confirmar ese rato. Es lo que hace falta para
+ * que la carrera de dos subidas de los mismos bytes ocurra de verdad y no
+ * dependa del azar del planificador: la segunda llega a su INSERT mientras la
+ * primera todavía no ha confirmado.
+ */
+function slowDeps(delayMs = 300): FakeDeps {
+  const fake = fakeDeps();
+  const put = fake.deps.putObject;
+  fake.deps.putObject = async (key, bytes, contentType) => {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await put(key, bytes, contentType);
+  };
+  return fake;
 }
 
 function attachUrlFor(base: string): string {
@@ -330,6 +349,94 @@ describe.runIf(Boolean(adminUrl))('subida de adjuntos bajo RLS, con y sin antivi
       uploadAttachment(ADMIN_USER, FIXTURE_HOUSEHOLD, { bytes: jpegBytes(6), mediaType: 'image/jpeg' }, deps, appPool)
     ).rejects.toMatchObject({ name: 'AttachmentError', code: 'attachment_storage_unavailable' });
     expect(await storageObjectCount()).toBe(before);
+  });
+
+  // ── Los mismos bytes, dos personas (spec §7.2) ─────────────────────────────
+  // La clave sale del sha-256 y es única en todo el almacén: dos personas que
+  // suben la misma foto chocan. La búsqueda de duplicados mira lo PROPIO, no
+  // lo visible —la administración ve todos los objetos del hogar y, con la
+  // 0039, la familia ve las fotos de los cupones—, y el choque es un 409 con
+  // nombre en lugar del 500 de antes.
+
+  it('la administración no recibe como suyo lo que subió la empleada: 409 y nada nuevo', async () => {
+    const bytes = jpegBytes(20);
+    const first = await uploadAttachment(
+      EMPLOYEE_USER,
+      FIXTURE_HOUSEHOLD,
+      { bytes, mediaType: 'image/jpeg' },
+      fakeDeps().deps,
+      appPool
+    );
+    const before = await storageObjectCount();
+    const { deps, puts } = fakeDeps();
+    await expect(
+      uploadAttachment(ADMIN_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, deps, appPool)
+    ).rejects.toMatchObject({
+      name: 'AttachmentError',
+      code: 'attachment_duplicate',
+      message: 'Ese fichero ya lo subió alguien de la casa'
+    });
+    expect(puts).toHaveLength(0);
+    expect(await storageObjectCount()).toBe(before);
+    expect((await storedRow(first.storageObjectId))!.createdBy).toBe(EMPLOYEE_MEMBERSHIP);
+  });
+
+  it('al revés también: la empleada que sube lo mismo que la administración recibe 409, no 500', async () => {
+    const bytes = jpegBytes(21);
+    await uploadAttachment(ADMIN_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, fakeDeps().deps, appPool);
+    await expect(
+      uploadAttachment(EMPLOYEE_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, fakeDeps().deps, appPool)
+    ).rejects.toMatchObject({ code: 'attachment_duplicate' });
+  });
+
+  it('la foto de un cupón ajeno, que la familia VE, tampoco se entrega como propia', async () => {
+    const bytes = jpegBytes(22);
+    const adminPhoto = await uploadAttachment(
+      ADMIN_USER,
+      FIXTURE_HOUSEHOLD,
+      { bytes, mediaType: 'image/jpeg' },
+      fakeDeps().deps,
+      appPool
+    );
+    // Cupón sembrado como propietario: la foto de la administración queda a la
+    // vista de toda la familia por `storage_objects_read_coupon_photo`.
+    await adminPool.query(
+      `insert into app.coupons
+         (household_id, id, merchant, offer, photo_storage_object_id, created_by_membership_id)
+       values ($1, 'cd400000-0000-4000-8000-000000000001', 'Comercio IT', 'Oferta IT', $2, $3)`,
+      [FIXTURE_HOUSEHOLD, adminPhoto.storageObjectId, ADMIN_MEMBERSHIP]
+    );
+    await expect(
+      uploadAttachment(FAMILY_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, fakeDeps().deps, appPool)
+    ).rejects.toMatchObject({ code: 'attachment_duplicate' });
+  });
+
+  it('la misma persona subiendo lo mismo a la vez (doble toque) recibe el mismo objeto, una sola vez', async () => {
+    const bytes = jpegBytes(23);
+    const before = await storageObjectCount();
+    const first = slowDeps();
+    const second = slowDeps();
+    const [one, two] = await Promise.all([
+      uploadAttachment(FAMILY_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, first.deps, appPool),
+      uploadAttachment(FAMILY_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, second.deps, appPool)
+    ]);
+    expect(two.storageObjectId).toBe(one.storageObjectId);
+    expect(await storageObjectCount()).toBe(before + 1);
+    // Un solo PUT: la que perdió la carrera se queda con el objeto de la otra.
+    expect(first.puts.length + second.puts.length).toBe(1);
+    expect((await storedRow(one.storageObjectId))!.createdBy).toBe(FAMILY_MEMBERSHIP);
+  });
+
+  it('dos personas subiendo lo mismo a la vez: una se lo queda y la otra recibe 409', async () => {
+    const bytes = jpegBytes(24);
+    const results = await Promise.allSettled([
+      uploadAttachment(FAMILY_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, slowDeps().deps, appPool),
+      uploadAttachment(ADMIN_USER, FIXTURE_HOUSEHOLD, { bytes, mediaType: 'image/jpeg' }, slowDeps().deps, appPool)
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.filter((result) => result.status === 'rejected');
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: 'attachment_duplicate' });
   });
 
   it('AttachmentError conserva el código para que la ruta lo traduzca a HTTP', () => {

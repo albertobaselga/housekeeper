@@ -118,6 +118,15 @@ Reglas:
 - **Sin triggers de invariante de usos** (D-usos).
 - Si hace falta una función, preferir plpgsql; nada de `LANGUAGE sql` con
   `row_security = off` antes del `FORCE`.
+- **Nombres para toda la familia** (añadido en la revisión de la fase 2): la RLS
+  de `user_profiles` (0005) solo enseña a `family_member` su propio perfil, y la
+  ficha dice «Usado el … por Marta» a toda la familia (§8.2).
+  `app.coupon_people()`, plpgsql `SECURITY DEFINER` con `row_security = off` y
+  la puerta del papel dentro, devuelve `(membership_id, display_name)` solo a la
+  familia del hogar en contexto y solo de quien firmó un alta o un uso vivo de
+  ese hogar; `EXECUTE` solo para `casa_clara_app`. No se abre `user_profiles`.
+- **Fechas en el rango del contrato** (2000–2999) también en la base: `CHECK`
+  en `expires_on` y `used_on`.
 
 Suite SQL `packages/db/tests/210_coupons.sql` (estructura de
 `030_finance_rls.sql`), añadida a la lista de `test:rls` en
@@ -280,7 +289,19 @@ hace el layout).
 
 - `+page.server.ts`: `depends('cc:coupons')`, `loadCoupons` o la maqueta.
 - Cabecera `PageHeader` cuyo título **dice el estado**: «Cupones · N disponibles»
-  (plural resuelto); `ActionStatus` debajo.
+  (plural resuelto), en una línea y sin acción al lado. «Añadir» va en la barra
+  de la lista, junto a «Buscar» (con la acción en la cabecera, el título se
+  partía en dos y a 320 solo cabían dos cupones).
+- **Avisos** (`CouponNotes`): `ActionStatus` y el acuse de «Usar» van juntos
+  como **último hijo de lo que se desplaza**, con `position: sticky`: en la
+  página, encima de la barra inferior y en la columna del contenido; en la
+  ficha, al pie de la hoja. Mientras se desplaza flotan y no empujan nada; al
+  llegar al final ocupan su sitio debajo de lo último, que se puede tocar (el
+  hueco del acuse se reserva, sistema móvil §2.5). El contenedor es la región
+  viva (`status`, no atómica) y existe siempre; los errores llevan «Cerrar».
+  Los avisos de éxito se retiran al abrir otro cupón, al cerrar la ficha y al
+  abrir el alta. Cada acción dice su verbo: «Uso anulado ✓ · X», «Cupón
+  descartado ✓ · X», «Cupón recuperado ✓ · X».
 - **Filtros** en la URL `?ver=disponibles|usados|caducados|descartados` (por
   defecto `disponibles`), `.chip-strip` con recuento por cubo; navegación con
   `goto(…, { noScroll: true, keepFocus: true })`. Más un campo «Buscar» que filtra
@@ -290,26 +311,43 @@ hace el layout).
   «Sin caducidad») y la marca de usos: «Un solo uso» · «2 de 5 usados · quedan 3» ·
   «Sin límite · usado 4 veces». `status-chip warning` «Caduca pronto» si procede.
   Un solo verbo por fila: **«Usar»** (solo en disponibles), con `aria-label` que
-  nombra el cupón. Toda la fila abre el detalle.
+  nombra el cupón. Toda la fila abre el detalle. Con «Caduca pronto», la línea
+  de apoyo sigue la frase: «Caduca pronto el lun 5 oct · Un solo uso».
 - **Detalle**: hoja `modalDialog` (como `FinanceDetailPanel`) abierta con
-  `?cupon=<id>`: `h2` con el comercio; **código en grande** (tipografía tabular) con
-  botón «Copiar»; foto (`<img src={photoUrl}>`, toque → pantalla completa);
+  `?cupon=<id>`: `h2` con el comercio; la línea de los chips de estado reservada
+  (con acciones, «Usado» o «Descartado» aparecen sin empujar nada); **código en
+  grande** (tipografía tabular) con botón «Copiar»; foto (`<img src={photoUrl}>`,
+  con la versión de la foto en la URL —`?v=<objeto>`—, toque → pantalla completa);
   oferta, caducidad, usos, notas, quién lo guardó; **lista de usos** («Usado el
   mar 7 oct por Marta») con «Anular este uso»; acciones «Usar», «Editar»,
   y en `.action-row.destructiva` «Descartar el cupón de {comercio}» o, si está
   descartado, «Recuperar».
 - **Usar** = comando `use` con `useId` nuevo y `usedOn` = hoy local; UI optimista
   (`OptimisticActions` apply/revert/settle) con guardia de doble toque por cupón;
-  `ActionStatus` «Uso apuntado ✓ · Deshacer» (deshacer = `void_use` del mismo
-  `useId`). Funciona sin red (bandeja de salida).
-- **Añadir cupón** (botón principal; formulario plegable en la propia página):
+  acuse «Uso apuntado ✓ · Deshacer» (deshacer = `void_use` del mismo `useId`)
+  que **flota** encima de la barra inferior y no empuja nada; si la fila
+  desaparece, el foco va a «Deshacer» («Deshacer el uso de X»); deshecho, el
+  foco vuelve al «Usar» del cupón y el aviso se va solo. En la ficha, «Usar» va
+  justo debajo del código, y en un cupón usado o caducado pasa a secundario.
+  Funciona sin red (bandeja de salida). «Anular este uso» pide un segundo
+  toque: no tiene vuelta atrás.
+- **Añadir cupón** (botón principal; formulario plegable en la propia página,
+  pintado en un solo sitio haya o no cupones; plegado no se desmonta, así que
+  «Cerrar» no tira lo escrito —solo «Cancelar»—; desde la cartera vacía el foco
+  va a su título):
   1. **Foto**: dos campos, «Elegir una foto guardada» y «Hacer la foto ahora»
      (`capture="environment"`), extrayendo `PhotoPicker.svelte` de
-     `ExpensesPendingCard.svelte` y usándolo en ambos sitios. `prepareAttachment`
+     `ExpensesPendingCard.svelte` y usándolo en ambos sitios, con los dos
+     campos domados como botones en castellano (sistema móvil §2.9). `prepareAttachment`
      con una opción nueva **`alwaysReencode`** (quita EXIF/GPS siempre; calidad ≥
      0,8 para no romper códigos finos). Vista previa **sin `blob:`** (la CSP no lo
      permite): `canvas.toDataURL`. Subida con `uploadAttachment` **en ese momento**;
-     sin red: «Necesitas conexión para guardar la foto del cupón».
+     sin red: «Necesitas conexión para guardar la foto del cupón». La vista
+     previa es baja (11rem) y su hueco se guarda desde que se elige; al elegir,
+     la pantalla baja lo justo para enseñar la fase y el título del paso 2,
+     «Después, lo que pone el cupón», sin mover el foco. La foto subida dice
+     «Foto lista ✓ · Ahora, escribe dónde sirve y qué ofrece.», nunca
+     «Guardado»: el cupón aún no lo está.
   2. **Campos** (`CouponFields.svelte`, alimentado por un `CouponDraft` inicial —
      el punto de enganche de la IA en la fase 2): comercio (obligatorio, con
      `datalist` de comercios ya usados), qué ofrece (obligatorio), código,
@@ -332,7 +370,9 @@ hace el layout).
 
 ## 9. Seguridad
 
-- Frontera = RLS (§4) + capacidad en hook/layout + papel en el handler.
+- Frontera = RLS (§4) + capacidad en hook/layout + papel en el handler. En GET,
+  además, el cargador no consulta nada a quien no tiene `coupon.access` (un
+  `__data.json` puede saltarse el `load` del layout).
 - La empleada, el apoyo y el viewer no ven filas, ni usos, ni objetos de foto, ni
   el asunto en Hoy, ni la entrada de navegación; la URL directa da 403 y la ruta de
   la foto 404.

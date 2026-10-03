@@ -247,6 +247,39 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'coupon_uses_live_idx tiene que ser parcial (solo usos vivos)';
   END IF;
+  -- La política de la foto se suma con OR a TODA lectura de storage_objects
+  -- de la aplicación y busca el cupón por (hogar, foto): sin este índice, cada
+  -- lectura de un justificante recorrería los cupones del hogar.
+  IF to_regclass('app.coupons_photo_idx') IS NULL
+     OR pg_get_indexdef(to_regclass('app.coupons_photo_idx'))
+        NOT LIKE '%ON app.coupons USING btree (household_id, photo_storage_object_id)' THEN
+    RAISE EXCEPTION 'falta coupons_photo_idx sobre (household_id, photo_storage_object_id), entero';
+  END IF;
+
+  -- Los nombres de quien guardó y de quien usó, para toda la familia: una
+  -- SECURITY DEFINER en plpgsql (el validador no planifica su cuerpo al
+  -- crearla, así que no choca con el FORCE; lección de la 0032), con la RLS
+  -- apagada DENTRO y la puerta del papel puesta por ella misma. Solo la
+  -- aplicación la ejecuta: ni PUBLIC ni el emisor de trabajos.
+  IF to_regprocedure('app.coupon_people()') IS NULL THEN
+    RAISE EXCEPTION 'falta app.coupon_people(): la familia no administradora no vería quién usó un cupón';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_catalog.pg_proc AS fn
+      JOIN pg_catalog.pg_language AS lang ON lang.oid = fn.prolang
+     WHERE fn.oid = to_regprocedure('app.coupon_people()')
+       AND fn.prosecdef
+       AND lang.lanname = 'plpgsql'
+       AND 'row_security=off' = ANY (fn.proconfig)
+       AND EXISTS (SELECT 1 FROM unnest(fn.proconfig) AS setting WHERE setting LIKE 'search_path=%')
+  ) THEN
+    RAISE EXCEPTION 'app.coupon_people() tiene que ser plpgsql, SECURITY DEFINER, con search_path fijo y row_security=off';
+  END IF;
+  IF has_function_privilege('public', 'app.coupon_people()', 'EXECUTE')
+     OR has_function_privilege('casa_clara_worker', 'app.coupon_people()', 'EXECUTE')
+     OR NOT has_function_privilege('casa_clara_app', 'app.coupon_people()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'app.coupon_people() la tiene que ejecutar casa_clara_app y nadie más';
+  END IF;
 END
 $assert_coupons_schema$;
 
@@ -329,6 +362,62 @@ BEGIN
       NULL;
     END;
   END LOOP;
+
+  -- Las fechas, en el rango del contrato (2000–2999): una fila escrita a mano
+  -- fuera de él tumbaría la cartera entera al leerla, porque el dominio no
+  -- entiende esos años (revisión de integración de la fase 2, m-5).
+  FOR bad IN
+    SELECT * FROM (VALUES
+      ('caducidad de 1999', DATE '1999-12-31'),
+      ('caducidad de 3000', DATE '3000-01-01'),
+      ('caducidad del año 26', DATE '0026-10-09')
+    ) AS cases(label, expires_on)
+  LOOP
+    BEGIN
+      INSERT INTO app.coupons (
+        household_id, id, merchant, offer, expires_on,
+        photo_storage_object_id, created_by_membership_id
+      ) VALUES (
+        '10000000-0000-4000-8000-000000000001', 'cd400000-0000-4000-8000-000000000010',
+        'Comercio', 'Oferta', bad.expires_on,
+        'cd400000-0000-4000-8000-000000000001', '11000000-0000-4000-8000-000000000001'
+      );
+      RAISE EXCEPTION 'el CHECK no rechazó: %', bad.label;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+  END LOOP;
+  FOR bad IN
+    SELECT * FROM (VALUES
+      ('uso de 1999', DATE '1999-12-31'),
+      ('uso de 3000', DATE '3000-01-01')
+    ) AS cases(label, used_on)
+  LOOP
+    BEGIN
+      INSERT INTO app.coupon_uses (household_id, id, coupon_id, used_on, used_by_membership_id)
+      VALUES ('10000000-0000-4000-8000-000000000001', 'cd400000-0000-4000-8000-000000000020',
+              'cd400000-0000-4000-8000-000000000002', bad.used_on,
+              '11000000-0000-4000-8000-000000000001');
+      RAISE EXCEPTION 'el CHECK no rechazó: %', bad.label;
+    EXCEPTION WHEN check_violation THEN
+      NULL;
+    END;
+  END LOOP;
+  -- Los bordes sí entran.
+  INSERT INTO app.coupon_uses (household_id, id, coupon_id, used_on, used_by_membership_id) VALUES
+    ('10000000-0000-4000-8000-000000000001', 'cd400000-0000-4000-8000-000000000021',
+     'cd400000-0000-4000-8000-000000000002', '2000-01-01', '11000000-0000-4000-8000-000000000001'),
+    ('10000000-0000-4000-8000-000000000001', 'cd400000-0000-4000-8000-000000000022',
+     'cd400000-0000-4000-8000-000000000002', '2999-12-31', '11000000-0000-4000-8000-000000000001');
+  INSERT INTO app.coupons (
+    household_id, id, merchant, offer, expires_on, photo_storage_object_id, created_by_membership_id
+  ) VALUES
+    ('10000000-0000-4000-8000-000000000001', 'cd400000-0000-4000-8000-000000000014',
+     'Comercio', 'Oferta', '2000-01-01', 'cd400000-0000-4000-8000-000000000001',
+     '11000000-0000-4000-8000-000000000001'),
+    ('10000000-0000-4000-8000-000000000001', 'cd400000-0000-4000-8000-000000000015',
+     'Comercio', 'Oferta', '2999-12-31', 'cd400000-0000-4000-8000-000000000001',
+     '11000000-0000-4000-8000-000000000001');
 
   -- Y lo que admiten, justo en el borde. Sin esto, un CHECK que cerrara de más
   -- (max_uses BETWEEN 2 AND 998, un código obligatorio) pasaría por bueno.
@@ -433,6 +522,47 @@ BEGIN
     UPDATE app.coupons SET created_by_membership_id = '11000000-0000-4000-8000-000000000002'
      WHERE id = 'cd400000-0000-4000-8000-000000000002';
     RAISE EXCEPTION 'un cupón cambió de autoría';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    NULL;
+  END;
+  -- Ni su identificador ni su fecha de alta. El cupón del cambio de id no
+  -- tiene usos: así no hay FK de por medio y lo único que puede pararlo es
+  -- el cerrojo.
+  BEGIN
+    UPDATE app.coupons SET id = 'cd400000-0000-4000-8000-000000000007'
+     WHERE id = 'cd400000-0000-4000-8000-000000000013';
+    RAISE EXCEPTION 'un cupón cambió de identificador';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    NULL;
+  END;
+  BEGIN
+    UPDATE app.coupons SET created_at = '2020-01-01T00:00:00Z'
+     WHERE id = 'cd400000-0000-4000-8000-000000000002';
+    RAISE EXCEPTION 'un cupón cambió su fecha de alta';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    NULL;
+  END;
+  -- Un uso VIVO tampoco se muda: ni a otro cupón del hogar (la FK lo
+  -- admitiría), ni de identificador, ni de cuándo llegó a la base. Vivo,
+  -- porque uno anulado ya lo para la primera regla del cerrojo.
+  BEGIN
+    UPDATE app.coupon_uses SET coupon_id = 'cd400000-0000-4000-8000-000000000005'
+     WHERE id = 'cd400000-0000-4000-8000-000000000003';
+    RAISE EXCEPTION 'un uso se mudó de cupón';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    NULL;
+  END;
+  BEGIN
+    UPDATE app.coupon_uses SET id = 'cd400000-0000-4000-8000-000000000006'
+     WHERE id = 'cd400000-0000-4000-8000-000000000003';
+    RAISE EXCEPTION 'un uso cambió de identificador';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    NULL;
+  END;
+  BEGIN
+    UPDATE app.coupon_uses SET recorded_at = '2020-01-01T00:00:00Z'
+     WHERE id = 'cd400000-0000-4000-8000-000000000003';
+    RAISE EXCEPTION 'un uso cambió el momento en que se apuntó';
   EXCEPTION WHEN object_not_in_prerequisite_state THEN
     NULL;
   END;
@@ -624,6 +754,9 @@ BEGIN
      OR (SELECT count(*) FROM app.storage_objects WHERE id::text LIKE 'cd1%') <> 0 THEN
     RAISE EXCEPTION 'sin contexto de hogar se ven cupones, usos o fotos';
   END IF;
+  IF (SELECT count(*) FROM app.coupon_people()) <> 0 THEN
+    RAISE EXCEPTION 'sin contexto de hogar app.coupon_people() devuelve nombres';
+  END IF;
 END
 $assert_sin_contexto$;
 
@@ -708,6 +841,27 @@ BEGIN
                     'cd100000-0000-4000-8000-000000000008')) <> 0 THEN
     RAISE EXCEPTION 'la política de la foto abre objetos que ningún cupón cita';
   END IF;
+
+  -- Quién guardó y quién usó, CON NOMBRE, también para la familia que no
+  -- administra (revisión de la fase 2, I-1). La premisa primero: la RLS de
+  -- `user_profiles` (0005) no le enseña el perfil de la administración, así
+  -- que sin la función la ficha diría «Alguien de la familia».
+  IF (SELECT count(*) FROM app.user_profiles WHERE user_id = 'fixture:roble:admin') <> 0 THEN
+    RAISE EXCEPTION 'la familia ya lee el perfil de la administración: revisa si app.coupon_people() sigue haciendo falta';
+  END IF;
+  -- Y la función devuelve EXACTAMENTE a quien firmó un alta o un uso vivo del
+  -- hogar: ni la empleada (subió fotos, pero no guardó ningún cupón), ni el
+  -- apoyo, ni la membresía caducada, ni nadie del olivo.
+  IF (SELECT string_agg(person.membership_id::text || '=' || person.display_name, ','
+                        ORDER BY person.membership_id)
+        FROM app.coupon_people() AS person)
+     IS DISTINCT FROM '11000000-0000-4000-8000-000000000001=Fixture Admin Roble,'
+                      '11000000-0000-4000-8000-000000000002=Fixture Familiar Roble' THEN
+    RAISE EXCEPTION 'app.coupon_people() no devuelve a la familia los nombres de quien guardó y usó: %',
+      (SELECT string_agg(person.membership_id::text || '=' || person.display_name, ','
+                         ORDER BY person.membership_id)
+         FROM app.coupon_people() AS person);
+  END IF;
 END
 $assert_familia_lee$;
 
@@ -722,6 +876,8 @@ SELECT app.set_household_context(
 );
 
 DO $assert_olivo$
+DECLARE
+  touched integer;
 BEGIN
   IF (SELECT count(*) FROM app.coupons WHERE household_id = '10000000-0000-4000-8000-000000000001') <> 0
      OR (SELECT count(*) FROM app.coupon_uses WHERE household_id = '10000000-0000-4000-8000-000000000001') <> 0
@@ -732,6 +888,13 @@ BEGIN
      OR (SELECT count(*) FROM app.coupon_uses) <> 1
      OR (SELECT count(*) FROM app.storage_objects WHERE id = 'ce100000-0000-4000-8000-000000000001') <> 1 THEN
     RAISE EXCEPTION 'el olivo no ve su propio cupón, su uso o su foto';
+  END IF;
+  -- Los nombres, solo los de su casa.
+  IF (SELECT string_agg(person.membership_id::text || '=' || person.display_name, ','
+                        ORDER BY person.membership_id)
+        FROM app.coupon_people() AS person)
+     IS DISTINCT FROM '21000000-0000-4000-8000-000000000001=Fixture Admin Olivo' THEN
+    RAISE EXCEPTION 'fuga entre hogares: app.coupon_people() da al olivo nombres que no son de su casa';
   END IF;
 
   -- Escribir en el roble desde el olivo: ni el cupón ni el uso. El alta del
@@ -777,6 +940,36 @@ BEGIN
   IF FOUND THEN
     RAISE EXCEPTION 'el olivo editó un cupón del roble';
   END IF;
+
+  -- Y SIN WHERE, que es el caso que de verdad importa: el WHERE de arriba lee
+  -- una columna y le suma la política de SELECT, que ya filtra el hogar; una
+  -- sentencia que no lee ninguna solo pasa por la de UPDATE. Alcanza lo suyo
+  -- —su cupón y su uso vivo, el control de que la sentencia escribe— y CERO
+  -- filas del roble.
+  BEGIN
+    UPDATE app.coupons SET notes = 'Tocado desde el olivo, sin WHERE';
+    GET DIAGNOSTICS touched = ROW_COUNT;
+  EXCEPTION WHEN insufficient_privilege THEN
+    RAISE EXCEPTION 'un UPDATE sin WHERE desde el olivo llegó a cupones del roble: %', SQLERRM;
+  END;
+  IF touched < 1 THEN
+    RAISE EXCEPTION 'el olivo no pudo editar ni su propio cupón: el cero del roble no probaría nada';
+  ELSIF touched > 1 THEN
+    RAISE EXCEPTION 'un UPDATE sin WHERE desde el olivo cambió % cupones del roble', touched - 1;
+  END IF;
+  BEGIN
+    UPDATE app.coupon_uses
+       SET voided_at = statement_timestamp(),
+           voided_by_membership_id = '21000000-0000-4000-8000-000000000001';
+    GET DIAGNOSTICS touched = ROW_COUNT;
+  EXCEPTION WHEN insufficient_privilege OR foreign_key_violation THEN
+    RAISE EXCEPTION 'un UPDATE sin WHERE desde el olivo llegó a usos del roble: %', SQLERRM;
+  END;
+  IF touched < 1 THEN
+    RAISE EXCEPTION 'el olivo no pudo anular ni su propio uso: el cero del roble no probaría nada';
+  ELSIF touched > 1 THEN
+    RAISE EXCEPTION 'un UPDATE sin WHERE desde el olivo anuló % usos del roble', touched - 1;
+  END IF;
 END
 $assert_olivo$;
 
@@ -801,6 +994,9 @@ BEGIN
      OR (SELECT count(*) FROM app.coupon_uses) <> 0
      OR (SELECT count(*) FROM app.storage_objects WHERE id::text LIKE 'cd1%') <> 0 THEN
     RAISE EXCEPTION 'una membresía caducada ve cupones, usos o fotos';
+  END IF;
+  IF (SELECT count(*) FROM app.coupon_people()) <> 0 THEN
+    RAISE EXCEPTION 'una membresía caducada recibe nombres de app.coupon_people()';
   END IF;
   BEGIN
     INSERT INTO app.coupons (
@@ -1051,6 +1247,19 @@ BEGIN
        SET used_by_membership_id = '11000000-0000-4000-8000-000000000002'
      WHERE id = 'cd300000-0000-4000-8000-000000000003';
     RAISE EXCEPTION 'un uso cambió de autoría';
+  EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    NULL;
+  END;
+  -- Ni lo muda a otro cupón del hogar en la misma sentencia: la fila nueva
+  -- está anulada, firmada por quien anula y colgada de un cupón visible, así
+  -- que el WITH CHECK la daría por buena. Solo el cerrojo ve la vieja.
+  BEGIN
+    UPDATE app.coupon_uses
+       SET voided_at = statement_timestamp(),
+           voided_by_membership_id = '11000000-0000-4000-8000-000000000001',
+           coupon_id = 'cd200000-0000-4000-8000-000000000001'
+     WHERE id = 'cd300000-0000-4000-8000-000000000003';
+    RAISE EXCEPTION 'anular un uso lo mudó de cupón';
   EXCEPTION WHEN object_not_in_prerequisite_state THEN
     NULL;
   END;
@@ -1339,6 +1548,12 @@ BEGIN
     IF (SELECT count(*) FROM app.coupon_uses) <> 0 THEN
       RAISE EXCEPTION '% ve % usos', role_pair.user_id, (SELECT count(*) FROM app.coupon_uses);
     END IF;
+    -- Ni los nombres de quien guardó o usó: la función se cierra sola a quien
+    -- no es de la familia, aunque la llame directamente.
+    IF (SELECT count(*) FROM app.coupon_people()) <> 0 THEN
+      RAISE EXCEPTION '% recibe % nombres de app.coupon_people()', role_pair.user_id,
+        (SELECT count(*) FROM app.coupon_people());
+    END IF;
     -- Las fotos las subió la familia y ahora las citan cupones: aun así, cero.
     -- Ni los metadatos (comercio en la clave, tamaño, huella) deben llegar.
     IF (SELECT count(*) FROM app.storage_objects WHERE id::text LIKE 'cd1%') <> 0 THEN
@@ -1421,6 +1636,12 @@ BEGIN
   BEGIN
     PERFORM 1 FROM app.coupon_uses;
     RAISE EXCEPTION 'el worker leyó usos de cupones';
+  EXCEPTION WHEN insufficient_privilege THEN
+    NULL;
+  END;
+  BEGIN
+    PERFORM 1 FROM app.coupon_people();
+    RAISE EXCEPTION 'el worker leyó los nombres de la cartera';
   EXCEPTION WHEN insufficient_privilege THEN
     NULL;
   END;

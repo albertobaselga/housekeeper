@@ -41,6 +41,9 @@
     // Solo la ve quien tiene finance.access EFECTIVO: el servidor ya la retiró
     // del contexto si la membresía no tiene concesión viva (spec §4).
     finanzas: { module: 'finanzas', label: 'Finanzas', short: 'Finanzas', capability: 'finance.access' },
+    // Solo la familia: quien trabaja en la casa, el apoyo y el acceso puntual
+    // no reciben `coupon.access` y la entrada no se les pinta.
+    cupones: { module: 'cupones', label: 'Cupones', short: 'Cupones', capability: 'coupon.access' },
     menu: { module: 'menu', label: 'Menú', short: 'Menú', capability: 'menu.read' },
     wiki: { module: 'wiki', label: 'Guía de la casa', short: 'Guía', capability: 'content.read' },
     routines: { module: 'routines', label: 'Rutinas', short: 'Rutinas', capability: 'routine.read' },
@@ -59,8 +62,13 @@
   // a qué hora recogen a los niños— y estaba escondida detrás de «Más», que es
   // justo donde ella menos puede navegar; Contrato se mira una vez al mes y
   // ocupaba un sitio principal de la barra.
-  const handsOnOrder = ['today', 'routines', 'menu', 'wiki', 'employment', 'finanzas', 'calendar', 'contacts'];
-  const familyOrder = ['today', 'menu', 'employment', 'calendar', 'finanzas', 'wiki', 'routines', 'contacts'];
+  //
+  // Cupones va JUSTO DESPUÉS de los cuatro primeros, nunca dentro: en el móvil
+  // es lo primero de la hoja «Más» después de Buscar (en la puerta del súper
+  // queda a dos toques) y en la barra lateral sale con los demás. Meterlo
+  // entre los cuatro desplazaría un destino que decidió el propietario.
+  const handsOnOrder = ['today', 'routines', 'menu', 'wiki', 'cupones', 'employment', 'finanzas', 'calendar', 'contacts'];
+  const familyOrder = ['today', 'menu', 'employment', 'calendar', 'cupones', 'finanzas', 'wiki', 'routines', 'contacts'];
   const order = has('work.register.self') || !has('settlement.read') ? handsOnOrder : familyOrder;
 
   const visibleNavigation = order

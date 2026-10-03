@@ -242,6 +242,47 @@ INSERT INTO app.finance_transactions
 COMMIT;
 `;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cartera de cupones (prefijo cf…, E2E_SEED.coupons). Diez cupones disponibles
+// del roble, guardados por la administración, para medir la lista en vivo
+// (con «Usar» en cada fila) y lo que pasa al usar uno que está lejos, abajo.
+// Ninguno caduca en los próximos tres días: Hoy no cambia para nadie. Las
+// fotos son filas de `storage_objects` sin bytes detrás (no hay almacén en
+// esta batería): la ficha dice que la foto no se puede cargar.
+// ─────────────────────────────────────────────────────────────────────────────
+const COUPONS_SEED = `
+BEGIN;
+SET LOCAL row_security = off;
+
+-- Diez fotos para los diez cupones y una más, libre (E2E_SEED.coupons.fotoLibre),
+-- para el alta: la subida se sustituye en el navegador y devuelve esa.
+INSERT INTO app.storage_objects
+  (id, household_id, bucket, object_key, media_type, byte_size, sha256, created_by_membership_id)
+SELECT ('cf100000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid, '${HOUSEHOLD}',
+       'e2e-cupones', 'e2e/cupones/foto-' || n || '.jpg', 'image/jpeg', 1024,
+       repeat(to_hex(n), 64 / length(to_hex(n))), '${ADMIN_MEMBERSHIP}'
+  FROM generate_series(1, 11) AS n;
+
+INSERT INTO app.coupons
+  (household_id, id, merchant, offer, code, expires_on, max_uses, notes,
+   photo_storage_object_id, created_by_membership_id)
+SELECT '${HOUSEHOLD}', ('cf000000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid,
+       'Comercio E2E ' || n,
+       CASE WHEN n = 1 THEN 'Varios usos de prueba' ELSE 'Oferta de prueba número ' || n END,
+       'E2E-CUPON-' || n,
+       current_date + 30 + n,
+       CASE WHEN n = 1 THEN 5 ELSE 1 END,
+       NULL,
+       ('cf100000-0000-4000-8000-0000000000' || lpad(n::text, 2, '0'))::uuid,
+       '${ADMIN_MEMBERSHIP}'
+  FROM generate_series(1, 10) AS n;
+
+INSERT INTO app.coupon_uses (household_id, id, coupon_id, used_on, used_by_membership_id) VALUES
+  ('${HOUSEHOLD}', '${E2E_SEED.coupons.usoVarios}', '${E2E_SEED.coupons.varios}', current_date - 2, '${ADMIN_MEMBERSHIP}');
+
+COMMIT;
+`;
+
 export default async function globalSetup(): Promise<void> {
   const adminUrl = process.env.E2E_DATABASE_URL;
   if (!adminUrl) return;
@@ -267,6 +308,7 @@ export default async function globalSetup(): Promise<void> {
     await admin.query(WIKI_SEED);
     await admin.query(E2E_BATTERY_SEED);
     await admin.query(FINANCE_SEED);
+    await admin.query(COUPONS_SEED);
 
     // Login del servidor web: miembro de casa_clara_app, sin BYPASSRLS. Se
     // conserva entre ejecuciones (el servidor anterior puede seguir teniendo

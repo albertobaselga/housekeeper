@@ -29,7 +29,9 @@ export type AttachmentErrorCode =
   /** Solo con escáner configurado: no contesta o contesta algo ininteligible. */
   | 'attachment_scan_unavailable'
   /** El almacén de objetos rechazó el PUT (credenciales, red, cuota). */
-  | 'attachment_storage_unavailable';
+  | 'attachment_storage_unavailable'
+  /** Esos mismos bytes ya los subió OTRA persona del hogar (spec cupones §7.2). */
+  | 'attachment_duplicate';
 
 /** Error tipado de la tubería de adjuntos; la ruta lo traduce a HTTP. */
 export class AttachmentError extends Error {
@@ -220,22 +222,49 @@ export async function uploadAttachment(
   const objectKey = attachmentObjectKey(householdId, sha256, mediaType);
 
   return withAuthorizedTransaction(pool, { userId: user.id }, householdId, async (client, membership) => {
-    // Contenido idéntico ya registrado en este hogar → subida idempotente.
-    const existing = await client.query<{ id: string }>(
-      `select id from app.storage_objects
-        where bucket = $1 and object_key = $2 and household_id = $3 and deleted_at is null`,
-      [deps.bucket, objectKey, householdId]
-    );
-    const existingId = existing.rows[0]?.id;
+    /*
+     * Contenido idéntico que ya subió ESTA persona → subida idempotente. Solo
+     * lo propio, no lo visible: la administración ve todos los objetos del
+     * hogar (0005) y, con la 0039, la familia ve las fotos de los cupones de
+     * los demás. Devolver uno de esos como si fuera suyo era entregarle el
+     * objeto de otra persona, que el comando que lo enlaza (gasto, cupón)
+     * rechazaba después porque no lo subió ella.
+     */
+    const ownExisting = async (): Promise<string | undefined> => {
+      const existing = await client.query<{ id: string }>(
+        `select id from app.storage_objects
+          where bucket = $1 and object_key = $2 and household_id = $3
+            and created_by_membership_id = $4 and deleted_at is null`,
+        [deps.bucket, objectKey, householdId, membership.id]
+      );
+      return existing.rows[0]?.id;
+    };
+    const existingId = await ownExisting();
     if (existingId) return { storageObjectId: existingId, sha256, mediaType };
 
+    /*
+     * `UNIQUE (bucket, object_key)` es de todo el almacén y la clave sale del
+     * sha-256: los mismos bytes chocan aunque los suba otra persona. Antes ese
+     * choque era un 23505 y un 500 mudo. Con `on conflict do nothing` no hay
+     * error que aborte la transacción y se puede preguntar otra vez: si la fila
+     * que ganó es de esta misma persona (la misma foto desde dos pestañas a la
+     * vez, que la búsqueda de arriba no vio porque aún no estaba confirmada), es
+     * suya y se devuelve; si es de otra, 409 con nombre.
+     */
     const inserted = await client.query<{ id: string }>(
       `insert into app.storage_objects
          (household_id, bucket, object_key, media_type, byte_size, sha256, created_by_membership_id)
        values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (bucket, object_key) do nothing
        returning id`,
       [householdId, deps.bucket, objectKey, mediaType, bytes.length, sha256, membership.id]
     );
+    const insertedId = inserted.rows[0]?.id;
+    if (!insertedId) {
+      const racedId = await ownExisting();
+      if (racedId) return { storageObjectId: racedId, sha256, mediaType };
+      throw new AttachmentError('attachment_duplicate', 'Ese fichero ya lo subió alguien de la casa');
+    }
     // PUT dentro de la transacción: si el almacén falla, el registro se
     // revierte y no queda fila huérfana apuntando a un objeto inexistente.
     // El fallo se tipa igual que el del antivirus: 503 honesto en vez de 500.
@@ -248,6 +277,6 @@ export async function uploadAttachment(
         'El almacén de documentos del hogar no responde: la foto sigue en tu dispositivo y no se ha guardado nada'
       );
     }
-    return { storageObjectId: inserted.rows[0]!.id, sha256, mediaType };
+    return { storageObjectId: insertedId, sha256, mediaType };
   });
 }

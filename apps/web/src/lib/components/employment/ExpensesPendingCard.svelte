@@ -1,5 +1,6 @@
 <script lang="ts">
   import ActionStatus from '$lib/components/ActionStatus.svelte';
+  import PhotoPicker from '$lib/components/PhotoPicker.svelte';
   import { OptimisticActions } from '$lib/offline/optimistic';
   import { saveOfflineBlob } from '$lib/offline/idb';
   import type { OutboxPendingBlob } from '$lib/offline/schema';
@@ -62,12 +63,8 @@
   // vuelva la red: entonces la foto se sube y su identificador entra en el
   // mismo comando, así que el gasto nace ya con su justificante enlazado.
   const online = $derived($syncStatus.phase !== 'offline');
-  /** Elegir un fichero y hacer una foto son DOS campos distintos: con el
-   * atributo `capture` puesto, el móvil abre la cámara y ya no ofrece la
-   * galería ni los ficheros, así que con un solo campo siempre falta una de
-   * las dos formas. */
-  let receiptPickInput = $state<HTMLInputElement | null>(null);
-  let receiptCameraInput = $state<HTMLInputElement | null>(null);
+  /** Los dos campos (elegir y hacer la foto) viven en PhotoPicker. */
+  let receiptPicker = $state<ReturnType<typeof PhotoPicker> | null>(null);
   /** Fichero elegido, YA preparado para subir (reducido si hacía falta). */
   let receiptFile = $state<File | null>(null);
   let receiptNotice = $state<string | null>(null);
@@ -84,8 +81,7 @@
 
   function clearReceipt(): void {
     receiptFile = null;
-    if (receiptPickInput) receiptPickInput.value = '';
-    if (receiptCameraInput) receiptCameraInput.value = '';
+    receiptPicker?.clear();
   }
 
   /**
@@ -93,12 +89,7 @@
    * ha reducido» aparece mientras aún se puede cambiar de idea. El módulo que
    * reduce se carga bajo demanda: quien no adjunta nada no lo descarga.
    */
-  async function chooseReceipt(input: HTMLInputElement | null): Promise<void> {
-    const chosen = input?.files?.[0];
-    if (!chosen) return;
-    // Los dos campos comparten una sola selección: el último gana.
-    if (input === receiptPickInput && receiptCameraInput) receiptCameraInput.value = '';
-    if (input === receiptCameraInput && receiptPickInput) receiptPickInput.value = '';
+  async function chooseReceipt(chosen: File): Promise<void> {
     receiptBusy = true;
     receiptNotice = null;
     try {
@@ -347,27 +338,14 @@
       <label>Descripción
         <input type="text" autocomplete="off" enterkeyhint="done" bind:value={expenseDescription} maxlength="500" required placeholder="Farmacia, compra…" />
       </label>
-      <fieldset class="receipt-field">
-        <legend>Justificante (opcional)</legend>
-        <label>Elegir un fichero o una foto guardada
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            bind:this={receiptPickInput}
-            disabled={uploadBusy || receiptBusy}
-            onchange={(event) => void chooseReceipt(event.currentTarget)}
-          />
-        </label>
-        <label>Hacer la foto ahora
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            bind:this={receiptCameraInput}
-            disabled={uploadBusy || receiptBusy}
-            onchange={(event) => void chooseReceipt(event.currentTarget)}
-          />
-        </label>
+      <PhotoPicker
+        bind:this={receiptPicker}
+        legend="Justificante (opcional)"
+        pickLabel="Elegir un fichero o una foto guardada"
+        pickAccept="image/*,application/pdf"
+        disabled={uploadBusy || receiptBusy}
+        onpick={(file) => void chooseReceipt(file)}
+      >
         <p class="field-hint">
           Si la foto pesa mucho se reduce en este móvil antes de enviarla, para que no se quede a medias
           con datos móviles. El texto del ticket se sigue leyendo.
@@ -379,7 +357,7 @@
             <button class="button secondary small-button" type="button" onclick={clearReceipt}>Quitar</button>
           </p>
         {/if}
-      </fieldset>
+      </PhotoPicker>
       {#if !online}
         <p class="queued-note" role="status">Sin conexión: haz la foto igualmente. Se guarda en este dispositivo y se une al gasto en cuanto vuelva la red.</p>
       {/if}

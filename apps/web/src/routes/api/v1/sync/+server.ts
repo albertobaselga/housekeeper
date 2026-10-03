@@ -3,6 +3,7 @@ import { syncRequestSchema } from '@housekeeper/contracts/schemas';
 import {
   accessCommandHandlers,
   contactCommandHandlers,
+  couponCommandHandlers,
   employmentCommandHandlers,
   financeCommandHandlers,
   foodCommandHandlers,
@@ -24,6 +25,7 @@ const handlers: CommandHandlers = {
   ...accessCommandHandlers,
   ...financeCommandHandlers,
   ...contactCommandHandlers,
+  ...couponCommandHandlers,
   expense: submitExpenseHandler
 };
 
