@@ -623,3 +623,64 @@ filas aunque llame a la API a mano, y no ve el módulo en la navegación.
 - La migración desde el sistema antiguo (home-finance) fue única y está
   congelada; su runbook es
   [docs/runbooks/migracion-home-finance.md](../../../docs/runbooks/migracion-home-finance.md).
+
+---
+
+## Cupones
+
+La cartera de cupones de la familia: foto del vale, comercio, oferta, código,
+caducidad, usos máximos y notas. Es **de toda la familia** —no hay cupones de
+una persona— y **solo de la familia**.
+
+**(a) Por dónde.** `/h/<hogar>/cupones`, y nada más:
+
+- **Alta**: botón **Añadir** → foto primero («Hacer la foto ahora» o «Elegir una
+  foto guardada»; se reencoda siempre, sin EXIF ni ubicación, y se sube en ese
+  momento por `POST /api/v1/households/<hogar>/attachments`) → campos → **Guardar
+  el cupón**. Exige conexión: sin red no hay dónde subir la foto.
+- **Usar**: en la fila o en la ficha (`?cupon=<id>`). Deja «Uso apuntado ✓ ·
+  Deshacer». Un uso viejo apuntado por error se quita en la ficha con **Anular
+  este uso** (dos toques).
+- **Descartar** («Descartar el cupón de …») y **Recuperar**, en la ficha. Los
+  descartados viven en el filtro `?ver=descartados`.
+- **Editar** (y «Cambiar la foto»), en la ficha.
+- Las escrituras viajan como comandos `coupon` (`create`, `update`, `use`,
+  `void_use`, `discard`, `restore`) por `POST /api/v1/sync`, con el id del cupón
+  y del uso generados en el cliente: reintentar no duplica. Usar, anular,
+  descartar y recuperar se encolan sin red; crear no.
+- La foto se sirve por `GET /api/v1/households/<hogar>/coupons/<id>/photo`
+  (proxy autenticado, `no-store`, 404 opaco para quien no la ve).
+- La caducidad próxima (disponibles que caducan en tres días o menos) sale en
+  **Hoy** como un asunto `cupones-caducan`, solo para la familia. Sin push.
+
+**(b) Rol.** Capacidad `coupon.access`: `family_admin` y `family_member`, los dos
+con todo (ver, crear, editar, usar, anular, descartar, recuperar). No hay
+concesión aparte como en Finanzas. `employee_live_in`, `helper` y `viewer` **no
+ven nada**: ni la entrada de navegación, ni filas, ni usos, ni fotos, ni el
+asunto en Hoy; la URL directa da 403 («Esta parte la lleva la familia.») y la de
+la foto, 404. Lo impone la RLS de la 0039 (`app.family_role()`), no solo la
+interfaz.
+
+**(c) Qué NO hacer.**
+
+- **Nada de SQL a mano** sobre `app.coupons` ni `app.coupon_uses`, ni para
+  «arreglar» un uso: se anula desde la ficha y queda quién y cuándo. Las dos
+  tablas son de solo-añadir en la práctica (no hay `DELETE` concedido; un uso
+  anulado no se desanula) y están auditadas.
+- **No colgar como foto un objeto que no subió esa persona.** La regla de enlace
+  (`created_by_membership_id` = quien guarda, solo `image/jpeg|png|webp`, no
+  borrado) existe porque `family_admin` ve todos los objetos del hogar y podría
+  colgar el justificante privado de otra persona. Saltársela por SQL abre esa
+  puerta.
+- **No crear una fila en `app.documents` para la foto** «para que se vea»: con
+  ámbito `household` o `employment` la empleada vería sus metadatos. La foto se
+  ve por la política `storage_objects_read_coupon_photo`, que hereda la RLS de
+  los cupones.
+- **No esperar que la aplicación impida usar un cupón gastado o caducado.** Solo
+  registra y lleva el inventario; decidir si vale es cosa de la tienda. Que
+  «deje usar» uno caducado no es un fallo.
+- **No meter cupones reales en el repositorio**, ni sus fotos: las muestras de
+  pruebas y del manual son sintéticas.
+- `audit_events` copia los campos del cupón (también el código) y los lee
+  `family_admin`. Es aceptable porque la audiencia del módulo ya es la familia;
+  no lo «arregles» abriendo la auditoría a nadie más.

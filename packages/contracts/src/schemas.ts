@@ -36,6 +36,7 @@ export const commandEnvelopeSchema = z.object({
     "agreement",
     "comment",
     "contact",
+    "coupon",
     "diner",
     "expense",
     "extra_work",
@@ -72,9 +73,18 @@ const commandAckSchema = z.object({
   retryAfterSeconds: z.number().int().positive().optional(),
 });
 
+/**
+ * La forma del LOTE, no la de cada comando: los sobres viajan como `unknown` y
+ * los valida `processSyncBatch` de uno en uno, que es quien puede rechazar uno
+ * («invalid_envelope», «unsupported_aggregate») y seguir con el resto. Si se
+ * validaran aquí, un solo comando de un agregado que este servidor no conoce
+ * —uno de un módulo nuevo, tras volver a un despliegue anterior— tumbaría el
+ * lote entero con un 422 y dejaría atascados en el móvil los de los demás
+ * módulos que viajan con él.
+ */
 export const syncRequestSchema = z.object({
   apiVersion: z.literal(API_VERSION),
-  commands: z.array(commandEnvelopeSchema).min(1).max(MAX_SYNC_COMMANDS),
+  commands: z.array(z.unknown()).min(1).max(MAX_SYNC_COMMANDS),
 });
 
 export const expenseSubmitPayloadSchema = z.object({
@@ -1313,6 +1323,117 @@ export const paymentRecordPayloadSchema = z.object({
   valueOn: isoDateSchema,
   reference: z.string().max(200).optional(),
 });
+
+// ─── Cupones de la familia (spec 2026-10-03, §5) ─────────────────────────────
+
+/**
+ * Fecha de calendario que EXISTE, no solo con forma `YYYY-MM-DD`, y de un año
+ * que todos entienden igual.
+ *
+ * · `isoDateSchema` mira la forma y dejaría pasar un 30 de febrero, que la
+ *   columna `date` rechazaría luego al guardar: mejor un `invalid_payload` en
+ *   el borde que un error de la base a mitad de transacción. `z.iso.date()`
+ *   comprueba el calendario, bisiestos incluidos.
+ * · Pero `z.iso.date()` admite los años 0000–0099, y ahí nadie coincide:
+ *   Postgres rechaza el 0000 (22008, el mismo error a mitad de transacción) y
+ *   guarda el 0026 como el año 26, que `localDate()` del dominio no acepta
+ *   (`Date.UTC` lleva 0–99 a 1900–1999), así que un solo cupón así tiraría la
+ *   página entera. Un año de dos cifras tecleado en un `<input type="date">`
+ *   de escritorio llega justo así. De 2000 a 2999 cabe cualquier cupón real
+ *   (caducado o no) y queda dentro de lo que aceptan la base y el dominio.
+ */
+const COUPON_DATE_MIN = "2000-01-01";
+const COUPON_DATE_MAX = "2999-12-31";
+const couponDateSchema = z.iso
+  .date()
+  .refine(
+    (value) => value >= COUPON_DATE_MIN && value <= COUPON_DATE_MAX,
+    "La fecha tiene que caer entre los años 2000 y 2999",
+  );
+
+/**
+ * Recorta y convierte en `null` lo que se queda en blanco. El constructor del
+ * cliente ya lo hace; se repite aquí porque la petición se puede fabricar a
+ * mano y porque las CHECK de la tabla (`length(btrim(code)) BETWEEN 1 AND 120`)
+ * convertirían un «   » en un error de la base en vez de en un cupón sin
+ * código.
+ */
+function blankAsNull(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * Campo opcional: la clave viaja siempre y vale texto o `null`. NO es
+ * `.optional()`: en `update` (sustitución completa) una clave ausente borraría
+ * el valor sin que nadie lo pidiera, así que se exige.
+ */
+function optionalCouponText(max: number) {
+  return z.preprocess(blankAsNull, z.string().min(1).max(max).nullable());
+}
+
+const couponEditableFields = {
+  couponId: uuidSchema,
+  merchant: z.string().trim().min(1).max(120),
+  offer: z.string().trim().min(1).max(200),
+  code: optionalCouponText(120),
+  expiresOn: z.preprocess(blankAsNull, couponDateSchema.nullable()),
+  /** `null` = sin límite. Los usos se REGISTRAN, no se controlan (D-usos). */
+  maxUses: z.number().int().min(1).max(999).nullable(),
+  notes: optionalCouponText(1000),
+};
+
+export const couponCreatePayloadSchema = z.object({
+  action: z.literal("create"),
+  ...couponEditableFields,
+  /** El cupón nace de una foto ya subida; el handler comprueba que es de quien guarda. */
+  photoStorageObjectId: uuidSchema,
+});
+
+export const couponUpdatePayloadSchema = z.object({
+  action: z.literal("update"),
+  ...couponEditableFields,
+  /** Solo para cambiar la foto. Quitarla no se puede: el cupón ES la foto. */
+  photoStorageObjectId: uuidSchema.optional(),
+});
+
+/**
+ * Apuntar un uso. Ni el agotado, ni el caducado, ni el descartado lo impiden:
+ * la casa registra lo que pasó en caja, no lo autoriza. `useId` lo genera el
+ * cliente para que «Deshacer» pueda anular justo ese uso aunque siga en cola.
+ */
+export const couponUsePayloadSchema = z.object({
+  action: z.literal("use"),
+  couponId: uuidSchema,
+  useId: uuidSchema,
+  usedOn: couponDateSchema,
+});
+
+export const couponVoidUsePayloadSchema = z.object({
+  action: z.literal("void_use"),
+  couponId: uuidSchema,
+  useId: uuidSchema,
+});
+
+export const couponDiscardPayloadSchema = z.object({
+  action: z.literal("discard"),
+  couponId: uuidSchema,
+});
+
+export const couponRestorePayloadSchema = z.object({
+  action: z.literal("restore"),
+  couponId: uuidSchema,
+});
+
+export const couponCommandPayloadSchema = z.discriminatedUnion("action", [
+  couponCreatePayloadSchema,
+  couponUpdatePayloadSchema,
+  couponUsePayloadSchema,
+  couponVoidUsePayloadSchema,
+  couponDiscardPayloadSchema,
+  couponRestorePayloadSchema,
+]);
 
 export const syncResultSchema = z.object({
   apiVersion: z.literal(API_VERSION),

@@ -20,6 +20,8 @@
     employment: 'M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h3',
     // Barras sobre ejes: el dinero de la casa, mes a mes.
     finanzas: 'M4 4v16h16M8 16v-6M12 16V7M16 16v-3',
+    // Vale con una muesca a cada lado y la línea de corte: un cupón.
+    cupones: 'M4 7h16v3a2 2 0 0 0 0 4v3H4v-3a2 2 0 0 0 0-4zM15 8v1.5M15 11.25v1.5M15 14.5v1.5',
     // Tenedor y cuchillo: lo que se come.
     menu: 'M8 3v7a2 2 0 0 1-4 0V3M6 10v11M16 3c-1.5 1.5-1.5 5 0 6.5V21',
     // Cazuela con tapa: el recetario.

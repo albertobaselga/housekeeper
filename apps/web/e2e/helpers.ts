@@ -70,6 +70,27 @@ export const E2E_SEED = {
     // (finance.transactions.bulk) — sin ella, ni el dbe2e ni la maqueta
     // ejercitaban ese camino ni los estados `sugerida_*` de STATUS_LABEL.
     txSugerida: 'ac920000-0000-4000-8000-000000000003'
+  },
+  /**
+   * Cartera de cupones de la familia del roble (prefijo cf…, spec de cupones
+   * §10): diez disponibles —ninguno «caduca pronto», para no tocar Hoy—, de un
+   * solo uso salvo `varios` (5 usos, uno ya apuntado). Las fotos son objetos
+   * sintéticos sin bytes en ningún almacén: la ficha dice que no se pueden
+   * cargar, que es lo que pasa sin red.
+   */
+  coupons: {
+    /** Uno de un solo uso, el ÚLTIMO de la lista (caduca el más tarde). */
+    ultimo: 'cf000000-0000-4000-8000-000000000010',
+    /** 5 usos, uno apuntado: su ficha tiene «Anular este uso». */
+    varios: 'cf000000-0000-4000-8000-000000000001',
+    /** El uso ya apuntado de `varios`. */
+    usoVarios: 'cf200000-0000-4000-8000-000000000001',
+    /**
+     * Una foto de la administración que no cita ningún cupón: la subida de
+     * esta batería (sin almacén) se sustituye en el navegador y devuelve este
+     * objeto, así que el alta puede guardarse de verdad.
+     */
+    fotoLibre: 'cf100000-0000-4000-8000-000000000011'
   }
 } as const;
 

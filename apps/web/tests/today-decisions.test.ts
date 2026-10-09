@@ -94,6 +94,7 @@ function baseFacts(overrides: Partial<TodayDecisionFacts> = {}): TodayDecisionFa
     overdueRoutineCount: 2,
     vacationNews: null,
     vacationCarryovers: [],
+    expiringCoupons: [],
     ...overrides
   };
 }
@@ -249,6 +250,119 @@ describe('buildTodayDecisions por rol', () => {
   });
 });
 
+/*
+ * Cupones que caducan pronto (spec cupones §7.5): un ÚNICO asunto de tipo
+ * novedad, solo para quien tiene `coupon.access` (la familia), con el texto
+ * escrito aquí. La ventana —disponibles que caducan entre hoy y hoy+3— la
+ * aplica el cargador con el dominio; aquí llegan ya filtrados.
+ */
+describe('cupones que caducan pronto', () => {
+  const coupon = (id: string, merchant: string, expiresOn: string, offer = `Oferta de ${merchant}`) => ({
+    id,
+    merchant,
+    offer,
+    expiresOn
+  });
+
+  it('uno solo: su comercio, cuándo caduca en palabras, su oferta y un enlace que lo abre', () => {
+    const items = buildTodayDecisions(
+      baseFacts({ expiringCoupons: [coupon('c1', 'Mercado', '2026-08-07', '2x1 en fruta')] })
+    );
+    // Novedad, no decisión, y detrás de lo que sí hay que decidir.
+    expect(items.map((item) => item.key)).toEqual([
+      'extra-e-requested',
+      'extra-e-resolver',
+      'gasto-g-1',
+      'menu-unconfirmed',
+      'liquidacion-s-pendiente',
+      'cupones-caducan'
+    ]);
+    expect(items[5]).toEqual({
+      key: 'cupones-caducan',
+      title: 'El cupón de Mercado caduca hoy',
+      detail: '2x1 en fruta',
+      href: `/h/${FIXTURE_HOUSEHOLD}/cupones?cupon=c1`,
+      cta: 'Verlo',
+      kind: 'news'
+    });
+  });
+
+  it('la fecha se dice como se dice: hoy, mañana o el día de la semana', () => {
+    const titleFor = (expiresOn: string) =>
+      buildTodayDecisions(
+        baseFacts({ role: 'family_member', expiringCoupons: [coupon('c1', 'Mercado', expiresOn)] })
+      ).find((item) => item.key === 'cupones-caducan')!.title;
+    // Hoy es el viernes 7 de agosto de 2026.
+    expect(titleFor('2026-08-07')).toBe('El cupón de Mercado caduca hoy');
+    expect(titleFor('2026-08-08')).toBe('El cupón de Mercado caduca mañana');
+    expect(titleFor('2026-08-09')).toBe('El cupón de Mercado caduca el domingo');
+    expect(titleFor('2026-08-10')).toBe('El cupón de Mercado caduca el lunes');
+  });
+
+  it('varios: un solo asunto con la cuenta y los comercios, que lleva a la lista', () => {
+    const items = buildTodayDecisions(
+      baseFacts({
+        role: 'family_member',
+        expiringCoupons: [
+          coupon('c1', 'Mercado', '2026-08-07'),
+          coupon('c2', 'Panadería', '2026-08-08'),
+          coupon('c3', 'Mercado', '2026-08-09')
+        ]
+      })
+    );
+    const news = items.filter((item) => item.key === 'cupones-caducan');
+    expect(news).toEqual([
+      {
+        key: 'cupones-caducan',
+        title: '3 cupones caducan pronto',
+        // Cada comercio una vez, en el orden en que caducan.
+        detail: 'Mercado y Panadería',
+        href: `/h/${FIXTURE_HOUSEHOLD}/cupones`,
+        cta: 'Verlos',
+        kind: 'news'
+      }
+    ]);
+  });
+
+  it('con muchos comercios se nombran tres y se cuentan los demás', () => {
+    const items = buildTodayDecisions(
+      baseFacts({
+        role: 'family_member',
+        expiringCoupons: ['Mercado', 'Panadería', 'Farmacia', 'Librería', 'Ferretería'].map((merchant, index) =>
+          coupon(`c${index}`, merchant, '2026-08-08')
+        )
+      })
+    );
+    expect(items.find((item) => item.key === 'cupones-caducan')!.detail).toBe(
+      'Mercado, Panadería, Farmacia y 2 más'
+    );
+  });
+
+  it('la empleada, el apoyo y el acceso puntual no lo reciben nunca', () => {
+    // La RLS ya les devuelve cero cupones (0039) y el cargador ni pregunta;
+    // esto es la defensa de arriba, por si una consulta futura se los trajera.
+    const expiringCoupons = [coupon('c1', 'Mercado', '2026-08-07')];
+    for (const role of ['employee_live_in', 'helper', 'viewer'] as const) {
+      const items = buildTodayDecisions(baseFacts({ role, membershipId: EMPLOYEE_MEMBERSHIP, expiringCoupons }));
+      expect(items.some((item) => item.key === 'cupones-caducan'), role).toBe(false);
+    }
+  });
+
+  it('sin cupones que caduquen no hay asunto, y solo con él el bloque es una novedad', () => {
+    expect(
+      buildTodayDecisions(baseFacts({ role: 'family_member', unconfirmedSlots: [] }))
+    ).toEqual([]);
+    const items = buildTodayDecisions(
+      baseFacts({
+        role: 'family_member',
+        unconfirmedSlots: [],
+        expiringCoupons: [coupon('c1', 'Mercado', '2026-08-08')]
+      })
+    );
+    expect(decisionsTitleFor(items)).toBe('Una novedad para ti');
+  });
+});
+
 describe('cómo se llama el bloque de Hoy', () => {
   const decision = { key: 'd', title: '', detail: '', href: '', cta: '' };
   const news = { ...decision, key: 'n', kind: 'news' as const };
@@ -309,6 +423,26 @@ describe('triaje genérico del outbox', () => {
     );
     // Un agregado sin descriptor degrada a la etiqueta genérica, nunca lanza.
     expect(describeCommand(envelope('comment', {}))).toBe('Cambio pendiente');
+  });
+
+  it('describe los cambios de cupones por acción, con el comercio cuando lo lleva', () => {
+    expect(describeCommand(envelope('coupon', { action: 'create', merchant: 'Mercado' }))).toBe(
+      'Cupón nuevo de «Mercado»'
+    );
+    expect(describeCommand(envelope('coupon', { action: 'create' }))).toBe('Cupón nuevo');
+    expect(describeCommand(envelope('coupon', { action: 'update', merchant: 'Mercado' }))).toBe(
+      'Cambios en el cupón de «Mercado»'
+    );
+    expect(describeCommand(envelope('coupon', { action: 'update' }))).toBe('Cambios en un cupón');
+    expect(describeCommand(envelope('coupon', { action: 'use', couponId: 'c1' }))).toBe('Uso apuntado de un cupón');
+    expect(describeCommand(envelope('coupon', { action: 'void_use', couponId: 'c1' }))).toBe(
+      'Uso de un cupón anulado'
+    );
+    expect(describeCommand(envelope('coupon', { action: 'discard', couponId: 'c1' }))).toBe('Cupón descartado');
+    expect(describeCommand(envelope('coupon', { action: 'restore', couponId: 'c1' }))).toBe('Cupón recuperado');
+    expect(describeCommand(envelope('coupon', {}))).toBe('Cambio en un cupón');
+    // Los códigos de cupones viven en el diccionario compartido y el triaje cae a él.
+    expect(describeError('coupon_not_found')).toBe('El cupón ya no existe');
   });
 
   it('traduce los códigos de error propios y los laborales, y calla ante los desconocidos', () => {

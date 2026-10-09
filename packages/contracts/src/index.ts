@@ -54,6 +54,7 @@ export type AggregateType =
   | "agreement"
   | "comment"
   | "contact"
+  | "coupon"
   | "diner"
   | "expense"
   | "extra_work"
@@ -642,6 +643,67 @@ export type FinanceWritePayloadV1 =
   | FinanceEventAssignConceptPayloadV1
   | FinanceAliasUpdatePayloadV1
   | FinanceImportUndoPayloadV1;
+
+/**
+ * `aggregateType: "coupon"` — la cartera de cupones de la familia (discriminados
+ * por `action`). Los ids del cupón y de cada uso los genera el cliente: así el
+ * reintento de la bandeja de salida no duplica aunque cambie el `operationId`.
+ *
+ * Los opcionales viajan SIEMPRE, con `null` cuando no hay: `update` es una
+ * sustitución completa de los campos editables y una clave ausente no puede
+ * querer decir «bórralo». El texto llega recortado y una cadena en blanco es
+ * `null`, nunca `""`.
+ */
+export interface CouponCreatePayloadV1 {
+  action: "create";
+  couponId: UUID;
+  merchant: string;
+  offer: string;
+  code: string | null;
+  expiresOn: ISODate | null;
+  /** `null` = sin límite de usos. */
+  maxUses: number | null;
+  notes: string | null;
+  photoStorageObjectId: UUID;
+}
+
+export interface CouponUpdatePayloadV1 {
+  action: "update";
+  couponId: UUID;
+  merchant: string;
+  offer: string;
+  code: string | null;
+  expiresOn: ISODate | null;
+  maxUses: number | null;
+  notes: string | null;
+  /**
+   * Solo si se cambia la foto; sin él, la foto se queda como estaba. El esquema
+   * conserva la clave si llega con `undefined`, de ahí el `| undefined`: hay
+   * foto nueva cuando `photoStorageObjectId !== undefined`, nunca con `in`.
+   */
+  photoStorageObjectId?: UUID | undefined;
+}
+
+/** Apunta un uso. No se rechaza por agotado, caducado ni descartado (D-usos). */
+export interface CouponUsePayloadV1 {
+  action: "use";
+  couponId: UUID;
+  useId: UUID;
+  /** Fecha local del hecho (Europe/Madrid); la pone el cliente. */
+  usedOn: ISODate;
+}
+
+export interface CouponVoidUsePayloadV1 { action: "void_use"; couponId: UUID; useId: UUID }
+export interface CouponDiscardPayloadV1 { action: "discard"; couponId: UUID }
+export interface CouponRestorePayloadV1 { action: "restore"; couponId: UUID }
+
+export type CouponCommandPayloadV1 =
+  | CouponCreatePayloadV1
+  | CouponUpdatePayloadV1
+  | CouponUsePayloadV1
+  | CouponVoidUsePayloadV1
+  | CouponDiscardPayloadV1
+  | CouponRestorePayloadV1;
 
 export interface CriticalSnapshotV1 {
   apiVersion: typeof API_VERSION;

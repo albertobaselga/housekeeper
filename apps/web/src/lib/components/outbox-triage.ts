@@ -118,6 +118,26 @@ export function describeCommand(envelope: CommandEnvelopeV1): string {
       }
     case 'membership':
       return action === 'revoke' ? 'Retirada de un acceso' : 'Fecha límite de un acceso';
+    case 'coupon': {
+      // Solo el alta y la edición llevan el comercio; el resto viaja con el id.
+      const merchant = payloadField(envelope, 'merchant');
+      switch (action) {
+        case 'create':
+          return merchant ? `Cupón nuevo de «${merchant}»` : 'Cupón nuevo';
+        case 'update':
+          return merchant ? `Cambios en el cupón de «${merchant}»` : 'Cambios en un cupón';
+        case 'use':
+          return 'Uso apuntado de un cupón';
+        case 'void_use':
+          return 'Uso de un cupón anulado';
+        case 'discard':
+          return 'Cupón descartado';
+        case 'restore':
+          return 'Cupón recuperado';
+        default:
+          return 'Cambio en un cupón';
+      }
+    }
     default:
       return 'Cambio pendiente';
   }

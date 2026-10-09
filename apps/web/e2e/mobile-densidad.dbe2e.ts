@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { HOUSEHOLD, loginAs } from './helpers';
+import { E2E_SEED, HOUSEHOLD, loginAs } from './helpers';
 
 /*
  * El sistema móvil, medido.
@@ -56,6 +56,12 @@ const ROUTES: readonly DensityRoute[] = [
   { path: 'employment/pagos', label: 'Pagos (familia)', as: 'admin' },
   { path: 'calendar', label: 'Calendario', as: 'employee', lista: false },
   { path: 'contacts', label: 'Contactos', as: 'admin' },
+  // Cupones es una lista de diez en esta casa (siembra cf…), con su «Usar» en
+  // cada fila: la que A6 mide en cuántas caben de una vez.
+  { path: 'cupones', label: 'Cupones', as: 'admin' },
+  // Y con la ficha abierta por enlace, como llega desde el aviso de Hoy: la
+  // hoja tapa la lista, así que aquí no hay lista principal que contar.
+  { path: `cupones?cupon=${E2E_SEED.coupons.varios}`, label: 'Cupones · una ficha', as: 'admin', lista: false },
   { path: 'emergency', label: 'Emergencias', as: 'employee' },
   { path: 'settings', label: 'Ajustes', as: 'admin' },
   // Las siete rutas esqueleto de Finanzas (Task 8): ninguna declara lista

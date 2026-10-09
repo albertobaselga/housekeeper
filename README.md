@@ -2,10 +2,11 @@
 
 Aplicación web instalable para llevar una casa y la relación laboral con quien
 trabaja en ella: qué toca hoy, la guía de la casa, el menú y la compra, el
-calendario, los contactos y el expediente laboral —jornadas extra, gastos y
-liquidaciones, todo en céntimos—. Cinco papeles —administración, familia,
-empleada, apoyo y acceso puntual— con aislamiento real por hogar mediante Row
-Level Security **forzada** en PostgreSQL.
+calendario, los contactos, la cartera de cupones de la familia y el expediente
+laboral —jornadas extra, gastos y liquidaciones, todo en céntimos—. Cinco
+papeles —administración, familia, empleada, apoyo y acceso puntual— con
+aislamiento real por hogar mediante Row Level Security **forzada** en
+PostgreSQL.
 
 > **«Housekeeper» es el nombre del proyecto, no el del producto.** Una misma
 > instalación sirve a varias casas: sin sesión la aplicación se anuncia con un
@@ -230,6 +231,7 @@ Detalle en
 - Personal y contratos: [docs/personal-y-contratos.md](docs/personal-y-contratos.md)
 - Rutinas y calendario: [docs/rutinas-y-calendario.md](docs/rutinas-y-calendario.md)
 - Avisos al móvil: [docs/notificaciones.md](docs/notificaciones.md)
+- Cupones de la familia: [diseño](docs/superpowers/specs/2026-10-03-modulo-cupones-design.md) · [revisión de seguridad](docs/security/revision-cupones.md)
 - Sistema de diseño móvil: [docs/ux/sistema-movil.md](docs/ux/sistema-movil.md)
 - Decisiones: [ADR](docs/adr/)
 - Base de seguridad: [docs/security/security-baseline.md](docs/security/security-baseline.md)

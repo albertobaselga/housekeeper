@@ -65,6 +65,7 @@ const SECTION_LABELS: Readonly<Record<string, string>> = {
   'finanzas/eventos': 'Eventos',
   'finanzas/importar': 'Importar',
   'finanzas/ajustes': 'Ajustes de Finanzas',
+  cupones: 'Cupones',
   offline: 'Sin conexión'
 };
 

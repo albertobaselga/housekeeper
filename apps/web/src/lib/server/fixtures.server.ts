@@ -5,6 +5,7 @@ import type { DemoUser, HouseholdSummary } from '$lib/auth/types';
 import { isFinanceAccountKind, isFinanceCategoryKind, type AnaliticaData, type AnaliticaPivotRow } from '$lib/finance/analitica-data';
 import type { FinanceFilters } from '$lib/finance/filters';
 
+import { buildCouponsPageData, type CouponRow, type CouponUseRow, type CouponsPageData } from './coupons.server';
 import { demoOnly, fixturesAllowed } from './data-source.server';
 import type {
   FinanceAjustesData,
@@ -1029,3 +1030,111 @@ export const getFinanceAjustesFixture = demoOnly(
     providers: []
   })
 );
+
+// ── Cupones: la cartera de la familia en demostración. Todo inventado. ──────
+
+const COUPONS_MADRID_DATE = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid' });
+
+function couponDay(todayISO: string, offset: number): string {
+  const date = new Date(`${todayISO}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + offset);
+  return date.toISOString().slice(0, 10);
+}
+
+function couponMoment(todayISO: string, offset: number): string {
+  return `${couponDay(todayISO, offset)}T10:00:00.000Z`;
+}
+
+/**
+ * La «foto» de un vale de demostración, dibujada aquí: un rectángulo con borde
+ * de corte, el comercio y el código. Va en `data:`, que la CSP admite, porque
+ * sin base no hay ruta de foto que la sirva. Ninguna foto real.
+ */
+function syntheticCouponPhoto(merchant: string, code: string | null): string {
+  const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 320 200'>" +
+    "<rect x='4' y='4' width='312' height='192' rx='16' fill='#fff8f2' stroke='#a85a33' stroke-width='4' stroke-dasharray='10 6'/>" +
+    `<text x='160' y='86' font-family='sans-serif' font-size='22' font-weight='700' text-anchor='middle' fill='#26302b'>${escape(merchant)}</text>` +
+    `<text x='160' y='130' font-family='monospace' font-size='20' text-anchor='middle' fill='#21483a'>${escape(code ?? 'Vale de demostración')}</text>` +
+    "<text x='160' y='170' font-family='sans-serif' font-size='13' text-anchor='middle' fill='#626962'>Foto de demostración</text>" +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * Siete cupones que cubren lo que la pantalla tiene que saber pintar: los
+ * cuatro filtros, uno que caduca pronto, uno de varios usos a medias y uno sin
+ * límite. Las fechas cuelgan del «hoy» que se le da, para que la maqueta no
+ * caduque sola con el calendario.
+ */
+function buildCouponsFixture(today?: string): CouponsPageData {
+  const todayISO = today && /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : COUPONS_MADRID_DATE.format(new Date());
+  const coupon = (
+    id: string,
+    fields: Pick<CouponRow, 'merchant' | 'offer' | 'code' | 'maxUses' | 'notes'> & {
+      expiresIn: number | null;
+      createdDaysAgo: number;
+      discardedDaysAgo?: number;
+      createdByName: string;
+    }
+  ): CouponRow => ({
+    id,
+    merchant: fields.merchant,
+    offer: fields.offer,
+    code: fields.code,
+    expiresOn: fields.expiresIn === null ? null : couponDay(todayISO, fields.expiresIn),
+    maxUses: fields.maxUses,
+    notes: fields.notes,
+    discardedAt: fields.discardedDaysAgo === undefined ? null : couponMoment(todayISO, -fields.discardedDaysAgo),
+    createdAt: couponMoment(todayISO, -fields.createdDaysAgo),
+    createdByName: fields.createdByName,
+    // Sin objeto de verdad: la foto de la maqueta es un SVG en `data:`.
+    photoStorageObjectId: id
+  });
+  const use = (id: string, couponId: string, daysAgo: number, usedByName: string): CouponUseRow => ({
+    id,
+    couponId,
+    usedOn: couponDay(todayISO, -daysAgo),
+    usedByName
+  });
+
+  const FRUTERIA = 'f3000000-0000-4000-8000-000000000001';
+  const DROGUERIA = 'f3000000-0000-4000-8000-000000000002';
+  const PANADERIA = 'f3000000-0000-4000-8000-000000000003';
+  const LIBRERIA = 'f3000000-0000-4000-8000-000000000004';
+  const ZAPATERIA = 'f3000000-0000-4000-8000-000000000005';
+  const OPTICA = 'f3000000-0000-4000-8000-000000000006';
+  const HELADERIA = 'f3000000-0000-4000-8000-000000000007';
+
+  const rows: CouponRow[] = [
+    coupon(FRUTERIA, { merchant: 'Frutería del Mercado', offer: '2 × 1 en mandarinas', code: 'MANDA2X1', maxUses: 1, notes: null, expiresIn: 2, createdDaysAgo: 3, createdByName: 'Marta' }),
+    coupon(DROGUERIA, { merchant: 'Droguería Sol', offer: '10 % en productos de limpieza', code: 'SOL10-DEMO', maxUses: 5, notes: 'Se enseña en caja antes de pagar.', expiresIn: 40, createdDaysAgo: 20, createdByName: 'Alberto' }),
+    coupon(PANADERIA, { merchant: 'Panadería La Espiga', offer: 'Café gratis con la barra', code: null, maxUses: null, notes: 'Vale la tarjeta sellada del mostrador.', expiresIn: null, createdDaysAgo: 30, createdByName: 'Marta' }),
+    coupon(LIBRERIA, { merchant: 'Librería Papel', offer: '5 € en libros infantiles', code: 'PAPEL5', maxUses: 1, notes: 'A partir de 20 € de compra.', expiresIn: 20, createdDaysAgo: 6, createdByName: 'Alberto' }),
+    coupon(ZAPATERIA, { merchant: 'Zapatería Paso', offer: '15 % en calzado infantil', code: 'PASO15', maxUses: 1, notes: null, expiresIn: 60, createdDaysAgo: 15, createdByName: 'Marta' }),
+    coupon(OPTICA, { merchant: 'Óptica Mirada', offer: 'Revisión de la vista gratis', code: null, maxUses: 1, notes: null, expiresIn: -5, createdDaysAgo: 50, createdByName: 'Alberto' }),
+    coupon(HELADERIA, { merchant: 'Heladería Polo', offer: '2 × 1 en tarrinas', code: 'POLO2X1', maxUses: 1, notes: null, expiresIn: 90, createdDaysAgo: 40, discardedDaysAgo: 2, createdByName: 'Marta' })
+  ];
+  const uses: CouponUseRow[] = [
+    use('f3100000-0000-4000-8000-000000000001', DROGUERIA, 2, 'Marta'),
+    use('f3100000-0000-4000-8000-000000000002', DROGUERIA, 9, 'Alberto'),
+    use('f3100000-0000-4000-8000-000000000003', PANADERIA, 1, 'Marta'),
+    use('f3100000-0000-4000-8000-000000000004', PANADERIA, 4, 'Marta'),
+    use('f3100000-0000-4000-8000-000000000005', PANADERIA, 8, 'Alberto'),
+    use('f3100000-0000-4000-8000-000000000006', PANADERIA, 12, 'Marta'),
+    use('f3100000-0000-4000-8000-000000000007', ZAPATERIA, 5, 'Alberto')
+  ];
+
+  const data = buildCouponsPageData(HOUSEHOLD.id, todayISO, rows, uses);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  return {
+    ...data,
+    coupons: data.coupons.map((view) => ({
+      ...view,
+      photoUrl: syntheticCouponPhoto(view.merchant, byId.get(view.id)?.code ?? null)
+    }))
+  };
+}
+
+export const getCouponsFixture = demoOnly('cupones', buildCouponsFixture);

@@ -33,10 +33,16 @@
 //   # 3. Cuentas con contraseña, enganchadas a las membresías de la fixture
 //   node apps/web/scripts/manual-shots-accounts.mjs
 //
+//   # 3b. La cartera de cupones, con sus fotos (inventadas) en el almacén S3
+//   #     (MinIO local; las mismas S3_* que el servidor del paso 4)
+//   S3_ENDPOINT=… S3_PRIVATE_BUCKET=… S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
+//   SEED_DATABASE_URL=… node apps/web/scripts/manual-shots-cupones.mjs
+//
 //   # 4. Servidor (build de producción) con base, identidad y claves de avisos
 //   pnpm --filter @housekeeper/web build
 //   DATABASE_URL=… DATABASE_AUTH_URL=… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=http://127.0.0.1:4363 \
 //   VAPID_PUBLIC_KEY=… VAPID_PRIVATE_KEY=… VAPID_SUBJECT=mailto:… \
+//   S3_ENDPOINT=… S3_PRIVATE_BUCKET=… S3_ACCESS_KEY_ID=… S3_SECRET_ACCESS_KEY=… \
 //   PORT=4363 ORIGIN=http://127.0.0.1:4363 node apps/web/build
 //
 //   # 5. Las capturas, y adelgazarlas antes de commitear
@@ -92,6 +98,9 @@ const hogar = (ruta) => `/h/${HOUSEHOLD}${ruta}`;
 const ANA = '12000000-0000-4000-8000-000000000001';
 const expediente = (pestana = '') => hogar(`/employment${pestana}?empleada=${ANA}`);
 
+// El cupón de la frutería que siembra manual-shots-cupones.mjs.
+const CUPON_FRUTERIA = 'c8000000-0000-4000-8000-000000000002';
+
 // ── Utilidades de puesta en escena ─────────────────────────────────────────
 
 /**
@@ -141,6 +150,23 @@ async function abrirEditorDeVersion(page) {
 async function abrirLaCompra(page) {
   await page.getByRole('button', { name: 'Lista de la compra' }).first().click();
   await page.waitForTimeout(600);
+}
+
+/**
+ * Retira las dos invitaciones de la cabecera, si están: la de instalar la
+ * aplicación (con el agente de iPhone sale en cada visita, «Añádela a tu
+ * pantalla de inicio…») y la de activar los avisos. Juntas se comen un tercio
+ * de la pantalla del móvil que el manual quiere dedicar a otra cosa: se
+ * contestan como lo haría cualquiera la primera vez, una detrás de otra.
+ */
+async function sinInvitaciones(page) {
+  for (const respuesta of ['Entendido', 'Ahora no']) {
+    const boton = page.getByRole('button', { name: respuesta, exact: true }).first();
+    if (await boton.isVisible().catch(() => false)) {
+      await boton.click();
+      await page.waitForTimeout(300);
+    }
+  }
 }
 
 /** Espera a que la página deje de moverse: fuentes cargadas y sin animación. */
@@ -484,6 +510,30 @@ const CAPTURAS = [
     foco: 'h2:has-text("ya puede entrar")'
   },
   { nombre: 'familia-cuenta', cuenta: 'alberto', aparato: 'escritorio', ruta: hogar('/account') },
+
+  // ── Cupones de la familia, en el móvil ───────────────────────────────────
+  // La cartera la siembra manual-shots-cupones.mjs, con foto de verdad en el
+  // almacén: sin él no hay cupones, y sin almacén la ficha no enseña la foto.
+  {
+    nombre: 'familia-cupones-movil',
+    cuenta: 'alberto',
+    aparato: 'movil',
+    ruta: hogar('/cupones'),
+    preparar: sinInvitaciones
+  },
+  {
+    nombre: 'familia-cupones-ficha-movil',
+    cuenta: 'alberto',
+    aparato: 'movil',
+    // La frutería: caduca pronto, tiene código y notas. Es la ficha que más
+    // cosas enseña de una vez.
+    ruta: hogar(`/cupones?cupon=${CUPON_FRUTERIA}`),
+    async preparar(page) {
+      const foto = page.locator('.coupon-sheet .coupon-photo img').first();
+      await foto.waitFor({ state: 'visible', timeout: 15_000 });
+      await foto.evaluate((img) => (img.complete ? undefined : new Promise((listo) => img.addEventListener('load', listo, { once: true }))));
+    }
+  },
 
   // ── Miembro de la familia y apoyo ────────────────────────────────────────
   // Lo que la familia no administradora ve DE VERDAD son las jornadas y los

@@ -24,7 +24,7 @@ describe('capability matrix', () => {
     expect(CAPABILITIES).toEqual([
       'access.manage', 'agreement.read', 'agreement.write', 'calendar.read', 'calendar.write',
       'comment.create', 'contact.read', 'contact.write', 'content.read', 'content.write',
-      'content.publish', 'emergency.read', 'expense.create.self', 'export.employment.self',
+      'content.publish', 'coupon.access', 'emergency.read', 'expense.create.self', 'export.employment.self',
       'finance.access', 'guide.write', 'leave.approve', 'leave.request.self', 'menu.read', 'menu.write', 'payment.confirm.self',
       'payment.register', 'routine.read', 'routine.toggle', 'search.use', 'settlement.close',
       'settlement.read', 'work.confirm', 'work.register.self'
@@ -61,6 +61,13 @@ describe('capability matrix', () => {
     expect(can('employee_live_in', 'finance.access')).toBe(false);
     expect(can('helper', 'finance.access')).toBe(false);
     expect(can('viewer', 'finance.access')).toBe(false);
+    // Cupones: cosa de la familia entera (administración y resto); la empleada,
+    // el apoyo y el acceso puntual no ven nada del módulo.
+    expect(can('family_admin', 'coupon.access')).toBe(true);
+    expect(can('family_member', 'coupon.access')).toBe(true);
+    expect(can('employee_live_in', 'coupon.access')).toBe(false);
+    expect(can('helper', 'coupon.access')).toBe(false);
+    expect(can('viewer', 'coupon.access')).toBe(false);
   });
 
   it('fails closed for unknown roles and capabilities', () => {

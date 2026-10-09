@@ -14,6 +14,7 @@ export const HOUSEHOLD_MODULES = [
   'account',
   'personal',
   'finanzas',
+  'cupones',
   'settings'
 ] as const;
 
@@ -44,6 +45,11 @@ export const MODULE_CAPABILITY: Readonly<Record<HouseholdModule, Capability>> = 
   // tiene el rol, pero el layout la retira sin concesión viva (spec §4). La
   // segunda llave nunca vive aquí: este mapa no consulta la base.
   finanzas: 'finance.access',
+  // Cupones es la cartera de la FAMILIA (spec de cupones §2, D-audiencia): una
+  // sola llave para ver, guardar, usar y descartar, porque aquí no hay lector
+  // y escritor. Sin rutas hijas: el detalle es una hoja de la propia lista
+  // (`?cupon=<id>`), así que `cupones/<id>` sigue fallando cerrado.
+  cupones: 'coupon.access',
   settings: 'access.manage'
 };
 

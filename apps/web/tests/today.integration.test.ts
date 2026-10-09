@@ -40,6 +40,18 @@ const ROUTINE_DIARIA = '54000000-0000-4000-8000-000000000004';
 // De un día fijo dentro de la semana: la que sí merece su grupo con nombre.
 const ROUTINE_UN_DIA = '54000000-0000-4000-8000-000000000005';
 
+// Cupones (spec cupones §7.5): `cd1…` la foto, `cd2…` los cupones, `cd3…` los usos.
+const FAMILY_MEMBERSHIP = '11000000-0000-4000-8000-000000000002';
+const COUPON_PHOTO = 'cd100000-0000-4000-8000-000000000001';
+const COUPON_TOMORROW = 'cd200000-0000-4000-8000-000000000001';
+const COUPON_TODAY_HALF_USED = 'cd200000-0000-4000-8000-000000000002';
+const COUPON_USED_UP = 'cd200000-0000-4000-8000-000000000003';
+const COUPON_DISCARDED = 'cd200000-0000-4000-8000-000000000004';
+const COUPON_FAR = 'cd200000-0000-4000-8000-000000000005';
+const COUPON_EXPIRED = 'cd200000-0000-4000-8000-000000000006';
+const COUPON_EDGE = 'cd200000-0000-4000-8000-000000000007';
+const COUPON_NO_EXPIRY = 'cd200000-0000-4000-8000-000000000008';
+
 const ADMIN_USER = { id: 'fixture:roble:admin' };
 const MEMBER_USER = { id: 'fixture:roble:family' };
 const EMPLOYEE_USER = { id: 'fixture:roble:employee' };
@@ -129,6 +141,28 @@ INSERT INTO app.routines (id, household_id, title, details, audience, next_due_h
   ('${ROUTINE_ALL}', '${FIXTURE_HOUSEHOLD}', 'Regar plantas (IT)', '', 'all', '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 7, NULL, 'carry'),
   ('${ROUTINE_DIARIA}', '${FIXTURE_HOUSEHOLD}', 'Ventilación (IT)', '', 'employee', '${TODAY}', '${ADMIN_MEMBERSHIP}', 'every_n_days', '${TODAY}', 1, NULL, 'skip'),
   ('${ROUTINE_UN_DIA}', '${FIXTURE_HOUSEHOLD}', 'Colada de sábanas (IT)', '', 'employee', '${EN_DOS_DIAS}', '${ADMIN_MEMBERSHIP}', 'days_of_week', '${EN_DOS_DIAS}', 1, ARRAY[${EN_DOS_DIAS_ISODOW}]::smallint[], 'skip');
+
+-- Cupones: tres caducan pronto y están disponibles (hoy con un uso vivo de
+-- dos y otro anulado, mañana y el borde de hoy+3); el resto no avisa por una
+-- razón cada uno: agotado, descartado, lejos, ya caducado o sin caducidad.
+INSERT INTO app.storage_objects (id, household_id, bucket, object_key, media_type, byte_size, sha256, created_by_membership_id)
+VALUES ('${COUPON_PHOTO}', '${FIXTURE_HOUSEHOLD}', 'housekeeper-it', 'coupons-it/today.jpg', 'image/jpeg', 2048, repeat('c', 64), '${FAMILY_MEMBERSHIP}');
+
+INSERT INTO app.coupons (household_id, id, merchant, offer, expires_on, max_uses, photo_storage_object_id,
+  created_by_membership_id, discarded_at, discarded_by_membership_id) VALUES
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_TOMORROW}', 'Frutería IT', 'Un kilo gratis', '${addDays(TODAY, 1)}', NULL, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', NULL, NULL),
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_TODAY_HALF_USED}', 'Panadería IT', 'Barra gratis', '${TODAY}', 2, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', NULL, NULL),
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_USED_UP}', 'Kiosco IT', 'Revista gratis', '${addDays(TODAY, 2)}', 1, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', NULL, NULL),
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_DISCARDED}', 'Droguería IT', '10 % menos', '${addDays(TODAY, 1)}', NULL, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', now(), '${ADMIN_MEMBERSHIP}'),
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_FAR}', 'Librería IT', 'Marcapáginas', '${addDays(TODAY, 10)}', NULL, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', NULL, NULL),
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_EXPIRED}', 'Zapatería IT', 'Cordones', '${addDays(TODAY, -1)}', NULL, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', NULL, NULL),
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_EDGE}', 'Óptica IT', 'Gamuza', '${addDays(TODAY, 3)}', NULL, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', NULL, NULL),
+  ('${FIXTURE_HOUSEHOLD}', '${COUPON_NO_EXPIRY}', 'Ferretería IT', 'Tornillos', NULL, NULL, '${COUPON_PHOTO}', '${FAMILY_MEMBERSHIP}', NULL, NULL);
+
+INSERT INTO app.coupon_uses (household_id, id, coupon_id, used_on, used_by_membership_id, voided_at, voided_by_membership_id) VALUES
+  ('${FIXTURE_HOUSEHOLD}', 'cd300000-0000-4000-8000-000000000001', '${COUPON_TODAY_HALF_USED}', '${TODAY}', '${FAMILY_MEMBERSHIP}', NULL, NULL),
+  ('${FIXTURE_HOUSEHOLD}', 'cd300000-0000-4000-8000-000000000002', '${COUPON_TODAY_HALF_USED}', '${TODAY}', '${FAMILY_MEMBERSHIP}', now(), '${FAMILY_MEMBERSHIP}'),
+  ('${FIXTURE_HOUSEHOLD}', 'cd300000-0000-4000-8000-000000000003', '${COUPON_USED_UP}', '${TODAY}', '${ADMIN_MEMBERSHIP}', NULL, NULL);
 
 COMMIT;
 `;
@@ -329,6 +363,34 @@ describe.runIf(Boolean(adminUrl))('Hoy desde Postgres bajo RLS', () => {
     expect(overview!.routines.overdue).toEqual([]);
     expect(overview!.routines.today).toEqual([]);
     expect(overview!.routines.week).toEqual([]);
+  });
+
+  it('la familia ve UN aviso con los cupones disponibles que caducan de hoy a hoy+3', async () => {
+    for (const user of [ADMIN_USER, MEMBER_USER]) {
+      const overview = await loadTodayOverview(user, FIXTURE_HOUSEHOLD, appPool);
+      const news = overview!.decisions.filter((item) => item.key === 'cupones-caducan');
+      expect(news, user.id).toEqual([
+        {
+          key: 'cupones-caducan',
+          title: '3 cupones caducan pronto',
+          // En orden de caducidad: hoy (con un uso vivo de dos; el anulado no
+          // cuenta), mañana y el borde de hoy+3. Ni el agotado, ni el
+          // descartado, ni el lejano, ni el ya caducado, ni el que no caduca.
+          detail: 'Panadería IT, Frutería IT y Óptica IT',
+          href: `/h/${FIXTURE_HOUSEHOLD}/cupones`,
+          cta: 'Verlos',
+          kind: 'news'
+        }
+      ]);
+    }
+  });
+
+  it('la empleada, el apoyo y el acceso puntual no reciben el aviso de cupones', async () => {
+    for (const user of [EMPLOYEE_USER, HELPER_USER, VIEWER_USER]) {
+      const overview = await loadTodayOverview(user, FIXTURE_HOUSEHOLD, appPool);
+      expect(overview, user.id).not.toBeNull();
+      expect(overview!.decisions.some((item) => item.key === 'cupones-caducan'), user.id).toBe(false);
+    }
   });
 
   it('un usuario sin membresía cae a null (la página degrada a la fixture)', async () => {

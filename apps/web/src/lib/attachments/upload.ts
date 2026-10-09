@@ -11,6 +11,7 @@ export type UploadAttachmentErrorCode =
   | 'attachment_type_not_allowed'
   | 'attachment_infected'
   | 'attachments_unavailable'
+  | 'attachment_duplicate'
   | 'attachment_upload_failed';
 
 /** Mensajes honestos en el idioma de la interfaz; la causa técnica viaja en `code`. */
@@ -19,6 +20,10 @@ const ERROR_MESSAGES: Record<UploadAttachmentErrorCode, string> = {
   attachment_type_not_allowed: 'Ese tipo de fichero no está permitido: usa una foto (JPG, PNG, WebP) o un PDF.',
   attachment_infected: 'El fichero no ha pasado la revisión de seguridad y no se ha guardado.',
   attachments_unavailable: 'Adjuntar ficheros no está disponible ahora mismo.',
+  // 409 de la ruta de adjuntos (spec cupones §7.2): reintentar no lo arregla.
+  // «Fichero» y «alguien»: también choca un PDF del gasto, y también la misma
+  // persona con una membresía anterior.
+  attachment_duplicate: 'Ese fichero ya lo subió alguien de la casa.',
   attachment_upload_failed: 'No se pudo subir el fichero. Inténtalo de nuevo con conexión.'
 };
 
@@ -36,6 +41,8 @@ function codeForStatus(status: number): UploadAttachmentErrorCode {
       return 'attachment_too_large';
     case 415:
       return 'attachment_type_not_allowed';
+    case 409:
+      return 'attachment_duplicate';
     case 422:
       return 'attachment_infected';
     case 503:

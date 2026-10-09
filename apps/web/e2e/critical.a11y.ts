@@ -72,3 +72,23 @@ test('la hoja «Más» de la navegación móvil no tiene incidencias serias', as
   await expect(page.getByRole('dialog', { name: 'Más opciones' })).toBeVisible();
   expect(await seriousViolations(page)).toEqual([]);
 });
+
+// Cupones: la lista (chips de filtro, buscador y filas con su «Caduca pronto»)
+// y la hoja de detalle abierta, que es un diálogo con la foto, el código y sus
+// acciones. La ficha se abre por enlace, como llega desde el aviso de Hoy. Los
+// identificadores son los de `getCouponsFixture()`.
+test('la cartera de Cupones no tiene incidencias serias de accesibilidad', async ({ page }) => {
+  await loginAs(page, 'family');
+  await page.goto(`/h/${HOUSEHOLD}/cupones`);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(page.locator('[data-lista="principal"] > li').first()).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});
+
+test('la hoja de un cupón abierta no tiene incidencias serias de accesibilidad', async ({ page }) => {
+  await loginAs(page, 'family');
+  // Frutería del Mercado: caduca pronto y es de un solo uso, la ficha más cargada.
+  await page.goto(`/h/${HOUSEHOLD}/cupones?cupon=f3000000-0000-4000-8000-000000000001`);
+  await expect(page.getByRole('dialog', { name: 'Frutería del Mercado' })).toBeVisible();
+  expect(await seriousViolations(page)).toEqual([]);
+});

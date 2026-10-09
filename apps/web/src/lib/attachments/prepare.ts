@@ -11,7 +11,14 @@
  * la calle con el ticket en la mano.
  *
  * Este módulo se carga BAJO DEMANDA (`await import(...)`) desde la tarjeta de
- * gastos: quien nunca adjunta una foto no descarga nada de esto.
+ * gastos y desde el alta de cupones: quien nunca adjunta una foto no descarga
+ * nada de esto.
+ *
+ * La foto de un cupón pide una cosa más (`alwaysReencode`): se vuelve a dibujar
+ * SIEMPRE, pese lo que pese. Al pasar por el lienzo sale un JPEG nuevo, sin el
+ * EXIF del original —ni la posición GPS de la tienda, ni el modelo del móvil, ni
+ * la hora—, y con un nombre neutro. Esa foto la ve toda la familia; un tique de
+ * gasto, no, y por eso allí se sigue subiendo tal cual cuando ya cabe.
  */
 
 /**
@@ -25,6 +32,32 @@ const MAX_IMAGE_EDGE = 2200;
 
 /** Calidades JPEG que se prueban en orden hasta entrar en el objetivo. */
 const QUALITY_STEPS = [0.82, 0.7, 0.55];
+
+/**
+ * Calidades para la foto que se reencoda siempre. Nunca por debajo de 0,8: el
+ * código de un vale son a veces caracteres finos o un código de barras, y a
+ * 0,55 los bordes se emborronan. Si a 0,8 no cabe, se reduce el LADO
+ * (`REENCODE_EDGES`), que a 1.600 px sigue leyéndose de sobra.
+ */
+const REENCODE_QUALITY_STEPS = [0.9, 0.85, 0.8];
+const REENCODE_EDGES = [MAX_IMAGE_EDGE, 1600, 1200];
+
+export interface PrepareAttachmentOptions {
+  /**
+   * Reencodar SIEMPRE la imagen, aunque ya quepa: quita el EXIF (GPS incluido)
+   * y el nombre original. Falla cerrado: si no se puede, lanza
+   * `PrepareAttachmentError` en vez de dejar salir el original con sus datos.
+   */
+  alwaysReencode?: boolean;
+}
+
+/**
+ * La foto no se ha podido preparar y, con `alwaysReencode`, NO se sube el
+ * original. El mensaje está en el idioma de la interfaz y se enseña tal cual.
+ */
+export class PrepareAttachmentError extends Error {
+  override readonly name = 'PrepareAttachmentError';
+}
 
 export interface PreparedAttachment {
   file: File;
@@ -56,12 +89,16 @@ async function encode(canvas: HTMLCanvasElement, quality: number): Promise<Blob 
 }
 
 /**
- * Reduce una imagen hasta entrar en `UPLOAD_TARGET_BYTES`. Devuelve null si el
- * navegador no puede descodificarla (por ejemplo un HEIC que Safari no haya
- * convertido): en ese caso se sube el original y que decida el servidor, que es
- * quien puede dar un motivo veraz.
+ * Dibuja la imagen en un lienzo y la vuelve a codificar en JPEG, probando lados
+ * y calidades en orden hasta entrar en `UPLOAD_TARGET_BYTES`. Devuelve el
+ * primer resultado que cabe, o null si el navegador no puede descodificarla
+ * (por ejemplo un HEIC que Safari no haya convertido) o si nada cabe.
  */
-async function shrinkImage(file: File): Promise<File | null> {
+async function redrawImage(
+  file: File,
+  edges: readonly number[],
+  qualities: readonly number[]
+): Promise<Blob | null> {
   if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null;
   let bitmap: ImageBitmap;
   try {
@@ -72,18 +109,23 @@ async function shrinkImage(file: File): Promise<File | null> {
     return null;
   }
   try {
-    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-    const context = canvas.getContext('2d');
-    if (!context) return null;
-    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    for (const quality of QUALITY_STEPS) {
-      const blob = await encode(canvas, quality);
-      if (!blob) return null;
-      if (blob.size <= UPLOAD_TARGET_BYTES) {
-        return new File([blob], jpegName(file.name), { type: 'image/jpeg', lastModified: file.lastModified });
+    for (const edge of edges) {
+      const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext('2d');
+      if (!context) return null;
+      // Un JPEG no tiene transparencia: sin fondo, lo transparente de un PNG
+      // sale NEGRO, y un vale con letra negra sobre fondo transparente se
+      // quedaría en un rectángulo negro. Blanco, como el papel.
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of qualities) {
+        const blob = await encode(canvas, quality);
+        if (!blob) return null;
+        if (blob.size <= UPLOAD_TARGET_BYTES) return blob;
       }
     }
     return null;
@@ -93,11 +135,51 @@ async function shrinkImage(file: File): Promise<File | null> {
 }
 
 /**
- * Deja el fichero listo para subir. Solo toca las imágenes que pesan de más:
- * un PDF no se puede reducir sin romperlo, y una foto que ya cabe se sube tal
- * cual para no perder calidad sin motivo.
+ * Reduce una imagen hasta entrar en `UPLOAD_TARGET_BYTES`. Devuelve null si no
+ * se puede: en ese caso se sube el original y que decida el servidor, que es
+ * quien puede dar un motivo veraz.
  */
-export async function prepareAttachment(file: File): Promise<PreparedAttachment> {
+async function shrinkImage(file: File): Promise<File | null> {
+  const blob = await redrawImage(file, [MAX_IMAGE_EDGE], QUALITY_STEPS);
+  return blob ? new File([blob], jpegName(file.name), { type: 'image/jpeg', lastModified: file.lastModified }) : null;
+}
+
+/**
+ * La rama de `alwaysReencode`: un JPEG nuevo SIEMPRE, o un error. Nunca el
+ * original: es justo el fichero que lleva el GPS dentro.
+ */
+async function reencodeImage(file: File): Promise<PreparedAttachment> {
+  if (!isImage(file)) {
+    throw new PrepareAttachmentError('Eso no es una foto. Elige una foto (JPG, PNG o WebP) o hazla ahora.');
+  }
+  const blob = await redrawImage(file, REENCODE_EDGES, REENCODE_QUALITY_STEPS);
+  if (!blob) {
+    throw new PrepareAttachmentError(
+      'Este móvil no ha podido preparar la foto. Prueba a hacerla otra vez o elige otra en JPG o PNG.'
+    );
+  }
+  // Nombre neutro: el de la cámara suele llevar la fecha y la hora de la foto.
+  const reencoded = new File([blob], 'foto.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+  return {
+    file: reencoded,
+    notice:
+      file.size > UPLOAD_TARGET_BYTES
+        ? `La foto pesaba ${megabytes(file.size)} y se ha reducido a ${megabytes(reencoded.size)} para poder subirla. Se sigue leyendo bien.`
+        : null
+  };
+}
+
+/**
+ * Deja el fichero listo para subir. Sin opciones solo toca las imágenes que
+ * pesan de más: un PDF no se puede reducir sin romperlo, y una foto que ya cabe
+ * se sube tal cual para no perder calidad sin motivo. Con `alwaysReencode`, la
+ * imagen se vuelve a dibujar siempre (ver la cabecera del módulo).
+ */
+export async function prepareAttachment(
+  file: File,
+  options: PrepareAttachmentOptions = {}
+): Promise<PreparedAttachment> {
+  if (options.alwaysReencode) return await reencodeImage(file);
   if (file.size <= UPLOAD_TARGET_BYTES) return { file, notice: null };
   if (!isImage(file)) {
     return {

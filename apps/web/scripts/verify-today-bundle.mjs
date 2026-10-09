@@ -25,7 +25,10 @@
 //     `visited` (la técnica de `editorModule`) sino contra el desglose por
 //     módulo de `housekeeper-module-map.json`, igual que la regla de
 //     `capabilities.ts` de arriba, pero por PREFIJO de ruta en vez de por
-//     nombre exacto: puede haber varios ficheros del módulo a la vez.
+//     nombre exacto: puede haber varios ficheros del módulo a la vez. Cupones
+//     (/h/[householdId]/cupones) sigue la misma regla con `$lib/coupons/` y
+//     `$lib/components/coupons/`: su aviso en Hoy llega ya escrito por el
+//     servidor y no arrastra nada del módulo.
 //
 // El mapa módulo→trozo lo escribe el plugin `housekeeper:client-module-map` de
 // `vite.config.ts`. Es lo que permite señalar al culpable en vez de dejar un
@@ -52,8 +55,8 @@ const FORBIDDEN_IN_INITIAL_GRAPH = [
 
 /**
  * Directorios enteros desterrados del arranque de Hoy (Ruling R15): cualquier
- * fichero cuya ruta empiece por uno de estos prefijos es del módulo Finanzas,
- * no de Hoy.
+ * fichero cuya ruta empiece por uno de estos prefijos es de un módulo con su
+ * propia ruta —Finanzas o Cupones—, no de Hoy.
  */
 const FORBIDDEN_PREFIXES_IN_INITIAL_GRAPH = [
   {
@@ -67,6 +70,18 @@ const FORBIDDEN_PREFIXES_IN_INITIAL_GRAPH = [
     why:
       'los componentes del Dashboard/Movimientos de Finanzas son de esa ruta, no\n' +
       '    de Hoy: revisa qué import de Hoy (o de un trozo que Hoy comparte) los arrastró.'
+  },
+  {
+    prefix: 'src/lib/coupons/',
+    why:
+      'Cupones vive en /h/[householdId]/cupones, aparte de Hoy: el aviso de caducidad\n' +
+      '    de Hoy llega con su texto ya escrito por el servidor y no necesita nada de aquí.'
+  },
+  {
+    prefix: 'src/lib/components/coupons/',
+    why:
+      'la lista, la ficha y el alta de cupones son de su ruta, no de Hoy: revisa qué\n' +
+      '    import de Hoy (o de un trozo que Hoy comparte) los arrastró.'
   }
 ];
 

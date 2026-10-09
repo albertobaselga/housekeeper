@@ -76,6 +76,20 @@ describe('uploadAttachment', () => {
     ).rejects.toThrow(/no está disponible/);
   });
 
+  it('409 → attachment_duplicate: esos bytes ya los subió otra persona (spec cupones §7.2)', async () => {
+    // Reintentar no lo arregla: decirle «inténtalo de nuevo con conexión»
+    // sería mentirle. La frase es la misma que pone la ruta en su cuerpo.
+    // «Fichero» y «alguien», no «foto» y «otra persona»: también choca un PDF
+    // del gasto, y también la misma persona con una membresía anterior
+    // (revisión de seguridad de cupones, ronda 2, m3).
+    const fetchFn = async () => jsonResponse(409, { message: 'Ese fichero ya lo subió alguien de la casa' });
+    const promise = uploadAttachment(HOUSEHOLD, makeFile(), fetchFn as unknown as typeof fetch);
+    await expectCode(promise, 'attachment_duplicate');
+    await expect(
+      uploadAttachment(HOUSEHOLD, makeFile(), fetchFn as unknown as typeof fetch)
+    ).rejects.toThrow(/ya lo subió alguien de la casa/);
+  });
+
   it('fallo de red → attachment_upload_failed', async () => {
     const fetchFn = async () => {
       throw new TypeError('Failed to fetch');

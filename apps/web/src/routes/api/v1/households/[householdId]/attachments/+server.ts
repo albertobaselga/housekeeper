@@ -18,7 +18,10 @@ const ERROR_STATUS: Record<AttachmentError['code'], number> = {
   attachment_infected: 422,
   attachments_unavailable: 503,
   attachment_scan_unavailable: 503,
-  attachment_storage_unavailable: 503
+  attachment_storage_unavailable: 503,
+  // Los mismos bytes ya son de otra persona del hogar: no es un fallo del
+  // servidor ni del fichero, es un choque con algo que ya existe.
+  attachment_duplicate: 409
 };
 
 /**

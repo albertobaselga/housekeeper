@@ -43,6 +43,14 @@ export type Role = (typeof roles)[number];
  * Guía es a la vez el manual de acogida de quien trabaja aquí. Sin esta
  * capacidad la interfaz NO dibuja ningún control de escritura, y la RLS de
  * `wiki_*` lo impone igualmente (migración 0026).
+ *
+ * `coupon.access` abre la cartera de cupones de la familia, entera: verlos,
+ * guardarlos, apuntar y anular usos, descartarlos y recuperarlos. Es UNA sola
+ * capacidad porque aquí no hay lector y escritor: los cupones son de toda la
+ * familia y cualquiera de la familia los toca. Quien trabaja en la casa, el
+ * apoyo y el acceso puntual no ven nada del módulo, ni siquiera la foto. Sin
+ * esta capacidad no hay entrada en la navegación ni ruta que abrir, y la RLS
+ * de `coupons` lo impone igualmente (migración 0039).
  */
 export const capabilities = [
   "access.manage",
@@ -56,6 +64,7 @@ export const capabilities = [
   "content.read",
   "content.write",
   "content.publish",
+  "coupon.access",
   "emergency.read",
   "expense.create.self",
   "export.employment.self",
@@ -92,6 +101,7 @@ export const roleCapabilities: Readonly<Record<Role, readonly Capability[]>> = {
     "content.publish",
     "content.read",
     "content.write",
+    "coupon.access",
     "emergency.read",
     "menu.read",
     "menu.write",

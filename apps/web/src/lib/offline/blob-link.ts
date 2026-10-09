@@ -52,9 +52,10 @@ export async function blockedBlobIds(householdId: string, databaseName?: string)
  * aparecía en el triaje (que solo lista lo que ya no fluye solo) y la píldora lo
  * contaba como «pendiente de red», que era mentira.
  *
- * Aquí se le pone fin. Un 413/415/422 es un «no» definitivo del servidor sobre
- * ESE fichero (pesa demasiado, no es del tipo que dice ser, o no pasó la
- * revisión) y bloquea a la primera; cualquier otro fallo —503 sin almacén, 5xx,
+ * Aquí se le pone fin. Un 409/413/415/422 es un «no» definitivo del servidor
+ * sobre ESE fichero (otra persona de la casa ya subió esos mismos bytes, pesa
+ * demasiado, no es del tipo que dice ser, o no pasó la revisión) y bloquea a la
+ * primera; cualquier otro fallo —503 sin almacén, 5xx,
  * sin red, respuesta ilegible: `status` 0— es transitorio y bloquea tras
  * MAX_BLOB_UPLOAD_ATTEMPTS pasadas. La foto NO se borra: sigue en el
  * dispositivo para que «Reintentar» tenga algo que subir.
@@ -67,7 +68,7 @@ export async function recordBlobUploadFailure(
   status: number,
   databaseName?: string
 ): Promise<boolean> {
-  const definitive = status === 413 || status === 415 || status === 422;
+  const definitive = status === 409 || status === 413 || status === 415 || status === 422;
   let blocked = false;
   for (const record of await listOutbox(householdId, databaseName)) {
     if (record.pendingBlob?.id !== blobId || record.status !== 'pending') continue;
