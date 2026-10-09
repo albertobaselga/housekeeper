@@ -95,8 +95,8 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    DATABASE_URL="$DIRECTA" pnpm db:migrate
    ```
 
-   Criterio de salida: la última migración aplicada es
-   `0038_gastos_privados_y_alta_sin_admin.sql` y el runner no deja ninguna
+   Criterio de salida: la última migración aplicada es `0039_coupons.sql`
+   (el módulo Cupones) y el runner no deja ninguna
    pendiente (imprime el recuento al terminar; la numeración tiene huecos
    históricos, así que el número total no es el del último fichero). Repetir
    el comando debe aplicar 0: la idempotencia es parte del contrato.
@@ -108,8 +108,8 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    `0037_vacation_carryover` y `0038_gastos_privados_y_alta_sin_admin`. El
    runner ordena y registra por NOMBRE DE FICHERO completo, así que las cinco
    conviven, no se pisan y ninguna se renumera: renombrar una ya aplicada haría
-   que el runner intentara aplicarla otra vez. El siguiente número libre es
-   **0039**.
+   que el runner intentara aplicarla otra vez. Después vino `0039_coupons`, y
+   el siguiente número libre es **0040**.
 3. **Suites SQL y RLS** contra el proyecto real, no contra una sonda local:
 
    **SOLO PARA UN PROYECTO RECIÉN CREADO Y VACÍO**: `run-sql-tests.mjs` hace
@@ -122,7 +122,9 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    ```
 
    Criterio de salida: **todas las suites de `packages/db/tests/` en `ok`**,
-   incluida la de RLS de finanzas (`030_finance_rls.sql`); el runner imprime
+   incluidas la de RLS de finanzas (`030_finance_rls.sql`) y la de cupones
+   (`210_coupons.sql`, que comprueba que la empleada, el apoyo y el acceso
+   puntual ven cero cupones, cero usos y cero fotos); el runner imprime
    cuántas ha ejecutado. Si la matriz RLS falla, PARAR:
    es el aislamiento entre roles lo que está fallando.
 4. **Better Auth**: crear el esquema `casa_auth`, el rol
@@ -141,6 +143,47 @@ export DIRECTA='postgresql://postgres:CLAVE@db.PROYECTO.supabase.co:5432/postgre
    con su `sha512` anclado en `pnpm-lock.yaml`. `pnpm install` necesita salida
    a ese dominio; si el hash no cuadra, pnpm se niega (`ERR_PNPM_TARBALL_INTEGRITY`)
    y eso es lo correcto: no se instala nada distinto de lo revisado.
+6. **Cupones no añade variables de entorno, ni bucket, ni dependencias.** La
+   0039 trae las dos tablas (`app.coupons`, `app.coupon_uses`), su RLS solo
+   para la familia, la política de lectura de la foto y la auditoría. Las fotos
+   van al **mismo almacén de adjuntos** de §3 (mismo bucket, mismas
+   credenciales) y solo como los tipos de imagen que ya admite
+   (`image/jpeg`, `image/png`, `image/webp`); se sirven por la ruta
+   autenticada `GET /api/v1/households/<hogar>/coupons/<id>/photo`, nunca por
+   URL pública ni firmada. Sin almacén configurado, el alta de un cupón falla
+   al subir la foto con el mismo 503 veraz que cualquier adjunto: no es un
+   fallo de Cupones, es §3 sin hacer. El worker no cambia.
+7. **Cupones, en una instalación que ya está en marcha: tres reglas de orden.**
+   - **La 0039 va ANTES del merge**, como toda migración (Vercel despliega al
+     mergear y nada aplica migraciones). Con el código nuevo y la 0039 sin
+     aplicar, Hoy da 503 a toda la familia: la consulta del aviso de cupones
+     va dentro de la misma transacción que el resto de la pantalla. Justo
+     antes de mergear, comprobarlo por la conexión directa:
+
+     ```bash
+     psql "$DIRECTA" -Atc "select max(filename) from public.schema_migrations"
+     # → 0039_coupons.sql
+     ```
+
+   - **Aplicarla en un momento sin subidas en curso.** La política nueva de
+     la foto pide un bloqueo exclusivo sobre `app.storage_objects`, y la
+     subida de un adjunto mantiene abierta su transacción mientras dura el
+     envío al almacén: la migración espera a que acabe y, mientras espera,
+     deja en cola las lecturas de adjuntos y justificantes. Si se queda
+     esperando más de unos segundos, cancelarla (Ctrl-C: va en una sola
+     transacción y no deja nada a medias) y repetirla.
+   - **Desde la 0039 no se vuelve a un despliegue anterior a Cupones** con un
+     *Instant Rollback* de Vercel ni con un revert. El servidor de antes no
+     conoce el agregado `coupon` y rechaza con un 422 el lote ENTERO de
+     cualquier móvil de la familia que tenga en cola un comando de cupones (un
+     «Usar» sin red): con él se quedan atascados, en silencio y como
+     «pendiente», los del menú, la compra o las finanzas que viajan en el mismo
+     lote, hasta que se vuelve a desplegar Cupones. Se corrige hacia delante.
+     Si alguna vez hay que retirar el módulo, `"coupon"` se queda en
+     `commandEnvelopeSchema` (`packages/contracts/src/schemas.ts`). Desde esta
+     versión la ruta de sincronización valida solo la forma del lote y rechaza
+     los comandos desconocidos de uno en uno, así que el próximo módulo ya no
+     tendrá este problema; pero un despliegue ANTERIOR a ella sí lo tiene.
 
 ---
 
@@ -591,6 +634,24 @@ Una vez creado el hogar:
       Dashboard de `/h/<hogar>/finanzas` responde y pinta los KPIs; una cuenta
       sin concesión no ve el módulo en la navegación y recibe 403 por URL directa.
 - [ ] Subir un justificante y volver a verlo desde la cuenta del mes.
+- [ ] **Cupones**, con una cuenta de la familia en `/h/<hogar>/cupones` y datos
+      de prueba que luego se descartan: **alta con foto** (Añadir → «Hacer la
+      foto ahora» o «Elegir una foto guardada» → «Foto lista ✓» → comercio y
+      oferta → Guardar el cupón; aparece en Disponibles y la ficha enseña la
+      foto); **Usar** desde la fila → «Uso apuntado ✓ · Deshacer»;
+      **Deshacer** → el uso desaparece; **Descartar el cupón de …** → pasa a
+      Descartados; **Recuperar** → vuelve a Disponibles (y, al terminar,
+      descartarlo otra vez). Luego, con la cuenta de la **empleada**: Cupones no
+      sale en la navegación ni en «Más», `/h/<hogar>/cupones` responde 403
+      «Esta parte la lleva la familia.» y la URL de la foto
+      (`/api/v1/households/<hogar>/coupons/<id>/photo`) da **404**. Un 503 al
+      subir la foto es el almacén de §3 sin configurar.
+      **Ese cupón de prueba se queda para siempre**: no hay borrado (la familia
+      lo verá en «Descartados», y su foto, su uso anulado y su auditoría se
+      conservan). Hacer la foto a un papel con un texto inventado y poner un
+      comercio que lo diga («Prueba de despliegue»), nunca un cupón real con su
+      código. Si se prefiere no dejar rastro, el alta se prueba en local y aquí
+      solo **Usar** y **Deshacer** sobre un cupón real de la familia.
 - [ ] El banner de datos sintéticos **no** aparece, y el acceso demo con
       contraseña devuelve 403.
 - [ ] **La cola drena.** `curl -si -X POST https://casa.ejemplo.es/api/v1/jobs/run

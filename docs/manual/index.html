@@ -341,6 +341,7 @@ thead th { border-top: 0; }
       <a class="sub" href="#fa-calendario">Calendario</a>
       <a class="sub" href="#fa-ajustes">Ajustes y accesos</a>
       <a class="sub" href="#fa-finanzas">Finanzas de la casa</a>
+      <a class="sub" href="#fa-cupones">Cupones de la familia</a>
       <a class="sub" href="#fa-contactos">Contactos y Emergencias</a>
       <a href="#familia-miembro">Familia · miembro</a>
       <a href="#interna">Interna / empleada</a>
@@ -362,7 +363,8 @@ thead th { border-top: 0; }
     Esta aplicación reúne en un solo sitio el día a día del hogar: <strong>lo de hoy</strong>,
     el <strong>menú semanal</strong> con su lista de la compra, las <strong>rutinas</strong>,
     la <strong>Guía de la casa</strong> (las instrucciones escritas del hogar), el
-    <strong>calendario</strong>, los <strong>contactos</strong> y <strong>Contrato</strong>:
+    <strong>calendario</strong>, los <strong>contactos</strong>, los <strong>cupones</strong>
+    de la familia y <strong>Contrato</strong>:
     el contrato y sus condiciones, la nómina, los gastos y las vacaciones de la empleada
     de hogar, con las cuentas de cada mes trazables línea a línea.
   </p>
@@ -2006,6 +2008,96 @@ thead th { border-top: 0; }
     <span class="ui">Deshacer</span>: la quita entera, como si no hubiera pasado.
   </p>
 
+  <h3 id="fa-cupones">Cupones de la familia</h3>
+  <p>
+    <span class="ui">Cupones</span> es la cartera de vales de la familia: alguien le
+    hace una foto a un cupón de descuento, apunta dónde sirve y hasta cuándo, y desde
+    ese momento lo tiene a mano <strong>cualquiera de la familia</strong>, en la puerta
+    del súper, con dos toques. Los cupones son de toda la familia, no de quien los
+    guardó: quien administra y los demás miembros los ven, los usan, los editan y los
+    descartan por igual. La empleada, el apoyo y el acceso puntual <strong>no ven nada
+    del módulo</strong>: ni su entrada en la navegación, ni los cupones, ni sus fotos, ni el
+    aviso en Hoy. Para ellos el módulo no existe, y eso es lo esperado.
+  </p>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        <strong>Guardar un cupón</strong> son dos pasos. Con
+        <span class="ui">Añadir</span>, primero la foto —<span class="ui">Hacer la foto
+        ahora</span> o <span class="ui">Elegir una foto guardada</span>— y, cuando dice
+        <span class="ui">Foto lista ✓</span>, lo que pone el cupón: el comercio, lo que
+        ofrece, el código si lo tiene, la caducidad y cuántas veces se puede usar
+        (<span class="ui">Un solo uso</span>, <span class="ui">Varios usos</span> o
+        <span class="ui">Sin límite</span>). Las notas sirven para lo que haga falta
+        saber en caja. La foto se guarda <strong>sin la ubicación ni los datos del
+        móvil</strong>, y para guardarla hace falta conexión.
+      </p>
+      <p>
+        <strong>La lista</strong> enseña por defecto los cupones
+        <span class="ui">Disponibles</span>; el título lo dice («Cupones · 4
+        disponibles»). Los <span class="ui">Usados</span>, los
+        <span class="ui">Caducados</span> y los <span class="ui">Descartados</span>
+        tienen su propio filtro: dejan de estorbar, pero no se pierden.
+        <span class="ui">Buscar</span> encuentra un cupón por el comercio, lo que
+        ofrece, el código o las notas. Los que caducan en los próximos tres días llevan
+        <span class="ui">Caduca pronto</span>, y Hoy lo avisa a la familia.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Cupones · móvil</span></div>
+        <img src="capturas/familia-cupones-movil.png" loading="lazy" width="780" height="1688"
+             alt="La cartera de cupones en el móvil de Alberto: el título «Cupones · 4 disponibles», los filtros Disponibles 4, Usados 1, Caducados 1 y Descartados 1, el campo Buscar con el botón Añadir, y la lista: Frutería Huerta Clara con el chip Caduca pronto, Panadería La Espiga con «2 de 5 usados · quedan 3», Droguería Sol y Librería Papel «Sin caducidad · Sin límite · usado 1 vez», cada uno con su botón Usar.">
+      </div>
+      <figcaption>La cartera, en el móvil: cada fila dice dónde sirve, qué ofrece, hasta cuándo y cuántos usos le quedan. «Usar» apunta un uso con un toque.</figcaption>
+    </figure>
+  </div>
+  <div class="fila">
+    <div class="texto">
+      <p>
+        <strong>En caja</strong> se toca el cupón y se abre su ficha: el
+        <strong>código en grande</strong> con <span class="ui">Copiar</span>, la foto
+        (un toque la pone a pantalla completa, para enseñarla tal cual) y, justo debajo,
+        <span class="ui">Usar</span>. Usarlo apunta la fecha y quién, y deja
+        <span class="ui">Uso apuntado ✓ · Deshacer</span> por si fue un toque de más.
+        Un uso que se apuntó por error y ya no se puede deshacer se quita en la propia
+        ficha con <span class="ui">Anular este uso</span>, que pide un segundo toque.
+      </p>
+      <p>
+        La aplicación <strong>no prohíbe nada</strong>: lleva la cuenta de los usos
+        («2 de 5 usados · quedan 3») pero deja apuntar uno más aunque el cupón esté
+        gastado o caducado, porque quien manda en caja es la tienda. Lo único que cambia
+        es en qué filtro se ve.
+      </p>
+      <p>
+        Cuando un cupón ya no sirve,
+        <span class="ui">Descartar el cupón de…</span> lo pasa a
+        <span class="ui">Descartados</span>; desde ahí, <span class="ui">Recuperar</span>
+        lo devuelve. Nada se borra. <span class="ui">Editar</span> corrige los campos y
+        permite cambiar la foto. Usar, deshacer, descartar y recuperar funcionan sin
+        cobertura y se envían solos al volver; ver la cartera y guardar un cupón nuevo
+        necesitan conexión.
+      </p>
+    </div>
+    <figure class="captura movil">
+      <div class="ventana">
+        <div class="ventana-barra"><i></i><i></i><i></i><span>Cupones · móvil</span></div>
+        <img src="capturas/familia-cupones-ficha-movil.png" loading="lazy" width="780" height="1688"
+             alt="Ficha del cupón de Frutería Huerta Clara abierta en el móvil: el chip Caduca pronto, el código HUERTA-2X1 en grande con el botón Copiar, debajo los botones Usar y Editar, la foto del vale, la caducidad, «Un solo uso», la nota «Solo en el puesto del mercado», quién lo guardó, «Todavía no se ha usado» y, al final, el botón Descartar el cupón de Frutería Huerta Clara.">
+      </div>
+      <figcaption>La ficha de un cupón: el código, lo primero y en grande; «Usar» justo debajo; la foto, para enseñarla en caja.</figcaption>
+    </figure>
+  </div>
+  <div class="tarjeta">
+    <h4>Lo que el módulo no hace</h4>
+    <p>
+      No lee el código de barras ni rellena los campos solo: se escriben a mano. No
+      apunta importes ni ahorro, no se enlaza con Finanzas ni con la compra, y no manda
+      avisos al móvil: la caducidad próxima sale en Hoy. Y no hay cupones privados
+      dentro de la familia: lo que guarda uno lo ven todos.
+    </p>
+  </div>
+
   <h3 id="fa-contactos">Contactos y Emergencias</h3>
   <div class="fila">
     <div class="texto">
@@ -2054,8 +2146,9 @@ thead th { border-top: 0; }
     Un miembro de la familia (por ejemplo, la pareja de quien administra) maneja el
     día a día exactamente igual: organiza el <strong>menú</strong> y confirma comidas,
     lleva la <strong>compra</strong>, marca y consulta <strong>rutinas</strong>,
-    gestiona <strong>contactos</strong>, <strong>enlaza calendarios</strong> y usa el
-    buscador y la Guía de la casa.
+    gestiona <strong>contactos</strong>, <strong>enlaza calendarios</strong>, usa el
+    buscador y la Guía de la casa y lleva la cartera de <strong>cupones</strong> igual
+    que quien administra: los cupones son de toda la familia.
   </p>
   <p>
     Su barra es la única que va en otro orden, porque no lleva las tareas de la casa:
@@ -2598,6 +2691,7 @@ thead th { border-top: 0; }
       <tr><td>Condiciones del contrato</td><td>Crea y cambia (versión nueva)</td><td>—</td><td>Ve las suyas, sin lo que no le aplica</td><td>—</td><td>—</td></tr>
       <tr><td>Vacaciones</td><td>Apunta, anula y ve el saldo</td><td>Ve los días apuntados, no el derecho</td><td>Ve su saldo y sus periodos</td><td>—</td><td>—</td></tr>
       <tr><td>Calendario</td><td>Enlaza y ve</td><td>Enlaza y ve</td><td>Ve</td><td>—</td><td>Ve</td></tr>
+      <tr><td>Cupones</td><td>Todo</td><td>Todo</td><td>—</td><td>—</td><td>—</td></tr>
       <tr><td>Contactos</td><td>Edita</td><td>Edita</td><td>Consulta</td><td>Consulta</td><td>Consulta</td></tr>
       <tr><td>Emergencias</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>
       <tr><td>Tu cuenta</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td><td>Sí</td></tr>

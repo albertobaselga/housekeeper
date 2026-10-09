@@ -1,6 +1,6 @@
 ---
 name: operar-la-casa
-description: Operar y mantener Housekeeper como administrador — dar de alta personas, contratos, rutinas, notas de la guía, contactos, menú, liquidaciones y avisos; instalar de cero en local o en Vercel + Supabase; migrar, respaldar, rotar secretos y diagnosticar. Úsala ante cualquier petición de administración («añade una hoja a la guía», «crea una rutina», «da de alta a una persona»), de instalación o de mantenimiento de esta aplicación.
+description: Operar y mantener Housekeeper como administrador — dar de alta personas, contratos, rutinas, notas de la guía, contactos, menú, liquidaciones, cupones y avisos; instalar de cero en local o en Vercel + Supabase; migrar, respaldar, rotar secretos y diagnosticar. Úsala ante cualquier petición de administración («añade una hoja a la guía», «crea una rutina», «da de alta a una persona»), de instalación o de mantenimiento de esta aplicación.
 ---
 
 # Operar Housekeeper
@@ -125,6 +125,7 @@ sale de la URL.
 | Calendario | `/h/<hogar>/calendar` | `calendar.read` | [ops](referencia-operaciones.md#calendario-y-calendarios-enlazados) |
 | Buscar | `/h/<hogar>/search` | `search.use` | — |
 | Finanzas | `/h/<hogar>/finanzas` | `family_admin` **con concesión** | [ops](referencia-operaciones.md#finanzas) |
+| Cupones | `/h/<hogar>/cupones` | `family_member` (`coupon.access`); la empleada, el apoyo y el acceso puntual no lo ven | [ops](referencia-operaciones.md#cupones) |
 
 **Las seis rutas de `employment` son una sola pantalla en pestañas.** El
 expediente laboral se repartió porque no cabía en una página de móvil: se entra
@@ -177,6 +178,13 @@ Lo que más caro sale. El detalle de cada una, en las hojas.
 
 8. **Las suites de base de datos van en secuencia, nunca en paralelo.** Crean
    bases y roles de nombre fijo y se pisan entre ellas.
+
+9. **Cupones es solo de la familia, y la familia entera lo lleva.** No hay
+   concesión que dar ni quitar: `family_admin` y `family_member` lo hacen todo;
+   la empleada, el apoyo y el acceso puntual no deben verlo y no lo ven (RLS de
+   la 0039). Si alguien de fuera de la familia dice que ve un cupón, es un
+   incidente de seguridad, no una petición de acceso. Los usos se anulan desde
+   la ficha, nunca con SQL.
 
 ---
 
