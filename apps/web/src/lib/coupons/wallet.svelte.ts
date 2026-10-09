@@ -1,3 +1,4 @@
+import { untrack } from 'svelte';
 import { get } from 'svelte/store';
 
 import { OptimisticActions, type OptimisticActionsOptions } from '$lib/offline/optimistic';
@@ -97,8 +98,20 @@ export class CouponWallet {
    * Reconciliación diferida de lo que quedó en cola. Cuando vuelve la red, el
    * aviso pendiente pasa a decir que llegó; si el servidor lo rechaza, lo dice
    * (y su «Deshacer» desaparece).
+   *
+   * Se llama dentro de un `$effect` y no debe hacerle depender de nada: un
+   * store entrega su valor AL SUSCRIBIRSE, de forma síncrona, y esa primera
+   * entrega lee `useNote`. Sin `untrack`, el efecto de la página pasaba a
+   * depender del aviso; cada cambio del aviso lo rehacía, la nueva
+   * suscripción volvía a entregar el último rechazo y lo volvía a escribir:
+   * tras un «Usar» o un «Deshacer» rechazado, el aviso de error no se podía
+   * cerrar y la página giraba en ese bucle (revisión de integración, ronda 3).
    */
   start(): () => void {
+    return untrack(() => this.subscribe());
+  }
+
+  private subscribe(): () => void {
     const stopActions = this.actions.start();
     const stopUses = this.useActions.start();
     const stopFeedback = this.useActions.status.subscribe((feedback) => {

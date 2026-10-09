@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { syncRequestSchema } from '@housekeeper/contracts/schemas';
 import {
+  CommandRejectedError,
   accessCommandHandlers,
   contactCommandHandlers,
   couponCommandHandlers,
@@ -46,6 +47,17 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
   const parsed = syncRequestSchema.safeParse(body);
   if (!parsed.success) error(422, 'Petición de sincronización inválida');
 
-  const result = await processSyncBatch(pool, { userId: locals.user.id }, parsed.data.commands, handlers);
+  // Cada sobre se valida dentro, uno a uno. Solo uno sin `operationId` que se
+  // pueda identificar no tiene a quién devolverle su rechazo: ese tumba el lote,
+  // como antes, con el mismo 422.
+  let result;
+  try {
+    result = await processSyncBatch(pool, { userId: locals.user.id }, parsed.data.commands, handlers);
+  } catch (cause) {
+    if (cause instanceof CommandRejectedError && cause.errorCode === 'invalid_envelope') {
+      error(422, 'Petición de sincronización inválida');
+    }
+    throw cause;
+  }
   return json(result, { headers: { 'cache-control': 'no-store' } });
 };

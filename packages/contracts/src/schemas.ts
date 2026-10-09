@@ -73,9 +73,18 @@ const commandAckSchema = z.object({
   retryAfterSeconds: z.number().int().positive().optional(),
 });
 
+/**
+ * La forma del LOTE, no la de cada comando: los sobres viajan como `unknown` y
+ * los valida `processSyncBatch` de uno en uno, que es quien puede rechazar uno
+ * («invalid_envelope», «unsupported_aggregate») y seguir con el resto. Si se
+ * validaran aquí, un solo comando de un agregado que este servidor no conoce
+ * —uno de un módulo nuevo, tras volver a un despliegue anterior— tumbaría el
+ * lote entero con un 422 y dejaría atascados en el móvil los de los demás
+ * módulos que viajan con él.
+ */
 export const syncRequestSchema = z.object({
   apiVersion: z.literal(API_VERSION),
-  commands: z.array(commandEnvelopeSchema).min(1).max(MAX_SYNC_COMMANDS),
+  commands: z.array(z.unknown()).min(1).max(MAX_SYNC_COMMANDS),
 });
 
 export const expenseSubmitPayloadSchema = z.object({

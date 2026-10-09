@@ -172,8 +172,17 @@ test('el aviso de «Usar» no empuja la lista', async ({ page }) => {
   await openWallet(page);
   const list = page.locator('ul.coupon-list');
   const before = await list.boundingBox();
+  const sent = page.waitForResponse(
+    (response) => response.url().endsWith('/api/v1/sync') && response.request().method() === 'POST'
+  );
   await page.getByRole('button', VARIOS).click();
   await expect(page.locator('.use-note')).toContainText('Uso apuntado ✓ · Comercio E2E 1');
+  // Lo que se mide es el aviso de «Usar». La banda del armazón («1 cambio
+  // pendiente») asoma unos milisegundos entre encolar y enviar, y esa sí
+  // empuja: es de toda la aplicación y no de esta pantalla. Se mide con el
+  // uso ya acusado y sin ella.
+  await sent;
+  await expect(page.locator('.status-banner')).toHaveCount(0);
   const after = await list.boundingBox();
   expect(after?.y).toBe(before?.y);
   // Se deja como estaba para las pruebas siguientes.
@@ -491,4 +500,105 @@ test('cartera vacía: el alta abre con el foco dentro, un rechazo no borra lo es
       await admin.query('commit');
     });
   }
+});
+
+/** El servidor contesta que no a cada comando, con el código dado: un ACK de rechazo real, no un fallo de red. */
+async function rejectCommands(page: Page, errorCode: string): Promise<void> {
+  await page.route('**/api/v1/sync', async (route) => {
+    const body = route.request().postDataJSON() as { commands: { operationId: string }[] };
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        apiVersion: 1,
+        acknowledgements: body.commands.map((command) => ({
+          operationId: command.operationId,
+          status: 'rejected',
+          errorCode
+        }))
+      })
+    });
+  });
+}
+
+/** La página sigue viva: un filtro responde y lleva a su lista. */
+async function expectResponsive(page: Page): Promise<void> {
+  await page.getByRole('link', { name: /^Usados \d+$/ }).click();
+  await expect(page).toHaveURL(/[?&]ver=/);
+  await page.getByRole('link', { name: /^Disponibles \d+$/ }).click();
+  await expect(page).not.toHaveURL(/[?&]ver=/);
+}
+
+test.describe('con el servidor rechazando «Usar» o «Deshacer»', () => {
+  // Sin service worker: el `page.route` que intercepta /api/v1/sync solo alcanza
+  // las peticiones que emite la página, no las de un SW que controle la pestaña.
+  test.use({ serviceWorkers: 'block' });
+
+  /*
+   * El rechazo llegaba al aviso por la suscripción de la cartera, que la
+   * página arranca en un `$effect`. Esa suscripción leía el aviso al
+   * arrancar, así que el efecto pasaba a depender de él; con un rechazo, el
+   * aviso cambiaba, el efecto se rehacía, volvía a leer el rechazo, volvía a
+   * escribir el aviso… y la página se quedaba colgada en ese bucle (revisión
+   * de integración, ronda 3).
+   */
+  test('un «Usar» rechazado vuelve atrás, dice por qué y la página sigue viva', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await openWallet(page);
+    await rejectCommands(page, 'coupon_not_found');
+
+    await page.getByRole('button', ULTIMO).click();
+    const note = page.locator('.use-note');
+    await expect(note).toContainText('Ese cupón ya no está en la cartera');
+    await expect(note.getByRole('button', { name: /^Deshacer/ })).toHaveCount(0);
+    // Lo optimista se ha deshecho: el cupón de un solo uso sigue en «Disponibles».
+    await expect(page.getByRole('button', ULTIMO)).toBeVisible();
+
+    await expectResponsive(page);
+    await note.getByRole('button', { name: 'Cerrar el aviso' }).click();
+    await expect(note).toHaveCount(0);
+    expect(errors).toEqual([]);
+    await page.unroute('**/api/v1/sync');
+  });
+
+  test('un «Deshacer» rechazado deja el uso apuntado, dice por qué y la página sigue viva', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    try {
+      await openWallet(page);
+      // El aviso verde se pinta ANTES del acuse: se espera a que el uso llegue
+      // de verdad al servidor, o el rechazo de abajo se lo llevaría también.
+      const sent = page.waitForResponse(
+        (response) => response.url().endsWith('/api/v1/sync') && response.request().method() === 'POST'
+      );
+      await page.getByRole('button', ULTIMO).click();
+      await sent;
+      const note = page.locator('.use-note');
+      await expect(note).toContainText('Uso apuntado ✓ · Comercio E2E 10');
+      await expect(page.getByRole('button', ULTIMO)).toHaveCount(0);
+
+      await rejectCommands(page, 'coupon_use_not_found');
+      await note.getByRole('button', { name: 'Deshacer el uso de Comercio E2E 10' }).click();
+      await expect(note).toContainText('Ese uso ya no estaba apuntado.');
+      // La anulación optimista se ha deshecho: el cupón sigue en «Usados».
+      await expect(page.getByRole('button', ULTIMO)).toHaveCount(0);
+      await expect(page.getByRole('link', { name: /^Usados \d+$/ })).toHaveText(/^Usados [1-9]/);
+
+      await expectResponsive(page);
+      expect(errors).toEqual([]);
+    } finally {
+      await page.unroute('**/api/v1/sync');
+      // El uso apuntado de verdad se retira: el cupón vuelve a estar como lo sembró la batería.
+      await withAdmin(async (admin) => {
+        await admin.query('begin');
+        await admin.query('set local row_security = off');
+        await admin.query('delete from app.coupon_uses where household_id = $1 and coupon_id = $2', [
+          HOUSEHOLD,
+          E2E_SEED.coupons.ultimo
+        ]);
+        await admin.query('commit');
+      });
+    }
+  });
 });

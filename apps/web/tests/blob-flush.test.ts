@@ -269,6 +269,20 @@ describe('la espera de una foto que nunca sube acaba en el triaje', () => {
     expect(isBlockedByAttachment(blocked!)).toBe(true);
   });
 
+  it('los mismos bytes ya subidos por otra persona (409) bloquean a la primera', async () => {
+    // El 409 «attachment_duplicate» es tan definitivo como el 422: esos bytes
+    // vuelven a chocar en cada intento. Reintentarlo solo retrasaba el triaje y
+    // acababa en «attachment_upload_blocked», que invita a reintentar.
+    const name = await setUp('duplicado');
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 409 } as unknown as Response);
+
+    expect(await flushBlobs(HOUSEHOLD, fetchMock as unknown as typeof fetch, name)).toBe('failed');
+    const [blocked] = await listOutbox(HOUSEHOLD, name);
+    expect(blocked!.status).toBe('rejected');
+    expect(blocked!.lastErrorCode).toBe('attachment_rejected');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('un blob sin comando que lo espere no bloquea nada y se sigue reintentando', async () => {
     const name = databaseName('huerfano');
     await saveOfflineBlob(blobRecord('blob-suelto', '2026-08-07T08:59:00.000Z'), name);

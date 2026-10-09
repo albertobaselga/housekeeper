@@ -539,7 +539,10 @@
 
   .coupon-uses h3 { font-size: var(--text-strong); }
   .coupon-use-list { margin: 0; padding: 0; list-style: none; }
-  .coupon-uses .fila-dato > span { min-width: 0; font-size: var(--text-meta); }
+  /* La línea del uso es el dato de su fila, no su apoyo: «Usado el mar 7 oct
+     por Marta» es una frase, y a 13 px quedaba por debajo del piso de las
+     frases (A4 de la batería de densidad). */
+  .coupon-uses .fila-dato > span { min-width: 0; font-size: var(--text-body); }
 
   /* La foto a pantalla completa: el lector de la caja la necesita grande. */
   .photo-full {

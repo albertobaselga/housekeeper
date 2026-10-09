@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { HOUSEHOLD, loginAs } from './helpers';
+import { E2E_SEED, HOUSEHOLD, loginAs } from './helpers';
 
 // Ninguna pantalla puede desbordar en horizontal en un móvil estrecho: a 320 px
 // (el mínimo razonable, iPhone SE 1.ª gen / plegable cerrado) el documento debe
@@ -114,6 +114,18 @@ const ROUTES: readonly OverflowRoute[] = [
     }
   },
   { path: 'contacts', label: 'Contactos', as: 'admin' },
+  // Cupones: la fila lleva nombre, línea de apoyo, el chip de estado y «Usar»,
+  // y la ficha es una hoja con la foto, el código y sus acciones. La de
+  // `varios` es la más cargada: tiene usos apuntados y «Anular este uso».
+  { path: 'cupones', label: 'Cupones', as: 'admin' },
+  {
+    path: `cupones?cupon=${E2E_SEED.coupons.varios}`,
+    label: 'Cupones · una ficha abierta',
+    as: 'admin',
+    reveal: async (page) => {
+      await expect(page.getByRole('dialog')).toBeVisible();
+    }
+  },
   { path: 'settings', label: 'Ajustes', as: 'admin' },
   { path: 'emergency', label: 'Emergencias', as: 'admin' }
 ];

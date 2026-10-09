@@ -67,3 +67,20 @@
   </div>
 </details>
 {/if}
+
+<style>
+  /*
+   * En un móvil estrecho la fila se apila: el título arriba y, debajo, el chip
+   * y «Deshacer». La rejilla de `.ledger-list` da a la segunda columna todo su
+   * ancho natural, y aquí esa columna es el chip «Hecha ✓ · próxima el vie,
+   * 16 oct», que no se parte: a 320 px se quedaba 211 de 270 y dejaba al
+   * título 47, así que el <summary> desbordaba su columna y quedaba a 5 px de
+   * «Deshacer» (la regla de los 8 px de mobile-densidad). Cuánto mide el chip
+   * depende de la fecha de la próxima vez, de modo que el fallo iba y venía
+   * según el día. Apilado, ninguna fecha vuelve a quitarle sitio al título.
+   */
+  @media (max-width: 37.5rem) {
+    .routine-done { grid-template-columns: minmax(0, 1fr); }
+    .routine-done .inline-actions { justify-content: flex-start; }
+  }
+</style>

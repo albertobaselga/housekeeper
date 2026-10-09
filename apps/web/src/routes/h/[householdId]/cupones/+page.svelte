@@ -38,6 +38,7 @@
    * dominio que el servidor.
    */
   const wallet = new CouponWallet(context.household.id);
+  // Arranca una sola vez: `start()` no deja que el efecto dependa de la cartera.
   $effect(() => wallet.start());
 
   const live = $derived(data.live);
