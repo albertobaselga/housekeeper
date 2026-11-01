@@ -235,6 +235,7 @@ Detalle en
 - Sistema de diseño móvil: [docs/ux/sistema-movil.md](docs/ux/sistema-movil.md)
 - Decisiones: [ADR](docs/adr/)
 - Base de seguridad: [docs/security/security-baseline.md](docs/security/security-baseline.md)
+- Prompts de las funcionalidades por hacer (Garantías, acceso por enlaces mágicos con Resend, servidor MCP para asistentes, web pública de Homekeeping), con sus decisiones y su workflow hasta producción: [docs/superpowers/prompts/](docs/superpowers/prompts/)
 - Cómo contribuir: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Historia
