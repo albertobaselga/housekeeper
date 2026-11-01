@@ -72,6 +72,13 @@ herramientas.
   se autentica y se resuelve sola. Si el SDK oficial exige algo que no encaja
   con SvelteKit o con esa restricción, el spike lo descubre y el spec decide
   (SDK adaptado o JSON-RPC propio sobre la especificación).
+- **Antes de nada, Better Auth parcheado.** La 1.6.26 instalada arrastra dos
+  avisos *high* (GHSA-q84f-53jg-9ppm y GHSA-r4xp-prcw-77qf, corregidos en la
+  1.7.7) y uno de ellos toca justo la superficie OAuth. Si el prompt de acceso
+  ya la subió, comprobar la versión; si no, subirla aquí en commit propio y
+  **volver a verificar** que el plugin `mcp` y sus opciones (abajo) siguen
+  igual en esa versión, porque entre versiones el plugin puede haberse
+  reorganizado.
 - **Autenticación: OAuth 2.1 con el plugin `mcp` de Better Auth**, que **ya
   está instalado** (Better Auth 1.6.26 trae `plugins/mcp`, además de
   `oidc-provider`, `bearer` y `jwt`; comprobado en el almacén de pnpm). Se

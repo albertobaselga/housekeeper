@@ -59,6 +59,15 @@ familia actual no pierde el acceso en el cambio.
 
 ### 3.1 Enlace y código, con los plugins que ya están instalados
 
+- **Antes de tocar `auth-core.ts`, actualizar Better Auth.** La 1.6.26
+  instalada arrastra dos avisos *high* en la auditoría de producción del
+  workflow de seguridad (GHSA-q84f-53jg-9ppm, aprobación de *device login*;
+  GHSA-r4xp-prcw-77qf, *OAuth Proxy*), corregidos en la 1.7.7. La primera
+  tarea del plan es subir a la versión parcheada vigente, en commit propio,
+  **y volver a comprobar** que los plugins y opciones que este prompt cita
+  (`magicLink`, `emailOTP`, `admin.createUser` sin contraseña, `session`)
+  siguen igual en esa versión; lo que haya cambiado se anota en el spec. Lo
+  mismo vale para el prompt del servidor MCP.
 - **Plugin `magicLink` de Better Auth**, que la versión instalada (1.6.26) ya
   trae (`better-auth/plugins`, comprobado en el almacén de pnpm: opciones
   `sendMagicLink({ email, url, token }, ctx)`, `expiresIn` (300 s por
